@@ -1,0 +1,160 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ghcr.io
+  repository: mohripan16/capsulet
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  create: true
+
+podAnnotations: {}
+podLabels: {}
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+config:
+  logLevel: info
+  databaseUrlSecret:
+    name: ""
+    key: DATABASE_URL
+  objectStorage:
+    bucket: capsulet-artifacts
+    endpoint: ""
+  kafka:
+    brokers: ""
+
+api:
+  enabled: true
+  replicaCount: 1
+  image:
+    repositorySuffix: api
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+worker:
+  enabled: true
+  replicaCount: 1
+  image:
+    repositorySuffix: worker
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+scheduler:
+  enabled: true
+  replicaCount: 1
+  image:
+    repositorySuffix: scheduler
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+evaluator:
+  enabled: true
+  replicaCount: 1
+  image:
+    repositorySuffix: evaluator
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+dashboard:
+  enabled: true
+  replicaCount: 1
+  image:
+    repositorySuffix: dashboard
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 512Mi
+
+executionPools:
+  defaultPool: mini
+  pools:
+    mini:
+      description: Lightweight jobs such as email, webhooks, and small scripts
+      nodeSelector:
+        capsulet.dev/pool: mini
+      tolerations: []
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      timeoutSeconds: 120
+      maxConcurrentJobs: 50
+    large:
+      description: Compute-heavy jobs such as model inference and batch processing
+      nodeSelector:
+        capsulet.dev/pool: large
+      tolerations:
+        - key: capsulet.dev/pool
+          operator: Equal
+          value: large
+          effect: NoSchedule
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+        limits:
+          cpu: "8"
+          memory: 16Gi
+      timeoutSeconds: 3600
+      maxConcurrentJobs: 10
+
+networkPolicies:
+  enabled: false
+
+serviceMonitor:
+  enabled: false

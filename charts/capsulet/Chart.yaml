@@ -1,0 +1,27 @@
+apiVersion: v2
+name: capsulet
+description: Kubernetes-native automation platform and sandboxed job runner
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/mohripan16/capsulet
+sources:
+  - https://github.com/mohripan16/capsulet
+maintainers:
+  - name: Mohammad Ripan
+keywords:
+  - automation
+  - jobs
+  - workflow
+  - kubernetes
+  - rust
+  - helm
+annotations:
+  artifacthub.io/category: integration-delivery
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/mohripan16/capsulet/tree/main/docs
+    - name: Source
+      url: https://github.com/mohripan16/capsulet

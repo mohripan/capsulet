@@ -141,6 +141,15 @@ docs/
 
 This repository is currently in the planning stage. See [ROADMAP.md](ROADMAP.md) for the staged delivery plan and [ARCHITECTURE.md](ARCHITECTURE.md) for the target system architecture.
 
+Useful project docs:
+
+- [Development](docs/development.md)
+- [Installation](docs/installation.md)
+- [Helm values](docs/helm-values.md)
+- [Planning](planning/README.md)
+- [Backend workspace](crates/README.md)
+- [Dashboard prototype](dashboard/README.md)
+
 ## Distribution Goals
 
 Capsulet should eventually publish:
