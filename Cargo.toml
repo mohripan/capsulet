@@ -1,0 +1,24 @@
+[workspace]
+members = [
+    "crates/api",
+    "crates/cli",
+    "crates/core",
+    "crates/evaluator",
+    "crates/runner",
+    "crates/scheduler",
+    "crates/worker",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/mohripan16/capsulet"
+rust-version = "1.87"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
