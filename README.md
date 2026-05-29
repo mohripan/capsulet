@@ -147,6 +147,7 @@ Useful project docs:
 
 - [Development](docs/development.md)
 - [Installation](docs/installation.md)
+- [API](docs/api.md)
 - [Helm values](docs/helm-values.md)
 - [Persistence](docs/persistence.md)
 - [Planning](planning/README.md)

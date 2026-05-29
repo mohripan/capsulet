@@ -24,13 +24,13 @@ Status legend:
 
 | ID | Status | Task | Acceptance |
 | --- | --- | --- | --- |
-| S2-API-001 | todo | Add API framework | API binary starts an HTTP server |
-| S2-API-002 | todo | Add `GET /healthz` | Health endpoint returns success |
-| S2-API-003 | todo | Add `POST /v1/jobs/runs` | Manual job submission creates queued run |
-| S2-API-004 | todo | Add `GET /v1/jobs/runs` | API lists runs |
-| S2-API-005 | todo | Add `GET /v1/jobs/runs/{id}` | API fetches one run |
-| S2-API-006 | todo | Add API validation errors | Unknown job definition or pool returns clear error |
-| S2-API-007 | todo | Add API tests | Success and failure paths are covered |
+| S2-API-001 | done | Add API framework | API binary starts an HTTP server |
+| S2-API-002 | done | Add `GET /healthz` | Health endpoint returns success |
+| S2-API-003 | done | Add `POST /v1/jobs/runs` | Manual job submission creates queued run |
+| S2-API-004 | done | Add `GET /v1/jobs/runs` | API lists runs |
+| S2-API-005 | done | Add `GET /v1/jobs/runs/{id}` | API fetches one run |
+| S2-API-006 | done | Add API validation errors | Unknown job definition or pool returns clear error |
+| S2-API-007 | done | Add API tests | Success and failure paths are covered |
 
 ## Job Definitions
 
@@ -68,7 +68,7 @@ Status legend:
 | S2-QA-001 | done | Keep `cargo fmt --check` passing | Formatting passes |
 | S2-QA-002 | done | Keep clippy passing | `cargo clippy --workspace --all-targets -- -D warnings` passes |
 | S2-QA-003 | done | Keep workspace tests passing | `cargo test --workspace` passes |
-| S2-QA-004 | doing | Add focused integration tests where practical | Repository behavior has Docker-backed coverage; API/worker coverage remains pending |
+| S2-QA-004 | doing | Add focused integration tests where practical | Repository has Docker-backed coverage; API has handler coverage and smoke verification; worker coverage remains pending |
 
 ## Completed Notes
 
@@ -85,11 +85,25 @@ Persistence foundation completed:
 - Added ADR 0007 for PostgreSQL and SQLx.
 - Verified `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and `cargo test -p capsulet-postgres` against local PostgreSQL.
 
+API foundation completed:
+
+- Added Axum as the API framework.
+- Split `capsulet-api` into a testable router library and runtime binary.
+- Added `GET /healthz`.
+- Added `POST /v1/jobs/runs` for manual job-run creation.
+- Added `GET /v1/jobs/runs` for job-run listing.
+- Added `GET /v1/jobs/runs/{id}` for single run lookup.
+- Added validation errors for invalid identifiers, unknown job definitions, unknown execution pools, and missing runs.
+- Added API unit tests with an in-memory fake store.
+- Added API documentation in `docs/api.md`.
+- Added ADR 0008 for Axum.
+- Verified the API manually against Docker PostgreSQL with health, create, list, and fetch requests.
+
 ## ADR Candidates
 
 Create ADRs only if the implementation forces durable choices:
 
-- API framework selection
+- API framework selection. Done in ADR 0008.
 - PostgreSQL client and migration tooling. Done in ADR 0007.
 - local development dependency strategy
 - runner trait shape

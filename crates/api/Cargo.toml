@@ -12,7 +12,18 @@ name = "capsulet-api"
 path = "src/main.rs"
 
 [dependencies]
+async-trait.workspace = true
+axum.workspace = true
 capsulet-core = { path = "../core" }
+capsulet-postgres = { path = "../postgres" }
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+serde_json.workspace = true
+tower.workspace = true
 
 [lints]
 workspace = true

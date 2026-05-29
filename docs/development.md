@@ -82,6 +82,28 @@ migrations/YYYYMMDDHHMMSS_description.sql
 
 Migrations should be append-only after they are shared. Add a new migration instead of editing an existing migration that another developer may already have applied.
 
+## API
+
+The API uses Axum and connects to PostgreSQL through `capsulet-postgres`.
+
+Run locally:
+
+```powershell
+$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
+$env:CAPSULET_API_ADDR = "127.0.0.1:8080"
+$env:CAPSULET_EXECUTION_POOLS = "mini,large"
+cargo run -p capsulet-api
+```
+
+Available Sprint 002 endpoints:
+
+- `GET /healthz`
+- `POST /v1/jobs/runs`
+- `GET /v1/jobs/runs`
+- `GET /v1/jobs/runs/{id}`
+
+See `docs/api.md` for request examples.
+
 ## Dashboard
 
 Run from `dashboard/`:

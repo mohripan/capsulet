@@ -10,7 +10,7 @@
 
 ## Core Runtime
 
-- Implement manual job submission. Planned for Sprint 002.
+- Implement manual job submission. API foundation done in Sprint 002.
 - Persist job runs and attempts. Persistence foundation done in Sprint 002.
 - Add worker leasing with stub runner. Planned for Sprint 002.
 - Execute jobs through Kubernetes Jobs.

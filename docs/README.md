@@ -13,5 +13,6 @@ Current docs:
 
 - [Development](development.md)
 - [Installation](installation.md)
+- [API](api.md)
 - [Helm values](helm-values.md)
 - [Persistence](persistence.md)
