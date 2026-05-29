@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: capsulet-postgres
+    environment:
+      POSTGRES_DB: capsulet
+      POSTGRES_USER: capsulet
+      POSTGRES_PASSWORD: capsulet
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capsulet -d capsulet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - capsulet-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  capsulet-postgres-data:

@@ -5,6 +5,7 @@ Capsulet's backend is a Rust workspace organized around a small domain core and 
 ## Crates
 
 - `capsulet-core`: domain model, application command/query shapes, and infrastructure ports
+- `capsulet-postgres`: PostgreSQL persistence adapter for durable metadata
 - `capsulet-api`: future HTTP control plane service
 - `capsulet-worker`: future run leasing and Kubernetes Job coordination service
 - `capsulet-scheduler`: future scheduled and delayed trigger scanner
@@ -21,6 +22,8 @@ The current structure uses a DDD-style core with CQRS-friendly application bound
 - `ports`: traits that future infrastructure adapters will implement
 
 Infrastructure dependencies such as PostgreSQL, Kubernetes, Kafka, and HTTP frameworks should not be added to `capsulet-core`.
+
+Persistence adapters live outside the core crate. `capsulet-postgres` currently implements the job run repository boundary and owns SQLx-backed database access.
 
 ## Checks
 

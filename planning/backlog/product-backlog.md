@@ -2,16 +2,17 @@
 
 ## Foundation
 
-- Scaffold Rust workspace.
-- Scaffold Next.js dashboard.
-- Create Helm chart skeleton.
-- Add local development guide.
-- Add CI workflow.
+- Scaffold Rust workspace. Done in Sprint 001.
+- Scaffold Next.js dashboard. Done in Sprint 001.
+- Create Helm chart skeleton. Done in Sprint 001.
+- Add local development guide. Done in Sprint 001.
+- Add CI workflow. Done in Sprint 001.
 
 ## Core Runtime
 
-- Implement manual job submission.
-- Persist job runs and attempts.
+- Implement manual job submission. Planned for Sprint 002.
+- Persist job runs and attempts. Persistence foundation done in Sprint 002.
+- Add worker leasing with stub runner. Planned for Sprint 002.
 - Execute jobs through Kubernetes Jobs.
 - Store script bundles, logs, and artifacts in object storage.
 - Add CLI status and logs commands.
@@ -30,4 +31,3 @@
 - Apply pool resource defaults.
 - Apply node selectors, tolerations, and affinity.
 - Add pool-level concurrency limits.
-

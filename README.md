@@ -130,11 +130,13 @@ crates/
   runner/
   cli/
   core/
+  postgres/
 dashboard/
 charts/
   capsulet/
 examples/
 docs/
+migrations/
 .github/
   workflows/
 ```
@@ -146,6 +148,7 @@ Useful project docs:
 - [Development](docs/development.md)
 - [Installation](docs/installation.md)
 - [Helm values](docs/helm-values.md)
+- [Persistence](docs/persistence.md)
 - [Planning](planning/README.md)
 - [Backend workspace](crates/README.md)
 - [Dashboard prototype](dashboard/README.md)

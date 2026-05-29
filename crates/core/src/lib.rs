@@ -15,3 +15,4 @@ pub use domain::{
     AutomationId, ConditionExpr, ExecutionPool, ExecutionPoolName, JobAttemptId, JobDefinitionId,
     JobRun, JobRunId, JobRunStatus, ResourceRequirements, StateTransitionError, TriggerName,
 };
+pub use ports::JobRunRepository;

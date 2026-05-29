@@ -7,7 +7,12 @@ This directory tracks execution planning for Capsulet.
 
 ## Current Sprint
 
-- Sprint plan: [Sprint 001: Foundation](sprints/sprint-001-foundation.md)
-- Sprint backlog: [Sprint 001 Backlog](backlog/sprint-001-backlog.md)
+- Sprint plan: [Sprint 002: Manual Job Runner](sprints/sprint-002-manual-job-runner.md)
+- Sprint backlog: [Sprint 002 Backlog](backlog/sprint-002-backlog.md)
 
-Sprint 001 focuses on making the repository buildable and operable at the foundation level: Rust workspace, dashboard, Helm chart skeleton, CI, docs, and ADRs.
+Sprint 002 focuses on the first real backend path: manual job submission, durable run state, worker leasing, and a stub runner.
+
+Previous sprint:
+
+- [Sprint 001: Foundation](sprints/sprint-001-foundation.md)
+- [Sprint 001 Backlog](backlog/sprint-001-backlog.md)

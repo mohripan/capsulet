@@ -1,6 +1,6 @@
 # Development
 
-This guide describes the Sprint 001 development workflow for Capsulet.
+This guide describes the current development workflow for Capsulet.
 
 ## Required Tools
 
@@ -9,10 +9,10 @@ This guide describes the Sprint 001 development workflow for Capsulet.
 - Node.js 20.x
 - npm 10.x
 - Helm 3.18 or newer
+- Docker
 
 Optional later tools:
 
-- Docker
 - kind or minikube
 - kubectl
 
@@ -32,12 +32,55 @@ The backend workspace lives in `crates/`.
 Current crates:
 
 - `capsulet-core`: domain model, command/query shapes, and infrastructure ports
+- `capsulet-postgres`: PostgreSQL persistence adapter and embedded migrations
 - `capsulet-api`: future HTTP control plane
 - `capsulet-worker`: future job leasing and Kubernetes Job coordination
 - `capsulet-scheduler`: future schedule and delay scanner
 - `capsulet-evaluator`: future automation condition evaluator
 - `capsulet-runner`: future execution backend boundary
 - `capsulet-cli`: future CLI
+
+## Local PostgreSQL
+
+Sprint 002 uses PostgreSQL as the durable metadata store. Start the local database from the repository root:
+
+```sh
+docker compose up -d postgres
+```
+
+The development database URL is:
+
+```sh
+postgres://capsulet:capsulet@localhost:5432/capsulet
+```
+
+The persistence crate embeds migrations from `migrations/` with SQLx. To run the PostgreSQL-backed tests against the local database:
+
+```sh
+CAPSULET_TEST_DATABASE_URL=postgres://capsulet:capsulet@localhost:5432/capsulet \
+  cargo test -p capsulet-postgres
+```
+
+On PowerShell:
+
+```powershell
+$env:CAPSULET_TEST_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
+cargo test -p capsulet-postgres
+```
+
+Stop the local database when you are done:
+
+```sh
+docker compose down
+```
+
+Use timestamped SQL migration files in `migrations/`:
+
+```text
+migrations/YYYYMMDDHHMMSS_description.sql
+```
+
+Migrations should be append-only after they are shared. Add a new migration instead of editing an existing migration that another developer may already have applied.
 
 ## Dashboard
 
@@ -66,6 +109,7 @@ The chart is a skeleton for the future installable product. It renders the API, 
 
 - Keep domain logic in `capsulet-core`.
 - Do not add database, Kubernetes, Kafka, or HTTP framework dependencies to `capsulet-core`.
+- Put infrastructure adapters such as PostgreSQL in separate crates that implement `capsulet-core` ports.
 - Service crates should stay thin until runtime behavior exists.
 - Prefer ADRs for decisions that change architecture or operational behavior.
 - Keep Helm as a first-class product distribution surface.
@@ -75,4 +119,4 @@ The chart is a skeleton for the future installable product. It renders the API, 
 Sprint planning lives in `planning/`.
 
 - Sprint plan: `planning/sprints/sprint-001-foundation.md`
-- Sprint backlog: `planning/backlog/sprint-001-backlog.md`
+- Sprint backlog: `planning/backlog/sprint-002-backlog.md`
