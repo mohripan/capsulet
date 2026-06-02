@@ -19,6 +19,7 @@ async-trait.workspace = true
 capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-runner = { path = "../runner" }
+serde_yaml = "0.9"
 thiserror.workspace = true
 tokio.workspace = true
 

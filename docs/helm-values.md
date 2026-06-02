@@ -33,6 +33,20 @@ Each component supports:
 
 API and dashboard also expose service settings.
 
+The worker also exposes Kubernetes runner settings:
+
+```yaml
+worker:
+  runner:
+    mode: kubernetes
+    executionNamespace: ""
+    logLimitBytes: 65536
+    loop: true
+    pollSeconds: 5
+```
+
+An empty `executionNamespace` means the Helm release namespace.
+
 ## Security
 
 Defaults include:
@@ -58,14 +72,17 @@ executionPools:
         capsulet.dev/pool: mini
       timeoutSeconds: 120
       maxConcurrentJobs: 50
+      ttlSecondsAfterFinished: 300
     large:
       nodeSelector:
         capsulet.dev/pool: large
       timeoutSeconds: 3600
       maxConcurrentJobs: 10
+      ttlSecondsAfterFinished: 300
 ```
 
 Capsulet chooses the execution pool. Kubernetes chooses the specific node.
+`ttlSecondsAfterFinished` controls Kubernetes cleanup of completed runner Jobs.
 
 ## Validation
 

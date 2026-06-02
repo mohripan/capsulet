@@ -6,6 +6,9 @@ metadata:
     {{- include "capsulet.labels" . | nindent 4 }}
 data:
   CAPSULET_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  CAPSULET_API_ADDR: "0.0.0.0:8080"
+  CAPSULET_SEED_EXAMPLES: {{ .Values.config.seedExamples | quote }}
+  CAPSULET_EXECUTION_POOLS: {{ keys .Values.executionPools.pools | sortAlpha | join "," | quote }}
   CAPSULET_OBJECT_STORAGE_BUCKET: {{ .Values.config.objectStorage.bucket | quote }}
   CAPSULET_OBJECT_STORAGE_ENDPOINT: {{ .Values.config.objectStorage.endpoint | quote }}
   CAPSULET_KAFKA_BROKERS: {{ .Values.config.kafka.brokers | quote }}

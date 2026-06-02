@@ -1,6 +1,6 @@
 # API
 
-Capsulet's Sprint 002 API exposes the first manual job-run path.
+Capsulet's API exposes the manual job-run path, cancellation, status inspection, and bounded run-log inspection.
 
 ## Run Locally
 
@@ -25,14 +25,14 @@ Start the API:
 cargo run -p capsulet-api
 ```
 
-The API runs migrations on startup. With `CAPSULET_SEED_EXAMPLES=true`, it also upserts `job_hello_python`.
+The API runs migrations on startup. With `CAPSULET_SEED_EXAMPLES=true`, it also upserts `job_hello_python`, `job_sleep_python`, `job_fail_python`, and `job_timeout_python`.
 
 ## Seed a Job Definition
 
 Manual run submission validates that the referenced job definition exists. The easiest local option is `CAPSULET_SEED_EXAMPLES=true`. You can also seed one directly:
 
 ```powershell
-docker exec -i capsulet-postgres psql -U capsulet -d capsulet -c "INSERT INTO job_definitions (id, name, runtime_image, command, bundle_object_key, input_schema) VALUES ('job_hello_python', 'Hello Python', 'python:3.12-slim', ARRAY['python', '/workspace/main.py'], 'bundles/job_hello_python.tar.gz', '{}'::jsonb) ON CONFLICT (id) DO NOTHING;"
+docker exec -i capsulet-postgres psql -U capsulet -d capsulet -c "INSERT INTO job_definitions (id, name, runtime_image, command, bundle_object_key, input_schema) VALUES ('job_hello_python', 'Hello Python', 'python:3.12-slim', ARRAY['python', '-c', 'print(''hello from capsulet'')'], 'bundles/job_hello_python.tar.gz', '{}'::jsonb) ON CONFLICT (id) DO NOTHING;"
 ```
 
 ## Endpoints
@@ -63,6 +63,29 @@ Fetch one run:
 curl http://127.0.0.1:8080/v1/jobs/runs/run_123
 ```
 
+Fetch captured logs for one run:
+
+```sh
+curl http://127.0.0.1:8080/v1/jobs/runs/run_123/logs
+```
+
+Cancel a queued or running run:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/jobs/runs/run_123/cancel
+```
+
+Visible run states are:
+
+- `queued`
+- `leased`
+- `running`
+- `succeeded`
+- `failed`
+- `cancelled`
+- `timed_out`
+- `retry_scheduled`
+
 ## CLI
 
 The `capsulet` CLI uses the same API. The base URL defaults to `http://127.0.0.1:8080` and can be changed with `CAPSULET_API_URL` or `--api-url`.
@@ -85,6 +108,24 @@ Fetch one run:
 cargo run -p capsulet-cli -- run get run_123
 ```
 
+Show run status:
+
+```sh
+cargo run -p capsulet-cli -- status run_123
+```
+
+Print captured logs:
+
+```sh
+cargo run -p capsulet-cli -- logs run_123
+```
+
+Cancel a run:
+
+```sh
+cargo run -p capsulet-cli -- cancel run_123
+```
+
 ## Error Shape
 
 Errors return JSON:
@@ -102,4 +143,5 @@ Known API error codes:
 - `unknown_job_definition`
 - `unknown_execution_pool`
 - `job_run_not_found`
+- `job_run_logs_not_found`
 - `store_error`

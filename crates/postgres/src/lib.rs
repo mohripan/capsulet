@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use capsulet_core::{
-    ExecutionPoolName, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunRepository,
-    JobRunStatus,
+    ExecutionPoolName, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
+    JobRunLogRepository, JobRunRepository, JobRunStatus, RetryPolicy,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use thiserror::Error;
@@ -72,15 +72,19 @@ impl PostgresStore {
                 command,
                 bundle_object_key,
                 input_schema,
+                retry_max_attempts,
+                retry_delay_seconds,
                 updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, now())
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 runtime_image = EXCLUDED.runtime_image,
                 command = EXCLUDED.command,
                 bundle_object_key = EXCLUDED.bundle_object_key,
                 input_schema = EXCLUDED.input_schema,
+                retry_max_attempts = EXCLUDED.retry_max_attempts,
+                retry_delay_seconds = EXCLUDED.retry_delay_seconds,
                 updated_at = now()
             ",
         )
@@ -90,6 +94,13 @@ impl PostgresStore {
         .bind(&definition.command)
         .bind(&definition.bundle_object_key)
         .bind(&definition.input_schema)
+        .bind(
+            i32::try_from(definition.retry_max_attempts)
+                .map_err(|_| PostgresStoreError::AttemptOverflow)?,
+        )
+        .bind(i32::try_from(definition.retry_delay_seconds).map_err(|_| {
+            PostgresStoreError::InvalidPersistedValue("retry delay is too large".into())
+        })?)
         .execute(&self.pool)
         .await?;
 
@@ -114,14 +125,61 @@ impl PostgresStore {
         Ok(exists)
     }
 
+    /// Finds a job definition by id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are
+    /// invalid.
+    pub async fn find_job_definition(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<Option<JobDefinition>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id,
+                   name,
+                   runtime_image,
+                   command,
+                   bundle_object_key,
+                   input_schema::text,
+                   retry_max_attempts,
+                   retry_delay_seconds
+            FROM job_definitions
+            WHERE id = $1
+            ",
+        )
+        .bind(id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.as_ref().map(row_to_job_definition).transpose()
+    }
+
     /// Inserts the built-in hello Python definition for local testing.
     ///
     /// # Errors
     ///
     /// Returns [`PostgresStoreError`] when persistence fails.
     pub async fn seed_hello_python_job_definition(&self) -> Result<(), PostgresStoreError> {
-        self.upsert_job_definition(&JobDefinition::hello_python())
-            .await
+        self.seed_example_job_definitions().await
+    }
+
+    /// Inserts built-in example definitions for local testing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn seed_example_job_definitions(&self) -> Result<(), PostgresStoreError> {
+        for definition in [
+            JobDefinition::hello_python(),
+            JobDefinition::sleep_python(),
+            JobDefinition::fail_python(),
+            JobDefinition::timeout_python(),
+        ] {
+            self.upsert_job_definition(&definition).await?;
+        }
+        Ok(())
     }
 
     /// Lists job runs ordered by creation time, newest first.
@@ -188,6 +246,158 @@ impl PostgresStore {
 
         row.as_ref().map(row_to_job_run).transpose()
     }
+
+    /// Cancels a non-terminal run and returns its latest state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            UPDATE job_runs
+            SET
+                status = 'cancelled',
+                lease_expires_at = NULL,
+                retry_ready_at = NULL,
+                updated_at = now()
+            WHERE id = $1
+              AND status IN ('queued', 'leased', 'running', 'retry_scheduled')
+            RETURNING id, job_definition_id, status, execution_pool, attempt_count
+            ",
+        )
+        .bind(id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            return row_to_job_run(&row).map(Some);
+        }
+
+        self.find_by_id(id).await
+    }
+
+    /// Finishes a running attempt only if no newer state has replaced it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn finish_running_attempt(
+        &self,
+        id: &JobRunId,
+        attempt_count: u32,
+        status: JobRunStatus,
+        retry_delay_seconds: Option<u64>,
+    ) -> Result<Option<JobRun>, PostgresStoreError> {
+        let retry_ready_at =
+            retry_delay_seconds.map(|seconds| format!("now() + ({seconds} * interval '1 second')"));
+        let status_value = status.to_string();
+        let query = if retry_ready_at.is_some() {
+            r"
+            UPDATE job_runs
+            SET
+                status = $3,
+                lease_owner = NULL,
+                lease_expires_at = NULL,
+                retry_ready_at = now() + ($4 * interval '1 second'),
+                updated_at = now()
+            WHERE id = $1
+              AND attempt_count = $2
+              AND status = 'running'
+            RETURNING id, job_definition_id, status, execution_pool, attempt_count
+            "
+        } else {
+            r"
+            UPDATE job_runs
+            SET
+                status = $3,
+                lease_owner = NULL,
+                lease_expires_at = NULL,
+                retry_ready_at = NULL,
+                updated_at = now()
+            WHERE id = $1
+              AND attempt_count = $2
+              AND status = 'running'
+            RETURNING id, job_definition_id, status, execution_pool, attempt_count
+            "
+        };
+
+        let mut query = sqlx::query(query)
+            .bind(id.as_str())
+            .bind(i32::try_from(attempt_count).map_err(|_| PostgresStoreError::AttemptOverflow)?)
+            .bind(status_value);
+        if let Some(delay) = retry_delay_seconds {
+            query = query.bind(i32::try_from(delay).map_err(|_| {
+                PostgresStoreError::InvalidPersistedValue("retry delay is too large".into())
+            })?);
+        }
+        let row = query.fetch_optional(&self.pool).await?;
+
+        row.as_ref().map(row_to_job_run).transpose()
+    }
+
+    /// Requeues retry-scheduled runs whose retry delay has elapsed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn promote_ready_retries(&self) -> Result<u64, PostgresStoreError> {
+        let result = sqlx::query(
+            r"
+            UPDATE job_runs
+            SET
+                status = 'queued',
+                retry_ready_at = NULL,
+                updated_at = now()
+            WHERE status = 'retry_scheduled'
+              AND retry_ready_at <= now()
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// Requeues expired leased or running attempts that did not reach terminal state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn recover_expired_leases(&self) -> Result<u64, PostgresStoreError> {
+        let result = sqlx::query(
+            r"
+            UPDATE job_runs
+            SET
+                status = 'queued',
+                lease_owner = NULL,
+                lease_expires_at = NULL,
+                updated_at = now()
+            WHERE status IN ('leased', 'running')
+              AND lease_expires_at <= now()
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// Returns whether the run is currently cancelled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails.
+    pub async fn is_run_cancelled(&self, id: &JobRunId) -> Result<bool, PostgresStoreError> {
+        let cancelled: bool =
+            sqlx::query_scalar("SELECT status = 'cancelled' FROM job_runs WHERE id = $1")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await?
+                .unwrap_or(false);
+
+        Ok(cancelled)
+    }
 }
 
 #[async_trait]
@@ -240,6 +450,44 @@ impl JobRunRepository for PostgresStore {
     }
 }
 
+#[async_trait]
+impl JobRunLogRepository for PostgresStore {
+    type Error = PostgresStoreError;
+
+    async fn save_log(&self, log: &JobRunLog) -> Result<(), Self::Error> {
+        sqlx::query(
+            r"
+            INSERT INTO job_run_logs (job_run_id, log_text, updated_at)
+            VALUES ($1, $2, now())
+            ON CONFLICT (job_run_id) DO UPDATE SET
+                log_text = EXCLUDED.log_text,
+                updated_at = now()
+            ",
+        )
+        .bind(log.run_id.as_str())
+        .bind(&log.text)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn find_log_by_run_id(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error> {
+        let row = sqlx::query(
+            r"
+            SELECT job_run_id, log_text
+            FROM job_run_logs
+            WHERE job_run_id = $1
+            ",
+        )
+        .bind(id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.as_ref().map(row_to_job_run_log).transpose()
+    }
+}
+
 /// `PostgreSQL` adapter error.
 #[derive(Debug, Error)]
 pub enum PostgresStoreError {
@@ -274,6 +522,46 @@ fn row_to_job_run(row: &sqlx::postgres::PgRow) -> Result<JobRun, PostgresStoreEr
     Ok(run)
 }
 
+fn row_to_job_definition(row: &sqlx::postgres::PgRow) -> Result<JobDefinition, PostgresStoreError> {
+    let id: String = row.try_get("id")?;
+    let name: String = row.try_get("name")?;
+    let runtime_image: String = row.try_get("runtime_image")?;
+    let command: Vec<String> = row.try_get("command")?;
+    let bundle_object_key: String = row.try_get("bundle_object_key")?;
+    let input_schema: String = row.try_get("input_schema")?;
+    let retry_max_attempts: i32 = row.try_get("retry_max_attempts")?;
+    let retry_delay_seconds: i32 = row.try_get("retry_delay_seconds")?;
+
+    JobDefinition::new(
+        JobDefinitionId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        name,
+        runtime_image,
+        command,
+        bundle_object_key,
+        input_schema,
+        RetryPolicy {
+            max_attempts: u32::try_from(retry_max_attempts).map_err(|_| {
+                PostgresStoreError::InvalidPersistedValue("negative retry max attempts".into())
+            })?,
+            delay_seconds: u64::try_from(retry_delay_seconds).map_err(|_| {
+                PostgresStoreError::InvalidPersistedValue("negative retry delay".into())
+            })?,
+        },
+    )
+    .map_err(PostgresStoreError::InvalidPersistedValue)
+}
+
+fn row_to_job_run_log(row: &sqlx::postgres::PgRow) -> Result<JobRunLog, PostgresStoreError> {
+    let run_id: String = row.try_get("job_run_id")?;
+    let log_text: String = row.try_get("log_text")?;
+
+    JobRunLog::new(
+        JobRunId::new(run_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        log_text,
+    )
+    .map_err(PostgresStoreError::InvalidPersistedValue)
+}
+
 fn parse_status(status: &str) -> Result<JobRunStatus, PostgresStoreError> {
     match status {
         "queued" => Ok(JobRunStatus::Queued),
@@ -294,7 +582,10 @@ fn parse_status(status: &str) -> Result<JobRunStatus, PostgresStoreError> {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use capsulet_core::{ExecutionPoolName, JobDefinition, JobRun, JobRunId, JobRunRepository};
+    use capsulet_core::{
+        ExecutionPoolName, JobDefinition, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
+        JobRunRepository,
+    };
 
     use super::{PostgresStore, parse_status};
 
@@ -396,5 +687,67 @@ mod tests {
 
         assert_eq!(first.id, run.id);
         assert!(second.is_none());
+    }
+
+    #[tokio::test]
+    async fn finds_job_definition_when_database_is_available() {
+        let Some(database_url) = database_url() else {
+            return;
+        };
+
+        let store = PostgresStore::connect(&database_url)
+            .await
+            .expect("connect to postgres");
+        store.migrate().await.expect("run migrations");
+
+        let definition = JobDefinition::hello_python();
+        store
+            .upsert_job_definition(&definition)
+            .await
+            .expect("upsert job definition");
+
+        let persisted = store
+            .find_job_definition(&definition.id)
+            .await
+            .expect("find definition")
+            .expect("definition exists");
+
+        assert_eq!(persisted, definition);
+    }
+
+    #[tokio::test]
+    async fn saves_and_finds_job_run_logs_when_database_is_available() {
+        let Some(database_url) = database_url() else {
+            return;
+        };
+
+        let store = PostgresStore::connect(&database_url)
+            .await
+            .expect("connect to postgres");
+        store.migrate().await.expect("run migrations");
+
+        let definition = JobDefinition::hello_python();
+        store
+            .upsert_job_definition(&definition)
+            .await
+            .expect("upsert job definition");
+
+        let run = JobRun::new(
+            JobRunId::new(unique_id("run_log_test")).expect("valid run id"),
+            definition.id.clone(),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        store.save(&run).await.expect("save run");
+
+        let log = JobRunLog::new(run.id.clone(), "hello from postgres logs\n").expect("valid log");
+        store.save_log(&log).await.expect("save log");
+
+        let persisted = store
+            .find_log_by_run_id(&run.id)
+            .await
+            .expect("find log")
+            .expect("log exists");
+
+        assert_eq!(persisted, log);
     }
 }

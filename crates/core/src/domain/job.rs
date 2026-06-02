@@ -184,4 +184,68 @@ mod tests {
         assert_eq!(error.from, JobRunStatus::Queued);
         assert_eq!(error.to, JobRunStatus::Succeeded);
     }
+
+    #[test]
+    fn allows_cancellation_from_non_terminal_states() {
+        let mut queued = run();
+        queued
+            .transition_to(JobRunStatus::Cancelled)
+            .expect("queued to cancelled");
+        assert!(queued.status.is_terminal());
+
+        let mut leased = run();
+        leased
+            .transition_to(JobRunStatus::Leased)
+            .expect("queued to leased");
+        leased
+            .transition_to(JobRunStatus::Cancelled)
+            .expect("leased to cancelled");
+        assert!(leased.status.is_terminal());
+
+        let mut running = run();
+        running
+            .transition_to(JobRunStatus::Leased)
+            .expect("queued to leased");
+        running.record_attempt_started().expect("leased to running");
+        running
+            .transition_to(JobRunStatus::Cancelled)
+            .expect("running to cancelled");
+        assert!(running.status.is_terminal());
+    }
+
+    #[test]
+    fn terminal_states_are_stable() {
+        for terminal in [
+            JobRunStatus::Succeeded,
+            JobRunStatus::Failed,
+            JobRunStatus::Cancelled,
+            JobRunStatus::TimedOut,
+        ] {
+            let mut run = run();
+            run.transition_to(JobRunStatus::Leased)
+                .expect("queued to leased");
+            run.record_attempt_started().expect("leased to running");
+            run.transition_to(terminal).expect("terminal transition");
+
+            let error = run
+                .transition_to(JobRunStatus::Queued)
+                .expect_err("terminal state cannot be overwritten");
+            assert_eq!(error.from, terminal);
+        }
+    }
+
+    #[test]
+    fn supports_retry_scheduling_after_failure_or_timeout() {
+        for retryable in [JobRunStatus::Failed, JobRunStatus::TimedOut] {
+            let mut run = run();
+            run.transition_to(JobRunStatus::Leased)
+                .expect("queued to leased");
+            run.record_attempt_started().expect("leased to running");
+            run.transition_to(retryable).expect("retryable terminal");
+            run.transition_to(JobRunStatus::RetryScheduled)
+                .expect("schedule retry");
+            run.transition_to(JobRunStatus::Queued)
+                .expect("retry back to queue");
+        }
+    }
 }

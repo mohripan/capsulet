@@ -1,7 +1,10 @@
 use async_trait::async_trait;
-use capsulet_core::{JobRun, JobRunRepository, JobRunStatus};
+use capsulet_core::{
+    JobDefinition, JobDefinitionId, JobRun, JobRunLog, JobRunLogRepository, JobRunRepository,
+    JobRunStatus,
+};
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
-use capsulet_runner::{RunOutcome, Runner};
+use capsulet_runner::{CancellationCheck, ExecutionPoolsConfig, RunExecution, RunOutcome, Runner};
 use thiserror::Error;
 
 /// Storage operations required by the worker lease-and-run path.
@@ -26,6 +29,39 @@ pub trait WorkerStore: Clone + Send + Sync + 'static {
     ///
     /// Returns an implementation-specific persistence error.
     async fn save_run(&self, run: &JobRun) -> Result<(), Self::Error>;
+
+    /// Finds the job definition required to execute a run.
+    ///
+    /// # Errors
+    ///
+    /// Returns an implementation-specific persistence error.
+    async fn find_job_definition(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<Option<JobDefinition>, Self::Error>;
+
+    /// Saves bounded logs captured for a run.
+    ///
+    /// # Errors
+    ///
+    /// Returns an implementation-specific persistence error.
+    async fn save_log(&self, log: &JobRunLog) -> Result<(), Self::Error>;
+
+    async fn find_run(&self, id: &capsulet_core::JobRunId) -> Result<Option<JobRun>, Self::Error>;
+
+    async fn finish_running_attempt(
+        &self,
+        id: &capsulet_core::JobRunId,
+        attempt_count: u32,
+        status: JobRunStatus,
+        retry_delay_seconds: Option<u64>,
+    ) -> Result<Option<JobRun>, Self::Error>;
+
+    async fn promote_ready_retries(&self) -> Result<u64, Self::Error>;
+
+    async fn recover_expired_leases(&self) -> Result<u64, Self::Error>;
+
+    async fn is_run_cancelled(&self, id: &capsulet_core::JobRunId) -> Result<bool, Self::Error>;
 }
 
 #[async_trait]
@@ -43,6 +79,44 @@ impl WorkerStore for PostgresStore {
     async fn save_run(&self, run: &JobRun) -> Result<(), Self::Error> {
         self.save(run).await
     }
+
+    async fn find_job_definition(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<Option<JobDefinition>, Self::Error> {
+        self.find_job_definition(id).await
+    }
+
+    async fn save_log(&self, log: &JobRunLog) -> Result<(), Self::Error> {
+        JobRunLogRepository::save_log(self, log).await
+    }
+
+    async fn find_run(&self, id: &capsulet_core::JobRunId) -> Result<Option<JobRun>, Self::Error> {
+        self.find_by_id(id).await
+    }
+
+    async fn finish_running_attempt(
+        &self,
+        id: &capsulet_core::JobRunId,
+        attempt_count: u32,
+        status: JobRunStatus,
+        retry_delay_seconds: Option<u64>,
+    ) -> Result<Option<JobRun>, Self::Error> {
+        self.finish_running_attempt(id, attempt_count, status, retry_delay_seconds)
+            .await
+    }
+
+    async fn promote_ready_retries(&self) -> Result<u64, Self::Error> {
+        self.promote_ready_retries().await
+    }
+
+    async fn recover_expired_leases(&self) -> Result<u64, Self::Error> {
+        self.recover_expired_leases().await
+    }
+
+    async fn is_run_cancelled(&self, id: &capsulet_core::JobRunId) -> Result<bool, Self::Error> {
+        self.is_run_cancelled(id).await
+    }
 }
 
 /// Outcome of a single worker tick.
@@ -51,6 +125,9 @@ pub enum WorkerTickOutcome {
     NoRunAvailable,
     RunSucceeded,
     RunFailed,
+    RunTimedOut,
+    RunCancelled,
+    RunRetryScheduled,
 }
 
 /// Executes one queued run if one is available.
@@ -62,6 +139,7 @@ pub enum WorkerTickOutcome {
 pub async fn execute_one_queued_run<S, R>(
     store: &S,
     runner: &R,
+    pools: &ExecutionPoolsConfig,
     worker_id: &str,
     lease_seconds: i64,
 ) -> Result<WorkerTickOutcome, WorkerError>
@@ -69,6 +147,15 @@ where
     S: WorkerStore,
     R: Runner,
 {
+    store
+        .recover_expired_leases()
+        .await
+        .map_err(WorkerError::store)?;
+    store
+        .promote_ready_retries()
+        .await
+        .map_err(WorkerError::store)?;
+
     let Some(mut run) = store
         .lease_next_queued_run(worker_id, lease_seconds)
         .await
@@ -77,23 +164,117 @@ where
         return Ok(WorkerTickOutcome::NoRunAvailable);
     };
 
+    let definition = store
+        .find_job_definition(&run.job_definition_id)
+        .await
+        .map_err(WorkerError::store)?
+        .ok_or_else(|| WorkerError::MissingJobDefinition(run.job_definition_id.to_string()))?;
+    let pool = pools
+        .find(run.execution_pool.as_str())
+        .cloned()
+        .ok_or_else(|| WorkerError::MissingExecutionPool(run.execution_pool.to_string()))?;
+
     run.record_attempt_started()
         .map_err(|error| WorkerError::InvalidState(error.to_string()))?;
     store.save_run(&run).await.map_err(WorkerError::store)?;
 
-    match runner.execute(&run).await.map_err(WorkerError::runner)? {
-        RunOutcome::Succeeded => {
-            run.transition_to(JobRunStatus::Succeeded)
-                .map_err(|error| WorkerError::InvalidState(error.to_string()))?;
-            store.save_run(&run).await.map_err(WorkerError::store)?;
-            Ok(WorkerTickOutcome::RunSucceeded)
-        }
-        RunOutcome::Failed => {
-            run.transition_to(JobRunStatus::Failed)
-                .map_err(|error| WorkerError::InvalidState(error.to_string()))?;
-            store.save_run(&run).await.map_err(WorkerError::store)?;
-            Ok(WorkerTickOutcome::RunFailed)
-        }
+    let execution = RunExecution {
+        run: run.clone(),
+        definition,
+        pool,
+    };
+    let cancellation = StoreCancellationCheck { store };
+    let report = runner
+        .execute(&execution, &cancellation)
+        .await
+        .map_err(WorkerError::runner)?;
+
+    if let Some(logs) = report.logs.filter(|logs| !logs.is_empty()) {
+        store
+            .save_log(&JobRunLog::new(run.id.clone(), logs).map_err(WorkerError::InvalidLog)?)
+            .await
+            .map_err(WorkerError::store)?;
+    }
+
+    let (final_status, retry_delay, outcome) = match report.outcome {
+        RunOutcome::Succeeded => (
+            JobRunStatus::Succeeded,
+            None,
+            WorkerTickOutcome::RunSucceeded,
+        ),
+        RunOutcome::Cancelled => (
+            JobRunStatus::Cancelled,
+            None,
+            WorkerTickOutcome::RunCancelled,
+        ),
+        RunOutcome::Failed => retry_decision(
+            &run,
+            &execution.definition,
+            JobRunStatus::Failed,
+            WorkerTickOutcome::RunFailed,
+        ),
+        RunOutcome::TimedOut => retry_decision(
+            &run,
+            &execution.definition,
+            JobRunStatus::TimedOut,
+            WorkerTickOutcome::RunTimedOut,
+        ),
+    };
+
+    let latest = store
+        .finish_running_attempt(&run.id, run.attempt_count, final_status, retry_delay)
+        .await
+        .map_err(WorkerError::store)?;
+    if latest.is_none() {
+        return Ok(
+            match store
+                .find_run(&run.id)
+                .await
+                .map_err(WorkerError::store)?
+                .map(|latest| latest.status)
+            {
+                Some(JobRunStatus::Cancelled) => WorkerTickOutcome::RunCancelled,
+                _ => outcome,
+            },
+        );
+    }
+
+    Ok(outcome)
+}
+
+fn retry_decision(
+    run: &JobRun,
+    definition: &JobDefinition,
+    failed_status: JobRunStatus,
+    exhausted_outcome: WorkerTickOutcome,
+) -> (JobRunStatus, Option<u64>, WorkerTickOutcome) {
+    if run.attempt_count < definition.retry_max_attempts {
+        (
+            JobRunStatus::RetryScheduled,
+            Some(definition.retry_delay_seconds),
+            WorkerTickOutcome::RunRetryScheduled,
+        )
+    } else {
+        (failed_status, None, exhausted_outcome)
+    }
+}
+
+struct StoreCancellationCheck<'a, S> {
+    store: &'a S,
+}
+
+#[async_trait]
+impl<S> CancellationCheck for StoreCancellationCheck<'_, S>
+where
+    S: WorkerStore,
+{
+    type Error = String;
+
+    async fn is_cancelled(&self, id: &capsulet_core::JobRunId) -> Result<bool, Self::Error> {
+        self.store
+            .is_run_cancelled(id)
+            .await
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -104,6 +285,12 @@ pub enum WorkerError {
     Store(String),
     #[error("runner error: {0}")]
     Runner(String),
+    #[error("missing job definition for leased run: {0}")]
+    MissingJobDefinition(String),
+    #[error("missing execution pool for leased run: {0}")]
+    MissingExecutionPool(String),
+    #[error("invalid captured log: {0}")]
+    InvalidLog(String),
     #[error("invalid job run state: {0}")]
     InvalidState(String),
 }
@@ -120,10 +307,15 @@ impl WorkerError {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::{
+        collections::BTreeMap,
+        sync::{Arc, Mutex},
+    };
 
-    use capsulet_core::{ExecutionPoolName, JobDefinitionId, JobRun, JobRunId};
-    use capsulet_runner::StubRunner;
+    use capsulet_core::{
+        ExecutionPoolName, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
+    };
+    use capsulet_runner::{ExecutionPoolConfig, ExecutionPoolsConfig, PoolResources, StubRunner};
 
     use super::{WorkerStore, WorkerTickOutcome, execute_one_queued_run};
 
@@ -131,6 +323,9 @@ mod tests {
     struct FakeStore {
         queued: Arc<Mutex<Vec<JobRun>>>,
         saved: Arc<Mutex<Vec<JobRun>>>,
+        definitions: Arc<Mutex<Vec<JobDefinition>>>,
+        logs: Arc<Mutex<Vec<JobRunLog>>>,
+        cancelled: Arc<Mutex<Vec<capsulet_core::JobRunId>>>,
     }
 
     #[async_trait::async_trait]
@@ -157,6 +352,90 @@ mod tests {
                 .push(run.clone());
             Ok(())
         }
+
+        async fn find_job_definition(
+            &self,
+            id: &JobDefinitionId,
+        ) -> Result<Option<JobDefinition>, Self::Error> {
+            Ok(self
+                .definitions
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .find(|definition| definition.id == *id)
+                .cloned())
+        }
+
+        async fn save_log(&self, log: &JobRunLog) -> Result<(), Self::Error> {
+            self.logs
+                .lock()
+                .map_err(|error| error.to_string())?
+                .push(log.clone());
+            Ok(())
+        }
+
+        async fn find_run(
+            &self,
+            id: &capsulet_core::JobRunId,
+        ) -> Result<Option<JobRun>, Self::Error> {
+            let saved = self
+                .saved
+                .lock()
+                .map_err(|error| error.to_string())?
+                .clone();
+            let queued = self
+                .queued
+                .lock()
+                .map_err(|error| error.to_string())?
+                .clone();
+
+            Ok(saved
+                .iter()
+                .rev()
+                .chain(queued.iter().rev())
+                .find(|run| run.id == *id)
+                .cloned())
+        }
+
+        async fn finish_running_attempt(
+            &self,
+            id: &capsulet_core::JobRunId,
+            attempt_count: u32,
+            status: capsulet_core::JobRunStatus,
+            _retry_delay_seconds: Option<u64>,
+        ) -> Result<Option<JobRun>, Self::Error> {
+            let Some(mut run) = self.find_run(id).await? else {
+                return Ok(None);
+            };
+            if run.status != capsulet_core::JobRunStatus::Running
+                || run.attempt_count != attempt_count
+            {
+                return Ok(None);
+            }
+            run.status = status;
+            self.save_run(&run).await?;
+            Ok(Some(run))
+        }
+
+        async fn promote_ready_retries(&self) -> Result<u64, Self::Error> {
+            Ok(0)
+        }
+
+        async fn recover_expired_leases(&self) -> Result<u64, Self::Error> {
+            Ok(0)
+        }
+
+        async fn is_run_cancelled(
+            &self,
+            id: &capsulet_core::JobRunId,
+        ) -> Result<bool, Self::Error> {
+            Ok(self
+                .cancelled
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .any(|cancelled| cancelled == id))
+        }
     }
 
     impl FakeStore {
@@ -164,11 +443,45 @@ mod tests {
             Self {
                 queued: Arc::new(Mutex::new(vec![run])),
                 saved: Arc::default(),
+                definitions: Arc::new(Mutex::new(vec![JobDefinition::hello_python()])),
+                logs: Arc::default(),
+                cancelled: Arc::default(),
             }
+        }
+
+        fn with_definition(self, definition: JobDefinition) -> Self {
+            *self.definitions.lock().expect("definitions mutex") = vec![definition];
+            self
+        }
+
+        fn with_cancelled(self, id: capsulet_core::JobRunId) -> Self {
+            self.cancelled.lock().expect("cancelled mutex").push(id);
+            self
+        }
+
+        fn without_definitions(mut self) -> Self {
+            self.definitions = Arc::default();
+            self
         }
 
         fn saved_runs(&self) -> Vec<JobRun> {
             self.saved.lock().expect("saved mutex").clone()
+        }
+    }
+
+    fn pools() -> ExecutionPoolsConfig {
+        let pool = ExecutionPoolConfig {
+            description: String::new(),
+            node_selector: BTreeMap::default(),
+            tolerations: Vec::new(),
+            resources: PoolResources::default(),
+            timeout_seconds: 60,
+            max_concurrent_jobs: 1,
+            ttl_seconds_after_finished: None,
+        };
+        ExecutionPoolsConfig {
+            default_pool: "mini".to_string(),
+            pools: [("mini".to_string(), pool)].into(),
         }
     }
 
@@ -182,10 +495,15 @@ mod tests {
 
     #[tokio::test]
     async fn returns_no_run_when_queue_is_empty() {
-        let outcome =
-            execute_one_queued_run(&FakeStore::default(), &StubRunner::success(), "w1", 60)
-                .await
-                .expect("worker tick");
+        let outcome = execute_one_queued_run(
+            &FakeStore::default(),
+            &StubRunner::success(),
+            &pools(),
+            "w1",
+            60,
+        )
+        .await
+        .expect("worker tick");
 
         assert_eq!(outcome, WorkerTickOutcome::NoRunAvailable);
     }
@@ -194,7 +512,7 @@ mod tests {
     async fn stub_success_runner_completes_run() {
         let store = FakeStore::with_run(run());
 
-        let outcome = execute_one_queued_run(&store, &StubRunner::success(), "w1", 60)
+        let outcome = execute_one_queued_run(&store, &StubRunner::success(), &pools(), "w1", 60)
             .await
             .expect("worker tick");
 
@@ -209,7 +527,7 @@ mod tests {
     async fn stub_failure_runner_fails_run() {
         let store = FakeStore::with_run(run());
 
-        let outcome = execute_one_queued_run(&store, &StubRunner::failure(), "w1", 60)
+        let outcome = execute_one_queued_run(&store, &StubRunner::failure(), &pools(), "w1", 60)
             .await
             .expect("worker tick");
 
@@ -217,5 +535,62 @@ mod tests {
         let saved = store.saved_runs();
         assert_eq!(saved[0].status, capsulet_core::JobRunStatus::Running);
         assert_eq!(saved[1].status, capsulet_core::JobRunStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn stub_failure_runner_schedules_retry_when_attempts_remain() {
+        let mut definition = JobDefinition::hello_python();
+        definition.retry_max_attempts = 2;
+        definition.retry_delay_seconds = 1;
+        let store = FakeStore::with_run(run()).with_definition(definition);
+
+        let outcome = execute_one_queued_run(&store, &StubRunner::failure(), &pools(), "w1", 60)
+            .await
+            .expect("worker tick");
+
+        assert_eq!(outcome, WorkerTickOutcome::RunRetryScheduled);
+        let saved = store.saved_runs();
+        assert_eq!(saved[0].status, capsulet_core::JobRunStatus::Running);
+        assert_eq!(saved[1].status, capsulet_core::JobRunStatus::RetryScheduled);
+    }
+
+    #[tokio::test]
+    async fn cancelled_run_is_not_completed_by_runner() {
+        let run = run();
+        let store = FakeStore::with_run(run.clone()).with_cancelled(run.id.clone());
+
+        let outcome = execute_one_queued_run(&store, &StubRunner::success(), &pools(), "w1", 60)
+            .await
+            .expect("worker tick");
+
+        assert_eq!(outcome, WorkerTickOutcome::RunCancelled);
+        let saved = store.saved_runs();
+        assert_eq!(saved[1].status, capsulet_core::JobRunStatus::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn errors_when_definition_is_missing() {
+        let store = FakeStore::with_run(run()).without_definitions();
+
+        let error = execute_one_queued_run(&store, &StubRunner::success(), &pools(), "w1", 60)
+            .await
+            .expect_err("missing definition");
+
+        assert!(matches!(error, super::WorkerError::MissingJobDefinition(_)));
+    }
+
+    #[tokio::test]
+    async fn errors_when_pool_is_missing() {
+        let store = FakeStore::with_run(run());
+        let pools = ExecutionPoolsConfig {
+            default_pool: "mini".to_string(),
+            pools: BTreeMap::default(),
+        };
+
+        let error = execute_one_queued_run(&store, &StubRunner::success(), &pools, "w1", 60)
+            .await
+            .expect_err("missing pool");
+
+        assert!(matches!(error, super::WorkerError::MissingExecutionPool(_)));
     }
 }

@@ -40,14 +40,37 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "capsulet.fullname" $root }}-config
-          {{- if and $root.Values.config.databaseUrlSecret.name $root.Values.config.databaseUrlSecret.key }}
+          {{- if or (and $root.Values.config.databaseUrlSecret.name $root.Values.config.databaseUrlSecret.key) (eq $name "worker") }}
           env:
+            {{- if and $root.Values.config.databaseUrlSecret.name $root.Values.config.databaseUrlSecret.key }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ $root.Values.config.databaseUrlSecret.name }}
                   key: {{ $root.Values.config.databaseUrlSecret.key }}
+            {{- end }}
+            {{- if eq $name "worker" }}
+            - name: CAPSULET_RUNNER_MODE
+              value: {{ $root.Values.worker.runner.mode | quote }}
+            - name: CAPSULET_EXECUTION_NAMESPACE
+              value: {{ default $root.Release.Namespace $root.Values.worker.runner.executionNamespace | quote }}
+            - name: CAPSULET_LOG_LIMIT_BYTES
+              value: {{ $root.Values.worker.runner.logLimitBytes | quote }}
+            - name: CAPSULET_WORKER_LOOP
+              value: {{ $root.Values.worker.runner.loop | quote }}
+            - name: CAPSULET_WORKER_POLL_SECONDS
+              value: {{ $root.Values.worker.runner.pollSeconds | quote }}
+            - name: CAPSULET_EXECUTION_POOLS_FILE
+              value: /etc/capsulet/execution-pools.yaml
+            {{- end }}
           {{- end }}
+          {{- if eq $name "worker" }}
+          volumeMounts:
+            - name: execution-pools
+              mountPath: /etc/capsulet
+              readOnly: true
+          {{- end }}
+          {{- if or (eq $name "api") (eq $name "dashboard") }}
           ports:
             - name: http
               containerPort: {{ dig "service" "targetPort" 8080 $component }}
@@ -64,8 +87,18 @@ spec:
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20
+          {{- end }}
           resources:
             {{- toYaml $component.resources | nindent 12 }}
+      {{- if eq $name "worker" }}
+      volumes:
+        - name: execution-pools
+          configMap:
+            name: {{ include "capsulet.fullname" $root }}-config
+            items:
+              - key: execution-pools.yaml
+                path: execution-pools.yaml
+      {{- end }}
 ---
 {{- end }}
 {{- end }}

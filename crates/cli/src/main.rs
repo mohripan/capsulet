@@ -42,6 +42,21 @@ enum Command {
         #[arg(long, default_value_t = 50, help = "Maximum runs to return")]
         limit: u16,
     },
+    #[command(about = "Show status for one job run")]
+    Status {
+        #[arg(help = "Job run ID")]
+        id: String,
+    },
+    #[command(about = "Print captured logs for one job run")]
+    Logs {
+        #[arg(help = "Job run ID")]
+        id: String,
+    },
+    #[command(about = "Cancel a queued or running job run")]
+    Cancel {
+        #[arg(help = "Job run ID")]
+        id: String,
+    },
     #[command(subcommand, about = "Inspect a job run")]
     Run(RunCommand),
 }
@@ -89,6 +104,18 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
         Command::Runs { limit } => {
             let runs = api.list_runs(limit).await?;
             Ok(format_runs_table(&runs.runs))
+        }
+        Command::Status { id } => {
+            let run = api.get_run(&id).await?;
+            Ok(format_run_status(&run))
+        }
+        Command::Logs { id } => {
+            let logs = api.get_run_logs(&id).await?;
+            Ok(logs.logs)
+        }
+        Command::Cancel { id } => {
+            let run = api.cancel_run(&id).await?;
+            Ok(format_run_status(&run))
         }
         Command::Run(RunCommand::Get { id }) => {
             let run = api.get_run(&id).await?;
@@ -143,6 +170,26 @@ impl ApiClient {
         parse_response(response).await
     }
 
+    async fn get_run_logs(&self, id: &str) -> Result<JobRunLogsResponse, CliError> {
+        let response = self
+            .client
+            .get(self.url(&["v1", "jobs", "runs", id, "logs"])?)
+            .send()
+            .await?;
+
+        parse_response(response).await
+    }
+
+    async fn cancel_run(&self, id: &str) -> Result<JobRunResponse, CliError> {
+        let response = self
+            .client
+            .post(self.url(&["v1", "jobs", "runs", id, "cancel"])?)
+            .send()
+            .await?;
+
+        parse_response(response).await
+    }
+
     fn url(&self, segments: &[&str]) -> Result<Url, CliError> {
         let mut url = self.base_url.clone();
         {
@@ -182,6 +229,13 @@ fn format_run_detail(run: &JobRunResponse) -> String {
     format!(
         "id: {}\njob_definition_id: {}\nstatus: {}\nexecution_pool: {}\nattempt_count: {}\n",
         run.id, run.job_definition_id, run.status, run.execution_pool, run.attempt_count
+    )
+}
+
+fn format_run_status(run: &JobRunResponse) -> String {
+    format!(
+        "{}  {}  attempts={}\n",
+        run.id, run.status, run.attempt_count
     )
 }
 
@@ -235,6 +289,11 @@ struct JobRunResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct JobRunLogsResponse {
+    logs: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
     code: String,
     message: String,
@@ -262,7 +321,8 @@ mod tests {
     use reqwest::Url;
 
     use super::{
-        ApiClient, Cli, Command, JobRunResponse, RunCommand, format_run_detail, format_runs_table,
+        ApiClient, Cli, Command, JobRunResponse, RunCommand, format_run_detail, format_run_status,
+        format_runs_table,
     };
 
     #[test]
@@ -304,6 +364,36 @@ mod tests {
     }
 
     #[test]
+    fn parses_status_command() {
+        let cli = Cli::parse_from(["capsulet", "status", "run_123"]);
+
+        let Command::Status { id } = cli.command else {
+            panic!("expected status command");
+        };
+        assert_eq!(id, "run_123");
+    }
+
+    #[test]
+    fn parses_logs_command() {
+        let cli = Cli::parse_from(["capsulet", "logs", "run_123"]);
+
+        let Command::Logs { id } = cli.command else {
+            panic!("expected logs command");
+        };
+        assert_eq!(id, "run_123");
+    }
+
+    #[test]
+    fn parses_cancel_command() {
+        let cli = Cli::parse_from(["capsulet", "cancel", "run_123"]);
+
+        let Command::Cancel { id } = cli.command else {
+            panic!("expected cancel command");
+        };
+        assert_eq!(id, "run_123");
+    }
+
+    #[test]
     fn formats_run_detail() {
         let run = run("run_1", "succeeded", 1);
 
@@ -324,6 +414,13 @@ mod tests {
             output,
             "ID          JOB               STATUS  POOL  ATTEMPTS\nrun_short   job_hello_python  queued  mini  0\nrun_longer  job_hello_python  failed  mini  2\n"
         );
+    }
+
+    #[test]
+    fn formats_run_status() {
+        let run = run("run_1", "running", 1);
+
+        assert_eq!(format_run_status(&run), "run_1  running  attempts=1\n");
     }
 
     #[test]

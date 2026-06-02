@@ -13,7 +13,7 @@ pub use application::{CreateManualRunCommand, JobRunSummary};
 pub use component::{ComponentDescriptor, ComponentKind};
 pub use domain::{
     AutomationId, ConditionExpr, ExecutionPool, ExecutionPoolName, JobAttemptId, JobDefinition,
-    JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus, ResourceRequirements,
+    JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus, ResourceRequirements, RetryPolicy,
     StateTransitionError, TriggerName,
 };
 pub use ports::{JobRunLogRepository, JobRunRepository};

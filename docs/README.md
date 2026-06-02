@@ -17,3 +17,4 @@ Current docs:
 - [Helm values](helm-values.md)
 - [Persistence](persistence.md)
 - [Worker and runner](worker-runner.md)
+- [Local Kubernetes runner](local-kubernetes-runner.md)

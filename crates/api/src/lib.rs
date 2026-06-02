@@ -14,8 +14,8 @@ use axum::{
     routing::{get, post},
 };
 use capsulet_core::{
-    CreateManualRunCommand, ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunRepository,
-    JobRunStatus,
+    CreateManualRunCommand, ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunLog,
+    JobRunLogRepository, JobRunRepository, JobRunStatus,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
 use serde::{Deserialize, Serialize};
@@ -58,6 +58,8 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn save_run(&self, run: &JobRun) -> Result<(), Self::Error>;
     async fn list_runs(&self, limit: i64) -> Result<Vec<JobRun>, Self::Error>;
     async fn find_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error>;
+    async fn find_run_log(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error>;
+    async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error>;
 }
 
 #[async_trait]
@@ -79,6 +81,14 @@ impl ApiStore for PostgresStore {
     async fn find_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
         self.find_by_id(id).await
     }
+
+    async fn find_run_log(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error> {
+        self.find_log_by_run_id(id).await
+    }
+
+    async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
+        self.cancel_run(id).await
+    }
 }
 
 /// Builds the Capsulet API router.
@@ -90,6 +100,8 @@ where
         .route("/healthz", get(healthz))
         .route("/v1/jobs/runs", post(create_run).get(list_runs))
         .route("/v1/jobs/runs/{id}", get(get_run))
+        .route("/v1/jobs/runs/{id}/cancel", post(cancel_run))
+        .route("/v1/jobs/runs/{id}/logs", get(get_run_logs))
         .with_state(state)
 }
 
@@ -177,6 +189,54 @@ where
     Ok(Json(JobRunResponse::from(&run)))
 }
 
+async fn get_run_logs<S>(
+    State(state): State<AppState<S>>,
+    Path(id): Path<String>,
+) -> Result<Json<JobRunLogsResponse>, ApiError>
+where
+    S: ApiStore,
+{
+    let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    if state
+        .store
+        .find_run(&id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::RunNotFound(id.as_str().to_string()));
+    }
+
+    let Some(log) = state
+        .store
+        .find_run_log(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::RunLogsNotFound(id.as_str().to_string()));
+    };
+
+    Ok(Json(JobRunLogsResponse {
+        run_id: log.run_id.as_str().to_string(),
+        logs: log.text,
+    }))
+}
+
+async fn cancel_run<S>(
+    State(state): State<AppState<S>>,
+    Path(id): Path<String>,
+) -> Result<Json<JobRunResponse>, ApiError>
+where
+    S: ApiStore,
+{
+    let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    let Some(run) = state.store.cancel_run(&id).await.map_err(ApiError::store)? else {
+        return Err(ApiError::RunNotFound(id.as_str().to_string()));
+    };
+
+    Ok(Json(JobRunResponse::from(&run)))
+}
+
 fn generated_run_id() -> String {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -215,6 +275,12 @@ struct JobRunResponse {
     attempt_count: u32,
 }
 
+#[derive(Debug, Serialize)]
+struct JobRunLogsResponse {
+    run_id: String,
+    logs: String,
+}
+
 impl From<&JobRun> for JobRunResponse {
     fn from(run: &JobRun) -> Self {
         Self {
@@ -250,6 +316,8 @@ enum ApiError {
     UnknownExecutionPool(String),
     #[error("job run not found: {0}")]
     RunNotFound(String),
+    #[error("job run logs not found: {0}")]
+    RunLogsNotFound(String),
     #[error("store error: {0}")]
     Store(String),
 }
@@ -269,7 +337,7 @@ impl ApiError {
             Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            Self::RunNotFound(_) => StatusCode::NOT_FOUND,
+            Self::RunNotFound(_) | Self::RunLogsNotFound(_) => StatusCode::NOT_FOUND,
             Self::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -280,6 +348,7 @@ impl ApiError {
             Self::UnknownJobDefinition(_) => "unknown_job_definition",
             Self::UnknownExecutionPool(_) => "unknown_execution_pool",
             Self::RunNotFound(_) => "job_run_not_found",
+            Self::RunLogsNotFound(_) => "job_run_logs_not_found",
             Self::Store(_) => "store_error",
         }
     }
@@ -320,7 +389,9 @@ mod tests {
         body::{Body, to_bytes},
         http::{Method, Request},
     };
-    use capsulet_core::{ExecutionPoolName, JobDefinitionId, JobRun, JobRunId};
+    use capsulet_core::{
+        ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus,
+    };
     use http_body_util::BodyExt;
     use serde_json::{Value, json};
     use tower::ServiceExt;
@@ -331,6 +402,7 @@ mod tests {
     struct FakeStore {
         known_definitions: Arc<Mutex<Vec<String>>>,
         runs: Arc<Mutex<Vec<JobRun>>>,
+        logs: Arc<Mutex<Vec<JobRunLog>>>,
     }
 
     #[async_trait::async_trait]
@@ -375,6 +447,27 @@ mod tests {
                 .find(|run| run.id == *id)
                 .cloned())
         }
+
+        async fn find_run_log(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error> {
+            Ok(self
+                .logs
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .find(|log| log.run_id == *id)
+                .cloned())
+        }
+
+        async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
+            let mut runs = self.runs.lock().map_err(|error| error.to_string())?;
+            let Some(run) = runs.iter_mut().rev().find(|run| run.id == *id) else {
+                return Ok(None);
+            };
+            if !run.status.is_terminal() {
+                run.status = JobRunStatus::Cancelled;
+            }
+            Ok(Some(run.clone()))
+        }
     }
 
     impl FakeStore {
@@ -390,6 +483,11 @@ mod tests {
 
         fn with_run(self, run: JobRun) -> Self {
             self.runs.lock().expect("runs mutex").push(run);
+            self
+        }
+
+        fn with_log(self, log: JobRunLog) -> Self {
+            self.logs.lock().expect("logs mutex").push(log);
             self
         }
     }
@@ -562,6 +660,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancels_run() {
+        let run = JobRun::new(
+            JobRunId::new("run_cancelled").expect("valid run id"),
+            JobDefinitionId::new("job_hello_python").expect("valid definition id"),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        let response = test_app(FakeStore::with_definition("job_hello_python").with_run(run))
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/jobs/runs/run_cancelled/cancel")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(response_json(response).await["status"], "cancelled");
+    }
+
+    #[tokio::test]
     async fn returns_not_found_for_missing_run() {
         let response = test_app(FakeStore::default())
             .oneshot(
@@ -577,6 +697,62 @@ mod tests {
         assert_eq!(
             response_json(response).await["code"],
             json!("job_run_not_found")
+        );
+    }
+
+    #[tokio::test]
+    async fn fetches_run_logs() {
+        let run = JobRun::new(
+            JobRunId::new("run_with_logs").expect("valid run id"),
+            JobDefinitionId::new("job_hello_python").expect("valid definition id"),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        let log = JobRunLog::new(run.id.clone(), "hello from logs\n").expect("valid log");
+        let response = test_app(
+            FakeStore::with_definition("job_hello_python")
+                .with_run(run)
+                .with_log(log),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs/runs/run_with_logs/logs")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(
+            response_json(response).await,
+            json!({
+                "run_id": "run_with_logs",
+                "logs": "hello from logs\n"
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn returns_not_found_for_missing_run_logs() {
+        let run = JobRun::new(
+            JobRunId::new("run_without_logs").expect("valid run id"),
+            JobDefinitionId::new("job_hello_python").expect("valid definition id"),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        let response = test_app(FakeStore::with_definition("job_hello_python").with_run(run))
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/jobs/runs/run_without_logs/logs")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+        assert_eq!(
+            response_json(response).await["code"],
+            json!("job_run_logs_not_found")
         );
     }
 

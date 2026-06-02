@@ -1,12 +1,48 @@
-use std::env;
+use std::{env, fs, time::Duration};
 
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_postgres::PostgresStore;
-use capsulet_runner::StubRunner;
+use capsulet_runner::{ExecutionPoolsConfig, KubernetesRunner, StubRunner};
 use capsulet_worker::execute_one_queued_run;
 
 const DEFAULT_WORKER_ID: &str = "worker-local";
 const DEFAULT_LEASE_SECONDS: i64 = 60;
+const DEFAULT_POLL_SECONDS: u64 = 5;
+const DEFAULT_RUNNER_MODE: &str = "stub";
+const DEFAULT_EXECUTION_NAMESPACE: &str = "default";
+const DEFAULT_LOG_LIMIT_BYTES: usize = 64 * 1024;
+const DEFAULT_EXECUTION_POOLS_YAML: &str = r#"
+defaultPool: mini
+pools:
+  mini:
+    description: Lightweight jobs such as email, webhooks, and small scripts
+    nodeSelector: {}
+    tolerations: []
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    timeoutSeconds: 120
+    maxConcurrentJobs: 50
+    ttlSecondsAfterFinished: 300
+  large:
+    description: Compute-heavy jobs such as model inference and batch processing
+    nodeSelector: {}
+    tolerations: []
+    resources:
+      requests:
+        cpu: "2"
+        memory: 4Gi
+      limits:
+        cpu: "8"
+        memory: 16Gi
+    timeoutSeconds: 3600
+    maxConcurrentJobs: 10
+    ttlSecondsAfterFinished: 300
+"#;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,16 +61,91 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(DEFAULT_LEASE_SECONDS);
-    let runner = match env::var("CAPSULET_STUB_RUNNER_RESULT").as_deref() {
-        Ok("failed" | "failure") => StubRunner::failure(),
-        _ => StubRunner::success(),
-    };
+    let pools = load_execution_pools()?;
 
     let store = PostgresStore::connect(&database_url).await?;
     store.migrate().await?;
 
-    let outcome = execute_one_queued_run(&store, &runner, &worker_id, lease_seconds).await?;
-    println!("worker tick outcome: {outcome:?}");
+    let runner_mode = env::var("CAPSULET_RUNNER_MODE")
+        .unwrap_or_else(|_| DEFAULT_RUNNER_MODE.to_string())
+        .to_string();
+    let loop_enabled = env_bool("CAPSULET_WORKER_LOOP");
+    let poll_seconds = env::var("CAPSULET_WORKER_POLL_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_POLL_SECONDS);
+
+    loop {
+        let outcome = run_once(
+            &store,
+            &pools,
+            &worker_id,
+            lease_seconds,
+            runner_mode.as_str(),
+        )
+        .await?;
+        println!("worker tick outcome: {outcome:?}");
+
+        if !loop_enabled {
+            break;
+        }
+
+        tokio::time::sleep(Duration::from_secs(poll_seconds)).await;
+    }
 
     Ok(())
+}
+
+async fn run_once(
+    store: &PostgresStore,
+    pools: &ExecutionPoolsConfig,
+    worker_id: &str,
+    lease_seconds: i64,
+    runner_mode: &str,
+) -> Result<capsulet_worker::WorkerTickOutcome, Box<dyn std::error::Error>> {
+    let outcome = match runner_mode {
+        "kubernetes" | "k8s" => {
+            let namespace = env::var("CAPSULET_EXECUTION_NAMESPACE")
+                .unwrap_or_else(|_| DEFAULT_EXECUTION_NAMESPACE.to_string());
+            let log_limit_bytes = env::var("CAPSULET_LOG_LIMIT_BYTES")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(DEFAULT_LOG_LIMIT_BYTES);
+            let runner = KubernetesRunner::from_default_config(namespace, log_limit_bytes).await?;
+            execute_one_queued_run(store, &runner, pools, worker_id, lease_seconds).await?
+        }
+        "stub" => {
+            let runner = match env::var("CAPSULET_STUB_RUNNER_RESULT").as_deref() {
+                Ok("failed" | "failure") => StubRunner::failure(),
+                _ => StubRunner::success(),
+            };
+            execute_one_queued_run(store, &runner, pools, worker_id, lease_seconds).await?
+        }
+        value => {
+            return Err(format!(
+                "unsupported CAPSULET_RUNNER_MODE {value}; expected stub or kubernetes"
+            )
+            .into());
+        }
+    };
+    Ok(outcome)
+}
+
+fn load_execution_pools() -> Result<ExecutionPoolsConfig, Box<dyn std::error::Error>> {
+    let yaml = if let Ok(value) = env::var("CAPSULET_EXECUTION_POOLS_YAML") {
+        value
+    } else if let Ok(path) = env::var("CAPSULET_EXECUTION_POOLS_FILE") {
+        fs::read_to_string(path)?
+    } else {
+        DEFAULT_EXECUTION_POOLS_YAML.to_string()
+    };
+
+    Ok(ExecutionPoolsConfig::from_yaml(&yaml)?)
+}
+
+fn env_bool(name: &str) -> bool {
+    matches!(
+        env::var(name).as_deref(),
+        Ok("1" | "true" | "TRUE" | "yes" | "YES")
+    )
 }

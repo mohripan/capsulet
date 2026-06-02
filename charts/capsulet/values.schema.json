@@ -5,7 +5,7 @@
     "image": {
       "type": "object",
       "properties": {
-        "registry": { "type": "string", "minLength": 1 },
+        "registry": { "type": "string" },
         "repository": { "type": "string", "minLength": 1 },
         "tag": { "type": "string", "minLength": 1 },
         "pullPolicy": {
@@ -44,13 +44,38 @@
               "tolerations": { "type": "array" },
               "resources": { "type": "object" },
               "timeoutSeconds": { "type": "integer", "minimum": 1 },
-              "maxConcurrentJobs": { "type": "integer", "minimum": 1 }
+              "maxConcurrentJobs": { "type": "integer", "minimum": 1 },
+              "ttlSecondsAfterFinished": { "type": "integer", "minimum": 0 }
             },
             "required": ["resources", "timeoutSeconds", "maxConcurrentJobs"]
           }
         }
       },
       "required": ["defaultPool", "pools"]
+    },
+    "worker": {
+      "type": "object",
+      "properties": {
+        "runner": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["stub", "kubernetes", "k8s"]
+            },
+            "executionNamespace": { "type": "string" },
+            "logLimitBytes": { "type": "integer", "minimum": 1 },
+            "loop": { "type": "boolean" },
+            "pollSeconds": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "seedExamples": { "type": "boolean" }
+      }
     }
   },
   "required": ["image", "executionPools"]

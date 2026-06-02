@@ -29,8 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = PostgresStore::connect(&database_url).await?;
     store.migrate().await?;
     if env::var("CAPSULET_SEED_EXAMPLES").is_ok_and(|value| value == "true") {
-        store.seed_hello_python_job_definition().await?;
-        println!("seeded example job definition: job_hello_python");
+        store.seed_example_job_definitions().await?;
+        println!("seeded example job definitions");
     }
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

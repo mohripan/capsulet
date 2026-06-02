@@ -1,6 +1,6 @@
 # Installation
 
-Capsulet is not installable as a working product yet. This document records the intended install flow and the current Sprint 001 chart verification commands.
+Capsulet can be installed for the Sprint 003 local API and Kubernetes worker path when local images and PostgreSQL are supplied. The full product install with bundled dependencies is still future work.
 
 ## Intended Install Flow
 
@@ -45,6 +45,14 @@ The chart currently renders placeholder deployments for:
 - `capsulet-dashboard`
 
 The rendered workloads are not expected to be functional until service images, health endpoints, persistence, and runtime implementations exist.
+
+## Sprint 003 Local Install
+
+For minikube instructions that build local API/worker images, create the database secret, install the chart, submit `job_hello_python`, and fetch logs, see:
+
+```text
+docs/local-kubernetes-runner.md
+```
 
 ## External Dependencies
 

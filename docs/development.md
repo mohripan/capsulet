@@ -37,7 +37,7 @@ Current crates:
 - `capsulet-worker`: job leasing and runner coordination
 - `capsulet-scheduler`: future schedule and delay scanner
 - `capsulet-evaluator`: future automation condition evaluator
-- `capsulet-runner`: execution backend boundary and stub runners
+- `capsulet-runner`: execution backend boundary with stub and Kubernetes Job runners
 - `capsulet-cli`: operator and developer CLI for the HTTP API
 
 ## Local PostgreSQL
@@ -96,12 +96,13 @@ $env:CAPSULET_SEED_EXAMPLES = "true"
 cargo run -p capsulet-api
 ```
 
-Available Sprint 002 endpoints:
+Available job-run endpoints:
 
 - `GET /healthz`
 - `POST /v1/jobs/runs`
 - `GET /v1/jobs/runs`
 - `GET /v1/jobs/runs/{id}`
+- `GET /v1/jobs/runs/{id}/logs`
 
 See `docs/api.md` for request examples.
 
@@ -114,6 +115,8 @@ $env:CAPSULET_API_URL = "http://127.0.0.1:8080"
 cargo run -p capsulet-cli -- submit job_hello_python --pool mini
 cargo run -p capsulet-cli -- runs
 cargo run -p capsulet-cli -- run get run_123
+cargo run -p capsulet-cli -- status run_123
+cargo run -p capsulet-cli -- logs run_123
 ```
 
 You can also pass the API URL per command:
@@ -124,7 +127,7 @@ cargo run -p capsulet-cli -- --api-url http://127.0.0.1:8080 runs --limit 25
 
 ## Worker
 
-The worker currently executes one queued run per process invocation through a stub runner.
+The worker can execute one queued run per process invocation through a stub runner, or run continuously through the Kubernetes Job runner.
 
 Run a success tick:
 
@@ -134,6 +137,16 @@ $env:CAPSULET_WORKER_ID = "worker-local"
 $env:CAPSULET_STUB_RUNNER_RESULT = "success"
 cargo run -p capsulet-worker
 ```
+
+Run one Kubernetes-backed worker tick against the current kube context:
+
+```powershell
+$env:CAPSULET_RUNNER_MODE = "kubernetes"
+$env:CAPSULET_EXECUTION_NAMESPACE = "capsulet"
+cargo run -p capsulet-worker
+```
+
+For the Helm/minikube path, see `docs/local-kubernetes-runner.md`.
 
 Run a failure tick:
 
@@ -165,7 +178,7 @@ helm lint charts/capsulet
 helm template capsulet charts/capsulet
 ```
 
-The chart is a skeleton for the future installable product. It renders the API, worker, scheduler, evaluator, dashboard, RBAC, service account, config, services, execution pool config, and a test pod.
+The chart can install the Sprint 003 API and worker path when local images and a PostgreSQL secret are provided. See `docs/local-kubernetes-runner.md`.
 
 ## Architecture Rules
 
@@ -180,5 +193,5 @@ The chart is a skeleton for the future installable product. It renders the API, 
 
 Sprint planning lives in `planning/`.
 
-- Sprint plan: `planning/sprints/sprint-001-foundation.md`
-- Sprint backlog: `planning/backlog/sprint-002-backlog.md`
+- Current sprint plan: `planning/sprints/sprint-003-kubernetes-job-runner.md`
+- Current sprint backlog: `planning/backlog/sprint-003-backlog.md`

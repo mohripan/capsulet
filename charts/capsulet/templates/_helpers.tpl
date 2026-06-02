@@ -51,11 +51,16 @@ Service account name.
 {{- end -}}
 {{- end -}}
 
-{{/*
+{{/* 
 Component image.
 */}}
 {{- define "capsulet.componentImage" -}}
 {{- $root := index . 0 -}}
 {{- $component := index . 1 -}}
-{{- printf "%s/%s-%s:%s" $root.Values.image.registry $root.Values.image.repository $component.image.repositorySuffix $root.Values.image.tag -}}
+{{- $repository := printf "%s-%s" $root.Values.image.repository $component.image.repositorySuffix -}}
+{{- if $root.Values.image.registry -}}
+{{- printf "%s/%s:%s" $root.Values.image.registry $repository $root.Values.image.tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $root.Values.image.tag -}}
+{{- end -}}
 {{- end -}}
