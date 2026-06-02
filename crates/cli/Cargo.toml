@@ -13,6 +13,12 @@ path = "src/main.rs"
 
 [dependencies]
 capsulet-core = { path = "../core" }
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

@@ -11,8 +11,16 @@ description = "Execution runner boundary for future Kubernetes Job execution."
 name = "capsulet-runner"
 path = "src/main.rs"
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
+async-trait.workspace = true
 capsulet-core = { path = "../core" }
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
 
 [lints]
 workspace = true

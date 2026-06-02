@@ -34,11 +34,11 @@ Current crates:
 - `capsulet-core`: domain model, command/query shapes, and infrastructure ports
 - `capsulet-postgres`: PostgreSQL persistence adapter and embedded migrations
 - `capsulet-api`: future HTTP control plane
-- `capsulet-worker`: future job leasing and Kubernetes Job coordination
+- `capsulet-worker`: job leasing and runner coordination
 - `capsulet-scheduler`: future schedule and delay scanner
 - `capsulet-evaluator`: future automation condition evaluator
-- `capsulet-runner`: future execution backend boundary
-- `capsulet-cli`: future CLI
+- `capsulet-runner`: execution backend boundary and stub runners
+- `capsulet-cli`: operator and developer CLI for the HTTP API
 
 ## Local PostgreSQL
 
@@ -92,6 +92,7 @@ Run locally:
 $env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
 $env:CAPSULET_API_ADDR = "127.0.0.1:8080"
 $env:CAPSULET_EXECUTION_POOLS = "mini,large"
+$env:CAPSULET_SEED_EXAMPLES = "true"
 cargo run -p capsulet-api
 ```
 
@@ -103,6 +104,45 @@ Available Sprint 002 endpoints:
 - `GET /v1/jobs/runs/{id}`
 
 See `docs/api.md` for request examples.
+
+## CLI
+
+The CLI talks to the HTTP API. Start the API first, then run:
+
+```powershell
+$env:CAPSULET_API_URL = "http://127.0.0.1:8080"
+cargo run -p capsulet-cli -- submit job_hello_python --pool mini
+cargo run -p capsulet-cli -- runs
+cargo run -p capsulet-cli -- run get run_123
+```
+
+You can also pass the API URL per command:
+
+```sh
+cargo run -p capsulet-cli -- --api-url http://127.0.0.1:8080 runs --limit 25
+```
+
+## Worker
+
+The worker currently executes one queued run per process invocation through a stub runner.
+
+Run a success tick:
+
+```powershell
+$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
+$env:CAPSULET_WORKER_ID = "worker-local"
+$env:CAPSULET_STUB_RUNNER_RESULT = "success"
+cargo run -p capsulet-worker
+```
+
+Run a failure tick:
+
+```powershell
+$env:CAPSULET_STUB_RUNNER_RESULT = "failure"
+cargo run -p capsulet-worker
+```
+
+See `docs/worker-runner.md` for the manual flow.
 
 ## Dashboard
 

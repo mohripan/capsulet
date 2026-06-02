@@ -150,6 +150,7 @@ Useful project docs:
 - [API](docs/api.md)
 - [Helm values](docs/helm-values.md)
 - [Persistence](docs/persistence.md)
+- [Worker and runner](docs/worker-runner.md)
 - [Planning](planning/README.md)
 - [Backend workspace](crates/README.md)
 - [Dashboard prototype](dashboard/README.md)

@@ -7,10 +7,10 @@ Capsulet's backend is a Rust workspace organized around a small domain core and 
 - `capsulet-core`: domain model, application command/query shapes, and infrastructure ports
 - `capsulet-postgres`: PostgreSQL persistence adapter for durable metadata
 - `capsulet-api`: future HTTP control plane service
-- `capsulet-worker`: future run leasing and Kubernetes Job coordination service
+- `capsulet-worker`: run leasing and runner coordination service
 - `capsulet-scheduler`: future scheduled and delayed trigger scanner
 - `capsulet-evaluator`: future automation condition evaluator
-- `capsulet-runner`: future execution backend boundary
+- `capsulet-runner`: execution backend boundary and stub runners
 - `capsulet-cli`: future operator and developer CLI
 
 ## Architecture Direction

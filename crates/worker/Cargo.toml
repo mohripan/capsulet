@@ -11,8 +11,16 @@ description = "Worker service that leases runs and creates Kubernetes Jobs."
 name = "capsulet-worker"
 path = "src/main.rs"
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
+async-trait.workspace = true
 capsulet-core = { path = "../core" }
+capsulet-postgres = { path = "../postgres" }
+capsulet-runner = { path = "../runner" }
+thiserror.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

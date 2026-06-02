@@ -16,3 +16,4 @@ Current docs:
 - [API](api.md)
 - [Helm values](helm-values.md)
 - [Persistence](persistence.md)
+- [Worker and runner](worker-runner.md)

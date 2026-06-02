@@ -7,7 +7,7 @@ Suggested naming:
 ```text
 sprint-001-foundation.md
 sprint-002-manual-job-runner.md
-sprint-003-helm-install.md
+sprint-003-kubernetes-job-runner.md
 ```
 
 Each sprint should define:
@@ -18,4 +18,3 @@ Each sprint should define:
 - tasks
 - acceptance criteria
 - review notes
-

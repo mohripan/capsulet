@@ -2,7 +2,8 @@
 
 use async_trait::async_trait;
 use capsulet_core::{
-    ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunRepository, JobRunStatus,
+    ExecutionPoolName, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunRepository,
+    JobRunStatus,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use thiserror::Error;
@@ -60,7 +61,7 @@ impl PostgresStore {
     /// Returns [`PostgresStoreError`] when persistence fails.
     pub async fn upsert_job_definition(
         &self,
-        definition: &JobDefinitionRecord,
+        definition: &JobDefinition,
     ) -> Result<(), PostgresStoreError> {
         sqlx::query(
             r"
@@ -111,6 +112,16 @@ impl PostgresStore {
                 .await?;
 
         Ok(exists)
+    }
+
+    /// Inserts the built-in hello Python definition for local testing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn seed_hello_python_job_definition(&self) -> Result<(), PostgresStoreError> {
+        self.upsert_job_definition(&JobDefinition::hello_python())
+            .await
     }
 
     /// Lists job runs ordered by creation time, newest first.
@@ -229,17 +240,6 @@ impl JobRunRepository for PostgresStore {
     }
 }
 
-/// Minimal persisted job definition record for Sprint 002.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JobDefinitionRecord {
-    pub id: JobDefinitionId,
-    pub name: String,
-    pub runtime_image: String,
-    pub command: Vec<String>,
-    pub bundle_object_key: String,
-    pub input_schema: String,
-}
-
 /// `PostgreSQL` adapter error.
 #[derive(Debug, Error)]
 pub enum PostgresStoreError {
@@ -292,14 +292,24 @@ fn parse_status(status: &str) -> Result<JobRunStatus, PostgresStoreError> {
 
 #[cfg(test)]
 mod tests {
-    use capsulet_core::{ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunRepository};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{JobDefinitionRecord, PostgresStore, parse_status};
+    use capsulet_core::{ExecutionPoolName, JobDefinition, JobRun, JobRunId, JobRunRepository};
+
+    use super::{PostgresStore, parse_status};
 
     fn database_url() -> Option<String> {
         std::env::var("CAPSULET_TEST_DATABASE_URL")
             .or_else(|_| std::env::var("DATABASE_URL"))
             .ok()
+    }
+
+    fn unique_id(prefix: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time after epoch")
+            .as_nanos();
+        format!("{prefix}_{nanos}")
     }
 
     #[test]
@@ -320,21 +330,14 @@ mod tests {
             .expect("connect to postgres");
         store.migrate().await.expect("run migrations");
 
-        let definition = JobDefinitionRecord {
-            id: JobDefinitionId::new("job_hello_python").expect("valid job id"),
-            name: "Hello Python".to_string(),
-            runtime_image: "python:3.12-slim".to_string(),
-            command: vec!["python".to_string(), "/workspace/main.py".to_string()],
-            bundle_object_key: "bundles/job_hello_python.tar.gz".to_string(),
-            input_schema: "{}".to_string(),
-        };
+        let definition = JobDefinition::hello_python();
         store
             .upsert_job_definition(&definition)
             .await
             .expect("upsert job definition");
 
         let run = JobRun::new(
-            JobRunId::new("run_persistence_test").expect("valid run id"),
+            JobRunId::new(unique_id("run_persistence_test")).expect("valid run id"),
             definition.id.clone(),
             ExecutionPoolName::new("mini").expect("valid pool"),
         );
@@ -356,5 +359,42 @@ mod tests {
             .expect("queued run available");
 
         assert_eq!(leased.id, run.id);
+    }
+
+    #[tokio::test]
+    async fn lease_query_does_not_hand_out_same_run_twice_when_database_is_available() {
+        let Some(database_url) = database_url() else {
+            return;
+        };
+
+        let store = PostgresStore::connect(&database_url)
+            .await
+            .expect("connect to postgres");
+        store.migrate().await.expect("run migrations");
+        let definition = JobDefinition::hello_python();
+        store
+            .upsert_job_definition(&definition)
+            .await
+            .expect("upsert job definition");
+
+        let run = JobRun::new(
+            JobRunId::new(unique_id("run_lease_test")).expect("valid run id"),
+            definition.id.clone(),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        store.save(&run).await.expect("save run");
+
+        let first = store
+            .lease_next_queued_run("worker-a", 60)
+            .await
+            .expect("lease first")
+            .expect("run available");
+        let second = store
+            .lease_next_queued_run("worker-b", 60)
+            .await
+            .expect("lease second");
+
+        assert_eq!(first.id, run.id);
+        assert!(second.is_none());
     }
 }

@@ -36,29 +36,29 @@ Status legend:
 
 | ID | Status | Task | Acceptance |
 | --- | --- | --- | --- |
-| S2-JOB-001 | todo | Add minimal job definition model | Model supports ID, runtime image, command, and bundle object key |
-| S2-JOB-002 | todo | Seed `job_hello_python` | Manual testing has a known job definition |
-| S2-JOB-003 | todo | Validate job definition references | Submissions cannot reference unknown definitions |
+| S2-JOB-001 | done | Add minimal job definition model | Model supports ID, runtime image, command, and bundle object key |
+| S2-JOB-002 | done | Seed `job_hello_python` | Manual testing has a known job definition |
+| S2-JOB-003 | done | Validate job definition references | Submissions cannot reference unknown definitions |
 
 ## Worker and Runner
 
 | ID | Status | Task | Acceptance |
 | --- | --- | --- | --- |
-| S2-WORKER-001 | todo | Add lease use case | Worker can lease one queued run |
-| S2-WORKER-002 | todo | Add lease owner and expiry fields | Lease metadata is persisted |
-| S2-WORKER-003 | todo | Prevent duplicate leases | Tests prove two workers cannot lease the same run |
-| S2-WORKER-004 | todo | Add runner trait | Execution is behind a testable boundary |
-| S2-WORKER-005 | todo | Add stub success runner | Leased run can become succeeded |
-| S2-WORKER-006 | todo | Add stub failure runner | Leased run can become failed |
+| S2-WORKER-001 | done | Add lease use case | Worker can lease one queued run |
+| S2-WORKER-002 | done | Add lease owner and expiry fields | Lease metadata is persisted |
+| S2-WORKER-003 | done | Prevent duplicate leases | Tests prove two workers cannot lease the same run |
+| S2-WORKER-004 | done | Add runner trait | Execution is behind a testable boundary |
+| S2-WORKER-005 | done | Add stub success runner | Leased run can become succeeded |
+| S2-WORKER-006 | done | Add stub failure runner | Leased run can become failed |
 
 ## CLI and Manual Testing
 
 | ID | Status | Task | Acceptance |
 | --- | --- | --- | --- |
-| S2-CLI-001 | todo | Add `capsulet submit` | CLI can submit to local API |
-| S2-CLI-002 | todo | Add `capsulet runs` | CLI can list runs |
-| S2-CLI-003 | todo | Add `capsulet run get` | CLI can fetch one run |
-| S2-DOC-001 | todo | Add manual testing guide | Contributor can submit and inspect a run locally |
+| S2-CLI-001 | done | Add `capsulet submit` | CLI can submit to local API |
+| S2-CLI-002 | done | Add `capsulet runs` | CLI can list runs |
+| S2-CLI-003 | done | Add `capsulet run get` | CLI can fetch one run |
+| S2-DOC-001 | done | Add manual testing guide | Contributor can submit and inspect a run locally |
 | S2-DOC-002 | done | Update development docs | Local database commands are documented; API commands remain covered by API tasks |
 
 ## Quality
@@ -68,7 +68,7 @@ Status legend:
 | S2-QA-001 | done | Keep `cargo fmt --check` passing | Formatting passes |
 | S2-QA-002 | done | Keep clippy passing | `cargo clippy --workspace --all-targets -- -D warnings` passes |
 | S2-QA-003 | done | Keep workspace tests passing | `cargo test --workspace` passes |
-| S2-QA-004 | doing | Add focused integration tests where practical | Repository has Docker-backed coverage; API has handler coverage and smoke verification; worker coverage remains pending |
+| S2-QA-004 | done | Add focused integration tests where practical | Repository has Docker-backed coverage; API/worker have use-case coverage and smoke verification |
 
 ## Completed Notes
 
@@ -99,6 +99,28 @@ API foundation completed:
 - Added ADR 0008 for Axum.
 - Verified the API manually against Docker PostgreSQL with health, create, list, and fetch requests.
 
+Job definition and worker foundation completed:
+
+- Added the `JobDefinition` domain model with runtime image, command, bundle object key, and input schema.
+- Added built-in `job_hello_python` definition for local/manual testing.
+- Added optional API startup seeding with `CAPSULET_SEED_EXAMPLES=true`.
+- Added the `capsulet-runner` trait boundary and deterministic success/failure stub runners.
+- Added the `capsulet-worker` lease-and-run use case.
+- Added a worker binary that executes one queued run per invocation.
+- Added PostgreSQL duplicate-lease coverage using `FOR UPDATE SKIP LOCKED`.
+- Added worker tests for empty queue, stub success, and stub failure paths.
+- Added worker/runner documentation in `docs/worker-runner.md`.
+- Added ADR 0009 for the runner boundary.
+- Verified the API plus worker path manually against Docker PostgreSQL: create queued run, execute worker success tick, fetch succeeded run with one attempt.
+
+CLI foundation completed:
+
+- Added `capsulet submit` for manual run submission against the local API.
+- Added `capsulet runs` for listing runs with a configurable limit.
+- Added `capsulet run get` for fetching one run by ID.
+- Added `CAPSULET_API_URL` and `--api-url` support for pointing the CLI at a local API.
+- Added focused CLI parsing, URL-building, and output-formatting tests.
+
 ## ADR Candidates
 
 Create ADRs only if the implementation forces durable choices:
@@ -106,7 +128,7 @@ Create ADRs only if the implementation forces durable choices:
 - API framework selection. Done in ADR 0008.
 - PostgreSQL client and migration tooling. Done in ADR 0007.
 - local development dependency strategy
-- runner trait shape
+- runner trait shape. Done in ADR 0009.
 
 ## Sprint Risks
 
