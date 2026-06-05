@@ -33,19 +33,20 @@ Current crates:
 
 - `capsulet-core`: domain model, command/query shapes, and infrastructure ports
 - `capsulet-postgres`: PostgreSQL persistence adapter and embedded migrations
-- `capsulet-api`: future HTTP control plane
+- `capsulet-storage`: filesystem and S3-compatible object storage adapter
+- `capsulet-api`: HTTP control plane
 - `capsulet-worker`: job leasing and runner coordination
 - `capsulet-scheduler`: future schedule and delay scanner
 - `capsulet-evaluator`: future automation condition evaluator
 - `capsulet-runner`: execution backend boundary with stub and Kubernetes Job runners
 - `capsulet-cli`: operator and developer CLI for the HTTP API
 
-## Local PostgreSQL
+## Local PostgreSQL And MinIO
 
-Sprint 002 uses PostgreSQL as the durable metadata store. Start the local database from the repository root:
+Capsulet uses PostgreSQL as the durable metadata store and object storage for script bundles, large logs, and artifacts. Start local dependencies from the repository root:
 
 ```sh
-docker compose up -d postgres
+docker compose up -d postgres minio
 ```
 
 The development database URL is:
@@ -74,6 +75,12 @@ Stop the local database when you are done:
 docker compose down
 ```
 
+Create the local MinIO bucket for S3-compatible smoke tests:
+
+```powershell
+docker run --rm --network capsulet_default --entrypoint /bin/sh minio/mc:latest -c "mc alias set local http://minio:9000 capsulet capsuletpassword && mc mb -p local/capsulet-artifacts"
+```
+
 Use timestamped SQL migration files in `migrations/`:
 
 ```text
@@ -93,6 +100,8 @@ $env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsul
 $env:CAPSULET_API_ADDR = "127.0.0.1:8080"
 $env:CAPSULET_EXECUTION_POOLS = "mini,large"
 $env:CAPSULET_SEED_EXAMPLES = "true"
+$env:CAPSULET_OBJECT_STORAGE_MODE = "filesystem"
+$env:CAPSULET_OBJECT_STORAGE_PATH = ".capsulet-objects"
 cargo run -p capsulet-api
 ```
 
@@ -103,6 +112,9 @@ Available job-run endpoints:
 - `GET /v1/jobs/runs`
 - `GET /v1/jobs/runs/{id}`
 - `GET /v1/jobs/runs/{id}/logs`
+- `POST /v1/jobs/runs/{id}/cancel`
+- `GET /v1/jobs/runs/{id}/artifacts`
+- `GET /v1/jobs/runs/{id}/artifacts/{artifact_id}`
 
 See `docs/api.md` for request examples.
 
@@ -117,6 +129,7 @@ cargo run -p capsulet-cli -- runs
 cargo run -p capsulet-cli -- run get run_123
 cargo run -p capsulet-cli -- status run_123
 cargo run -p capsulet-cli -- logs run_123
+cargo run -p capsulet-cli -- artifacts list run_123
 ```
 
 You can also pass the API URL per command:
@@ -164,10 +177,19 @@ Run from `dashboard/`:
 ```sh
 npm install
 npm run dev
+npm test
 npx tsc --noEmit
+npm run build
 ```
 
-The dashboard is currently a mock frontend. See `dashboard/README.md` for routes and the current build caveat.
+Point the dashboard at a local API:
+
+```powershell
+$env:CAPSULET_DASHBOARD_API_URL = "http://127.0.0.1:8080"
+npm run dev
+```
+
+The `/runs` and `/runs/{id}` pages use the live API. Other product-shaped pages still use mock data. See `dashboard/README.md`.
 
 ## Helm Chart
 
@@ -178,7 +200,7 @@ helm lint charts/capsulet
 helm template capsulet charts/capsulet
 ```
 
-The chart can install the Sprint 003 API and worker path when local images and a PostgreSQL secret are provided. See `docs/local-kubernetes-runner.md`.
+The chart can install the API and worker runtime path when local images, a PostgreSQL secret, and object storage settings are provided. See `docs/local-kubernetes-runner.md`.
 
 ## Architecture Rules
 
@@ -193,5 +215,5 @@ The chart can install the Sprint 003 API and worker path when local images and a
 
 Sprint planning lives in `planning/`.
 
-- Current sprint plan: `planning/sprints/sprint-003-kubernetes-job-runner.md`
-- Current sprint backlog: `planning/backlog/sprint-003-backlog.md`
+- Current sprint plan: `planning/sprints/sprint-006-dashboard-api-and-alpha-ux.md`
+- Current sprint backlog: `planning/backlog/sprint-006-backlog.md`

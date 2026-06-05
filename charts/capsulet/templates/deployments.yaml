@@ -40,7 +40,7 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "capsulet.fullname" $root }}-config
-          {{- if or (and $root.Values.config.databaseUrlSecret.name $root.Values.config.databaseUrlSecret.key) (eq $name "worker") }}
+          {{- if or (and $root.Values.config.databaseUrlSecret.name $root.Values.config.databaseUrlSecret.key) (eq $name "worker") (and (or (eq $name "api") (eq $name "worker")) $root.Values.config.objectStorage.credentialsSecret.name (or $root.Values.config.objectStorage.credentialsSecret.accessKeyKey $root.Values.config.objectStorage.credentialsSecret.secretKeyKey)) }}
           env:
             {{- if and $root.Values.config.databaseUrlSecret.name $root.Values.config.databaseUrlSecret.key }}
             - name: DATABASE_URL
@@ -62,13 +62,37 @@ spec:
               value: {{ $root.Values.worker.runner.pollSeconds | quote }}
             - name: CAPSULET_EXECUTION_POOLS_FILE
               value: /etc/capsulet/execution-pools.yaml
+            {{- if $root.Values.worker.runner.stubArtifactText }}
+            - name: CAPSULET_STUB_ARTIFACT_TEXT
+              value: {{ $root.Values.worker.runner.stubArtifactText | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if and $root.Values.config.objectStorage.credentialsSecret.name $root.Values.config.objectStorage.credentialsSecret.accessKeyKey }}
+            - name: CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.config.objectStorage.credentialsSecret.name }}
+                  key: {{ $root.Values.config.objectStorage.credentialsSecret.accessKeyKey }}
+            {{- end }}
+            {{- if and $root.Values.config.objectStorage.credentialsSecret.name $root.Values.config.objectStorage.credentialsSecret.secretKeyKey }}
+            - name: CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.config.objectStorage.credentialsSecret.name }}
+                  key: {{ $root.Values.config.objectStorage.credentialsSecret.secretKeyKey }}
             {{- end }}
           {{- end }}
-          {{- if eq $name "worker" }}
+          {{- if or (eq $name "worker") (and (eq $name "api") (eq $root.Values.config.objectStorage.mode "filesystem")) }}
           volumeMounts:
+            {{- if eq $root.Values.config.objectStorage.mode "filesystem" }}
+            - name: object-storage
+              mountPath: {{ $root.Values.config.objectStorage.path | quote }}
+            {{- end }}
+            {{- if eq $name "worker" }}
             - name: execution-pools
               mountPath: /etc/capsulet
               readOnly: true
+            {{- end }}
           {{- end }}
           {{- if or (eq $name "api") (eq $name "dashboard") }}
           ports:
@@ -90,14 +114,20 @@ spec:
           {{- end }}
           resources:
             {{- toYaml $component.resources | nindent 12 }}
-      {{- if eq $name "worker" }}
+      {{- if or (eq $name "worker") (and (eq $name "api") (eq $root.Values.config.objectStorage.mode "filesystem")) }}
       volumes:
+        {{- if eq $root.Values.config.objectStorage.mode "filesystem" }}
+        - name: object-storage
+          emptyDir: {}
+        {{- end }}
+        {{- if eq $name "worker" }}
         - name: execution-pools
           configMap:
             name: {{ include "capsulet.fullname" $root }}-config
             items:
               - key: execution-pools.yaml
                 path: execution-pools.yaml
+        {{- end }}
       {{- end }}
 ---
 {{- end }}

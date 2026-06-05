@@ -2,8 +2,9 @@
 
 use async_trait::async_trait;
 use capsulet_core::{
-    ExecutionPoolName, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
-    JobRunLogRepository, JobRunRepository, JobRunStatus, RetryPolicy,
+    ArtifactId, ArtifactObjectKind, ExecutionPoolName, JobArtifact, JobArtifactRepository,
+    JobAttemptId, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
+    JobRunRepository, JobRunStatus, RetryPolicy,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use thiserror::Error;
@@ -176,6 +177,7 @@ impl PostgresStore {
             JobDefinition::sleep_python(),
             JobDefinition::fail_python(),
             JobDefinition::timeout_python(),
+            JobDefinition::artifact_python(),
         ] {
             self.upsert_job_definition(&definition).await?;
         }
@@ -398,6 +400,116 @@ impl PostgresStore {
 
         Ok(cancelled)
     }
+
+    /// Persists object-backed artifact metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn upsert_artifact(&self, artifact: &JobArtifact) -> Result<(), PostgresStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO job_artifacts (
+                id,
+                job_run_id,
+                job_attempt_id,
+                name,
+                object_key,
+                content_type,
+                size_bytes,
+                checksum_sha256,
+                kind
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (job_run_id, name, kind) DO UPDATE SET
+                object_key = EXCLUDED.object_key,
+                content_type = EXCLUDED.content_type,
+                size_bytes = EXCLUDED.size_bytes,
+                checksum_sha256 = EXCLUDED.checksum_sha256
+            ",
+        )
+        .bind(artifact.id.as_str())
+        .bind(artifact.run_id.as_str())
+        .bind(artifact.attempt_id.as_ref().map(JobAttemptId::as_str))
+        .bind(&artifact.name)
+        .bind(&artifact.object_key)
+        .bind(&artifact.content_type)
+        .bind(i64::try_from(artifact.size_bytes).map_err(|_| {
+            PostgresStoreError::InvalidPersistedValue("artifact size is too large".into())
+        })?)
+        .bind(&artifact.checksum_sha256)
+        .bind(artifact.kind.as_str())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Lists object-backed artifacts for one run.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or values are invalid.
+    pub async fn list_artifacts(
+        &self,
+        run_id: &JobRunId,
+    ) -> Result<Vec<JobArtifact>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id,
+                   job_run_id,
+                   job_attempt_id,
+                   name,
+                   object_key,
+                   content_type,
+                   size_bytes,
+                   checksum_sha256,
+                   kind
+            FROM job_artifacts
+            WHERE job_run_id = $1
+            ORDER BY created_at, name
+            ",
+        )
+        .bind(run_id.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.iter().map(row_to_job_artifact).collect()
+    }
+
+    /// Finds one artifact by run and artifact id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or values are invalid.
+    pub async fn find_artifact(
+        &self,
+        run_id: &JobRunId,
+        artifact_id: &ArtifactId,
+    ) -> Result<Option<JobArtifact>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id,
+                   job_run_id,
+                   job_attempt_id,
+                   name,
+                   object_key,
+                   content_type,
+                   size_bytes,
+                   checksum_sha256,
+                   kind
+            FROM job_artifacts
+            WHERE job_run_id = $1
+              AND id = $2
+            ",
+        )
+        .bind(run_id.as_str())
+        .bind(artifact_id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.as_ref().map(row_to_job_artifact).transpose()
+    }
 }
 
 #[async_trait]
@@ -488,6 +600,30 @@ impl JobRunLogRepository for PostgresStore {
     }
 }
 
+#[async_trait]
+impl JobArtifactRepository for PostgresStore {
+    type Error = PostgresStoreError;
+
+    async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error> {
+        self.upsert_artifact(artifact).await
+    }
+
+    async fn list_artifacts_by_run(
+        &self,
+        run_id: &JobRunId,
+    ) -> Result<Vec<JobArtifact>, Self::Error> {
+        self.list_artifacts(run_id).await
+    }
+
+    async fn find_artifact_by_run(
+        &self,
+        run_id: &JobRunId,
+        artifact_id: &ArtifactId,
+    ) -> Result<Option<JobArtifact>, Self::Error> {
+        self.find_artifact(run_id, artifact_id).await
+    }
+}
+
 /// `PostgreSQL` adapter error.
 #[derive(Debug, Error)]
 pub enum PostgresStoreError {
@@ -562,6 +698,36 @@ fn row_to_job_run_log(row: &sqlx::postgres::PgRow) -> Result<JobRunLog, Postgres
     .map_err(PostgresStoreError::InvalidPersistedValue)
 }
 
+fn row_to_job_artifact(row: &sqlx::postgres::PgRow) -> Result<JobArtifact, PostgresStoreError> {
+    let id: String = row.try_get("id")?;
+    let job_run_id: String = row.try_get("job_run_id")?;
+    let job_attempt_id: Option<String> = row.try_get("job_attempt_id")?;
+    let name: String = row.try_get("name")?;
+    let object_key: String = row.try_get("object_key")?;
+    let content_type: String = row.try_get("content_type")?;
+    let size_bytes: i64 = row.try_get("size_bytes")?;
+    let checksum_sha256: Option<String> = row.try_get("checksum_sha256")?;
+    let kind: String = row.try_get("kind")?;
+
+    JobArtifact::new(
+        ArtifactId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        JobRunId::new(job_run_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        job_attempt_id
+            .map(JobAttemptId::new)
+            .transpose()
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        name,
+        object_key,
+        content_type,
+        u64::try_from(size_bytes).map_err(|_| {
+            PostgresStoreError::InvalidPersistedValue("negative artifact size".into())
+        })?,
+        checksum_sha256,
+        parse_artifact_kind(&kind)?,
+    )
+    .map_err(PostgresStoreError::InvalidPersistedValue)
+}
+
 fn parse_status(status: &str) -> Result<JobRunStatus, PostgresStoreError> {
     match status {
         "queued" => Ok(JobRunStatus::Queued),
@@ -578,13 +744,24 @@ fn parse_status(status: &str) -> Result<JobRunStatus, PostgresStoreError> {
     }
 }
 
+fn parse_artifact_kind(kind: &str) -> Result<ArtifactObjectKind, PostgresStoreError> {
+    match kind {
+        "bundle" => Ok(ArtifactObjectKind::Bundle),
+        "log" => Ok(ArtifactObjectKind::Log),
+        "artifact" => Ok(ArtifactObjectKind::Artifact),
+        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
+            "unknown artifact kind {value}"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use capsulet_core::{
-        ExecutionPoolName, JobDefinition, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
-        JobRunRepository,
+        ArtifactId, ArtifactObjectKind, ExecutionPoolName, JobArtifact, JobDefinition, JobRun,
+        JobRunId, JobRunLog, JobRunLogRepository, JobRunRepository,
     };
 
     use super::{PostgresStore, parse_status};
@@ -749,5 +926,69 @@ mod tests {
             .expect("log exists");
 
         assert_eq!(persisted, log);
+    }
+
+    #[tokio::test]
+    async fn saves_lists_and_finds_artifacts_when_database_is_available() {
+        let Some(database_url) = database_url() else {
+            return;
+        };
+
+        let store = PostgresStore::connect(&database_url)
+            .await
+            .expect("connect to postgres");
+        store.migrate().await.expect("run migrations");
+
+        let definition = JobDefinition::hello_python();
+        store
+            .upsert_job_definition(&definition)
+            .await
+            .expect("upsert job definition");
+
+        let run = JobRun::new(
+            JobRunId::new(unique_id("run_artifact_test")).expect("valid run id"),
+            definition.id.clone(),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        let other_run = JobRun::new(
+            JobRunId::new(unique_id("run_artifact_other_test")).expect("valid run id"),
+            definition.id.clone(),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        store.save(&run).await.expect("save run");
+        store.save(&other_run).await.expect("save other run");
+
+        let artifact = JobArtifact::new(
+            ArtifactId::new(unique_id("artifact_postgres_test")).expect("valid artifact id"),
+            run.id.clone(),
+            None,
+            "report.txt",
+            "artifacts/run/report.txt",
+            "text/plain",
+            12,
+            Some("abc123".to_string()),
+            ArtifactObjectKind::Artifact,
+        )
+        .expect("valid artifact");
+        store
+            .upsert_artifact(&artifact)
+            .await
+            .expect("save artifact");
+
+        let artifacts = store.list_artifacts(&run.id).await.expect("list artifacts");
+        assert_eq!(artifacts, vec![artifact.clone()]);
+
+        let persisted = store
+            .find_artifact(&run.id, &artifact.id)
+            .await
+            .expect("find artifact")
+            .expect("artifact exists");
+        assert_eq!(persisted, artifact);
+
+        let isolated = store
+            .find_artifact(&other_run.id, &artifact.id)
+            .await
+            .expect("find artifact for other run");
+        assert!(isolated.is_none());
     }
 }

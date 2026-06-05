@@ -840,4 +840,13 @@ These should be resolved through design notes before implementation locks them i
 
 ## Current Status
 
-Capsulet is in the planning stage. The immediate next step after this roadmap is to scaffold the repository foundation and create the first Helm chart skeleton.
+Capsulet has completed the first five implementation sprints:
+
+- Sprint 001 scaffolded the Rust workspace, dashboard prototype, Helm chart, docs, and CI foundation.
+- Sprint 002 added manual job submission, PostgreSQL persistence, API basics, and a worker with a stub runner.
+- Sprint 003 added Kubernetes Job execution, execution pools, bounded logs, CLI status/log commands, and a minikube smoke path.
+- Sprint 004 added cancellation, timeout classification, retry scheduling, lease recovery, and Kubernetes Job cleanup policy.
+- Sprint 005 added object storage for script bundles, large logs, and artifacts, plus artifact API/CLI commands and MinIO-backed smoke coverage.
+- Sprint 006 connected the dashboard runs surface to the live API for run listing, seeded job and script submission, run detail, cancellation, logs, artifact listing, and artifact download.
+
+The current planned next step is to choose the Sprint 007 path: bundled PostgreSQL and MinIO chart maturity, release automation, observability metrics, or security hardening foundations.

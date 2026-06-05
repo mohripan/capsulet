@@ -1,6 +1,6 @@
 # Worker and Runner
 
-Sprint 004 includes the first controllable Kubernetes-backed worker execution path.
+The worker leases queued runs, executes them through a runner boundary, persists final state, and publishes bundles, large logs, and artifacts through object storage.
 
 The worker promotes ready retries, recovers expired leases, leases one queued run, records an execution attempt by moving the run to `running`, executes through a runner boundary, and then stores a guarded final state.
 
@@ -8,9 +8,11 @@ Current runner implementation:
 
 - `StubRunner::success()`: always marks the run as `succeeded`
 - `StubRunner::failure()`: always marks the run as `failed`
-- `KubernetesRunner`: creates a Kubernetes Job, waits for terminal status, supports cancellation, classifies timeouts, and captures bounded pod logs
+- `KubernetesRunner`: creates a Kubernetes Job, waits for terminal status, supports cancellation, classifies timeouts, captures pod logs, and collects files published under `/capsulet/artifacts`
 
-The runner boundary returns a `RunReport` with an outcome and optional bounded logs. Outcomes are `succeeded`, `failed`, `timed_out`, or `cancelled`. Logs are stored through a generic log repository boundary. PostgreSQL is still only the bounded local implementation; object storage remains the preferred backend for larger logs and artifacts.
+The runner boundary returns a `RunReport` with an outcome, logs, and collected artifacts. Outcomes are `succeeded`, `failed`, `timed_out`, or `cancelled`. Small logs are stored inline for the existing logs API. Logs larger than 64 KiB are also uploaded to object storage as `stdout.log`, with PostgreSQL storing the artifact metadata and object key.
+
+Single-file Python script submissions are stored as bundle objects. Before execution, the worker reads the bundle and rewrites the run command to execute the script content.
 
 ## Run Locally
 
@@ -44,6 +46,8 @@ Run one worker tick:
 $env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
 $env:CAPSULET_WORKER_ID = "worker-local"
 $env:CAPSULET_STUB_RUNNER_RESULT = "success"
+$env:CAPSULET_OBJECT_STORAGE_MODE = "filesystem"
+$env:CAPSULET_OBJECT_STORAGE_PATH = ".capsulet-objects"
 cargo run -p capsulet-worker
 ```
 
@@ -76,6 +80,47 @@ The worker reads execution pools from one of these sources:
 - built-in `mini` and `large` defaults
 
 The Kubernetes runner applies the selected pool's resources, node selector, tolerations, timeout, and optional `ttlSecondsAfterFinished` cleanup setting to the created Job.
+
+For artifact-producing jobs, write files to:
+
+```text
+/capsulet/artifacts
+```
+
+The Kubernetes runner wraps the job command, preserves the original exit status, and emits completed artifact files back to the worker for upload. Artifact names are normalized to their base file names; nested paths are not preserved in Sprint 005.
+
+## Object Storage
+
+Filesystem storage is the local default:
+
+```powershell
+$env:CAPSULET_OBJECT_STORAGE_MODE = "filesystem"
+$env:CAPSULET_OBJECT_STORAGE_PATH = ".capsulet-objects"
+```
+
+For MinIO or another S3-compatible endpoint:
+
+```powershell
+$env:CAPSULET_OBJECT_STORAGE_MODE = "s3"
+$env:CAPSULET_OBJECT_STORAGE_BUCKET = "capsulet-artifacts"
+$env:CAPSULET_OBJECT_STORAGE_ENDPOINT = "http://127.0.0.1:9000"
+$env:CAPSULET_OBJECT_STORAGE_REGION = "us-east-1"
+$env:CAPSULET_OBJECT_STORAGE_PATH_STYLE = "true"
+$env:CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID = "capsulet"
+$env:CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY = "capsuletpassword"
+```
+
+The API and worker must point at the same storage backend. Filesystem mode is useful for single-process local smoke tests; S3 mode is the expected multi-process and Kubernetes configuration.
+
+Troubleshooting checks:
+
+- `CAPSULET_OBJECT_STORAGE_BUCKET` must exist before the API or worker tries to write S3 objects.
+- `CAPSULET_OBJECT_STORAGE_ENDPOINT` must be reachable from the API and worker process or pod. In minikube, use `host.minikube.internal` for host-local MinIO.
+- Set `CAPSULET_OBJECT_STORAGE_PATH_STYLE=true` for MinIO.
+- S3 credentials are read from `CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID` and `CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY`, or from the Helm credentials secret.
+- If artifact list succeeds but download fails, the metadata row exists but the referenced object key could not be read from storage.
+
+Sprint 005 intentionally defers retention cleanup, dashboard artifact browsing, multi-file bundles, and streaming object-backed logs.
 
 ## Cancellation, Timeout, and Retry
 

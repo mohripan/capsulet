@@ -1,22 +1,21 @@
 # Local Kubernetes Runner
 
-Sprint 004 can execute and control built-in Python job definitions as real Kubernetes Jobs in minikube.
+Capsulet can execute and control built-in Python job definitions as real Kubernetes Jobs in minikube.
 
 This flow uses:
 
-- Docker Compose PostgreSQL on the host
+- Docker Compose PostgreSQL and MinIO on the host
 - minikube as the local Kubernetes cluster
 - Helm to install the API and worker
-- PostgreSQL-backed bounded logs through the generic log storage boundary
-
-Large logs and artifacts are still intended to move to object storage later. PostgreSQL log storage is capped by the worker and exists so the first Kubernetes runner slice is inspectable.
+- S3-compatible object storage for script bundles, large logs, and artifacts
 
 ## Start Dependencies
 
-Start PostgreSQL:
+Start PostgreSQL and MinIO:
 
 ```powershell
-docker compose up -d postgres
+docker compose up -d postgres minio
+docker run --rm --network capsulet_default --entrypoint /bin/sh minio/mc:latest -c "mc alias set local http://minio:9000 capsulet capsuletpassword && mc mb -p local/capsulet-artifacts"
 ```
 
 Start minikube:
@@ -27,12 +26,13 @@ kubectl create namespace capsulet
 kubectl label node minikube capsulet.dev/pool=mini --overwrite
 ```
 
-Build API and worker images into minikube's Docker daemon:
+Build API, worker, and dashboard images into minikube's Docker daemon:
 
 ```powershell
 minikube docker-env --shell powershell | Invoke-Expression
 docker build -f Dockerfile.rust --build-arg PACKAGE=capsulet-api --build-arg BIN=capsulet-api -t capsulet-api:dev .
 docker build -f Dockerfile.rust --build-arg PACKAGE=capsulet-worker --build-arg BIN=capsulet-worker -t capsulet-worker:dev .
+docker build -f Dockerfile.dashboard -t capsulet-dashboard:dev .
 ```
 
 Create the database secret. `host.minikube.internal` lets pods reach the host machine from minikube:
@@ -41,6 +41,15 @@ Create the database secret. `host.minikube.internal` lets pods reach the host ma
 kubectl create secret generic capsulet-db `
   --namespace capsulet `
   --from-literal=DATABASE_URL=postgres://capsulet:capsulet@host.minikube.internal:5432/capsulet
+```
+
+Create the object storage credentials secret:
+
+```powershell
+kubectl create secret generic capsulet-object-storage `
+  --namespace capsulet `
+  --from-literal=access-key-id=capsulet `
+  --from-literal=secret-access-key=capsuletpassword
 ```
 
 If your Docker/minikube setup cannot resolve or reach `host.minikube.internal`, run a temporary PostgreSQL deployment in the cluster for the smoke test instead:
@@ -61,7 +70,7 @@ kubectl create secret generic capsulet-db `
 
 ## Install Capsulet
 
-Install only the API and worker for the Sprint 003 runner path:
+Install only the API and worker for the current runtime path:
 
 ```powershell
 helm upgrade --install capsulet charts/capsulet `
@@ -71,9 +80,15 @@ helm upgrade --install capsulet charts/capsulet `
   --set image.tag=dev `
   --set image.pullPolicy=Never `
   --set config.databaseUrlSecret.name=capsulet-db `
+  --set config.objectStorage.mode=s3 `
+  --set config.objectStorage.bucket=capsulet-artifacts `
+  --set config.objectStorage.endpoint=http://host.minikube.internal:9000 `
+  --set config.objectStorage.region=us-east-1 `
+  --set config.objectStorage.pathStyle=true `
+  --set config.objectStorage.credentialsSecret.name=capsulet-object-storage `
+  --set dashboard.enabled=false `
   --set scheduler.enabled=false `
-  --set evaluator.enabled=false `
-  --set dashboard.enabled=false
+  --set evaluator.enabled=false
 ```
 
 Wait for the API and worker:
@@ -88,6 +103,44 @@ Forward the API locally:
 ```powershell
 kubectl port-forward svc/capsulet-api 8080:80 -n capsulet
 ```
+
+## Optional Dashboard
+
+Install or upgrade with the dashboard enabled after building the dashboard image:
+
+```powershell
+helm upgrade --install capsulet charts/capsulet `
+  --namespace capsulet `
+  --set image.registry= `
+  --set image.repository=capsulet `
+  --set image.tag=dev `
+  --set image.pullPolicy=Never `
+  --set config.databaseUrlSecret.name=capsulet-db `
+  --set config.objectStorage.mode=s3 `
+  --set config.objectStorage.bucket=capsulet-artifacts `
+  --set config.objectStorage.endpoint=http://host.minikube.internal:9000 `
+  --set config.objectStorage.region=us-east-1 `
+  --set config.objectStorage.pathStyle=true `
+  --set config.objectStorage.credentialsSecret.name=capsulet-object-storage `
+  --set dashboard.enabled=true `
+  --set dashboard.apiBaseUrl=http://capsulet-api `
+  --set scheduler.enabled=false `
+  --set evaluator.enabled=false
+```
+
+Forward the dashboard:
+
+```powershell
+kubectl port-forward svc/capsulet-dashboard 3000:80 -n capsulet
+```
+
+Open:
+
+```text
+http://127.0.0.1:3000/runs
+```
+
+The `/runs` page is live. It can submit seeded jobs and scripts, open run detail, cancel active runs, show logs, list artifacts, and download artifacts.
 
 ## Run Hello Python
 
@@ -117,6 +170,42 @@ Expected log output:
 ```text
 hello from capsulet
 ```
+
+## Run A Script Bundle
+
+Create a local Python file and submit it as a run-specific bundle:
+
+```powershell
+Set-Content -Path .\main.py -Value "print('hello from a script bundle')"
+cargo run -p capsulet-cli -- submit-script .\main.py --pool mini
+cargo run -p capsulet-cli -- runs --limit 5
+cargo run -p capsulet-cli -- logs <run-id>
+cargo run -p capsulet-cli -- artifacts list <run-id>
+```
+
+The artifact list includes the stored `main.py` bundle metadata.
+
+## Run An Artifact Job
+
+Submit the seeded artifact example:
+
+```powershell
+cargo run -p capsulet-cli -- submit job_artifact_python --pool mini
+cargo run -p capsulet-cli -- runs --limit 5
+cargo run -p capsulet-cli -- artifacts list <run-id>
+cargo run -p capsulet-cli -- artifacts download <run-id> artifact_<run-id>_report.txt --output report.txt
+Get-Content .\report.txt
+```
+
+Expected artifact content:
+
+```text
+artifact from capsulet
+```
+
+## Large Logs
+
+When captured stdout exceeds 64 KiB, the worker keeps the existing logs endpoint usable and also writes the full stdout to object storage as `stdout.log`. `GET /v1/jobs/runs/{id}/logs` returns `object_log_available: true`, and `capsulet artifacts list <run-id>` shows the `stdout.log` artifact.
 
 ## Control Smokes
 
@@ -172,4 +261,5 @@ Clean up:
 ```powershell
 helm uninstall capsulet -n capsulet
 kubectl delete namespace capsulet
+docker compose stop postgres minio
 ```

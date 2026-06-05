@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use capsulet_core::{JobDefinition, JobRun, JobRunId};
 use k8s_openapi::{
     api::{
@@ -22,6 +23,8 @@ const RUN_LABEL: &str = "capsulet.dev/job-run-key";
 const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 300;
 const DEFAULT_JOB_TIMEOUT_SECONDS_I64: i64 = 300;
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
+const ARTIFACT_MARKER: &str = "CAPSULET_ARTIFACT";
+const ARTIFACT_DIR: &str = "/capsulet/artifacts";
 
 /// Execution result returned by a runner backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,40 +40,65 @@ pub enum RunOutcome {
 pub struct RunReport {
     pub outcome: RunOutcome,
     pub logs: Option<String>,
+    pub artifacts: Vec<CollectedArtifact>,
 }
 
 impl RunReport {
     #[must_use]
-    pub const fn succeeded(logs: Option<String>) -> Self {
+    pub fn succeeded(logs: Option<String>) -> Self {
         Self {
             outcome: RunOutcome::Succeeded,
             logs,
+            artifacts: Vec::new(),
         }
     }
 
     #[must_use]
-    pub const fn failed(logs: Option<String>) -> Self {
+    pub fn succeeded_with_artifacts(
+        logs: Option<String>,
+        artifacts: Vec<CollectedArtifact>,
+    ) -> Self {
+        Self {
+            outcome: RunOutcome::Succeeded,
+            logs,
+            artifacts,
+        }
+    }
+
+    #[must_use]
+    pub fn failed(logs: Option<String>) -> Self {
         Self {
             outcome: RunOutcome::Failed,
             logs,
+            artifacts: Vec::new(),
         }
     }
 
     #[must_use]
-    pub const fn timed_out(logs: Option<String>) -> Self {
+    pub fn timed_out(logs: Option<String>) -> Self {
         Self {
             outcome: RunOutcome::TimedOut,
             logs,
+            artifacts: Vec::new(),
         }
     }
 
     #[must_use]
-    pub const fn cancelled(logs: Option<String>) -> Self {
+    pub fn cancelled(logs: Option<String>) -> Self {
         Self {
             outcome: RunOutcome::Cancelled,
             logs,
+            artifacts: Vec::new(),
         }
     }
+}
+
+/// Artifact bytes collected by a runner before persistence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CollectedArtifact {
+    pub name: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
 }
 
 /// Complete execution input for a leased job run.
@@ -126,9 +154,11 @@ impl CancellationCheck for NeverCancelled {
 pub enum NeverCancelledError {}
 
 /// Deterministic runner used for tests and local failure simulation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct StubRunner {
     outcome: RunOutcome,
+    logs: Option<String>,
+    artifact: Option<String>,
 }
 
 impl StubRunner {
@@ -137,6 +167,8 @@ impl StubRunner {
     pub const fn success() -> Self {
         Self {
             outcome: RunOutcome::Succeeded,
+            logs: None,
+            artifact: None,
         }
     }
 
@@ -145,6 +177,28 @@ impl StubRunner {
     pub const fn failure() -> Self {
         Self {
             outcome: RunOutcome::Failed,
+            logs: None,
+            artifact: None,
+        }
+    }
+
+    /// Creates a successful stub runner that emits one text artifact.
+    #[must_use]
+    pub fn success_with_artifact(text: impl Into<String>) -> Self {
+        Self {
+            outcome: RunOutcome::Succeeded,
+            logs: None,
+            artifact: Some(text.into()),
+        }
+    }
+
+    /// Creates a successful stub runner with deterministic logs.
+    #[must_use]
+    pub fn success_with_logs(logs: impl Into<String>) -> Self {
+        Self {
+            outcome: RunOutcome::Succeeded,
+            logs: Some(logs.into()),
+            artifact: None,
         }
     }
 }
@@ -168,11 +222,19 @@ impl Runner for StubRunner {
         {
             return Ok(RunReport::cancelled(None));
         }
+        let artifact = self.artifact.clone().map(|text| CollectedArtifact {
+            name: "stub-artifact.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            bytes: text.into_bytes(),
+        });
         let report = match self.outcome {
-            RunOutcome::Succeeded => RunReport::succeeded(None),
-            RunOutcome::Failed => RunReport::failed(None),
-            RunOutcome::TimedOut => RunReport::timed_out(None),
-            RunOutcome::Cancelled => RunReport::cancelled(None),
+            RunOutcome::Succeeded => RunReport::succeeded_with_artifacts(
+                self.logs.clone(),
+                artifact.into_iter().collect(),
+            ),
+            RunOutcome::Failed => RunReport::failed(self.logs.clone()),
+            RunOutcome::TimedOut => RunReport::timed_out(self.logs.clone()),
+            RunOutcome::Cancelled => RunReport::cancelled(self.logs.clone()),
         };
         Ok(report)
     }
@@ -314,12 +376,25 @@ impl Runner for KubernetesRunner {
         )
         .await?;
         let logs = self.collect_logs(execution).await?;
+        let (logs, artifacts) = split_artifact_markers(logs);
 
         Ok(match outcome {
-            RunOutcome::Succeeded => RunReport::succeeded(logs),
-            RunOutcome::Failed => RunReport::failed(logs),
-            RunOutcome::TimedOut => RunReport::timed_out(logs),
-            RunOutcome::Cancelled => RunReport::cancelled(logs),
+            RunOutcome::Succeeded => RunReport::succeeded_with_artifacts(logs, artifacts),
+            RunOutcome::Failed => {
+                let mut report = RunReport::failed(logs);
+                report.artifacts = artifacts;
+                report
+            }
+            RunOutcome::TimedOut => {
+                let mut report = RunReport::timed_out(logs);
+                report.artifacts = artifacts;
+                report
+            }
+            RunOutcome::Cancelled => {
+                let mut report = RunReport::cancelled(logs);
+                report.artifacts = artifacts;
+                report
+            }
         })
     }
 }
@@ -478,7 +553,7 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
                     containers: vec![Container {
                         name: "main".to_string(),
                         image: Some(execution.definition.runtime_image.clone()),
-                        command: Some(execution.definition.command.clone()),
+                        command: Some(wrapped_command(&execution.definition.command)),
                         resources: Some(execution.pool.resources.to_kubernetes()),
                         ..Container::default()
                     }],
@@ -488,6 +563,66 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
             ..JobSpec::default()
         }),
         ..Job::default()
+    }
+}
+
+fn wrapped_command(command: &[String]) -> Vec<String> {
+    vec![
+        "/bin/sh".to_string(),
+        "-c".to_string(),
+        wrapper_script(command),
+    ]
+}
+
+fn wrapper_script(command: &[String]) -> String {
+    let command = command
+        .iter()
+        .map(|part| shell_quote(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        r#"{command}
+status=$?
+if [ -d {ARTIFACT_DIR} ]; then
+  find {ARTIFACT_DIR} -maxdepth 1 -type f | sort | while IFS= read -r file; do
+    name=$(basename "$file")
+    encoded=$(base64 < "$file" | tr -d '\n')
+    printf '{ARTIFACT_MARKER}\t%s\tapplication/octet-stream\t%s\n' "$name" "$encoded"
+  done
+fi
+exit $status"#
+    )
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn split_artifact_markers(logs: Option<String>) -> (Option<String>, Vec<CollectedArtifact>) {
+    let Some(logs) = logs else {
+        return (None, Vec::new());
+    };
+    let mut cleaned = Vec::new();
+    let mut artifacts = Vec::new();
+    for line in logs.lines() {
+        let parts = line.splitn(4, '\t').collect::<Vec<_>>();
+        if parts.len() == 4 && parts[0] == ARTIFACT_MARKER {
+            if let Ok(bytes) = BASE64.decode(parts[3]) {
+                artifacts.push(CollectedArtifact {
+                    name: parts[1].to_string(),
+                    content_type: parts[2].to_string(),
+                    bytes,
+                });
+            }
+            continue;
+        }
+        cleaned.push(line);
+    }
+    let cleaned = cleaned.join("\n");
+    if cleaned.is_empty() {
+        (None, artifacts)
+    } else {
+        (Some(format!("{cleaned}\n")), artifacts)
     }
 }
 
@@ -591,6 +726,7 @@ pub enum KubernetesRunnerError {
 
 #[cfg(test)]
 mod tests {
+    use base64::Engine as _;
     use capsulet_core::{ExecutionPoolName, JobDefinition, JobRun, JobRunId};
 
     use super::{
@@ -669,14 +805,8 @@ mod tests {
         let container = &pod_spec.containers[0];
         assert_eq!(container.name, "main");
         assert_eq!(container.image.as_deref(), Some("python:3.12-slim"));
-        assert_eq!(
-            container.command.as_ref().expect("command"),
-            &vec![
-                "python".to_string(),
-                "-c".to_string(),
-                "print('hello from capsulet')".to_string()
-            ]
-        );
+        assert_eq!(container.command.as_ref().expect("command")[0], "/bin/sh");
+        assert!(container.command.as_ref().expect("command")[2].contains("hello from capsulet"));
         let resources = container.resources.as_ref().expect("resources");
         assert_eq!(
             resources.requests.as_ref().expect("requests")["cpu"].0,
@@ -754,5 +884,17 @@ pools:
     fn truncates_logs_on_utf8_boundary() {
         assert_eq!(truncate_utf8("abcd", 3), "abc");
         assert_eq!(truncate_utf8("éé", 3), "é");
+    }
+
+    #[test]
+    fn parses_artifact_markers_from_logs() {
+        let encoded = base64::engine::general_purpose::STANDARD.encode("hello");
+        let (logs, artifacts) = super::split_artifact_markers(Some(format!(
+            "before\nCAPSULET_ARTIFACT\treport.txt\ttext/plain\t{encoded}\nafter\n"
+        )));
+
+        assert_eq!(logs.as_deref(), Some("before\nafter\n"));
+        assert_eq!(artifacts[0].name, "report.txt");
+        assert_eq!(artifacts[0].bytes, b"hello");
     }
 }

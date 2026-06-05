@@ -5,14 +5,14 @@ This directory tracks execution planning for Capsulet.
 - `backlog/`: product and engineering backlog
 - `sprints/`: sprint plans and sprint reviews
 
-## Current Sprint
+## Latest Completed Sprint
 
-- Sprint plan: [Sprint 002: Manual Job Runner](sprints/sprint-002-manual-job-runner.md)
-- Sprint backlog: [Sprint 002 Backlog](backlog/sprint-002-backlog.md)
+- Sprint plan: [Sprint 006: Dashboard API Integration and Alpha UX](sprints/sprint-006-dashboard-api-and-alpha-ux.md)
+- Sprint backlog: [Sprint 006 Backlog](backlog/sprint-006-backlog.md)
 
-Sprint 002 focuses on the first real backend path: manual job submission, durable run state, worker leasing, and a stub runner.
+Sprint 006 connected the dashboard prototype to the real API so users can submit runs, inspect logs and artifacts, cancel work, and download outputs from a browser.
 
 Previous sprint:
 
-- [Sprint 001: Foundation](sprints/sprint-001-foundation.md)
-- [Sprint 001 Backlog](backlog/sprint-001-backlog.md)
+- [Sprint 005: Object Storage and Artifacts](sprints/sprint-005-object-storage-and-artifacts.md)
+- [Sprint 005 Backlog](backlog/sprint-005-backlog.md)

@@ -1,4 +1,4 @@
-use crate::domain::{JobRun, JobRunId, JobRunLog};
+use crate::domain::{ArtifactId, JobArtifact, JobRun, JobRunId, JobRunLog};
 use async_trait::async_trait;
 
 /// Repository port for durable job run state.
@@ -49,4 +49,21 @@ pub trait JobRunLogRepository {
     ///
     /// Returns the implementation-specific repository error when lookup fails.
     async fn find_log_by_run_id(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error>;
+}
+
+/// Repository port for object-backed job artifacts.
+#[async_trait]
+pub trait JobArtifactRepository {
+    type Error;
+
+    async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error>;
+    async fn list_artifacts_by_run(
+        &self,
+        run_id: &JobRunId,
+    ) -> Result<Vec<JobArtifact>, Self::Error>;
+    async fn find_artifact_by_run(
+        &self,
+        run_id: &JobRunId,
+        artifact_id: &ArtifactId,
+    ) -> Result<Option<JobArtifact>, Self::Error>;
 }

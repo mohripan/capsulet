@@ -32,7 +32,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -237,6 +239,13 @@ button {
   border-color: rgba(36, 150, 237, 0.7);
   background: linear-gradient(135deg, var(--blue), var(--blue-2));
   box-shadow: 0 12px 30px rgba(36, 150, 237, 0.28);
+}
+
+.primaryAction:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
 }
 
 .heroBand {
@@ -570,9 +579,21 @@ button {
   color: #66b8ff;
 }
 
+.state-leased,
+.state-retry_scheduled {
+  background: rgba(167, 139, 250, 0.14);
+  color: var(--violet);
+}
+
 .state-failed {
   background: rgba(251, 113, 133, 0.12);
   color: var(--red);
+}
+
+.state-cancelled,
+.state-timed_out {
+  background: rgba(143, 168, 195, 0.13);
+  color: var(--soft);
 }
 
 .successCell {
@@ -768,6 +789,11 @@ button {
   min-width: 840px;
 }
 
+.liveRunGrid {
+  grid-template-columns: minmax(160px, 1fr) minmax(170px, 1.2fr) 90px 128px 92px;
+  min-width: 760px;
+}
+
 .runHeader {
   background: rgba(36, 150, 237, 0.1);
   color: var(--muted);
@@ -780,6 +806,185 @@ button {
   background: rgba(7, 17, 31, 0.35);
   color: var(--soft);
   font-size: 13px;
+}
+
+.interactiveRow:hover {
+  background: rgba(36, 150, 237, 0.12);
+  color: var(--text);
+}
+
+.panelActions,
+.detailToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.secondaryButton,
+.dangerButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 32, 52, 0.82);
+  color: var(--text);
+}
+
+.dangerButton {
+  border-color: rgba(251, 113, 133, 0.45);
+  color: var(--red);
+}
+
+.inlineAction {
+  width: fit-content;
+  min-height: 38px;
+  box-shadow: none;
+}
+
+.formStack {
+  display: grid;
+  gap: 13px;
+}
+
+.formStack label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.formStack select,
+.formStack textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #071526;
+  color: var(--text);
+}
+
+.formStack select {
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.formStack textarea {
+  min-height: 190px;
+  resize: vertical;
+  padding: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.emptyState,
+.errorBox,
+.successBox {
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.emptyState {
+  border-top: 1px solid var(--line);
+  background: rgba(7, 17, 31, 0.36);
+  color: var(--muted);
+}
+
+.errorBox {
+  margin-bottom: 12px;
+  border: 1px solid rgba(251, 113, 133, 0.38);
+  background: rgba(251, 113, 133, 0.1);
+  color: #fecdd3;
+}
+
+.successBox {
+  border: 1px solid rgba(74, 222, 128, 0.36);
+  background: rgba(74, 222, 128, 0.1);
+  color: #bbf7d0;
+}
+
+.successBox a {
+  color: var(--green);
+  font-weight: 800;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.detailGrid > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detailGrid > strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.logBlock {
+  max-height: 460px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.compactNotice {
+  margin-top: 12px;
+}
+
+.artifactHeader,
+.artifactDetailRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) 100px 110px minmax(180px, 1fr) 126px;
+  gap: 12px;
+  align-items: center;
+  min-width: 860px;
+  padding: 11px 12px;
+}
+
+.artifactHeader {
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: rgba(36, 150, 237, 0.1);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.artifactDetailRow {
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: rgba(7, 17, 31, 0.35);
+  color: var(--soft);
+  font-size: 13px;
+}
+
+.artifactDetailRow:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+.artifactDetailRow div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.artifactDetailRow strong,
+.artifactDetailRow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mono,
@@ -1218,6 +1423,10 @@ button {
   }
 
   .runTable {
+    overflow-x: auto;
+  }
+
+  .artifactTable {
     overflow-x: auto;
   }
 

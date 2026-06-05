@@ -41,6 +41,7 @@ id_type!(AutomationId);
 id_type!(JobDefinitionId);
 id_type!(JobRunId);
 id_type!(JobAttemptId);
+id_type!(ArtifactId);
 
 #[cfg(test)]
 mod tests {

@@ -172,6 +172,35 @@ impl JobDefinition {
             retry_delay_seconds: RetryPolicy::no_retry().delay_seconds,
         }
     }
+
+    /// Returns a built-in Python definition that writes a published artifact.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the static built-in identifier is invalid.
+    #[must_use]
+    pub fn artifact_python() -> Self {
+        Self {
+            id: JobDefinitionId::new("job_artifact_python").expect("static job definition id"),
+            name: "Artifact Python".to_string(),
+            runtime_image: "python:3.12-slim".to_string(),
+            command: vec![
+                "python".to_string(),
+                "-c".to_string(),
+                concat!(
+                    "from pathlib import Path; ",
+                    "Path('/capsulet/artifacts').mkdir(parents=True, exist_ok=True); ",
+                    "Path('/capsulet/artifacts/report.txt').write_text('artifact from capsulet\\n'); ",
+                    "print('artifact written')"
+                )
+                .to_string(),
+            ],
+            bundle_object_key: "bundles/job_artifact_python.tar.gz".to_string(),
+            input_schema: "{}".to_string(),
+            retry_max_attempts: RetryPolicy::no_retry().max_attempts,
+            retry_delay_seconds: RetryPolicy::no_retry().delay_seconds,
+        }
+    }
 }
 
 #[cfg(test)]

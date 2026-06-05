@@ -10,6 +10,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/runner/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/scheduler/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/worker/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/storage/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

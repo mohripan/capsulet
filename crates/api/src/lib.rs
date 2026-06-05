@@ -9,31 +9,39 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use capsulet_core::{
-    CreateManualRunCommand, ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunLog,
-    JobRunLogRepository, JobRunRepository, JobRunStatus,
+    ArtifactId, ArtifactObjectKind, CreateManualRunCommand, ExecutionPoolName, JobArtifact,
+    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
+    JobRunRepository, JobRunStatus, RetryPolicy,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
+use capsulet_storage::{ObjectStore, run_object_key};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Shared API state.
 #[derive(Clone)]
-pub struct AppState<S> {
+pub struct AppState<S, O> {
     store: S,
+    object_store: O,
     execution_pools: Arc<HashSet<String>>,
 }
 
-impl<S> AppState<S> {
+impl<S, O> AppState<S, O> {
     /// Creates API state.
     #[must_use]
-    pub fn new(store: S, execution_pools: impl IntoIterator<Item = String>) -> Self {
+    pub fn new(
+        store: S,
+        object_store: O,
+        execution_pools: impl IntoIterator<Item = String>,
+    ) -> Self {
         Self {
             store,
+            object_store,
             execution_pools: Arc::new(
                 execution_pools
                     .into_iter()
@@ -55,11 +63,19 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     type Error: Display + Send + Sync + 'static;
 
     async fn job_definition_exists(&self, id: &JobDefinitionId) -> Result<bool, Self::Error>;
+    async fn upsert_job_definition(&self, definition: &JobDefinition) -> Result<(), Self::Error>;
     async fn save_run(&self, run: &JobRun) -> Result<(), Self::Error>;
     async fn list_runs(&self, limit: i64) -> Result<Vec<JobRun>, Self::Error>;
     async fn find_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error>;
     async fn find_run_log(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error>;
     async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error>;
+    async fn list_artifacts(&self, id: &JobRunId) -> Result<Vec<JobArtifact>, Self::Error>;
+    async fn find_artifact(
+        &self,
+        run_id: &JobRunId,
+        artifact_id: &ArtifactId,
+    ) -> Result<Option<JobArtifact>, Self::Error>;
+    async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error>;
 }
 
 #[async_trait]
@@ -72,6 +88,10 @@ impl ApiStore for PostgresStore {
 
     async fn save_run(&self, run: &JobRun) -> Result<(), Self::Error> {
         self.save(run).await
+    }
+
+    async fn upsert_job_definition(&self, definition: &JobDefinition) -> Result<(), Self::Error> {
+        self.upsert_job_definition(definition).await
     }
 
     async fn list_runs(&self, limit: i64) -> Result<Vec<JobRun>, Self::Error> {
@@ -89,12 +109,29 @@ impl ApiStore for PostgresStore {
     async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
         self.cancel_run(id).await
     }
+
+    async fn list_artifacts(&self, id: &JobRunId) -> Result<Vec<JobArtifact>, Self::Error> {
+        self.list_artifacts(id).await
+    }
+
+    async fn find_artifact(
+        &self,
+        run_id: &JobRunId,
+        artifact_id: &ArtifactId,
+    ) -> Result<Option<JobArtifact>, Self::Error> {
+        self.find_artifact(run_id, artifact_id).await
+    }
+
+    async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error> {
+        capsulet_core::JobArtifactRepository::save_artifact(self, artifact).await
+    }
 }
 
 /// Builds the Capsulet API router.
-pub fn router<S>(state: AppState<S>) -> Router
+pub fn router<S, O>(state: AppState<S, O>) -> Router
 where
     S: ApiStore,
+    O: ObjectStore,
 {
     Router::new()
         .route("/healthz", get(healthz))
@@ -102,6 +139,11 @@ where
         .route("/v1/jobs/runs/{id}", get(get_run))
         .route("/v1/jobs/runs/{id}/cancel", post(cancel_run))
         .route("/v1/jobs/runs/{id}/logs", get(get_run_logs))
+        .route("/v1/jobs/runs/{id}/artifacts", get(list_artifacts))
+        .route(
+            "/v1/jobs/runs/{id}/artifacts/{artifact_id}",
+            get(download_artifact),
+        )
         .with_state(state)
 }
 
@@ -109,15 +151,14 @@ async fn healthz() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
-async fn create_run<S>(
-    State(state): State<AppState<S>>,
+async fn create_run<S, O>(
+    State(state): State<AppState<S, O>>,
     Json(request): Json<CreateRunRequest>,
 ) -> Result<(StatusCode, Json<JobRunResponse>), ApiError>
 where
     S: ApiStore,
+    O: ObjectStore,
 {
-    let job_definition_id =
-        JobDefinitionId::new(request.job_definition_id).map_err(ApiError::validation)?;
     let execution_pool =
         ExecutionPoolName::new(request.execution_pool).map_err(ApiError::validation)?;
 
@@ -127,20 +168,26 @@ where
         ));
     }
 
-    let exists = state
-        .store
-        .job_definition_exists(&job_definition_id)
-        .await
-        .map_err(ApiError::store)?;
-    if !exists {
-        return Err(ApiError::UnknownJobDefinition(
-            job_definition_id.as_str().to_string(),
-        ));
-    }
-
     let run_id = match request.run_id {
         Some(value) => JobRunId::new(value).map_err(ApiError::validation)?,
         None => JobRunId::new(generated_run_id()).map_err(ApiError::validation)?,
+    };
+    let (job_definition_id, bundle_metadata) = if let Some(script) = request.python_script {
+        create_script_definition(&state, &run_id, script).await?
+    } else {
+        let job_definition_id =
+            JobDefinitionId::new(request.job_definition_id).map_err(ApiError::validation)?;
+        let exists = state
+            .store
+            .job_definition_exists(&job_definition_id)
+            .await
+            .map_err(ApiError::store)?;
+        if !exists {
+            return Err(ApiError::UnknownJobDefinition(
+                job_definition_id.as_str().to_string(),
+            ));
+        }
+        (job_definition_id, None)
     };
 
     let run = CreateManualRunCommand {
@@ -151,16 +198,83 @@ where
     .into_job_run();
 
     state.store.save_run(&run).await.map_err(ApiError::store)?;
+    if let Some(metadata) = bundle_metadata {
+        state
+            .store
+            .save_artifact(&metadata)
+            .await
+            .map_err(ApiError::store)?;
+    }
 
     Ok((StatusCode::CREATED, Json(JobRunResponse::from(&run))))
 }
 
-async fn list_runs<S>(
-    State(state): State<AppState<S>>,
+async fn create_script_definition<S, O>(
+    state: &AppState<S, O>,
+    run_id: &JobRunId,
+    script: String,
+) -> Result<(JobDefinitionId, Option<JobArtifact>), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    if script.trim().is_empty() {
+        return Err(ApiError::Validation(
+            "python script cannot be empty".to_string(),
+        ));
+    }
+    let object_key = run_object_key(run_id, ArtifactObjectKind::Bundle, "main.py")
+        .map_err(ApiError::object_store)?;
+    let size_bytes = u64::try_from(script.len())
+        .map_err(|_| ApiError::Validation("python script is too large".to_string()))?;
+    state
+        .object_store
+        .put(&object_key, script.into_bytes())
+        .await
+        .map_err(ApiError::object_store)?;
+    let job_definition_id = JobDefinitionId::new(format!("job_definition_{}", run_id.as_str()))
+        .map_err(ApiError::validation)?;
+    let definition = JobDefinition::new(
+        job_definition_id.clone(),
+        format!("Script {}", run_id.as_str()),
+        "python:3.12-slim",
+        vec![
+            "python".to_string(),
+            "/capsulet/workspace/main.py".to_string(),
+        ],
+        object_key.clone(),
+        "{}",
+        RetryPolicy::no_retry(),
+    )
+    .map_err(ApiError::validation)?;
+    state
+        .store
+        .upsert_job_definition(&definition)
+        .await
+        .map_err(ApiError::store)?;
+    let metadata = JobArtifact::new(
+        ArtifactId::new(format!("bundle_{}_main_py", run_id.as_str()))
+            .map_err(ApiError::validation)?,
+        run_id.clone(),
+        None,
+        "main.py",
+        object_key,
+        "text/x-python",
+        size_bytes,
+        None,
+        ArtifactObjectKind::Bundle,
+    )
+    .map_err(ApiError::validation)?;
+    Ok((job_definition_id, Some(metadata)))
+}
+
+async fn list_runs<S, O>(
+    State(state): State<AppState<S, O>>,
     Query(query): Query<ListRunsQuery>,
 ) -> Result<Json<ListRunsResponse>, ApiError>
 where
     S: ApiStore,
+    O: ObjectStore,
 {
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let runs = state
@@ -174,12 +288,13 @@ where
     }))
 }
 
-async fn get_run<S>(
-    State(state): State<AppState<S>>,
+async fn get_run<S, O>(
+    State(state): State<AppState<S, O>>,
     Path(id): Path<String>,
 ) -> Result<Json<JobRunResponse>, ApiError>
 where
     S: ApiStore,
+    O: ObjectStore,
 {
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
     let Some(run) = state.store.find_run(&id).await.map_err(ApiError::store)? else {
@@ -189,12 +304,13 @@ where
     Ok(Json(JobRunResponse::from(&run)))
 }
 
-async fn get_run_logs<S>(
-    State(state): State<AppState<S>>,
+async fn get_run_logs<S, O>(
+    State(state): State<AppState<S, O>>,
     Path(id): Path<String>,
 ) -> Result<Json<JobRunLogsResponse>, ApiError>
 where
     S: ApiStore,
+    O: ObjectStore,
 {
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
     if state
@@ -216,18 +332,28 @@ where
         return Err(ApiError::RunLogsNotFound(id.as_str().to_string()));
     };
 
+    let object_log_available = state
+        .store
+        .list_artifacts(&id)
+        .await
+        .map_err(ApiError::store)?
+        .iter()
+        .any(|artifact| artifact.kind == ArtifactObjectKind::Log);
+
     Ok(Json(JobRunLogsResponse {
         run_id: log.run_id.as_str().to_string(),
         logs: log.text,
+        object_log_available,
     }))
 }
 
-async fn cancel_run<S>(
-    State(state): State<AppState<S>>,
+async fn cancel_run<S, O>(
+    State(state): State<AppState<S, O>>,
     Path(id): Path<String>,
 ) -> Result<Json<JobRunResponse>, ApiError>
 where
     S: ApiStore,
+    O: ObjectStore,
 {
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
     let Some(run) = state.store.cancel_run(&id).await.map_err(ApiError::store)? else {
@@ -235,6 +361,87 @@ where
     };
 
     Ok(Json(JobRunResponse::from(&run)))
+}
+
+async fn list_artifacts<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<ListArtifactsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    if state
+        .store
+        .find_run(&id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::RunNotFound(id.as_str().to_string()));
+    }
+
+    let artifacts = state
+        .store
+        .list_artifacts(&id)
+        .await
+        .map_err(ApiError::store)?;
+
+    Ok(Json(ListArtifactsResponse {
+        artifacts: artifacts.iter().map(ArtifactResponse::from).collect(),
+    }))
+}
+
+async fn download_artifact<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path((id, artifact_id)): Path<(String, String)>,
+) -> Result<Response, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    let artifact_id = ArtifactId::new(artifact_id).map_err(ApiError::validation)?;
+    if state
+        .store
+        .find_run(&id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::RunNotFound(id.as_str().to_string()));
+    }
+
+    let Some(artifact) = state
+        .store
+        .find_artifact(&id, &artifact_id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::ArtifactNotFound(artifact_id.as_str().to_string()));
+    };
+    let Some(bytes) = state
+        .object_store
+        .get(&artifact.object_key)
+        .await
+        .map_err(ApiError::object_store)?
+    else {
+        return Err(ApiError::ArtifactObjectNotFound(artifact.object_key));
+    };
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, artifact.content_type),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", artifact.name),
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 fn generated_run_id() -> String {
@@ -254,6 +461,7 @@ pub struct CreateRunRequest {
     pub job_definition_id: String,
     pub execution_pool: String,
     pub run_id: Option<String>,
+    pub python_script: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -279,6 +487,35 @@ struct JobRunResponse {
 struct JobRunLogsResponse {
     run_id: String,
     logs: String,
+    object_log_available: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ListArtifactsResponse {
+    artifacts: Vec<ArtifactResponse>,
+}
+
+#[derive(Debug, Serialize)]
+struct ArtifactResponse {
+    id: String,
+    run_id: String,
+    name: String,
+    content_type: String,
+    size_bytes: u64,
+    kind: String,
+}
+
+impl From<&JobArtifact> for ArtifactResponse {
+    fn from(artifact: &JobArtifact) -> Self {
+        Self {
+            id: artifact.id.as_str().to_string(),
+            run_id: artifact.run_id.as_str().to_string(),
+            name: artifact.name.clone(),
+            content_type: artifact.content_type.clone(),
+            size_bytes: artifact.size_bytes,
+            kind: artifact.kind.as_str().to_string(),
+        }
+    }
 }
 
 impl From<&JobRun> for JobRunResponse {
@@ -318,6 +555,12 @@ enum ApiError {
     RunNotFound(String),
     #[error("job run logs not found: {0}")]
     RunLogsNotFound(String),
+    #[error("job artifact not found: {0}")]
+    ArtifactNotFound(String),
+    #[error("job artifact object not found: {0}")]
+    ArtifactObjectNotFound(String),
+    #[error("object storage error: {0}")]
+    ObjectStore(String),
     #[error("store error: {0}")]
     Store(String),
 }
@@ -331,14 +574,21 @@ impl ApiError {
         Self::Store(error.to_string())
     }
 
+    fn object_store(error: impl Display) -> Self {
+        Self::ObjectStore(error.to_string())
+    }
+
     const fn status_code(&self) -> StatusCode {
         match self {
             Self::Validation(_) => StatusCode::BAD_REQUEST,
             Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            Self::RunNotFound(_) | Self::RunLogsNotFound(_) => StatusCode::NOT_FOUND,
-            Self::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::RunNotFound(_)
+            | Self::RunLogsNotFound(_)
+            | Self::ArtifactNotFound(_)
+            | Self::ArtifactObjectNotFound(_) => StatusCode::NOT_FOUND,
+            Self::Store(_) | Self::ObjectStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -349,6 +599,9 @@ impl ApiError {
             Self::UnknownExecutionPool(_) => "unknown_execution_pool",
             Self::RunNotFound(_) => "job_run_not_found",
             Self::RunLogsNotFound(_) => "job_run_logs_not_found",
+            Self::ArtifactNotFound(_) => "job_artifact_not_found",
+            Self::ArtifactObjectNotFound(_) => "job_artifact_object_not_found",
+            Self::ObjectStore(_) => "object_store_error",
             Self::Store(_) => "store_error",
         }
     }
@@ -371,11 +624,15 @@ struct ErrorResponse {
     message: String,
 }
 
-impl fmt::Debug for AppState<PostgresStore> {
+impl<O> fmt::Debug for AppState<PostgresStore, O>
+where
+    O: fmt::Debug,
+{
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("AppState")
             .field("store", &self.store)
+            .field("object_store", &self.object_store)
             .field("execution_pools", &self.execution_pools)
             .finish()
     }
@@ -390,8 +647,10 @@ mod tests {
         http::{Method, Request},
     };
     use capsulet_core::{
-        ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus,
+        ArtifactId, ArtifactObjectKind, ExecutionPoolName, JobArtifact, JobDefinition,
+        JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus,
     };
+    use capsulet_storage::ObjectStore;
     use http_body_util::BodyExt;
     use serde_json::{Value, json};
     use tower::ServiceExt;
@@ -403,6 +662,47 @@ mod tests {
         known_definitions: Arc<Mutex<Vec<String>>>,
         runs: Arc<Mutex<Vec<JobRun>>>,
         logs: Arc<Mutex<Vec<JobRunLog>>>,
+        artifacts: Arc<Mutex<Vec<JobArtifact>>>,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct FakeObjectStore {
+        objects: ObjectMap,
+    }
+
+    type ObjectMap = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+
+    #[async_trait::async_trait]
+    impl ObjectStore for FakeObjectStore {
+        type Error = String;
+
+        async fn put(&self, key: &str, bytes: Vec<u8>) -> Result<(), Self::Error> {
+            self.objects
+                .lock()
+                .map_err(|error| error.to_string())?
+                .push((key.to_string(), bytes));
+            Ok(())
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Self::Error> {
+            Ok(self
+                .objects
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .rev()
+                .find(|(stored_key, _)| stored_key == key)
+                .map(|(_, bytes)| bytes.clone()))
+        }
+
+        async fn exists(&self, key: &str) -> Result<bool, Self::Error> {
+            Ok(self
+                .objects
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .any(|(stored_key, _)| stored_key == key))
+        }
     }
 
     #[async_trait::async_trait]
@@ -423,6 +723,17 @@ mod tests {
                 .lock()
                 .map_err(|error| error.to_string())?
                 .push(run.clone());
+            Ok(())
+        }
+
+        async fn upsert_job_definition(
+            &self,
+            definition: &JobDefinition,
+        ) -> Result<(), Self::Error> {
+            self.known_definitions
+                .lock()
+                .map_err(|error| error.to_string())?
+                .push(definition.id.as_str().to_string());
             Ok(())
         }
 
@@ -468,6 +779,39 @@ mod tests {
             }
             Ok(Some(run.clone()))
         }
+
+        async fn list_artifacts(&self, id: &JobRunId) -> Result<Vec<JobArtifact>, Self::Error> {
+            Ok(self
+                .artifacts
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .filter(|artifact| artifact.run_id == *id)
+                .cloned()
+                .collect())
+        }
+
+        async fn find_artifact(
+            &self,
+            run_id: &JobRunId,
+            artifact_id: &ArtifactId,
+        ) -> Result<Option<JobArtifact>, Self::Error> {
+            Ok(self
+                .artifacts
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .find(|artifact| artifact.run_id == *run_id && artifact.id == *artifact_id)
+                .cloned())
+        }
+
+        async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error> {
+            self.artifacts
+                .lock()
+                .map_err(|error| error.to_string())?
+                .push(artifact.clone());
+            Ok(())
+        }
     }
 
     impl FakeStore {
@@ -490,11 +834,25 @@ mod tests {
             self.logs.lock().expect("logs mutex").push(log);
             self
         }
+
+        fn with_artifact(self, artifact: JobArtifact) -> Self {
+            self.artifacts
+                .lock()
+                .expect("artifacts mutex")
+                .push(artifact);
+            self
+        }
     }
 
     fn test_app(store: FakeStore) -> axum::Router {
+        let object_store = FakeObjectStore::default();
+        object_store.objects.lock().expect("objects mutex").push((
+            "artifacts/run_with_artifact/report.txt".to_string(),
+            b"report".to_vec(),
+        ));
         router(AppState::new(
             store,
+            object_store,
             ["mini".to_string(), "large".to_string()],
         ))
     }
@@ -557,6 +915,34 @@ mod tests {
                 "attempt_count": 0
             })
         );
+    }
+
+    #[tokio::test]
+    async fn creates_script_backed_run() {
+        let response = test_app(FakeStore::default())
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/jobs/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "run_id": "run_script_test",
+                            "job_definition_id": "script",
+                            "execution_pool": "mini",
+                            "python_script": "print('from script')"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+        let body = response_json(response).await;
+        assert_eq!(body["id"], "run_script_test");
+        assert_eq!(body["job_definition_id"], "job_definition_run_script_test");
     }
 
     #[tokio::test]
@@ -727,7 +1113,8 @@ mod tests {
             response_json(response).await,
             json!({
                 "run_id": "run_with_logs",
-                "logs": "hello from logs\n"
+                "logs": "hello from logs\n",
+                "object_log_available": false
             })
         );
     }
@@ -754,6 +1141,89 @@ mod tests {
             response_json(response).await["code"],
             json!("job_run_logs_not_found")
         );
+    }
+
+    #[tokio::test]
+    async fn lists_artifacts() {
+        let run = JobRun::new(
+            JobRunId::new("run_with_artifact").expect("valid run id"),
+            JobDefinitionId::new("job_hello_python").expect("valid definition id"),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        let artifact = JobArtifact::new(
+            ArtifactId::new("artifact_1").expect("artifact id"),
+            run.id.clone(),
+            None,
+            "report.txt",
+            "artifacts/run_with_artifact/report.txt",
+            "text/plain",
+            6,
+            None,
+            ArtifactObjectKind::Artifact,
+        )
+        .expect("artifact");
+        let response = test_app(
+            FakeStore::with_definition("job_hello_python")
+                .with_run(run)
+                .with_artifact(artifact),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs/runs/run_with_artifact/artifacts")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(
+            response_json(response).await["artifacts"][0]["name"],
+            "report.txt"
+        );
+    }
+
+    #[tokio::test]
+    async fn downloads_artifact() {
+        let run = JobRun::new(
+            JobRunId::new("run_with_artifact").expect("valid run id"),
+            JobDefinitionId::new("job_hello_python").expect("valid definition id"),
+            ExecutionPoolName::new("mini").expect("valid pool"),
+        );
+        let artifact = JobArtifact::new(
+            ArtifactId::new("artifact_1").expect("artifact id"),
+            run.id.clone(),
+            None,
+            "report.txt",
+            "artifacts/run_with_artifact/report.txt",
+            "text/plain",
+            6,
+            None,
+            ArtifactObjectKind::Artifact,
+        )
+        .expect("artifact");
+        let response = test_app(
+            FakeStore::with_definition("job_hello_python")
+                .with_run(run)
+                .with_artifact(artifact),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs/runs/run_with_artifact/artifacts/artifact_1")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("collect artifact")
+            .to_bytes();
+        assert_eq!(&bytes[..], b"report");
     }
 
     #[tokio::test]

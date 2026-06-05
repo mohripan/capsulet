@@ -13,8 +13,10 @@ Current docs:
 
 - [Development](development.md)
 - [Installation](installation.md)
+- [Architecture](architecture.md)
 - [API](api.md)
 - [Helm values](helm-values.md)
 - [Persistence](persistence.md)
 - [Worker and runner](worker-runner.md)
 - [Local Kubernetes runner](local-kubernetes-runner.md)
+- [Troubleshooting](troubleshooting.md)

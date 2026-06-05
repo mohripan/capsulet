@@ -7,8 +7,18 @@ The first persistence slice stores:
 - job definitions
 - job runs
 - job attempts
+- inline log previews
+- artifact metadata
 
-Script bundles, logs, and artifacts are intentionally not stored in PostgreSQL. They belong in object storage, with PostgreSQL storing metadata and object keys.
+Script bundles, full large logs, and artifact bytes are intentionally not stored in PostgreSQL. They belong in object storage, with PostgreSQL storing metadata and object keys.
+
+Sprint 005 object keys use run-scoped prefixes:
+
+- `bundles/<run-id>/main.py` for submitted single-file Python scripts
+- `logs/<run-id>/stdout.log` for large stdout offload
+- `artifacts/<run-id>/<name>` for published job artifacts
+
+Small logs remain inline through the existing log repository. Logs larger than 64 KiB keep an inline preview and also create a `stdout.log` artifact record.
 
 ## Local Database
 

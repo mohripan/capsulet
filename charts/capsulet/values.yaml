@@ -40,8 +40,16 @@ config:
     name: ""
     key: DATABASE_URL
   objectStorage:
+    mode: filesystem
+    path: /var/lib/capsulet/objects
     bucket: capsulet-artifacts
     endpoint: ""
+    region: us-east-1
+    pathStyle: true
+    credentialsSecret:
+      name: ""
+      accessKeyKey: access-key-id
+      secretKeyKey: secret-access-key
   kafka:
     brokers: ""
 
@@ -73,6 +81,7 @@ worker:
     logLimitBytes: 65536
     loop: true
     pollSeconds: 5
+    stubArtifactText: ""
   resources:
     requests:
       cpu: 100m
@@ -110,6 +119,7 @@ evaluator:
 dashboard:
   enabled: true
   replicaCount: 1
+  apiBaseUrl: ""
   image:
     repositorySuffix: dashboard
   service:

@@ -1,11 +1,14 @@
 use async_trait::async_trait;
 use capsulet_core::{
-    JobDefinition, JobDefinitionId, JobRun, JobRunLog, JobRunLogRepository, JobRunRepository,
-    JobRunStatus,
+    ArtifactId, ArtifactObjectKind, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunLog,
+    JobRunLogRepository, JobRunRepository, JobRunStatus,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
 use capsulet_runner::{CancellationCheck, ExecutionPoolsConfig, RunExecution, RunOutcome, Runner};
+use capsulet_storage::{ObjectStore, run_object_key};
 use thiserror::Error;
+
+const INLINE_LOG_LIMIT_BYTES: usize = 64 * 1024;
 
 /// Storage operations required by the worker lease-and-run path.
 #[async_trait]
@@ -46,6 +49,7 @@ pub trait WorkerStore: Clone + Send + Sync + 'static {
     ///
     /// Returns an implementation-specific persistence error.
     async fn save_log(&self, log: &JobRunLog) -> Result<(), Self::Error>;
+    async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error>;
 
     async fn find_run(&self, id: &capsulet_core::JobRunId) -> Result<Option<JobRun>, Self::Error>;
 
@@ -89,6 +93,10 @@ impl WorkerStore for PostgresStore {
 
     async fn save_log(&self, log: &JobRunLog) -> Result<(), Self::Error> {
         JobRunLogRepository::save_log(self, log).await
+    }
+
+    async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error> {
+        capsulet_core::JobArtifactRepository::save_artifact(self, artifact).await
     }
 
     async fn find_run(&self, id: &capsulet_core::JobRunId) -> Result<Option<JobRun>, Self::Error> {
@@ -136,9 +144,10 @@ pub enum WorkerTickOutcome {
 ///
 /// Returns [`WorkerError`] when persistence, state transition, or execution
 /// fails.
-pub async fn execute_one_queued_run<S, R>(
+pub async fn execute_one_queued_run<S, R, O>(
     store: &S,
     runner: &R,
+    object_store: &O,
     pools: &ExecutionPoolsConfig,
     worker_id: &str,
     lease_seconds: i64,
@@ -146,6 +155,7 @@ pub async fn execute_one_queued_run<S, R>(
 where
     S: WorkerStore,
     R: Runner,
+    O: ObjectStore,
 {
     store
         .recover_expired_leases()
@@ -178,6 +188,7 @@ where
         .map_err(|error| WorkerError::InvalidState(error.to_string()))?;
     store.save_run(&run).await.map_err(WorkerError::store)?;
 
+    let definition = materialize_script_bundle(object_store, definition).await?;
     let execution = RunExecution {
         run: run.clone(),
         definition,
@@ -189,12 +200,9 @@ where
         .await
         .map_err(WorkerError::runner)?;
 
-    if let Some(logs) = report.logs.filter(|logs| !logs.is_empty()) {
-        store
-            .save_log(&JobRunLog::new(run.id.clone(), logs).map_err(WorkerError::InvalidLog)?)
-            .await
-            .map_err(WorkerError::store)?;
-    }
+    persist_logs(store, object_store, &run, report.logs).await?;
+
+    persist_report_artifacts(store, object_store, &run, report.artifacts).await?;
 
     let (final_status, retry_delay, outcome) = match report.outcome {
         RunOutcome::Succeeded => (
@@ -240,6 +248,138 @@ where
     }
 
     Ok(outcome)
+}
+
+async fn materialize_script_bundle<O>(
+    object_store: &O,
+    mut definition: JobDefinition,
+) -> Result<JobDefinition, WorkerError>
+where
+    O: ObjectStore,
+{
+    if !definition
+        .command
+        .iter()
+        .any(|part| part == "/capsulet/workspace/main.py")
+    {
+        return Ok(definition);
+    }
+
+    let Some(bytes) = object_store
+        .get(&definition.bundle_object_key)
+        .await
+        .map_err(WorkerError::object_store)?
+    else {
+        return Err(WorkerError::MissingScriptBundle(
+            definition.bundle_object_key,
+        ));
+    };
+    let script = String::from_utf8_lossy(&bytes).into_owned();
+    definition.command = vec!["python".to_string(), "-c".to_string(), script];
+
+    Ok(definition)
+}
+
+async fn persist_logs<S, O>(
+    store: &S,
+    object_store: &O,
+    run: &JobRun,
+    logs: Option<String>,
+) -> Result<(), WorkerError>
+where
+    S: WorkerStore,
+    O: ObjectStore,
+{
+    let Some(logs) = logs.filter(|logs| !logs.is_empty()) else {
+        return Ok(());
+    };
+    let inline = truncate_utf8(&logs, INLINE_LOG_LIMIT_BYTES);
+    store
+        .save_log(&JobRunLog::new(run.id.clone(), inline).map_err(WorkerError::InvalidLog)?)
+        .await
+        .map_err(WorkerError::store)?;
+
+    if logs.len() <= INLINE_LOG_LIMIT_BYTES {
+        return Ok(());
+    }
+
+    let object_key = run_object_key(&run.id, ArtifactObjectKind::Log, "stdout.log")
+        .map_err(WorkerError::object_store)?;
+    let size_bytes = u64::try_from(logs.len())
+        .map_err(|_| WorkerError::InvalidArtifact("log is too large".to_string()))?;
+    object_store
+        .put(&object_key, logs.into_bytes())
+        .await
+        .map_err(WorkerError::object_store)?;
+    let metadata = JobArtifact::new(
+        ArtifactId::new(format!("log_{}_stdout", run.id.as_str()))
+            .map_err(WorkerError::InvalidArtifact)?,
+        run.id.clone(),
+        None,
+        "stdout.log",
+        object_key,
+        "text/plain",
+        size_bytes,
+        None,
+        ArtifactObjectKind::Log,
+    )
+    .map_err(WorkerError::InvalidArtifact)?;
+    store
+        .save_artifact(&metadata)
+        .await
+        .map_err(WorkerError::store)
+}
+
+fn truncate_utf8(value: &str, max_bytes: usize) -> String {
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+    let mut end = max_bytes;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_string()
+}
+
+async fn persist_report_artifacts<S, O>(
+    store: &S,
+    object_store: &O,
+    run: &JobRun,
+    artifacts: Vec<capsulet_runner::CollectedArtifact>,
+) -> Result<(), WorkerError>
+where
+    S: WorkerStore,
+    O: ObjectStore,
+{
+    for artifact in artifacts {
+        let object_key = run_object_key(&run.id, ArtifactObjectKind::Artifact, &artifact.name)
+            .map_err(WorkerError::object_store)?;
+        let size_bytes = u64::try_from(artifact.bytes.len())
+            .map_err(|_| WorkerError::InvalidArtifact("artifact is too large".to_string()))?;
+        object_store
+            .put(&object_key, artifact.bytes)
+            .await
+            .map_err(WorkerError::object_store)?;
+        let metadata = JobArtifact::new(
+            ArtifactId::new(format!("artifact_{}_{}", run.id.as_str(), artifact.name))
+                .map_err(WorkerError::InvalidArtifact)?,
+            run.id.clone(),
+            None,
+            artifact.name,
+            object_key,
+            artifact.content_type,
+            size_bytes,
+            None,
+            ArtifactObjectKind::Artifact,
+        )
+        .map_err(WorkerError::InvalidArtifact)?;
+        store
+            .save_artifact(&metadata)
+            .await
+            .map_err(WorkerError::store)?;
+    }
+
+    Ok(())
 }
 
 fn retry_decision(
@@ -289,8 +429,14 @@ pub enum WorkerError {
     MissingJobDefinition(String),
     #[error("missing execution pool for leased run: {0}")]
     MissingExecutionPool(String),
+    #[error("missing script bundle object: {0}")]
+    MissingScriptBundle(String),
     #[error("invalid captured log: {0}")]
     InvalidLog(String),
+    #[error("invalid artifact metadata: {0}")]
+    InvalidArtifact(String),
+    #[error("object storage error: {0}")]
+    ObjectStore(String),
     #[error("invalid job run state: {0}")]
     InvalidState(String),
 }
@@ -303,6 +449,10 @@ impl WorkerError {
     fn runner(error: impl std::fmt::Display) -> Self {
         Self::Runner(error.to_string())
     }
+
+    fn object_store(error: impl std::fmt::Display) -> Self {
+        Self::ObjectStore(error.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -313,9 +463,10 @@ mod tests {
     };
 
     use capsulet_core::{
-        ExecutionPoolName, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
+        ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
     };
     use capsulet_runner::{ExecutionPoolConfig, ExecutionPoolsConfig, PoolResources, StubRunner};
+    use capsulet_storage::FilesystemObjectStore;
 
     use super::{WorkerStore, WorkerTickOutcome, execute_one_queued_run};
 
@@ -325,6 +476,7 @@ mod tests {
         saved: Arc<Mutex<Vec<JobRun>>>,
         definitions: Arc<Mutex<Vec<JobDefinition>>>,
         logs: Arc<Mutex<Vec<JobRunLog>>>,
+        artifacts: Arc<Mutex<Vec<JobArtifact>>>,
         cancelled: Arc<Mutex<Vec<capsulet_core::JobRunId>>>,
     }
 
@@ -371,6 +523,14 @@ mod tests {
                 .lock()
                 .map_err(|error| error.to_string())?
                 .push(log.clone());
+            Ok(())
+        }
+
+        async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error> {
+            self.artifacts
+                .lock()
+                .map_err(|error| error.to_string())?
+                .push(artifact.clone());
             Ok(())
         }
 
@@ -445,6 +605,7 @@ mod tests {
                 saved: Arc::default(),
                 definitions: Arc::new(Mutex::new(vec![JobDefinition::hello_python()])),
                 logs: Arc::default(),
+                artifacts: Arc::default(),
                 cancelled: Arc::default(),
             }
         }
@@ -467,6 +628,14 @@ mod tests {
         fn saved_runs(&self) -> Vec<JobRun> {
             self.saved.lock().expect("saved mutex").clone()
         }
+
+        fn saved_artifacts(&self) -> Vec<JobArtifact> {
+            self.artifacts.lock().expect("artifacts mutex").clone()
+        }
+    }
+
+    fn object_store() -> FilesystemObjectStore {
+        FilesystemObjectStore::new(std::env::temp_dir().join("capsulet-worker-test-artifacts"))
     }
 
     fn pools() -> ExecutionPoolsConfig {
@@ -498,6 +667,7 @@ mod tests {
         let outcome = execute_one_queued_run(
             &FakeStore::default(),
             &StubRunner::success(),
+            &object_store(),
             &pools(),
             "w1",
             60,
@@ -512,9 +682,16 @@ mod tests {
     async fn stub_success_runner_completes_run() {
         let store = FakeStore::with_run(run());
 
-        let outcome = execute_one_queued_run(&store, &StubRunner::success(), &pools(), "w1", 60)
-            .await
-            .expect("worker tick");
+        let outcome = execute_one_queued_run(
+            &store,
+            &StubRunner::success(),
+            &object_store(),
+            &pools(),
+            "w1",
+            60,
+        )
+        .await
+        .expect("worker tick");
 
         assert_eq!(outcome, WorkerTickOutcome::RunSucceeded);
         let saved = store.saved_runs();
@@ -527,9 +704,16 @@ mod tests {
     async fn stub_failure_runner_fails_run() {
         let store = FakeStore::with_run(run());
 
-        let outcome = execute_one_queued_run(&store, &StubRunner::failure(), &pools(), "w1", 60)
-            .await
-            .expect("worker tick");
+        let outcome = execute_one_queued_run(
+            &store,
+            &StubRunner::failure(),
+            &object_store(),
+            &pools(),
+            "w1",
+            60,
+        )
+        .await
+        .expect("worker tick");
 
         assert_eq!(outcome, WorkerTickOutcome::RunFailed);
         let saved = store.saved_runs();
@@ -544,9 +728,16 @@ mod tests {
         definition.retry_delay_seconds = 1;
         let store = FakeStore::with_run(run()).with_definition(definition);
 
-        let outcome = execute_one_queued_run(&store, &StubRunner::failure(), &pools(), "w1", 60)
-            .await
-            .expect("worker tick");
+        let outcome = execute_one_queued_run(
+            &store,
+            &StubRunner::failure(),
+            &object_store(),
+            &pools(),
+            "w1",
+            60,
+        )
+        .await
+        .expect("worker tick");
 
         assert_eq!(outcome, WorkerTickOutcome::RunRetryScheduled);
         let saved = store.saved_runs();
@@ -559,9 +750,16 @@ mod tests {
         let run = run();
         let store = FakeStore::with_run(run.clone()).with_cancelled(run.id.clone());
 
-        let outcome = execute_one_queued_run(&store, &StubRunner::success(), &pools(), "w1", 60)
-            .await
-            .expect("worker tick");
+        let outcome = execute_one_queued_run(
+            &store,
+            &StubRunner::success(),
+            &object_store(),
+            &pools(),
+            "w1",
+            60,
+        )
+        .await
+        .expect("worker tick");
 
         assert_eq!(outcome, WorkerTickOutcome::RunCancelled);
         let saved = store.saved_runs();
@@ -572,9 +770,16 @@ mod tests {
     async fn errors_when_definition_is_missing() {
         let store = FakeStore::with_run(run()).without_definitions();
 
-        let error = execute_one_queued_run(&store, &StubRunner::success(), &pools(), "w1", 60)
-            .await
-            .expect_err("missing definition");
+        let error = execute_one_queued_run(
+            &store,
+            &StubRunner::success(),
+            &object_store(),
+            &pools(),
+            "w1",
+            60,
+        )
+        .await
+        .expect_err("missing definition");
 
         assert!(matches!(error, super::WorkerError::MissingJobDefinition(_)));
     }
@@ -587,10 +792,60 @@ mod tests {
             pools: BTreeMap::default(),
         };
 
-        let error = execute_one_queued_run(&store, &StubRunner::success(), &pools, "w1", 60)
-            .await
-            .expect_err("missing pool");
+        let error = execute_one_queued_run(
+            &store,
+            &StubRunner::success(),
+            &object_store(),
+            &pools,
+            "w1",
+            60,
+        )
+        .await
+        .expect_err("missing pool");
 
         assert!(matches!(error, super::WorkerError::MissingExecutionPool(_)));
+    }
+
+    #[tokio::test]
+    async fn stores_runner_artifacts() {
+        let store = FakeStore::with_run(run());
+
+        let outcome = execute_one_queued_run(
+            &store,
+            &StubRunner::success_with_artifact("artifact text"),
+            &object_store(),
+            &pools(),
+            "w1",
+            60,
+        )
+        .await
+        .expect("worker tick");
+
+        assert_eq!(outcome, WorkerTickOutcome::RunSucceeded);
+        let artifacts = store.saved_artifacts();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].name, "stub-artifact.txt");
+    }
+
+    #[tokio::test]
+    async fn offloads_large_logs_as_artifact() {
+        let store = FakeStore::with_run(run());
+        let logs = "x".repeat(super::INLINE_LOG_LIMIT_BYTES + 1);
+
+        let outcome = execute_one_queued_run(
+            &store,
+            &StubRunner::success_with_logs(logs),
+            &object_store(),
+            &pools(),
+            "w1",
+            60,
+        )
+        .await
+        .expect("worker tick");
+
+        assert_eq!(outcome, WorkerTickOutcome::RunSucceeded);
+        let artifacts = store.saved_artifacts();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].kind, capsulet_core::ArtifactObjectKind::Log);
     }
 }

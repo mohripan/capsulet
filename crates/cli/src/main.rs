@@ -1,4 +1,4 @@
-use std::{fmt::Write as _, process::ExitCode};
+use std::{fmt::Write as _, path::PathBuf, process::ExitCode};
 
 use clap::{Parser, Subcommand};
 use reqwest::{StatusCode, Url};
@@ -37,6 +37,15 @@ enum Command {
         #[arg(long, help = "Optional caller-provided run ID")]
         run_id: Option<String>,
     },
+    #[command(about = "Submit a single-file Python script")]
+    SubmitScript {
+        #[arg(help = "Path to a Python script")]
+        path: PathBuf,
+        #[arg(long, short = 'p', help = "Execution pool")]
+        pool: String,
+        #[arg(long, help = "Optional caller-provided run ID")]
+        run_id: Option<String>,
+    },
     #[command(about = "List job runs")]
     Runs {
         #[arg(long, default_value_t = 50, help = "Maximum runs to return")]
@@ -57,8 +66,28 @@ enum Command {
         #[arg(help = "Job run ID")]
         id: String,
     },
+    #[command(subcommand, about = "List or download run artifacts")]
+    Artifacts(ArtifactsCommand),
     #[command(subcommand, about = "Inspect a job run")]
     Run(RunCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum ArtifactsCommand {
+    #[command(about = "List artifacts for one job run")]
+    List {
+        #[arg(help = "Job run ID")]
+        id: String,
+    },
+    #[command(about = "Download one artifact")]
+    Download {
+        #[arg(help = "Job run ID")]
+        id: String,
+        #[arg(help = "Artifact ID")]
+        artifact_id: String,
+        #[arg(long, short = 'o', help = "Output file path")]
+        output: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -97,6 +126,18 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
                 job_definition_id,
                 execution_pool: pool,
                 run_id,
+                python_script: None,
+            };
+            let run = api.create_run(&request).await?;
+            Ok(format_run_detail(&run))
+        }
+        Command::SubmitScript { path, pool, run_id } => {
+            let script = std::fs::read_to_string(&path)?;
+            let request = CreateRunRequest {
+                job_definition_id: "script".to_string(),
+                execution_pool: pool,
+                run_id,
+                python_script: Some(script),
             };
             let run = api.create_run(&request).await?;
             Ok(format_run_detail(&run))
@@ -116,6 +157,22 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
         Command::Cancel { id } => {
             let run = api.cancel_run(&id).await?;
             Ok(format_run_status(&run))
+        }
+        Command::Artifacts(ArtifactsCommand::List { id }) => {
+            let artifacts = api.list_artifacts(&id).await?;
+            Ok(format_artifacts_table(&artifacts.artifacts))
+        }
+        Command::Artifacts(ArtifactsCommand::Download {
+            id,
+            artifact_id,
+            output,
+        }) => {
+            let bytes = api.download_artifact(&id, &artifact_id).await?;
+            std::fs::write(&output, bytes)?;
+            Ok(format!(
+                "downloaded {artifact_id} to {}\n",
+                output.display()
+            ))
         }
         Command::Run(RunCommand::Get { id }) => {
             let run = api.get_run(&id).await?;
@@ -188,6 +245,42 @@ impl ApiClient {
             .await?;
 
         parse_response(response).await
+    }
+
+    async fn list_artifacts(&self, id: &str) -> Result<ListArtifactsResponse, CliError> {
+        let response = self
+            .client
+            .get(self.url(&["v1", "jobs", "runs", id, "artifacts"])?)
+            .send()
+            .await?;
+
+        parse_response(response).await
+    }
+
+    async fn download_artifact(&self, id: &str, artifact_id: &str) -> Result<Vec<u8>, CliError> {
+        let response = self
+            .client
+            .get(self.url(&["v1", "jobs", "runs", id, "artifacts", artifact_id])?)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let bytes = response.bytes().await?;
+        if status.is_success() {
+            return Ok(bytes.to_vec());
+        }
+
+        let body = String::from_utf8_lossy(&bytes).into_owned();
+        let error =
+            serde_json::from_str::<ApiErrorResponse>(&body).unwrap_or_else(|_| ApiErrorResponse {
+                code: "http_error".to_string(),
+                message: body,
+            });
+        Err(CliError::Api {
+            status,
+            code: error.code,
+            message: error.message,
+        })
     }
 
     fn url(&self, segments: &[&str]) -> Result<Url, CliError> {
@@ -267,11 +360,38 @@ fn format_runs_table(runs: &[JobRunResponse]) -> String {
     output
 }
 
+fn format_artifacts_table(artifacts: &[ArtifactResponse]) -> String {
+    let mut id_width = "ID".len();
+    let mut name_width = "NAME".len();
+    let mut kind_width = "KIND".len();
+
+    for artifact in artifacts {
+        id_width = id_width.max(artifact.id.len());
+        name_width = name_width.max(artifact.name.len());
+        kind_width = kind_width.max(artifact.kind.len());
+    }
+
+    let mut output = format!(
+        "{:<id_width$}  {:<name_width$}  {:<kind_width$}  SIZE  CONTENT_TYPE\n",
+        "ID", "NAME", "KIND"
+    );
+    for artifact in artifacts {
+        writeln!(
+            output,
+            "{:<id_width$}  {:<name_width$}  {:<kind_width$}  {}  {}",
+            artifact.id, artifact.name, artifact.kind, artifact.size_bytes, artifact.content_type
+        )
+        .expect("writing to String cannot fail");
+    }
+    output
+}
+
 #[derive(Debug, Serialize)]
 struct CreateRunRequest {
     job_definition_id: String,
     execution_pool: String,
     run_id: Option<String>,
+    python_script: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -294,6 +414,20 @@ struct JobRunLogsResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct ListArtifactsResponse {
+    artifacts: Vec<ArtifactResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ArtifactResponse {
+    id: String,
+    name: String,
+    content_type: String,
+    size_bytes: u64,
+    kind: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
     code: String,
     message: String,
@@ -307,6 +441,8 @@ enum CliError {
     Request(#[from] reqwest::Error),
     #[error("failed to decode API response: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("failed to write output file: {0}")]
+    Io(#[from] std::io::Error),
     #[error("API returned {status}: {code}: {message}")]
     Api {
         status: StatusCode,
@@ -321,8 +457,8 @@ mod tests {
     use reqwest::Url;
 
     use super::{
-        ApiClient, Cli, Command, JobRunResponse, RunCommand, format_run_detail, format_run_status,
-        format_runs_table,
+        ApiClient, ArtifactResponse, ArtifactsCommand, Cli, Command, JobRunResponse, RunCommand,
+        format_artifacts_table, format_run_detail, format_run_status, format_runs_table,
     };
 
     #[test]
@@ -351,6 +487,26 @@ mod tests {
         assert_eq!(job_definition_id, "job_hello_python");
         assert_eq!(pool, "mini");
         assert_eq!(run_id.as_deref(), Some("run_cli_test"));
+    }
+
+    #[test]
+    fn parses_submit_script_command() {
+        let cli = Cli::parse_from([
+            "capsulet",
+            "submit-script",
+            "job.py",
+            "--pool",
+            "mini",
+            "--run-id",
+            "run_script",
+        ]);
+
+        let Command::SubmitScript { path, pool, run_id } = cli.command else {
+            panic!("expected submit-script command");
+        };
+        assert_eq!(path, std::path::PathBuf::from("job.py"));
+        assert_eq!(pool, "mini");
+        assert_eq!(run_id.as_deref(), Some("run_script"));
     }
 
     #[test]
@@ -394,6 +550,36 @@ mod tests {
     }
 
     #[test]
+    fn parses_artifact_commands() {
+        let cli = Cli::parse_from(["capsulet", "artifacts", "list", "run_123"]);
+        let Command::Artifacts(ArtifactsCommand::List { id }) = cli.command else {
+            panic!("expected artifacts list command");
+        };
+        assert_eq!(id, "run_123");
+
+        let cli = Cli::parse_from([
+            "capsulet",
+            "artifacts",
+            "download",
+            "run_123",
+            "artifact_1",
+            "--output",
+            "report.txt",
+        ]);
+        let Command::Artifacts(ArtifactsCommand::Download {
+            id,
+            artifact_id,
+            output,
+        }) = cli.command
+        else {
+            panic!("expected artifacts download command");
+        };
+        assert_eq!(id, "run_123");
+        assert_eq!(artifact_id, "artifact_1");
+        assert_eq!(output, std::path::PathBuf::from("report.txt"));
+    }
+
+    #[test]
     fn formats_run_detail() {
         let run = run("run_1", "succeeded", 1);
 
@@ -421,6 +607,22 @@ mod tests {
         let run = run("run_1", "running", 1);
 
         assert_eq!(format_run_status(&run), "run_1  running  attempts=1\n");
+    }
+
+    #[test]
+    fn formats_artifacts_table() {
+        let output = format_artifacts_table(&[ArtifactResponse {
+            id: "artifact_1".to_string(),
+            name: "report.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            size_bytes: 6,
+            kind: "artifact".to_string(),
+        }]);
+
+        assert_eq!(
+            output,
+            "ID          NAME        KIND      SIZE  CONTENT_TYPE\nartifact_1  report.txt  artifact  6  text/plain\n"
+        );
     }
 
     #[test]

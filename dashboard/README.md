@@ -1,6 +1,6 @@
 # Capsulet Dashboard
 
-This is a frontend-only Next.js prototype for the Capsulet dashboard. It uses mock data so the product shape can be reviewed before the backend APIs exist.
+This is a Next.js dashboard for Capsulet. The runs surface is connected to the live API for run listing, seeded job submission, Python script submission, run detail, cancellation, logs, artifact listing, and artifact download. Other product-shaped pages still use mock data.
 
 ## Requirements
 
@@ -23,6 +23,13 @@ Run the development server:
 npm run dev
 ```
 
+Point the dashboard at a local API:
+
+```powershell
+$env:CAPSULET_DASHBOARD_API_URL = "http://127.0.0.1:8080"
+npm run dev
+```
+
 Type-check the dashboard:
 
 ```sh
@@ -35,12 +42,19 @@ Production build:
 npm run build
 ```
 
-## Mock Routes
+Run dashboard tests:
+
+```sh
+npm test
+```
+
+## Routes
 
 - `/`: overview
 - `/automations`: automation catalog and trigger builder
 - `/workflows`: workflow definitions and lineage graph
-- `/runs`: run queue, attempts, logs, and artifacts
+- `/runs`: live run queue, seeded job/script submission, and links to run detail
+- `/runs/[id]`: live run status, logs, cancellation, artifacts, and artifact download
 - `/execution-pools`: pool routing and node placement
 - `/artifacts`: object storage and retention view
 - `/security`: pod security, network policy, webhook auth, and service accounts
@@ -61,4 +75,6 @@ The production build issue should be revisited when the frontend stack is harden
 
 ## Data Boundary
 
-Mock data lives in `app/mock-data.ts`. Future API integration should keep route components focused on presentation and move data fetching behind typed client functions.
+Mock data lives in `app/mock-data.ts`. API integration keeps route components focused on presentation and moves data fetching behind typed client functions in `app/lib/api.ts`.
+
+The dashboard uses the same-origin route `app/api/capsulet/[...path]/route.ts` as a server-side proxy. Configure the upstream API with `CAPSULET_DASHBOARD_API_URL`; it defaults to `http://127.0.0.1:8080` for local development.

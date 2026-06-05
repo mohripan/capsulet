@@ -1,6 +1,6 @@
 # Helm Values
 
-This document summarizes the initial Sprint 001 Helm values. The authoritative defaults live in `charts/capsulet/values.yaml`.
+This document summarizes the current Helm values. The authoritative defaults live in `charts/capsulet/values.yaml`.
 
 ## Image
 
@@ -47,6 +47,68 @@ worker:
 
 An empty `executionNamespace` means the Helm release namespace.
 
+Scheduler, evaluator, and dashboard are scaffolded components. Disable them for the current API/worker runtime smoke:
+
+```yaml
+scheduler:
+  enabled: false
+evaluator:
+  enabled: false
+dashboard:
+  enabled: false
+```
+
+Dashboard API configuration:
+
+```yaml
+dashboard:
+  apiBaseUrl: http://capsulet-api
+```
+
+When `dashboard.apiBaseUrl` is empty, the chart renders an in-cluster default of `http://<release-name>-api`. Set this explicitly when the dashboard must call a port-forwarded API or an API service with a custom name.
+
+## Database
+
+The API and worker read `CAPSULET_DATABASE_URL` from a Secret:
+
+```yaml
+config:
+  databaseUrlSecret:
+    name: capsulet-db
+    key: DATABASE_URL
+```
+
+The chart does not create PostgreSQL yet. Use an external database or the local Docker Compose database from the development guide.
+
+## Object Storage
+
+Filesystem mode is the default:
+
+```yaml
+config:
+  objectStorage:
+    mode: filesystem
+    path: /var/lib/capsulet/objects
+```
+
+Filesystem mode mounts an `emptyDir` volume for the API and worker. It is useful only for local single-pod evaluation. Use S3-compatible storage for realistic installs:
+
+```yaml
+config:
+  objectStorage:
+    mode: s3
+    bucket: capsulet-artifacts
+    endpoint: http://minio:9000
+    region: us-east-1
+    pathStyle: true
+    credentialsSecret:
+      name: capsulet-object-storage
+      accessKeyKey: access-key-id
+      secretKeyKey: secret-access-key
+```
+
+The S3 bucket must already exist. Credentials are mounted only into API and worker pods.
+
 ## Security
 
 Defaults include:
@@ -83,6 +145,22 @@ executionPools:
 
 Capsulet chooses the execution pool. Kubernetes chooses the specific node.
 `ttlSecondsAfterFinished` controls Kubernetes cleanup of completed runner Jobs.
+
+`maxConcurrentJobs` is represented in values for the future scheduler/concurrency work. Sprint 005 does not enforce pool-level concurrency.
+
+## Network Policies And ServiceMonitor
+
+These values are present but not implemented by templates yet:
+
+```yaml
+networkPolicies:
+  enabled: false
+
+serviceMonitor:
+  enabled: false
+```
+
+Sprint 006 planning keeps dashboard integration separate from metrics and network policy work.
 
 ## Validation
 

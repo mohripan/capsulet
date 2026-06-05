@@ -7,6 +7,7 @@ members = [
     "crates/postgres",
     "crates/runner",
     "crates/scheduler",
+    "crates/storage",
     "crates/worker",
 ]
 resolver = "2"

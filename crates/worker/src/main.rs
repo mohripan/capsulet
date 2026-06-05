@@ -3,6 +3,7 @@ use std::{env, fs, time::Duration};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_postgres::PostgresStore;
 use capsulet_runner::{ExecutionPoolsConfig, KubernetesRunner, StubRunner};
+use capsulet_storage::ConfiguredObjectStore;
 use capsulet_worker::execute_one_queued_run;
 
 const DEFAULT_WORKER_ID: &str = "worker-local";
@@ -11,6 +12,7 @@ const DEFAULT_POLL_SECONDS: u64 = 5;
 const DEFAULT_RUNNER_MODE: &str = "stub";
 const DEFAULT_EXECUTION_NAMESPACE: &str = "default";
 const DEFAULT_LOG_LIMIT_BYTES: usize = 64 * 1024;
+const DEFAULT_OBJECT_STORAGE_PATH: &str = ".capsulet-objects";
 const DEFAULT_EXECUTION_POOLS_YAML: &str = r#"
 defaultPool: mini
 pools:
@@ -65,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = PostgresStore::connect(&database_url).await?;
     store.migrate().await?;
+    let object_store = load_object_store()?;
 
     let runner_mode = env::var("CAPSULET_RUNNER_MODE")
         .unwrap_or_else(|_| DEFAULT_RUNNER_MODE.to_string())
@@ -78,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let outcome = run_once(
             &store,
+            &object_store,
             &pools,
             &worker_id,
             lease_seconds,
@@ -98,6 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run_once(
     store: &PostgresStore,
+    object_store: &ConfiguredObjectStore,
     pools: &ExecutionPoolsConfig,
     worker_id: &str,
     lease_seconds: i64,
@@ -112,14 +117,37 @@ async fn run_once(
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(DEFAULT_LOG_LIMIT_BYTES);
             let runner = KubernetesRunner::from_default_config(namespace, log_limit_bytes).await?;
-            execute_one_queued_run(store, &runner, pools, worker_id, lease_seconds).await?
+            execute_one_queued_run(
+                store,
+                &runner,
+                object_store,
+                pools,
+                worker_id,
+                lease_seconds,
+            )
+            .await?
         }
         "stub" => {
             let runner = match env::var("CAPSULET_STUB_RUNNER_RESULT").as_deref() {
                 Ok("failed" | "failure") => StubRunner::failure(),
+                _ if env::var("CAPSULET_STUB_RUNNER_LOGS").is_ok() => {
+                    StubRunner::success_with_logs(env::var("CAPSULET_STUB_RUNNER_LOGS")?)
+                }
+                _ if env::var("CAPSULET_STUB_ARTIFACT_TEXT").is_ok() => {
+                    let text = env::var("CAPSULET_STUB_ARTIFACT_TEXT")?;
+                    StubRunner::success_with_artifact(text)
+                }
                 _ => StubRunner::success(),
             };
-            execute_one_queued_run(store, &runner, pools, worker_id, lease_seconds).await?
+            execute_one_queued_run(
+                store,
+                &runner,
+                object_store,
+                pools,
+                worker_id,
+                lease_seconds,
+            )
+            .await?
         }
         value => {
             return Err(format!(
@@ -141,6 +169,28 @@ fn load_execution_pools() -> Result<ExecutionPoolsConfig, Box<dyn std::error::Er
     };
 
     Ok(ExecutionPoolsConfig::from_yaml(&yaml)?)
+}
+
+fn load_object_store() -> Result<ConfiguredObjectStore, Box<dyn std::error::Error>> {
+    match env::var("CAPSULET_OBJECT_STORAGE_MODE")
+        .unwrap_or_else(|_| "filesystem".to_string())
+        .as_str()
+    {
+        "s3" => Ok(ConfiguredObjectStore::s3(
+            &env::var("CAPSULET_OBJECT_STORAGE_BUCKET")
+                .unwrap_or_else(|_| "capsulet-artifacts".to_string()),
+            env::var("CAPSULET_OBJECT_STORAGE_ENDPOINT").ok().as_deref(),
+            &env::var("CAPSULET_OBJECT_STORAGE_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+            &env::var("CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID")?,
+            &env::var("CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY")?,
+            env_bool("CAPSULET_OBJECT_STORAGE_PATH_STYLE"),
+        )?),
+        "filesystem" => Ok(ConfiguredObjectStore::filesystem(
+            env::var("CAPSULET_OBJECT_STORAGE_PATH")
+                .unwrap_or_else(|_| DEFAULT_OBJECT_STORAGE_PATH.to_string()),
+        )),
+        value => Err(format!("unsupported CAPSULET_OBJECT_STORAGE_MODE {value}").into()),
+    }
 }
 
 fn env_bool(name: &str) -> bool {

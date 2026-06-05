@@ -71,10 +71,38 @@
         }
       }
     },
+    "dashboard": {
+      "type": "object",
+      "properties": {
+        "apiBaseUrl": { "type": "string" }
+      }
+    },
     "config": {
       "type": "object",
       "properties": {
-        "seedExamples": { "type": "boolean" }
+        "seedExamples": { "type": "boolean" },
+        "objectStorage": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["filesystem", "s3"]
+            },
+            "path": { "type": "string" },
+            "bucket": { "type": "string", "minLength": 1 },
+            "endpoint": { "type": "string" },
+            "region": { "type": "string" },
+            "pathStyle": { "type": "boolean" },
+            "credentialsSecret": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "accessKeyKey": { "type": "string" },
+                "secretKeyKey": { "type": "string" }
+              }
+            }
+          }
+        }
       }
     }
   },
