@@ -4,16 +4,16 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Activity, FileCode2, ListFilter, Play, RefreshCw, Send } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle, StateBadge } from "../components";
-import { JobRun, getErrorMessage, listRuns, submitRun } from "../lib/api";
-
-const seededJobs = [
-  ["job_hello_python", "Hello Python"],
-  ["job_fail_python", "Failure and retry"],
-  ["job_timeout_python", "Timeout"],
-  ["job_artifact_python", "Artifact producer"]
-] as const;
-
-const pools = ["mini", "large"];
+import {
+  ExecutionPool,
+  JobDefinition,
+  JobRun,
+  getErrorMessage,
+  listExecutionPools,
+  listJobDefinitions,
+  listRuns,
+  submitRun
+} from "../lib/api";
 
 export default function RunsClient() {
   const [runs, setRuns] = useState<JobRun[]>([]);
@@ -22,9 +22,11 @@ export default function RunsClient() {
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [createdRun, setCreatedRun] = useState<JobRun | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [jobDefinitionId, setJobDefinitionId] = useState<string>(seededJobs[0][0]);
-  const [jobPool, setJobPool] = useState("mini");
-  const [scriptPool, setScriptPool] = useState("mini");
+  const [jobDefinitions, setJobDefinitions] = useState<JobDefinition[]>([]);
+  const [executionPools, setExecutionPools] = useState<ExecutionPool[]>([]);
+  const [jobDefinitionId, setJobDefinitionId] = useState<string>("");
+  const [jobPool, setJobPool] = useState("");
+  const [scriptPool, setScriptPool] = useState("");
   const [script, setScript] = useState("print('hello from dashboard')");
 
   async function refresh() {
@@ -42,7 +44,22 @@ export default function RunsClient() {
 
   useEffect(() => {
     void refresh();
+    void refreshAuthoringData();
   }, []);
+
+  async function refreshAuthoringData() {
+    try {
+      const [definitionsResponse, poolsResponse] = await Promise.all([listJobDefinitions(), listExecutionPools()]);
+      setJobDefinitions(definitionsResponse.job_definitions);
+      setExecutionPools(poolsResponse.execution_pools);
+      setJobDefinitionId((current) => current || definitionsResponse.job_definitions[0]?.id || "");
+      const defaultPool = poolsResponse.execution_pools.find((pool) => pool.is_default)?.name || poolsResponse.execution_pools[0]?.name || "";
+      setJobPool((current) => current || defaultPool);
+      setScriptPool((current) => current || defaultPool);
+    } catch (err) {
+      setSubmissionError(getErrorMessage(err));
+    }
+  }
 
   const counts = useMemo(() => {
     return runs.reduce<Record<string, number>>((acc, run) => {
@@ -51,8 +68,12 @@ export default function RunsClient() {
     }, {});
   }, [runs]);
 
-  async function submitSeededJob(event: FormEvent<HTMLFormElement>) {
+  async function submitDefinitionJob(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!jobDefinitionId) {
+      setSubmissionError("Create a job definition before submitting a reusable job.");
+      return;
+    }
     await submitDashboardRun({
       job_definition_id: jobDefinitionId,
       execution_pool: jobPool
@@ -97,7 +118,7 @@ export default function RunsClient() {
   }
 
   return (
-    <DashboardShell actionLabel="Submit run">
+    <DashboardShell>
       <PageHeader
         eyebrow="Run queue"
         title="Submit and inspect live job runs"
@@ -127,11 +148,19 @@ export default function RunsClient() {
             ) : null}
             {runs.map((run) => (
               <Link className="runRow liveRunGrid interactiveRow" href={`/runs/${run.id}`} key={run.id}>
-                <span className="mono">{run.id}</span>
-                <span>{run.job_definition_id}</span>
-                <span>{run.execution_pool}</span>
+                <span className="mono tableCell" title={run.id}>
+                  {run.id}
+                </span>
+                <span className="tableCell" title={run.job_definition_id}>
+                  {run.job_definition_id}
+                </span>
+                <span className="tableCell" title={run.execution_pool}>
+                  {run.execution_pool}
+                </span>
                 <StateBadge state={run.status} />
-                <span>{run.attempt_count}</span>
+                <span className="tableCell" title={String(run.attempt_count)}>
+                  {run.attempt_count}
+                </span>
               </Link>
             ))}
           </div>
@@ -152,14 +181,14 @@ export default function RunsClient() {
         </section>
 
         <section className="panel span5">
-          <PanelTitle icon={Play} title="Seeded Job" action="Submit" />
-          <form className="formStack" onSubmit={submitSeededJob}>
+          <PanelTitle icon={Play} title="Reusable Job" action="Submit" />
+          <form className="formStack" onSubmit={submitDefinitionJob}>
             <label>
               <span>Job definition</span>
               <select value={jobDefinitionId} onChange={(event) => setJobDefinitionId(event.target.value)}>
-                {seededJobs.map(([id, label]) => (
-                  <option value={id} key={id}>
-                    {label}
+                {jobDefinitions.map((definition) => (
+                  <option value={definition.id} key={definition.id}>
+                    {definition.name}
                   </option>
                 ))}
               </select>
@@ -167,16 +196,16 @@ export default function RunsClient() {
             <label>
               <span>Execution pool</span>
               <select value={jobPool} onChange={(event) => setJobPool(event.target.value)}>
-                {pools.map((pool) => (
-                  <option value={pool} key={pool}>
-                    {pool}
+                {executionPools.map((pool) => (
+                  <option value={pool.name} key={pool.name}>
+                    {pool.name}
                   </option>
                 ))}
               </select>
             </label>
             <button className="primaryAction inlineAction" disabled={isSubmitting}>
               <Send size={16} aria-hidden="true" />
-              Submit seeded job
+              Submit job definition
             </button>
           </form>
         </section>
@@ -187,9 +216,9 @@ export default function RunsClient() {
             <label>
               <span>Execution pool</span>
               <select value={scriptPool} onChange={(event) => setScriptPool(event.target.value)}>
-                {pools.map((pool) => (
-                  <option value={pool} key={pool}>
-                    {pool}
+                {executionPools.map((pool) => (
+                  <option value={pool.name} key={pool.name}>
+                    {pool.name}
                   </option>
                 ))}
               </select>

@@ -130,14 +130,17 @@ async fn run_once(
         "stub" => {
             let runner = match env::var("CAPSULET_STUB_RUNNER_RESULT").as_deref() {
                 Ok("failed" | "failure") => StubRunner::failure(),
-                _ if env::var("CAPSULET_STUB_RUNNER_LOGS").is_ok() => {
-                    StubRunner::success_with_logs(env::var("CAPSULET_STUB_RUNNER_LOGS")?)
-                }
-                _ if env::var("CAPSULET_STUB_ARTIFACT_TEXT").is_ok() => {
-                    let text = env::var("CAPSULET_STUB_ARTIFACT_TEXT")?;
-                    StubRunner::success_with_artifact(text)
-                }
-                _ => StubRunner::success(),
+                _ => match (
+                    env::var("CAPSULET_STUB_RUNNER_LOGS").ok(),
+                    env::var("CAPSULET_STUB_ARTIFACT_TEXT").ok(),
+                ) {
+                    (Some(logs), Some(artifact)) => {
+                        StubRunner::success_with_logs_and_artifact(logs, artifact)
+                    }
+                    (Some(logs), None) => StubRunner::success_with_logs(logs),
+                    (None, Some(artifact)) => StubRunner::success_with_artifact(artifact),
+                    (None, None) => StubRunner::success(),
+                },
             };
             execute_one_queued_run(
                 store,

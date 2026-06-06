@@ -548,18 +548,29 @@ button {
 .poolPill,
 .status,
 .state {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
   gap: 6px;
+  min-width: 0;
   min-height: 28px;
+  padding: 0 10px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .poolPill {
   border: 1px solid rgba(32, 214, 210, 0.25);
   background: rgba(32, 214, 210, 0.08);
   color: var(--cyan);
+}
+
+.state {
+  width: 100%;
 }
 
 .status.enabled,
@@ -768,7 +779,7 @@ button {
 }
 
 .runTable {
-  overflow: hidden;
+  overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
@@ -776,11 +787,39 @@ button {
 .runHeader,
 .runRow {
   display: grid;
-  grid-template-columns: 110px minmax(150px, 1fr) 72px 98px 82px 86px;
-  gap: 10px;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(190px, 1.35fr) minmax(72px, 0.5fr) minmax(124px, 0.75fr) minmax(84px, 0.55fr) minmax(220px, 1.35fr);
+  column-gap: 14px;
   align-items: center;
-  min-width: 720px;
+  min-width: 880px;
   padding: 11px 12px;
+}
+
+.runHeader > *,
+.runRow > * {
+  min-width: 0;
+}
+
+.tableCell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepRunLinks {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stepRunLinks a {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--accent);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .runHeaderWide,
@@ -790,8 +829,8 @@ button {
 }
 
 .liveRunGrid {
-  grid-template-columns: minmax(160px, 1fr) minmax(170px, 1.2fr) 90px 128px 92px;
-  min-width: 760px;
+  grid-template-columns: minmax(210px, 1.1fr) minmax(220px, 1.1fr) minmax(170px, 1fr) minmax(136px, 0.7fr) minmax(160px, 0.85fr);
+  min-width: 960px;
 }
 
 .runHeader {
@@ -859,6 +898,7 @@ button {
   font-weight: 700;
 }
 
+.formStack input,
 .formStack select,
 .formStack textarea {
   width: 100%;
@@ -868,6 +908,7 @@ button {
   color: var(--text);
 }
 
+.formStack input,
 .formStack select {
   min-height: 40px;
   padding: 0 10px;

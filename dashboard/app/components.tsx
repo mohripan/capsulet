@@ -8,6 +8,7 @@ import {
   Bell,
   Box,
   ChevronDown,
+  FileCode2,
   GitBranch,
   Home,
   Plus,
@@ -25,6 +26,7 @@ const nav: Array<[LucideIcon, string, string]> = [
   [Home, "Overview", "/"],
   [Workflow, "Automations", "/automations"],
   [GitBranch, "Workflows", "/workflows"],
+  [FileCode2, "Job Definitions", "/job-definitions"],
   [Activity, "Runs", "/runs"],
   [Route, "Execution Pools", "/execution-pools"],
   [Archive, "Artifacts", "/artifacts"],
@@ -34,10 +36,12 @@ const nav: Array<[LucideIcon, string, string]> = [
 
 export function DashboardShell({
   children,
-  actionLabel = "Automation"
+  actionLabel,
+  actionHref
 }: {
   children: React.ReactNode;
   actionLabel?: string;
+  actionHref?: string;
 }) {
   const pathname = usePathname();
 
@@ -95,10 +99,12 @@ export function DashboardShell({
             <button className="iconButton" title="Notifications">
               <Bell size={18} aria-hidden="true" />
             </button>
-            <button className="primaryAction">
-              <Plus size={18} aria-hidden="true" />
-              {actionLabel}
-            </button>
+            {actionLabel && actionHref ? (
+              <Link className="primaryAction" href={actionHref}>
+                <Plus size={18} aria-hidden="true" />
+                {actionLabel}
+              </Link>
+            ) : null}
           </div>
         </header>
         {children}

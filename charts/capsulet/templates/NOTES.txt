@@ -1,0 +1,18 @@
+Capsulet has been installed.
+
+Dashboard:
+  kubectl port-forward svc/{{ include "capsulet.fullname" . }}-dashboard 3000:{{ .Values.dashboard.service.port }} -n {{ .Release.Namespace }}
+  http://127.0.0.1:3000/runs
+
+API:
+  kubectl port-forward svc/{{ include "capsulet.fullname" . }}-api 8080:{{ .Values.api.service.port }} -n {{ .Release.Namespace }}
+  http://127.0.0.1:8080/healthz
+
+Migration job logs:
+  kubectl logs job/{{ include "capsulet.fullname" . }}-migrate -n {{ .Release.Namespace }}
+
+{{- if eq .Values.minio.mode "bundled" }}
+Bundled MinIO console:
+  kubectl port-forward svc/{{ include "capsulet.minioName" . }} 9001:{{ .Values.minio.service.consolePort }} -n {{ .Release.Namespace }}
+  http://127.0.0.1:9001
+{{- end }}

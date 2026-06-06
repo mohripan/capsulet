@@ -201,6 +201,19 @@ impl StubRunner {
             artifact: None,
         }
     }
+
+    /// Creates a successful stub runner with deterministic logs and one text artifact.
+    #[must_use]
+    pub fn success_with_logs_and_artifact(
+        logs: impl Into<String>,
+        artifact: impl Into<String>,
+    ) -> Self {
+        Self {
+            outcome: RunOutcome::Succeeded,
+            logs: Some(logs.into()),
+            artifact: Some(artifact.into()),
+        }
+    }
 }
 
 #[async_trait]

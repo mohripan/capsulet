@@ -123,12 +123,22 @@ export default function OverviewPage() {
             </div>
             {runs.slice(0, 4).map((run) => (
               <div className="runRow" key={run.id}>
-                <span className="mono">{run.id}</span>
-                <span>{run.automation}</span>
-                <span>{run.pool}</span>
+                <span className="mono tableCell" title={run.id}>
+                  {run.id}
+                </span>
+                <span className="tableCell" title={run.automation}>
+                  {run.automation}
+                </span>
+                <span className="tableCell" title={run.pool}>
+                  {run.pool}
+                </span>
                 <StateBadge state={run.state} />
-                <span>{run.duration}</span>
-                <span>{run.node}</span>
+                <span className="tableCell" title={run.duration}>
+                  {run.duration}
+                </span>
+                <span className="tableCell" title={run.node}>
+                  {run.node}
+                </span>
               </div>
             ))}
           </div>

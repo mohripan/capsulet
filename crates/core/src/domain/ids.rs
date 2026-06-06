@@ -38,6 +38,10 @@ macro_rules! id_type {
 }
 
 id_type!(AutomationId);
+id_type!(WorkflowId);
+id_type!(WorkflowStepId);
+id_type!(WorkflowRunId);
+id_type!(WorkflowStepRunId);
 id_type!(JobDefinitionId);
 id_type!(JobRunId);
 id_type!(JobAttemptId);

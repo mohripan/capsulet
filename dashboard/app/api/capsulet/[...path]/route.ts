@@ -49,3 +49,11 @@ export async function GET(request: NextRequest, context: { params: { path: strin
 export async function POST(request: NextRequest, context: { params: { path: string[] } }) {
   return proxy(request, context);
 }
+
+export async function PUT(request: NextRequest, context: { params: { path: string[] } }) {
+  return proxy(request, context);
+}
+
+export async function DELETE(request: NextRequest, context: { params: { path: string[] } }) {
+  return proxy(request, context);
+}

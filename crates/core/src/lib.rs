@@ -12,8 +12,11 @@ pub mod ports;
 pub use application::{CreateManualRunCommand, JobRunSummary};
 pub use component::{ComponentDescriptor, ComponentKind};
 pub use domain::{
-    ArtifactId, ArtifactObjectKind, AutomationId, ConditionExpr, ExecutionPool, ExecutionPoolName,
-    JobArtifact, JobAttemptId, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
-    JobRunStatus, ResourceRequirements, RetryPolicy, StateTransitionError, TriggerName,
+    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus,
+    AutomationTriggerKind, ConditionExpr, ExecutionPool, ExecutionPoolName, JobArtifact,
+    JobAttemptId, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus,
+    ResourceRequirements, RetryPolicy, StateTransitionError, TriggerName, WorkflowDefinition,
+    WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep,
+    WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
 };
 pub use ports::{JobArtifactRepository, JobRunLogRepository, JobRunRepository};

@@ -9,12 +9,12 @@ data:
   CAPSULET_API_ADDR: "0.0.0.0:8080"
   CAPSULET_SEED_EXAMPLES: {{ .Values.config.seedExamples | quote }}
   CAPSULET_EXECUTION_POOLS: {{ keys .Values.executionPools.pools | sortAlpha | join "," | quote }}
-  CAPSULET_OBJECT_STORAGE_MODE: {{ .Values.config.objectStorage.mode | quote }}
+  CAPSULET_OBJECT_STORAGE_MODE: {{ include "capsulet.objectStorageMode" . | quote }}
   CAPSULET_OBJECT_STORAGE_PATH: {{ .Values.config.objectStorage.path | quote }}
-  CAPSULET_OBJECT_STORAGE_BUCKET: {{ .Values.config.objectStorage.bucket | quote }}
-  CAPSULET_OBJECT_STORAGE_ENDPOINT: {{ .Values.config.objectStorage.endpoint | quote }}
-  CAPSULET_OBJECT_STORAGE_REGION: {{ .Values.config.objectStorage.region | quote }}
-  CAPSULET_OBJECT_STORAGE_PATH_STYLE: {{ .Values.config.objectStorage.pathStyle | quote }}
+  CAPSULET_OBJECT_STORAGE_BUCKET: {{ include "capsulet.objectStorageBucket" . | quote }}
+  CAPSULET_OBJECT_STORAGE_ENDPOINT: {{ include "capsulet.objectStorageEndpoint" . | quote }}
+  CAPSULET_OBJECT_STORAGE_REGION: {{ include "capsulet.objectStorageRegion" . | quote }}
+  CAPSULET_OBJECT_STORAGE_PATH_STYLE: {{ include "capsulet.objectStoragePathStyle" . | quote }}
   CAPSULET_DASHBOARD_API_URL: {{ default (printf "http://%s-api" (include "capsulet.fullname" .)) .Values.dashboard.apiBaseUrl | quote }}
   CAPSULET_KAFKA_BROKERS: {{ .Values.config.kafka.brokers | quote }}
   execution-pools.yaml: |

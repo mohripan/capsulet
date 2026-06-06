@@ -12,7 +12,17 @@ image:
   pullPolicy: IfNotPresent
 ```
 
-Each component appends its repository suffix, such as `api`, `worker`, `scheduler`, `evaluator`, or `dashboard`.
+Each Capsulet component appends its repository suffix, such as `api`, `worker`, `scheduler`, `evaluator`, or `dashboard`.
+
+For local minikube images:
+
+```yaml
+image:
+  registry: ""
+  repository: capsulet
+  tag: dev
+  pullPolicy: Never
+```
 
 ## Components
 
@@ -33,7 +43,18 @@ Each component supports:
 
 API and dashboard also expose service settings.
 
-The worker also exposes Kubernetes runner settings:
+Dashboard API configuration:
+
+```yaml
+dashboard:
+  apiBaseUrl: ""
+```
+
+When `dashboard.apiBaseUrl` is empty, the chart renders an in-cluster default of `http://<release-name>-api`.
+
+## Worker Runner
+
+The worker exposes Kubernetes runner settings:
 
 ```yaml
 worker:
@@ -47,58 +68,114 @@ worker:
 
 An empty `executionNamespace` means the Helm release namespace.
 
-Scheduler, evaluator, and dashboard are scaffolded components. Disable them for the current API/worker runtime smoke:
+## PostgreSQL
+
+Bundled PostgreSQL is enabled by default for local public-alpha evaluation:
 
 ```yaml
-scheduler:
-  enabled: false
-evaluator:
-  enabled: false
-dashboard:
-  enabled: false
+postgresql:
+  mode: bundled
+  auth:
+    database: capsulet
+    username: capsulet
+    password: capsulet
+  persistence:
+    enabled: true
+    size: 1Gi
 ```
 
-Dashboard API configuration:
+Bundled mode renders:
+
+- Secret: `<release>-postgresql`
+- Service: `<release>-postgresql`
+- StatefulSet: `<release>-postgresql`
+
+The Secret includes `DATABASE_URL`, and API, worker, and migration Job read `CAPSULET_DATABASE_URL` from it.
+
+For external PostgreSQL:
 
 ```yaml
-dashboard:
-  apiBaseUrl: http://capsulet-api
-```
-
-When `dashboard.apiBaseUrl` is empty, the chart renders an in-cluster default of `http://<release-name>-api`. Set this explicitly when the dashboard must call a port-forwarded API or an API service with a custom name.
-
-## Database
-
-The API and worker read `CAPSULET_DATABASE_URL` from a Secret:
-
-```yaml
+postgresql:
+  mode: external
 config:
   databaseUrlSecret:
     name: capsulet-db
     key: DATABASE_URL
 ```
 
-The chart does not create PostgreSQL yet. Use an external database or the local Docker Compose database from the development guide.
+The external Secret must already exist.
 
-## Object Storage
+## Migrations
 
-Filesystem mode is the default:
+The chart renders a migration Job by default:
 
 ```yaml
-config:
-  objectStorage:
-    mode: filesystem
-    path: /var/lib/capsulet/objects
+migrations:
+  enabled: true
+  backoffLimit: 6
 ```
 
-Filesystem mode mounts an `emptyDir` volume for the API and worker. It is useful only for local single-pod evaluation. Use S3-compatible storage for realistic installs:
+The Job runs the API image with `CAPSULET_MIGRATE_ONLY=true`, applies embedded SQLx migrations, optionally seeds examples, and exits.
+
+Inspect logs:
+
+```sh
+kubectl logs job/capsulet-migrate -n capsulet
+```
+
+If a local migration Job must be rerun:
+
+```sh
+kubectl delete job capsulet-migrate -n capsulet
+helm upgrade --install capsulet charts/capsulet -n capsulet
+```
+
+## MinIO And Object Storage
+
+Bundled MinIO is enabled by default for local public-alpha evaluation:
 
 ```yaml
+minio:
+  mode: bundled
+  auth:
+    rootUser: capsulet
+    rootPassword: capsuletpassword
+  bucket: capsulet-artifacts
+  region: us-east-1
+  pathStyle: true
+  persistence:
+    enabled: true
+    size: 2Gi
+  bucketJob:
+    enabled: true
+    backoffLimit: 6
+```
+
+Bundled mode renders:
+
+- Secret: `<release>-minio`
+- Service: `<release>-minio`
+- StatefulSet: `<release>-minio`
+- bucket initialization Job: `<release>-minio-bucket`
+
+Bundled mode makes API and worker use:
+
+```yaml
+CAPSULET_OBJECT_STORAGE_MODE: s3
+CAPSULET_OBJECT_STORAGE_ENDPOINT: http://<release>-minio:9000
+CAPSULET_OBJECT_STORAGE_BUCKET: <minio.bucket>
+```
+
+For external S3-compatible object storage:
+
+```yaml
+minio:
+  mode: external
 config:
   objectStorage:
     mode: s3
     bucket: capsulet-artifacts
-    endpoint: http://minio:9000
+    endpoint: http://minio.example:9000
     region: us-east-1
     pathStyle: true
     credentialsSecret:
@@ -107,11 +184,24 @@ config:
       secretKeyKey: secret-access-key
 ```
 
-The S3 bucket must already exist. Credentials are mounted only into API and worker pods.
+The external bucket and credential Secret must already exist.
+
+Filesystem object storage is still available for narrow local tests:
+
+```yaml
+minio:
+  mode: external
+config:
+  objectStorage:
+    mode: filesystem
+    path: /var/lib/capsulet/objects
+```
+
+Filesystem mode mounts an `emptyDir` volume for the API and worker. It is not a realistic multi-pod install mode.
 
 ## Security
 
-Defaults include:
+Capsulet API, worker, scheduler, evaluator, and dashboard defaults include:
 
 - non-root pod security context
 - `RuntimeDefault` seccomp
@@ -119,7 +209,7 @@ Defaults include:
 - read-only root filesystem
 - dropped Linux capabilities
 
-These are early defaults and will become more specific as runtime images are implemented.
+Bundled PostgreSQL and MinIO also run as non-root with dropped capabilities, but they keep `readOnlyRootFilesystem: false` because stateful database/object-storage images need writable runtime paths. Bundled dependencies are for local alpha evaluation; production-shaped installs should use external PostgreSQL and external S3-compatible storage.
 
 ## Execution Pools
 
@@ -144,9 +234,8 @@ executionPools:
 ```
 
 Capsulet chooses the execution pool. Kubernetes chooses the specific node.
-`ttlSecondsAfterFinished` controls Kubernetes cleanup of completed runner Jobs.
 
-`maxConcurrentJobs` is represented in values for the future scheduler/concurrency work. Sprint 005 does not enforce pool-level concurrency.
+`maxConcurrentJobs` is represented in values for future scheduler/concurrency work. It is not enforced yet.
 
 ## Network Policies And ServiceMonitor
 
@@ -160,15 +249,20 @@ serviceMonitor:
   enabled: false
 ```
 
-Sprint 006 planning keeps dashboard integration separate from metrics and network policy work.
+Metrics and network policy presets remain future work.
 
 ## Validation
-
-The chart includes `values.schema.json` for basic validation.
 
 Run:
 
 ```sh
 helm lint charts/capsulet
 helm template capsulet charts/capsulet
+helm template capsulet charts/capsulet \
+  --set postgresql.mode=external \
+  --set config.databaseUrlSecret.name=capsulet-db \
+  --set minio.mode=external \
+  --set config.objectStorage.mode=s3 \
+  --set config.objectStorage.endpoint=http://minio.example:9000 \
+  --set config.objectStorage.credentialsSecret.name=capsulet-object-storage
 ```

@@ -1,79 +1,73 @@
- "use client";
+"use client";
 
-import { Cpu, Network, Route, Server } from "lucide-react";
-import { DashboardShell, LoadBar, PageHeader, PanelTitle } from "../components";
-import { pools } from "../mock-data";
+import { useEffect, useState } from "react";
+import { RefreshCw, Route } from "lucide-react";
+import { DashboardShell, PageHeader, PanelTitle } from "../components";
+import { ExecutionPool, getErrorMessage, listExecutionPools } from "../lib/api";
 
 export default function ExecutionPoolsPage() {
+  const [pools, setPools] = useState<ExecutionPool[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function refresh() {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await listExecutionPools();
+      setPools(response.execution_pools);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
   return (
-    <DashboardShell actionLabel="Pool">
+    <DashboardShell>
       <PageHeader
         eyebrow="Compute routing"
-        title="Manage execution pools"
-        description="Map Capsulet jobs onto Kubernetes node classes with selectors, tolerations, resources, timeouts, and concurrency limits."
+        title="Configured execution pools"
+        description="Execution pools are configured by the Capsulet runtime and chart. Jobs and workflow steps choose from these API-backed pools."
       />
 
       <section className="contentGrid">
-        {pools.map((pool) => (
-          <section className="panel span4" key={pool.name}>
-            <PanelTitle icon={Route} title={pool.name} action="Edit" />
-            <article className={`poolCard ${pool.accent} flat`}>
-              <div className="poolTop">
-                <div>
-                  <h2>{pool.label}</h2>
-                  <p>{pool.selector}</p>
+        <section className="panel span12">
+          <PanelTitle icon={Route} title="Execution Pools" action="Live API" />
+          <div className="panelActions">
+            <button className="secondaryButton" onClick={refresh} disabled={isLoading}>
+              <RefreshCw size={16} aria-hidden="true" />
+              {isLoading ? "Refreshing" : "Refresh"}
+            </button>
+          </div>
+          {error ? <div className="errorBox">{error}</div> : null}
+          <div className="resourceList">
+            {!isLoading && pools.length === 0 ? (
+              <div className="emptyState">No execution pools are configured for this API process.</div>
+            ) : null}
+            {pools.map((pool) => (
+              <article className="resourceRow" key={pool.name}>
+                <div className="resourceMain">
+                  <div className="automationIcon">
+                    <Route size={19} aria-hidden="true" />
+                  </div>
+                  <div>
+                    <h2>{pool.name}</h2>
+                    <p>{pool.description}</p>
+                  </div>
                 </div>
-                <span>{pool.nodes} nodes</span>
-              </div>
-              <div className="poolLoad">
-                <LoadBar label="CPU" value={pool.cpu} />
-                <LoadBar label="Memory" value={pool.memory} />
-              </div>
-              <div className="settingStack">
-                <Setting label="Timeout" value={pool.timeout} />
-                <Setting label="Concurrency" value={`${pool.concurrency} jobs`} />
-                <Setting label="Running" value={`${pool.running}`} />
-                <Setting label="Queued" value={`${pool.queued}`} />
-              </div>
-            </article>
-          </section>
-        ))}
-
-        <section className="panel span8">
-          <PanelTitle icon={Network} title="Node Placement" action="Inspect" />
-          <div className="nodeMap">
-            {["mini-a1", "mini-a2", "mini-a3", "mini-a4", "large-b1", "large-b2", "large-b3", "gpu-c1"].map((node) => (
-              <div className="nodeBox" key={node}>
-                <Server size={16} aria-hidden="true" />
-                <strong>{node}</strong>
-                <span>{node.split("-")[0]} pool</span>
-              </div>
+                <div className={pool.is_default ? "status enabled" : "status"}>
+                  {pool.is_default ? "default" : "available"}
+                </div>
+              </article>
             ))}
           </div>
         </section>
-
-        <section className="panel span4">
-          <PanelTitle icon={Cpu} title="Scheduling Policy" action="View YAML" />
-          <pre className="yamlPreview small">{`nodeSelector:
-  capsulet.dev/pool: large
-tolerations:
-  - key: capsulet.dev/pool
-    value: large
-resources:
-  requests:
-    cpu: "2"
-    memory: 4Gi`}</pre>
-        </section>
       </section>
     </DashboardShell>
-  );
-}
-
-function Setting({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="settingRow">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }

@@ -21,3 +21,12 @@ jobs:
 
       - name: Render chart
         run: helm template capsulet charts/capsulet
+      - name: Render external dependencies chart
+        run: >
+          helm template capsulet charts/capsulet
+          --set postgresql.mode=external
+          --set config.databaseUrlSecret.name=capsulet-db
+          --set minio.mode=external
+          --set config.objectStorage.mode=s3
+          --set config.objectStorage.endpoint=http://minio.example:9000
+          --set config.objectStorage.credentialsSecret.name=capsulet-object-storage

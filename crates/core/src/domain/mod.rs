@@ -5,11 +5,19 @@ mod ids;
 mod job;
 mod job_definition;
 mod job_log;
+mod workflow;
 
 pub use artifact::{ArtifactObjectKind, JobArtifact};
 pub use automation::{ConditionExpr, TriggerName};
 pub use execution_pool::{ExecutionPool, ExecutionPoolName, ResourceRequirements};
-pub use ids::{ArtifactId, AutomationId, JobAttemptId, JobDefinitionId, JobRunId};
+pub use ids::{
+    ArtifactId, AutomationId, JobAttemptId, JobDefinitionId, JobRunId, WorkflowId, WorkflowRunId,
+    WorkflowStepId, WorkflowStepRunId,
+};
 pub use job::{JobRun, JobRunStatus, StateTransitionError};
 pub use job_definition::{JobDefinition, RetryPolicy};
 pub use job_log::JobRunLog;
+pub use workflow::{
+    Automation, AutomationStatus, AutomationTriggerKind, WorkflowDefinition, WorkflowRun,
+    WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepRun,
+};

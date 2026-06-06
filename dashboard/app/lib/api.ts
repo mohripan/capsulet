@@ -39,6 +39,84 @@ export type SubmitRunRequest = {
   python_script?: string;
 };
 
+export type JobDefinition = {
+  id: string;
+  name: string;
+  runtime_image: string;
+  command: string[];
+  bundle_object_key: string;
+  retry_max_attempts: number;
+  retry_delay_seconds: number;
+};
+
+export type CreateJobDefinitionRequest = {
+  id?: string;
+  name: string;
+  runtime_image?: string;
+  python_script: string;
+  retry_max_attempts?: number;
+  retry_delay_seconds?: number;
+};
+
+export type ExecutionPool = {
+  name: string;
+  description: string;
+  is_default: boolean;
+};
+
+export type WorkflowStep = {
+  id: string;
+  position: number;
+  name: string;
+  job_definition_id: string;
+  execution_pool: string;
+};
+
+export type Workflow = {
+  id: string;
+  name: string;
+  description: string;
+  status: "draft" | "enabled" | "disabled";
+  steps: WorkflowStep[];
+};
+
+export type CreateWorkflowRequest = {
+  name: string;
+  description?: string;
+  steps: Array<{
+    name: string;
+    job_definition_id: string;
+    execution_pool: string;
+  }>;
+};
+
+export type Automation = {
+  id: string;
+  name: string;
+  description: string;
+  workflow_id: string;
+  status: "enabled" | "disabled";
+  trigger_kind: "manual" | "interval";
+  interval_seconds: number | null;
+};
+
+export type WorkflowRun = {
+  id: string;
+  workflow_id: string;
+  automation_id: string | null;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+  current_step_position: number;
+  step_runs: WorkflowStepRun[];
+};
+
+export type WorkflowStepRun = {
+  id: string;
+  workflow_step_id: string;
+  job_run_id: string;
+  position: number;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+};
+
 export class CapsuletApiError extends Error {
   constructor(
     message: string,
@@ -92,6 +170,60 @@ export function getErrorMessage(error: unknown) {
 
 export async function listRuns(limit = 50) {
   return apiFetch<{ runs: JobRun[] }>(`/v1/jobs/runs?limit=${limit}`);
+}
+
+export async function listJobDefinitions(limit = 100) {
+  return apiFetch<{ job_definitions: JobDefinition[] }>(`/v1/job-definitions?limit=${limit}`);
+}
+
+export async function createJobDefinition(request: CreateJobDefinitionRequest) {
+  return apiFetch<JobDefinition>("/v1/job-definitions", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function listExecutionPools() {
+  return apiFetch<{ execution_pools: ExecutionPool[] }>("/v1/execution-pools");
+}
+
+export async function listWorkflows() {
+  return apiFetch<{ workflows: Workflow[] }>("/v1/workflows");
+}
+
+export async function createWorkflow(request: CreateWorkflowRequest) {
+  return apiFetch<Workflow>("/v1/workflows", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function listAutomations() {
+  return apiFetch<{ automations: Automation[] }>("/v1/automations");
+}
+
+export async function createAutomation(request: {
+  name: string;
+  description?: string;
+  workflow_id: string;
+  trigger_kind?: "manual" | "interval";
+  interval_seconds?: number;
+}) {
+  return apiFetch<Automation>("/v1/automations", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function triggerAutomation(id: string) {
+  return apiFetch<WorkflowRun>(`/v1/automations/${encodeURIComponent(id)}/trigger`, {
+    method: "POST",
+    body: "{}"
+  });
+}
+
+export async function listWorkflowRuns() {
+  return apiFetch<{ workflow_runs: WorkflowRun[] }>("/v1/workflow-runs");
 }
 
 export async function getRun(id: string) {

@@ -21,6 +21,30 @@ If migrations fail, confirm PostgreSQL is running and reachable:
 ```powershell
 docker compose ps postgres
 docker compose logs postgres
+docker compose logs api
+```
+
+For Helm installs with bundled PostgreSQL, inspect the database pod and migration Job:
+
+```powershell
+kubectl get pods,jobs -n capsulet
+kubectl describe pod -l app.kubernetes.io/component=postgresql -n capsulet
+kubectl logs job/capsulet-migrate -n capsulet
+```
+
+The bundled database Secret is `capsulet-postgresql` for a release named `capsulet`. The API and worker read `CAPSULET_DATABASE_URL` from its `DATABASE_URL` key.
+
+If `postgresql.mode=external`, confirm the configured Secret exists:
+
+```powershell
+kubectl get secret capsulet-db -n capsulet
+```
+
+If a failed migration Job must be rerun:
+
+```powershell
+kubectl delete job capsulet-migrate -n capsulet
+helm upgrade --install capsulet charts/capsulet -n capsulet
 ```
 
 ## Worker Finds No Runs
@@ -92,10 +116,44 @@ For S3-compatible mode, check:
 - `CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID`
 - `CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY`
 
-The bucket must exist before Capsulet writes objects. For the Docker Compose MinIO service:
+The bucket must exist before Capsulet writes objects. For the Docker Compose stack, the `minio-init` service creates it automatically. Check the init logs:
+
+```powershell
+docker compose logs minio-init
+```
+
+To recreate it manually:
 
 ```powershell
 docker run --rm --network capsulet_default --entrypoint /bin/sh minio/mc:latest -c "mc alias set local http://minio:9000 capsulet capsuletpassword && mc mb -p local/capsulet-artifacts"
+```
+
+For Helm installs with bundled MinIO, inspect MinIO and the bucket initialization Job:
+
+```powershell
+kubectl get pods,jobs -n capsulet
+kubectl describe pod -l app.kubernetes.io/component=minio -n capsulet
+kubectl logs job/capsulet-minio-bucket -n capsulet
+```
+
+The bundled MinIO Secret is `capsulet-minio` for a release named `capsulet`. API and worker read S3 credentials from its `root-user` and `root-password` keys.
+
+Forward the bundled MinIO console:
+
+```powershell
+kubectl port-forward svc/capsulet-minio 9001:9001 -n capsulet
+```
+
+Open:
+
+```text
+http://127.0.0.1:9001
+```
+
+If `minio.mode=external`, confirm the configured credential Secret and bucket exist:
+
+```powershell
+kubectl get secret capsulet-object-storage -n capsulet
 ```
 
 ## Artifact List Works But Download Fails
@@ -124,7 +182,9 @@ cargo run -p capsulet-cli -- artifacts download <run-id> log_<run-id>_stdout --o
 
 ## Helm Template Does Not Include S3 Credentials
 
-S3 credentials are only mounted into API and worker pods when this value is set:
+With bundled MinIO, S3 credentials come from the rendered `<release>-minio` Secret automatically.
+
+With external S3-compatible object storage, credentials are only mounted into API and worker pods when this value is set:
 
 ```yaml
 config:
@@ -149,6 +209,12 @@ For local development:
 ```powershell
 $env:CAPSULET_DASHBOARD_API_URL = "http://127.0.0.1:8080"
 npm run dev
+```
+
+For Docker Compose, the dashboard container uses:
+
+```text
+CAPSULET_DASHBOARD_API_URL=http://api:8080
 ```
 
 For Helm installs, set:

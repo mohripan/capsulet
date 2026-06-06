@@ -4,19 +4,12 @@ Capsulet can execute and control built-in Python job definitions as real Kuberne
 
 This flow uses:
 
-- Docker Compose PostgreSQL and MinIO on the host
 - minikube as the local Kubernetes cluster
-- Helm to install the API and worker
-- S3-compatible object storage for script bundles, large logs, and artifacts
+- Helm to install the API, worker, dashboard, bundled PostgreSQL, and bundled MinIO
+- the Kubernetes runner for script execution
+- bundled MinIO for script bundles, large logs, and artifacts
 
-## Start Dependencies
-
-Start PostgreSQL and MinIO:
-
-```powershell
-docker compose up -d postgres minio
-docker run --rm --network capsulet_default --entrypoint /bin/sh minio/mc:latest -c "mc alias set local http://minio:9000 capsulet capsuletpassword && mc mb -p local/capsulet-artifacts"
-```
+## Start minikube
 
 Start minikube:
 
@@ -30,47 +23,16 @@ Build API, worker, and dashboard images into minikube's Docker daemon:
 
 ```powershell
 minikube docker-env --shell powershell | Invoke-Expression
-docker build -f Dockerfile.rust --build-arg PACKAGE=capsulet-api --build-arg BIN=capsulet-api -t capsulet-api:dev .
-docker build -f Dockerfile.rust --build-arg PACKAGE=capsulet-worker --build-arg BIN=capsulet-worker -t capsulet-worker:dev .
+docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-api --build-arg BIN=capsulet-api -t capsulet-api:dev .
+docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-worker --build-arg BIN=capsulet-worker -t capsulet-worker:dev .
+docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-scheduler --build-arg BIN=capsulet-scheduler -t capsulet-scheduler:dev .
+docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-evaluator --build-arg BIN=capsulet-evaluator -t capsulet-evaluator:dev .
 docker build -f Dockerfile.dashboard -t capsulet-dashboard:dev .
-```
-
-Create the database secret. `host.minikube.internal` lets pods reach the host machine from minikube:
-
-```powershell
-kubectl create secret generic capsulet-db `
-  --namespace capsulet `
-  --from-literal=DATABASE_URL=postgres://capsulet:capsulet@host.minikube.internal:5432/capsulet
-```
-
-Create the object storage credentials secret:
-
-```powershell
-kubectl create secret generic capsulet-object-storage `
-  --namespace capsulet `
-  --from-literal=access-key-id=capsulet `
-  --from-literal=secret-access-key=capsuletpassword
-```
-
-If your Docker/minikube setup cannot resolve or reach `host.minikube.internal`, run a temporary PostgreSQL deployment in the cluster for the smoke test instead:
-
-```powershell
-minikube image load postgres:16-alpine
-kubectl create deployment capsulet-postgres -n capsulet --image=postgres:16-alpine
-kubectl set env deployment/capsulet-postgres -n capsulet `
-  POSTGRES_DB=capsulet `
-  POSTGRES_USER=capsulet `
-  POSTGRES_PASSWORD=capsulet
-kubectl expose deployment capsulet-postgres -n capsulet --port=5432 --target-port=5432
-kubectl rollout status deployment/capsulet-postgres -n capsulet
-kubectl create secret generic capsulet-db `
-  --namespace capsulet `
-  --from-literal=DATABASE_URL=postgres://capsulet:capsulet@capsulet-postgres.capsulet.svc:5432/capsulet
 ```
 
 ## Install Capsulet
 
-Install only the API and worker for the current runtime path:
+Install the full local alpha stack:
 
 ```powershell
 helm upgrade --install capsulet charts/capsulet `
@@ -78,24 +40,21 @@ helm upgrade --install capsulet charts/capsulet `
   --set image.registry= `
   --set image.repository=capsulet `
   --set image.tag=dev `
-  --set image.pullPolicy=Never `
-  --set config.databaseUrlSecret.name=capsulet-db `
-  --set config.objectStorage.mode=s3 `
-  --set config.objectStorage.bucket=capsulet-artifacts `
-  --set config.objectStorage.endpoint=http://host.minikube.internal:9000 `
-  --set config.objectStorage.region=us-east-1 `
-  --set config.objectStorage.pathStyle=true `
-  --set config.objectStorage.credentialsSecret.name=capsulet-object-storage `
-  --set dashboard.enabled=false `
-  --set scheduler.enabled=false `
-  --set evaluator.enabled=false
+  --set image.pullPolicy=Never
 ```
 
-Wait for the API and worker:
+Wait for bundled dependencies, migration, bucket creation, and app deployments:
 
 ```powershell
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=postgresql -n capsulet --timeout=180s
+kubectl wait --for=condition=complete job/capsulet-migrate -n capsulet --timeout=180s
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=minio -n capsulet --timeout=180s
+kubectl wait --for=condition=complete job/capsulet-minio-bucket -n capsulet --timeout=180s
 kubectl rollout status deployment/capsulet-api -n capsulet
 kubectl rollout status deployment/capsulet-worker -n capsulet
+kubectl rollout status deployment/capsulet-dashboard -n capsulet
+kubectl rollout status deployment/capsulet-scheduler -n capsulet
+kubectl rollout status deployment/capsulet-evaluator -n capsulet
 ```
 
 Forward the API locally:
@@ -104,29 +63,7 @@ Forward the API locally:
 kubectl port-forward svc/capsulet-api 8080:80 -n capsulet
 ```
 
-## Optional Dashboard
-
-Install or upgrade with the dashboard enabled after building the dashboard image:
-
-```powershell
-helm upgrade --install capsulet charts/capsulet `
-  --namespace capsulet `
-  --set image.registry= `
-  --set image.repository=capsulet `
-  --set image.tag=dev `
-  --set image.pullPolicy=Never `
-  --set config.databaseUrlSecret.name=capsulet-db `
-  --set config.objectStorage.mode=s3 `
-  --set config.objectStorage.bucket=capsulet-artifacts `
-  --set config.objectStorage.endpoint=http://host.minikube.internal:9000 `
-  --set config.objectStorage.region=us-east-1 `
-  --set config.objectStorage.pathStyle=true `
-  --set config.objectStorage.credentialsSecret.name=capsulet-object-storage `
-  --set dashboard.enabled=true `
-  --set dashboard.apiBaseUrl=http://capsulet-api `
-  --set scheduler.enabled=false `
-  --set evaluator.enabled=false
-```
+## Dashboard
 
 Forward the dashboard:
 
@@ -249,6 +186,13 @@ Inspect worker logs:
 kubectl logs deployment/capsulet-worker -n capsulet
 ```
 
+Inspect bundled dependency jobs:
+
+```powershell
+kubectl logs job/capsulet-migrate -n capsulet
+kubectl logs job/capsulet-minio-bucket -n capsulet
+```
+
 Inspect script Jobs and pods:
 
 ```powershell
@@ -261,5 +205,4 @@ Clean up:
 ```powershell
 helm uninstall capsulet -n capsulet
 kubectl delete namespace capsulet
-docker compose stop postgres minio
 ```

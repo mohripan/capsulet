@@ -40,7 +40,7 @@ config:
     name: ""
     key: DATABASE_URL
   objectStorage:
-    mode: filesystem
+    mode: s3
     path: /var/lib/capsulet/objects
     bucket: capsulet-artifacts
     endpoint: ""
@@ -52,6 +52,94 @@ config:
       secretKeyKey: secret-access-key
   kafka:
     brokers: ""
+
+postgresql:
+  mode: bundled
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    database: capsulet
+    username: capsulet
+    password: capsulet
+  service:
+    port: 5432
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+minio:
+  mode: bundled
+  image:
+    repository: minio/minio
+    tag: latest
+    pullPolicy: IfNotPresent
+  mcImage:
+    repository: minio/mc
+    tag: latest
+    pullPolicy: IfNotPresent
+  auth:
+    rootUser: capsulet
+    rootPassword: capsuletpassword
+  bucket: capsulet-artifacts
+  region: us-east-1
+  pathStyle: true
+  service:
+    port: 9000
+    consolePort: 9001
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  bucketJob:
+    enabled: true
+    backoffLimit: 6
+
+migrations:
+  enabled: true
+  backoffLimit: 6
 
 api:
   enabled: true

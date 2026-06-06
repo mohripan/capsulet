@@ -40,15 +40,13 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "capsulet.fullname" $root }}-config
-          {{- if or (and $root.Values.config.databaseUrlSecret.name $root.Values.config.databaseUrlSecret.key) (eq $name "worker") (and (or (eq $name "api") (eq $name "worker")) $root.Values.config.objectStorage.credentialsSecret.name (or $root.Values.config.objectStorage.credentialsSecret.accessKeyKey $root.Values.config.objectStorage.credentialsSecret.secretKeyKey)) }}
+          {{- if or (eq $name "api") (eq $name "worker") }}
           env:
-            {{- if and $root.Values.config.databaseUrlSecret.name $root.Values.config.databaseUrlSecret.key }}
-            - name: DATABASE_URL
+            - name: CAPSULET_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ $root.Values.config.databaseUrlSecret.name }}
-                  key: {{ $root.Values.config.databaseUrlSecret.key }}
-            {{- end }}
+                  name: {{ include "capsulet.databaseSecretName" $root }}
+                  key: {{ include "capsulet.databaseSecretKey" $root }}
             {{- if eq $name "worker" }}
             - name: CAPSULET_RUNNER_MODE
               value: {{ $root.Values.worker.runner.mode | quote }}
@@ -67,24 +65,22 @@ spec:
               value: {{ $root.Values.worker.runner.stubArtifactText | quote }}
             {{- end }}
             {{- end }}
-            {{- if and $root.Values.config.objectStorage.credentialsSecret.name $root.Values.config.objectStorage.credentialsSecret.accessKeyKey }}
+            {{- if eq (include "capsulet.objectStorageMode" $root) "s3" }}
             - name: CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ $root.Values.config.objectStorage.credentialsSecret.name }}
-                  key: {{ $root.Values.config.objectStorage.credentialsSecret.accessKeyKey }}
-            {{- end }}
-            {{- if and $root.Values.config.objectStorage.credentialsSecret.name $root.Values.config.objectStorage.credentialsSecret.secretKeyKey }}
+                  name: {{ include "capsulet.objectStorageCredentialsSecretName" $root }}
+                  key: {{ include "capsulet.objectStorageAccessKeyKey" $root }}
             - name: CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $root.Values.config.objectStorage.credentialsSecret.name }}
-                  key: {{ $root.Values.config.objectStorage.credentialsSecret.secretKeyKey }}
+                  name: {{ include "capsulet.objectStorageCredentialsSecretName" $root }}
+                  key: {{ include "capsulet.objectStorageSecretKeyKey" $root }}
             {{- end }}
           {{- end }}
-          {{- if or (eq $name "worker") (and (eq $name "api") (eq $root.Values.config.objectStorage.mode "filesystem")) }}
+          {{- if or (eq $name "worker") (and (eq $name "api") (eq (include "capsulet.objectStorageMode" $root) "filesystem")) }}
           volumeMounts:
-            {{- if eq $root.Values.config.objectStorage.mode "filesystem" }}
+            {{- if eq (include "capsulet.objectStorageMode" $root) "filesystem" }}
             - name: object-storage
               mountPath: {{ $root.Values.config.objectStorage.path | quote }}
             {{- end }}
@@ -101,22 +97,22 @@ spec:
               protocol: TCP
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: {{ ternary "/healthz" "/" (eq $name "api") }}
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: {{ ternary "/healthz" "/" (eq $name "api") }}
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20
           {{- end }}
           resources:
             {{- toYaml $component.resources | nindent 12 }}
-      {{- if or (eq $name "worker") (and (eq $name "api") (eq $root.Values.config.objectStorage.mode "filesystem")) }}
+      {{- if or (eq $name "worker") (and (eq $name "api") (eq (include "capsulet.objectStorageMode" $root) "filesystem")) }}
       volumes:
-        {{- if eq $root.Values.config.objectStorage.mode "filesystem" }}
+        {{- if eq (include "capsulet.objectStorageMode" $root) "filesystem" }}
         - name: object-storage
           emptyDir: {}
         {{- end }}

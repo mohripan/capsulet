@@ -2,7 +2,7 @@
 
 Capsulet is a planned Kubernetes-native automation platform, job queue, and sandboxed script execution system. The project goal is to ship an installable cloud-native product, distributed primarily as a Helm chart, that lets teams define automations, trigger scripts or workflows, run them as durable background work, capture logs and artifacts, and scale execution with Kubernetes.
 
-The early product shape is intentionally narrow: submit a Python script job, persist it, execute it in an isolated Kubernetes Job, stream logs, store artifacts, retry failures, and inspect status through an API, CLI, and small dashboard. The long-term direction is a production-grade workflow engine for script-centric automation.
+The early product shape is intentionally narrow: author reusable Python jobs, compose them into linear workflows, trigger those workflows manually or on a fixed interval, execute each step as isolated background work, store logs and artifacts, retry failures, and inspect status through an API, CLI, and dashboard. The long-term direction is a production-grade workflow engine for script-centric automation.
 
 ## Product Vision
 
@@ -40,16 +40,16 @@ Many teams have small scripts that grow into fragile scheduled jobs, manual runb
 - use object storage for artifacts
 - install and operate the platform with standard Kubernetes tooling
 
-The portfolio and engineering focus is cloud-native product quality: Helm distribution, production-shaped configuration, secure defaults, observability, documentation, and release automation.
+The portfolio and engineering focus is cloud-native product quality: Helm distribution, production-shaped configuration, secure defaults, observable behavior, documentation, and eventually repeatable release automation.
 
 ## Target Architecture
 
 The first complete architecture is expected to include:
 
-- `capsulet-api`: HTTP API for job submission, status, logs, artifacts, and admin operations
+- `capsulet-api`: HTTP API for job definitions, workflows, automations, job submission, status, logs, artifacts, and admin operations
 - `capsulet-worker`: leases queued jobs and creates Kubernetes Jobs for execution
-- `capsulet-scheduler`: handles scheduled jobs, retries, and delayed work
-- `capsulet-dashboard`: web UI for job inspection and basic submission
+- `capsulet-scheduler`: creates due interval automation runs and advances workflow steps
+- `capsulet-dashboard`: web UI for authoring jobs, workflows, automations, and inspecting runs
 - `capsulet-cli`: local command-line client for submitting jobs and inspecting results
 - PostgreSQL: durable metadata store
 - MinIO or S3-compatible object storage: artifacts and large log payloads
@@ -58,13 +58,16 @@ The first complete architecture is expected to include:
 
 The central execution flow:
 
-1. A user submits a script job.
-2. The API validates the request and stores the job in PostgreSQL.
-3. A worker leases the job.
-4. The worker creates a Kubernetes Job in the configured namespace.
-5. Kubernetes runs the script in an isolated pod.
-6. The worker watches status, streams logs, stores artifacts, and records the result.
-7. The API, CLI, and dashboard expose the final state.
+1. A user creates a reusable Python job definition.
+2. A user creates a workflow from one or more job definitions.
+3. A user creates a manual or interval automation for that workflow.
+4. The API validates the request and stores control-plane state in PostgreSQL.
+5. The scheduler creates due workflow runs and starts each workflow step as a queued job run.
+6. A worker leases the job run.
+7. The worker creates a Kubernetes Job in the configured namespace, or uses the local stub runner in Docker Compose.
+8. Kubernetes or the stub runner runs the script.
+9. The worker captures logs, stores artifacts, and records the result.
+10. The scheduler advances the workflow, and the API, CLI, and dashboard expose the final state.
 
 ## Security Direction
 
@@ -87,7 +90,21 @@ Planned controls include:
 
 Capsulet should not claim to be a perfect sandbox. The documented guidance should recommend dedicated clusters or namespaces, strict network policy, resource limits, and careful image allowlists for sensitive environments.
 
-## Planned Installation Modes
+## Installation Modes
+
+Local Docker Compose demo:
+
+```sh
+docker compose up --build
+```
+
+This starts PostgreSQL, MinIO, the API, the scheduler, the stub-backed worker, and the dashboard. Open:
+
+```text
+http://127.0.0.1:3000/job-definitions
+```
+
+This path is for checking the current product flow locally: create a job definition, create a workflow, create an automation, trigger it, and inspect the underlying runs. Kubernetes-backed execution is covered by the Helm/minikube path.
 
 Default local install:
 
@@ -103,11 +120,12 @@ Production-shaped install with external dependencies:
 helm install capsulet capsulet/capsulet \
   --namespace capsulet \
   --create-namespace \
-  --set postgresql.enabled=false \
-  --set externalDatabase.enabled=true \
-  --set externalDatabase.existingSecret=capsulet-db \
-  --set minio.enabled=false \
-  --set externalObjectStorage.enabled=true
+  --set postgresql.mode=external \
+  --set config.databaseUrlSecret.name=capsulet-db \
+  --set minio.mode=external \
+  --set config.objectStorage.mode=s3 \
+  --set config.objectStorage.endpoint=http://minio.example:9000 \
+  --set config.objectStorage.credentialsSecret.name=capsulet-object-storage
 ```
 
 Scale workers:

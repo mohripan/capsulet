@@ -30,11 +30,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = PostgresStore::connect(&database_url).await?;
     store.migrate().await?;
-    let object_store = load_object_store()?;
     if env::var("CAPSULET_SEED_EXAMPLES").is_ok_and(|value| value == "true") {
         store.seed_example_job_definitions().await?;
         println!("seeded example job definitions");
     }
+    if env_bool("CAPSULET_MIGRATE_ONLY") {
+        println!("database migrations complete; exiting because CAPSULET_MIGRATE_ONLY is set");
+        return Ok(());
+    }
+
+    let object_store = load_object_store()?;
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("capsulet-api listening on http://{addr}");

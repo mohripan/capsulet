@@ -26,11 +26,18 @@
 
 ## Automations
 
-- Implement automation model.
-- Implement manual trigger.
-- Implement scheduled trigger.
-- Add simple condition tree.
-- Add dashboard automation builder.
+- Implement job definition CRUD API and dashboard authoring. Done in Sprint 009.
+- Implement execution pool list API and dashboard wiring. Done in Sprint 009.
+- Design workflow and automation MVP. Done in Sprint 008.
+- Implement linear workflow definition CRUD. Done in Sprint 009.
+- Implement automation CRUD with manual trigger. Done in Sprint 009.
+- Implement workflow run orchestration for sequential steps. Done in Sprint 009.
+- Add dashboard workflow builder for linear workflows. Done in Sprint 009.
+- Add dashboard automation builder for manual automations. Done in Sprint 009.
+- Implement scheduled interval trigger. Done in Sprint 009.
+- Add workflow run detail page with step-level job links. Planned for Sprint 010.
+- Add edit/delete management controls for authoring resources. Planned for Sprint 010.
+- Add simple condition tree. Deferred until after linear workflow MVP.
 
 ## Execution Pools
 
@@ -46,8 +53,20 @@
 - Make the chart support local runner configuration. Done in Sprint 003.
 - Add local object storage support for evaluation installs. Done in Sprint 005 through Docker Compose MinIO and chart S3 values.
 - Add external S3-compatible object storage configuration. Done in Sprint 005.
-- Add bundled PostgreSQL and MinIO chart dependencies.
+- Add bundled PostgreSQL and MinIO chart dependencies. Done in Sprint 007.
 - Add dashboard API URL configuration. Done in Sprint 006.
+- Fix dashboard long-value layout and remove fake global create controls. Done in Sprint 008.
+- Remove misleading hard-coded automation, workflow, and execution-pool dashboard state. Done in Sprint 009.
+- Add repeatable Compose MVP smoke script. Planned for Sprint 010.
+- Add minikube MVP smoke guide. Planned for Sprint 010.
 - Add metrics for queue depth and worker outcomes.
 - Add lease expiry recovery. Done in Sprint 004.
 - Add Kubernetes Job cleanup policy. Done in Sprint 004.
+
+## Release
+
+- Build container images on version tags. Deferred until after Sprint 010 MVP hardening.
+- Push release images to GHCR. Deferred until after Sprint 010 MVP hardening.
+- Package Helm chart artifacts. Deferred until after Sprint 010 MVP hardening.
+- Generate release notes. Deferred until after Sprint 010 MVP hardening.
+- Publish a Helm repository. Deferred until after release automation.
