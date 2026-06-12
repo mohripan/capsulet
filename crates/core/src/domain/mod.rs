@@ -8,7 +8,9 @@ mod job_log;
 mod workflow;
 
 pub use artifact::{ArtifactObjectKind, JobArtifact};
-pub use automation::{ConditionExpr, TriggerName};
+pub use automation::{
+    AutomationTrigger, ConditionExpr, CustomTriggerPlugin, TriggerKind, TriggerName,
+};
 pub use execution_pool::{ExecutionPool, ExecutionPoolName, ResourceRequirements};
 pub use ids::{
     ArtifactId, AutomationId, JobAttemptId, JobDefinitionId, JobRunId, WorkflowId, WorkflowRunId,

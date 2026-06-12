@@ -460,6 +460,18 @@ button {
   background: rgba(9, 22, 38, 0.64);
 }
 
+.pluginRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.25fr) minmax(160px, 0.8fr) minmax(180px, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 72px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 22, 38, 0.64);
+}
+
 .resourceMain {
   display: flex;
   align-items: center;
@@ -896,6 +908,10 @@ button {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.formStack label.checkItem {
+  display: flex;
 }
 
 .formStack input,
@@ -1340,6 +1356,15 @@ button {
   padding: 12px;
 }
 
+.compactCheck {
+  justify-content: flex-start;
+}
+
+.compactCheck input {
+  width: 16px;
+  min-height: 16px;
+}
+
 .checkItem svg {
   color: var(--green);
 }
@@ -1472,6 +1497,7 @@ button {
   }
 
   .resourceRow,
+  .pluginRow,
   .artifactRow,
   .policyRow {
     grid-template-columns: 1fr;

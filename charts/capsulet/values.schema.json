@@ -202,6 +202,13 @@
         }
       }
     },
+    "scheduler": {
+      "type": "object",
+      "properties": {
+        "loop": { "type": "boolean" },
+        "pollSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
     "dashboard": {
       "type": "object",
       "properties": {

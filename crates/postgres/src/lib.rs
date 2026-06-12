@@ -2,12 +2,12 @@
 
 use async_trait::async_trait;
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus,
-    AutomationTriggerKind, ExecutionPoolName, JobArtifact, JobArtifactRepository, JobAttemptId,
-    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
-    JobRunRepository, JobRunStatus, RetryPolicy, WorkflowDefinition, WorkflowId, WorkflowRun,
-    WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
-    WorkflowStepRun, WorkflowStepRunId,
+    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
+    AutomationTriggerKind, CustomTriggerPlugin, ExecutionPoolName, JobArtifact,
+    JobArtifactRepository, JobAttemptId, JobDefinition, JobDefinitionId, JobRun, JobRunId,
+    JobRunLog, JobRunLogRepository, JobRunRepository, JobRunStatus, RetryPolicy, TriggerKind,
+    TriggerName, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus,
+    WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -439,6 +439,181 @@ impl PostgresStore {
         .await?;
 
         row.as_ref().map(row_to_automation).transpose()
+    }
+
+    /// Replaces an automation trigger graph and its condition tree.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn replace_automation_triggers(
+        &self,
+        automation_id: &AutomationId,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+    ) -> Result<(), PostgresStoreError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            r"
+            UPDATE automations
+            SET condition_tree = $2::jsonb,
+                updated_at = now()
+            WHERE id = $1
+            ",
+        )
+        .bind(automation_id.as_str())
+        .bind(condition_json)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("DELETE FROM automation_triggers WHERE automation_id = $1")
+            .bind(automation_id.as_str())
+            .execute(&mut *tx)
+            .await?;
+
+        for trigger in triggers {
+            sqlx::query(
+                r"
+                INSERT INTO automation_triggers (
+                    id, automation_id, name, kind, config, plugin_id, enabled, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, now())
+                ",
+            )
+            .bind(format!(
+                "{}_{}",
+                automation_id.as_str(),
+                trigger.name.as_str()
+            ))
+            .bind(automation_id.as_str())
+            .bind(trigger.name.as_str())
+            .bind(trigger.kind.to_string())
+            .bind(&trigger.config_json)
+            .bind(trigger.plugin_id.as_deref())
+            .bind(trigger.enabled)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Lists trigger definitions and the stored condition tree for one automation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn list_automation_triggers(
+        &self,
+        automation_id: &AutomationId,
+    ) -> Result<(Vec<AutomationTrigger>, String), PostgresStoreError> {
+        let condition_json: Option<String> =
+            sqlx::query_scalar("SELECT condition_tree::text FROM automations WHERE id = $1")
+                .bind(automation_id.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        let rows = sqlx::query(
+            r"
+            SELECT automation_id, name, kind, config::text, plugin_id, enabled
+            FROM automation_triggers
+            WHERE automation_id = $1
+            ORDER BY name ASC
+            ",
+        )
+        .bind(automation_id.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok((
+            rows.iter()
+                .map(row_to_automation_trigger)
+                .collect::<Result<Vec<_>, _>>()?,
+            condition_json.unwrap_or_else(|| "{}".to_string()),
+        ))
+    }
+
+    /// Inserts or updates a custom trigger plugin registry entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn upsert_custom_trigger_plugin(
+        &self,
+        plugin: &CustomTriggerPlugin,
+    ) -> Result<(), PostgresStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO custom_trigger_plugins (
+                id, name, description, runtime_image, command, config_schema, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())
+            ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                runtime_image = EXCLUDED.runtime_image,
+                command = EXCLUDED.command,
+                config_schema = EXCLUDED.config_schema,
+                updated_at = now()
+            ",
+        )
+        .bind(&plugin.id)
+        .bind(&plugin.name)
+        .bind(&plugin.description)
+        .bind(&plugin.runtime_image)
+        .bind(&plugin.command)
+        .bind(&plugin.config_schema_json)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Lists custom trigger plugins.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails.
+    pub async fn list_custom_trigger_plugins(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<CustomTriggerPlugin>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, name, description, runtime_image, command, config_schema::text
+            FROM custom_trigger_plugins
+            ORDER BY updated_at DESC, id ASC
+            LIMIT $1
+            ",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.iter().map(row_to_custom_trigger_plugin).collect()
+    }
+
+    /// Finds a custom trigger plugin by id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails.
+    pub async fn find_custom_trigger_plugin(
+        &self,
+        id: &str,
+    ) -> Result<Option<CustomTriggerPlugin>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, name, description, runtime_image, command, config_schema::text
+            FROM custom_trigger_plugins
+            WHERE id = $1
+            ",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.as_ref().map(row_to_custom_trigger_plugin).transpose()
     }
 
     /// Creates a queued workflow run.
@@ -1347,6 +1522,7 @@ fn row_to_automation(row: &sqlx::postgres::PgRow) -> Result<Automation, Postgres
     let workflow_id: String = row.try_get("workflow_id")?;
     let status: String = row.try_get("status")?;
     let trigger_kind: String = row.try_get("trigger_kind")?;
+    let interval_seconds: Option<i32> = row.try_get("interval_seconds")?;
 
     Ok(Automation {
         id: AutomationId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
@@ -1356,7 +1532,38 @@ fn row_to_automation(row: &sqlx::postgres::PgRow) -> Result<Automation, Postgres
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
         status: parse_automation_status(&status)?,
         trigger_kind: parse_automation_trigger_kind(&trigger_kind)?,
-        interval_seconds: row.try_get("interval_seconds")?,
+        interval_seconds: interval_seconds.map(i64::from),
+    })
+}
+
+fn row_to_automation_trigger(
+    row: &sqlx::postgres::PgRow,
+) -> Result<AutomationTrigger, PostgresStoreError> {
+    let automation_id: String = row.try_get("automation_id")?;
+    let name: String = row.try_get("name")?;
+    let kind: String = row.try_get("kind")?;
+
+    Ok(AutomationTrigger {
+        automation_id: AutomationId::new(automation_id)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        name: TriggerName::new(name).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        kind: parse_trigger_kind(&kind)?,
+        config_json: row.try_get("config")?,
+        plugin_id: row.try_get("plugin_id")?,
+        enabled: row.try_get("enabled")?,
+    })
+}
+
+fn row_to_custom_trigger_plugin(
+    row: &sqlx::postgres::PgRow,
+) -> Result<CustomTriggerPlugin, PostgresStoreError> {
+    Ok(CustomTriggerPlugin {
+        id: row.try_get("id")?,
+        name: row.try_get("name")?,
+        description: row.try_get("description")?,
+        runtime_image: row.try_get("runtime_image")?,
+        command: row.try_get("command")?,
+        config_schema_json: row.try_get("config_schema")?,
     })
 }
 
@@ -1504,6 +1711,18 @@ fn parse_automation_trigger_kind(
     }
 }
 
+fn parse_trigger_kind(trigger_kind: &str) -> Result<TriggerKind, PostgresStoreError> {
+    match trigger_kind {
+        "manual" => Ok(TriggerKind::Manual),
+        "schedule" => Ok(TriggerKind::Schedule),
+        "sql" => Ok(TriggerKind::Sql),
+        "custom" => Ok(TriggerKind::Custom),
+        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
+            "unknown trigger kind {value}"
+        ))),
+    }
+}
+
 fn parse_artifact_kind(kind: &str) -> Result<ArtifactObjectKind, PostgresStoreError> {
     match kind {
         "bundle" => Ok(ArtifactObjectKind::Bundle),
@@ -1520,8 +1739,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use capsulet_core::{
-        ArtifactId, ArtifactObjectKind, ExecutionPoolName, JobArtifact, JobDefinition, JobRun,
-        JobRunId, JobRunLog, JobRunLogRepository, JobRunRepository,
+        ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus,
+        AutomationTriggerKind, ExecutionPoolName, JobArtifact, JobDefinition, JobRun, JobRunId,
+        JobRunLog, JobRunLogRepository, JobRunRepository, WorkflowDefinition, WorkflowId,
+        WorkflowStatus,
     };
 
     use super::{PostgresStore, parse_status};
@@ -1650,6 +1871,52 @@ mod tests {
             .expect("definition exists");
 
         assert_eq!(persisted, definition);
+    }
+
+    #[tokio::test]
+    async fn saves_and_finds_interval_automation_when_database_is_available() {
+        let Some(database_url) = database_url() else {
+            return;
+        };
+
+        let store = PostgresStore::connect(&database_url)
+            .await
+            .expect("connect to postgres");
+        store.migrate().await.expect("run migrations");
+
+        let workflow = WorkflowDefinition {
+            id: WorkflowId::new(unique_id("workflow_automation_test")).expect("workflow id"),
+            name: "Automation persistence workflow".to_string(),
+            description: String::new(),
+            status: WorkflowStatus::Enabled,
+            steps: Vec::new(),
+        };
+        store
+            .upsert_workflow(&workflow)
+            .await
+            .expect("save workflow");
+
+        let automation = Automation {
+            id: AutomationId::new(unique_id("automation_interval_test")).expect("automation id"),
+            name: "Interval automation".to_string(),
+            description: String::new(),
+            workflow_id: workflow.id,
+            status: AutomationStatus::Enabled,
+            trigger_kind: AutomationTriggerKind::Interval,
+            interval_seconds: Some(30),
+        };
+        store
+            .upsert_automation(&automation)
+            .await
+            .expect("save automation");
+
+        let persisted = store
+            .find_automation(&automation.id)
+            .await
+            .expect("find automation")
+            .expect("automation exists");
+
+        assert_eq!(persisted.interval_seconds, Some(30));
     }
 
     #[tokio::test]

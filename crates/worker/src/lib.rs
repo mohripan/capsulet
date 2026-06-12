@@ -8,6 +8,8 @@ use capsulet_runner::{CancellationCheck, ExecutionPoolsConfig, RunExecution, Run
 use capsulet_storage::{ObjectStore, run_object_key};
 use thiserror::Error;
 
+pub mod runtime;
+
 const INLINE_LOG_LIMIT_BYTES: usize = 64 * 1024;
 
 /// Storage operations required by the worker lease-and-run path.

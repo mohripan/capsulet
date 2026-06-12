@@ -18,12 +18,12 @@ capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-storage = { path = "../storage" }
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
 http-body-util.workspace = true
-serde_json.workspace = true
 tower.workspace = true
 
 [lints]

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::{self, Display},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -13,16 +14,20 @@ use axum::{
     routing::{get, post},
 };
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus,
-    AutomationTriggerKind, CreateManualRunCommand, ExecutionPoolName, JobArtifact, JobDefinition,
-    JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunLogRepository, JobRunRepository,
-    JobRunStatus, RetryPolicy, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId,
-    WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun,
+    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
+    AutomationTriggerKind, ConditionExpr, CreateManualRunCommand, CustomTriggerPlugin,
+    ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
+    JobRunLogRepository, JobRunRepository, JobRunStatus, RetryPolicy, TriggerKind, TriggerName,
+    WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStatus, WorkflowStep,
+    WorkflowStepId, WorkflowStepRun,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use thiserror::Error;
+
+pub mod runtime;
 
 /// Shared API state.
 #[derive(Clone)]
@@ -80,6 +85,28 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error>;
     async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error>;
     async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error>;
+    async fn replace_automation_triggers(
+        &self,
+        automation_id: &AutomationId,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+    ) -> Result<(), Self::Error>;
+    async fn list_automation_triggers(
+        &self,
+        automation_id: &AutomationId,
+    ) -> Result<(Vec<AutomationTrigger>, String), Self::Error>;
+    async fn upsert_custom_trigger_plugin(
+        &self,
+        plugin: &CustomTriggerPlugin,
+    ) -> Result<(), Self::Error>;
+    async fn list_custom_trigger_plugins(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<CustomTriggerPlugin>, Self::Error>;
+    async fn find_custom_trigger_plugin(
+        &self,
+        id: &str,
+    ) -> Result<Option<CustomTriggerPlugin>, Self::Error>;
     async fn create_workflow_run(
         &self,
         workflow_id: &WorkflowId,
@@ -163,6 +190,44 @@ impl ApiStore for PostgresStore {
         self.find_automation(id).await
     }
 
+    async fn replace_automation_triggers(
+        &self,
+        automation_id: &AutomationId,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+    ) -> Result<(), Self::Error> {
+        self.replace_automation_triggers(automation_id, triggers, condition_json)
+            .await
+    }
+
+    async fn list_automation_triggers(
+        &self,
+        automation_id: &AutomationId,
+    ) -> Result<(Vec<AutomationTrigger>, String), Self::Error> {
+        self.list_automation_triggers(automation_id).await
+    }
+
+    async fn upsert_custom_trigger_plugin(
+        &self,
+        plugin: &CustomTriggerPlugin,
+    ) -> Result<(), Self::Error> {
+        self.upsert_custom_trigger_plugin(plugin).await
+    }
+
+    async fn list_custom_trigger_plugins(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<CustomTriggerPlugin>, Self::Error> {
+        self.list_custom_trigger_plugins(limit).await
+    }
+
+    async fn find_custom_trigger_plugin(
+        &self,
+        id: &str,
+    ) -> Result<Option<CustomTriggerPlugin>, Self::Error> {
+        self.find_custom_trigger_plugin(id).await
+    }
+
     async fn create_workflow_run(
         &self,
         workflow_id: &WorkflowId,
@@ -236,6 +301,7 @@ where
                 .delete(delete_job_definition),
         )
         .route("/v1/execution-pools", get(list_execution_pools))
+        .route("/v1/host-groups", get(list_host_groups))
         .route("/v1/workflows", post(create_workflow).get(list_workflows))
         .route("/v1/workflows/{id}", get(get_workflow))
         .route(
@@ -243,7 +309,16 @@ where
             post(create_automation).get(list_automations),
         )
         .route("/v1/automations/{id}", get(get_automation))
+        .route(
+            "/v1/automations/{id}/triggers",
+            get(list_automation_triggers),
+        )
         .route("/v1/automations/{id}/trigger", post(trigger_automation))
+        .route(
+            "/v1/trigger-plugins",
+            post(create_trigger_plugin).get(list_trigger_plugins),
+        )
+        .route("/v1/trigger-plugins/{id}", get(get_trigger_plugin))
         .route("/v1/workflow-runs", get(list_workflow_runs))
         .route("/v1/jobs/runs", post(create_run).get(list_runs))
         .route("/v1/jobs/runs/{id}", get(get_run))
@@ -281,6 +356,32 @@ where
                     "Configured execution pool".to_string()
                 },
                 is_default: index == 0,
+                host_group: name.clone(),
+            })
+            .collect(),
+    })
+}
+
+async fn list_host_groups<S, O>(State(state): State<AppState<S, O>>) -> Json<ListHostGroupsResponse>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    Json(ListHostGroupsResponse {
+        host_groups: state
+            .execution_pools
+            .iter()
+            .enumerate()
+            .map(|(index, name)| HostGroupResponse {
+                name: name.clone(),
+                description: if index == 0 {
+                    "Default host group".to_string()
+                } else {
+                    "Configured host group".to_string()
+                },
+                is_default: index == 0,
+                execution_pool: name.clone(),
+                host_count: None,
             })
             .collect(),
     })
@@ -566,16 +667,26 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
-    let automation = build_automation(&state, request).await?;
+    let build = build_automation(&state, request).await?;
+    let automation = build.automation;
     state
         .store
         .upsert_automation(&automation)
         .await
         .map_err(ApiError::store)?;
+    state
+        .store
+        .replace_automation_triggers(&automation.id, &build.triggers, &build.condition_json)
+        .await
+        .map_err(ApiError::store)?;
 
     Ok((
         StatusCode::CREATED,
-        Json(AutomationResponse::from(&automation)),
+        Json(AutomationResponse::new(
+            &automation,
+            &build.triggers,
+            &build.condition_json,
+        )?),
     ))
 }
 
@@ -591,8 +702,17 @@ where
         .list_automations(100)
         .await
         .map_err(ApiError::store)?;
+    let mut responses = Vec::with_capacity(automations.len());
+    for automation in &automations {
+        let (triggers, condition_json) = trigger_graph_for_response(&state, automation).await?;
+        responses.push(AutomationResponse::new(
+            automation,
+            &triggers,
+            &condition_json,
+        )?);
+    }
     Ok(Json(ListAutomationsResponse {
-        automations: automations.iter().map(AutomationResponse::from).collect(),
+        automations: responses,
     }))
 }
 
@@ -613,18 +733,23 @@ where
     else {
         return Err(ApiError::AutomationNotFound(id.as_str().to_string()));
     };
-    Ok(Json(AutomationResponse::from(&automation)))
+    let (triggers, condition_json) = trigger_graph_for_response(&state, &automation).await?;
+    Ok(Json(AutomationResponse::new(
+        &automation,
+        &triggers,
+        &condition_json,
+    )?))
 }
 
 async fn build_automation<S, O>(
     state: &AppState<S, O>,
     request: CreateAutomationRequest,
-) -> Result<Automation, ApiError>
+) -> Result<AutomationBuild, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
-    let workflow_id = WorkflowId::new(request.workflow_id).map_err(ApiError::validation)?;
+    let workflow_id = WorkflowId::new(request.workflow_id.clone()).map_err(ApiError::validation)?;
     if state
         .store
         .find_workflow(&workflow_id)
@@ -634,30 +759,422 @@ where
     {
         return Err(ApiError::WorkflowNotFound(workflow_id.as_str().to_string()));
     }
-    let trigger_kind = match request.trigger_kind.as_deref().unwrap_or("manual") {
+    let requested_trigger_kind = request
+        .trigger_kind
+        .as_deref()
+        .or_else(|| {
+            request
+                .triggers
+                .as_ref()?
+                .first()
+                .map(|trigger| trigger.kind.as_str())
+        })
+        .unwrap_or("manual");
+    let trigger_kind = match requested_trigger_kind {
         "manual" => AutomationTriggerKind::Manual,
-        "interval" => AutomationTriggerKind::Interval,
+        "interval" | "schedule" => AutomationTriggerKind::Interval,
         value => {
             return Err(ApiError::Validation(format!(
                 "unsupported automation trigger kind: {value}"
             )));
         }
     };
-    if trigger_kind == AutomationTriggerKind::Interval && request.interval_seconds.is_none() {
+    let inferred_interval_seconds = request.interval_seconds.or_else(|| {
+        request
+            .triggers
+            .as_ref()?
+            .iter()
+            .find(|trigger| trigger.kind == "schedule")?
+            .config
+            .get("interval_seconds")
+            .and_then(Value::as_i64)
+    });
+    if trigger_kind == AutomationTriggerKind::Interval && inferred_interval_seconds.is_none() {
         return Err(ApiError::Validation(
             "interval automations require interval_seconds".to_string(),
         ));
     }
-    Ok(Automation {
-        id: AutomationId::new(request.id.unwrap_or_else(|| generated_id("automation")))
-            .map_err(ApiError::validation)?,
+    let automation_id = AutomationId::new(
+        request
+            .id
+            .as_deref()
+            .map_or_else(|| generated_id("automation"), str::to_string),
+    )
+    .map_err(ApiError::validation)?;
+    let triggers = build_automation_triggers(&automation_id, trigger_kind, &request)?;
+    validate_custom_plugin_references(state, &triggers).await?;
+    let condition = request.condition.unwrap_or_else(|| {
+        let trigger_name = triggers
+            .first()
+            .map_or("manual", |trigger| trigger.name.as_str());
+        json!({ "trigger": trigger_name })
+    });
+    validate_condition_json(&condition, &triggers)?;
+
+    Ok(AutomationBuild {
+        automation: Automation {
+            id: automation_id,
+            name: request.name,
+            description: request.description.unwrap_or_default(),
+            workflow_id,
+            status: AutomationStatus::Enabled,
+            trigger_kind,
+            interval_seconds: inferred_interval_seconds,
+        },
+        triggers,
+        condition_json: condition.to_string(),
+    })
+}
+
+struct AutomationBuild {
+    automation: Automation,
+    triggers: Vec<AutomationTrigger>,
+    condition_json: String,
+}
+
+fn build_automation_triggers(
+    automation_id: &AutomationId,
+    trigger_kind: AutomationTriggerKind,
+    request: &CreateAutomationRequest,
+) -> Result<Vec<AutomationTrigger>, ApiError> {
+    if let Some(triggers) = &request.triggers {
+        if triggers.is_empty() {
+            return Err(ApiError::Validation(
+                "automation must include at least one trigger".to_string(),
+            ));
+        }
+        return triggers
+            .iter()
+            .map(|trigger| build_trigger(automation_id, trigger))
+            .collect();
+    }
+
+    let name = if trigger_kind == AutomationTriggerKind::Interval {
+        "schedule"
+    } else {
+        "manual"
+    };
+    let kind = if trigger_kind == AutomationTriggerKind::Interval {
+        TriggerKind::Schedule
+    } else {
+        TriggerKind::Manual
+    };
+    let config_json = if let Some(interval_seconds) = request.interval_seconds {
+        json!({ "interval_seconds": interval_seconds }).to_string()
+    } else {
+        "{}".to_string()
+    };
+
+    Ok(vec![AutomationTrigger {
+        automation_id: automation_id.clone(),
+        name: TriggerName::new(name).map_err(ApiError::validation)?,
+        kind,
+        config_json,
+        plugin_id: None,
+        enabled: true,
+    }])
+}
+
+async fn validate_custom_plugin_references<S, O>(
+    state: &AppState<S, O>,
+    triggers: &[AutomationTrigger],
+) -> Result<(), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    for trigger in triggers {
+        if trigger.kind != TriggerKind::Custom {
+            continue;
+        }
+        let Some(plugin_id) = &trigger.plugin_id else {
+            return Err(ApiError::Validation(
+                "custom triggers require plugin_id".to_string(),
+            ));
+        };
+        if state
+            .store
+            .find_custom_trigger_plugin(plugin_id)
+            .await
+            .map_err(ApiError::store)?
+            .is_none()
+        {
+            return Err(ApiError::TriggerPluginNotFound(plugin_id.clone()));
+        }
+    }
+    Ok(())
+}
+
+fn build_trigger(
+    automation_id: &AutomationId,
+    request: &CreateAutomationTriggerRequest,
+) -> Result<AutomationTrigger, ApiError> {
+    let kind = parse_trigger_kind(&request.kind)?;
+    if kind == TriggerKind::Custom && request.plugin_id.as_deref().unwrap_or("").trim().is_empty() {
+        return Err(ApiError::Validation(
+            "custom triggers require plugin_id".to_string(),
+        ));
+    }
+    if kind != TriggerKind::Custom && request.plugin_id.is_some() {
+        return Err(ApiError::Validation(
+            "plugin_id is only valid for custom triggers".to_string(),
+        ));
+    }
+    if kind == TriggerKind::Schedule {
+        validate_schedule_config(&request.config)?;
+    }
+
+    Ok(AutomationTrigger {
+        automation_id: automation_id.clone(),
+        name: TriggerName::new(request.name.clone()).map_err(ApiError::validation)?,
+        kind,
+        config_json: request.config.to_string(),
+        plugin_id: request.plugin_id.clone(),
+        enabled: request.enabled.unwrap_or(true),
+    })
+}
+
+fn validate_schedule_config(config: &Value) -> Result<(), ApiError> {
+    let has_cron = config
+        .get("cron")
+        .and_then(Value::as_str)
+        .is_some_and(|cron| !cron.trim().is_empty());
+    let has_interval = config
+        .get("interval_seconds")
+        .and_then(Value::as_i64)
+        .is_some_and(|seconds| seconds > 0);
+    if has_cron || has_interval {
+        Ok(())
+    } else {
+        Err(ApiError::Validation(
+            "schedule triggers require cron or interval_seconds".to_string(),
+        ))
+    }
+}
+
+fn validate_condition_json(
+    condition: &Value,
+    triggers: &[AutomationTrigger],
+) -> Result<(), ApiError> {
+    let expression = condition_expr_from_json(condition)?;
+    let trigger_names = triggers
+        .iter()
+        .map(|trigger| trigger.name.clone())
+        .collect::<HashSet<_>>();
+    expression
+        .validate_references(&trigger_names)
+        .map_err(ApiError::validation)
+}
+
+fn condition_expr_from_json(value: &Value) -> Result<ConditionExpr, ApiError> {
+    if let Some(trigger) = value.get("trigger").and_then(Value::as_str) {
+        return Ok(ConditionExpr::Trigger(
+            TriggerName::new(trigger).map_err(ApiError::validation)?,
+        ));
+    }
+    if let Some(all) = value.get("all").and_then(Value::as_array) {
+        return Ok(ConditionExpr::All(
+            all.iter()
+                .map(condition_expr_from_json)
+                .collect::<Result<Vec<_>, _>>()?,
+        ));
+    }
+    if let Some(any) = value.get("any").and_then(Value::as_array) {
+        return Ok(ConditionExpr::Any(
+            any.iter()
+                .map(condition_expr_from_json)
+                .collect::<Result<Vec<_>, _>>()?,
+        ));
+    }
+    Err(ApiError::Validation(
+        "condition must contain trigger, all, or any".to_string(),
+    ))
+}
+
+fn parse_trigger_kind(kind: &str) -> Result<TriggerKind, ApiError> {
+    match kind {
+        "manual" => Ok(TriggerKind::Manual),
+        "schedule" => Ok(TriggerKind::Schedule),
+        "sql" => Ok(TriggerKind::Sql),
+        "custom" => Ok(TriggerKind::Custom),
+        value => Err(ApiError::Validation(format!(
+            "unsupported automation trigger kind: {value}"
+        ))),
+    }
+}
+
+async fn trigger_graph_for_response<S, O>(
+    state: &AppState<S, O>,
+    automation: &Automation,
+) -> Result<(Vec<AutomationTrigger>, String), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let (triggers, condition_json) = state
+        .store
+        .list_automation_triggers(&automation.id)
+        .await
+        .map_err(ApiError::store)?;
+    if triggers.is_empty() {
+        return Ok((
+            legacy_triggers(automation)?,
+            json!({ "trigger": legacy_trigger_name(automation) }).to_string(),
+        ));
+    }
+    Ok((triggers, condition_json))
+}
+
+fn legacy_triggers(automation: &Automation) -> Result<Vec<AutomationTrigger>, ApiError> {
+    let trigger_name = legacy_trigger_name(automation);
+    let kind = if automation.trigger_kind == AutomationTriggerKind::Interval {
+        TriggerKind::Schedule
+    } else {
+        TriggerKind::Manual
+    };
+    let config_json = automation.interval_seconds.map_or_else(
+        || "{}".to_string(),
+        |seconds| json!({ "interval_seconds": seconds }).to_string(),
+    );
+    Ok(vec![AutomationTrigger {
+        automation_id: automation.id.clone(),
+        name: TriggerName::new(trigger_name).map_err(ApiError::validation)?,
+        kind,
+        config_json,
+        plugin_id: None,
+        enabled: true,
+    }])
+}
+
+fn legacy_trigger_name(automation: &Automation) -> &'static str {
+    if automation.trigger_kind == AutomationTriggerKind::Interval {
+        "schedule"
+    } else {
+        "manual"
+    }
+}
+
+async fn list_automation_triggers<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<ListAutomationTriggersResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    let Some(automation) = state
+        .store
+        .find_automation(&automation_id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::AutomationNotFound(
+            automation_id.as_str().to_string(),
+        ));
+    };
+    let (triggers, condition_json) = trigger_graph_for_response(&state, &automation).await?;
+    Ok(Json(ListAutomationTriggersResponse {
+        triggers: triggers.iter().map(TriggerResponse::from).collect(),
+        condition: json_from_string(&condition_json)?,
+    }))
+}
+
+async fn create_trigger_plugin<S, O>(
+    State(state): State<AppState<S, O>>,
+    Json(request): Json<CreateTriggerPluginRequest>,
+) -> Result<(StatusCode, Json<TriggerPluginResponse>), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let plugin = build_trigger_plugin(request)?;
+    state
+        .store
+        .upsert_custom_trigger_plugin(&plugin)
+        .await
+        .map_err(ApiError::store)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(TriggerPluginResponse::from(&plugin)),
+    ))
+}
+
+async fn list_trigger_plugins<S, O>(
+    State(state): State<AppState<S, O>>,
+) -> Result<Json<ListTriggerPluginsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let plugins = state
+        .store
+        .list_custom_trigger_plugins(100)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ListTriggerPluginsResponse {
+        trigger_plugins: plugins.iter().map(TriggerPluginResponse::from).collect(),
+    }))
+}
+
+async fn get_trigger_plugin<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<TriggerPluginResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let Some(plugin) = state
+        .store
+        .find_custom_trigger_plugin(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::TriggerPluginNotFound(id));
+    };
+    Ok(Json(TriggerPluginResponse::from(&plugin)))
+}
+
+fn build_trigger_plugin(
+    request: CreateTriggerPluginRequest,
+) -> Result<CustomTriggerPlugin, ApiError> {
+    if request.id.trim().is_empty() {
+        return Err(ApiError::Validation(
+            "plugin id cannot be empty".to_string(),
+        ));
+    }
+    if request.name.trim().is_empty() {
+        return Err(ApiError::Validation(
+            "plugin name cannot be empty".to_string(),
+        ));
+    }
+    if request.runtime_image.trim().is_empty() {
+        return Err(ApiError::Validation(
+            "plugin runtime_image cannot be empty".to_string(),
+        ));
+    }
+    if request.command.is_empty() {
+        return Err(ApiError::Validation(
+            "plugin command cannot be empty".to_string(),
+        ));
+    }
+
+    Ok(CustomTriggerPlugin {
+        id: request.id,
         name: request.name,
         description: request.description.unwrap_or_default(),
-        workflow_id,
-        status: AutomationStatus::Enabled,
-        trigger_kind,
-        interval_seconds: request.interval_seconds,
+        runtime_image: request.runtime_image,
+        command: request.command,
+        config_schema_json: request
+            .config_schema
+            .unwrap_or_else(|| json!({}))
+            .to_string(),
     })
+}
+
+fn json_from_string(value: &str) -> Result<Value, ApiError> {
+    serde_json::from_str(value).map_err(|error| ApiError::Validation(error.to_string()))
 }
 
 async fn trigger_automation<S, O>(
@@ -1027,6 +1544,7 @@ struct HealthResponse {
 #[derive(Debug, Deserialize)]
 pub struct CreateRunRequest {
     pub job_definition_id: String,
+    #[serde(alias = "host_group")]
     pub execution_pool: String,
     pub run_id: Option<String>,
     pub python_script: Option<String>,
@@ -1054,6 +1572,7 @@ pub struct CreateWorkflowRequest {
 pub struct CreateWorkflowStepRequest {
     pub name: String,
     pub job_definition_id: String,
+    #[serde(alias = "host_group")]
     pub execution_pool: String,
 }
 
@@ -1065,6 +1584,28 @@ pub struct CreateAutomationRequest {
     pub workflow_id: String,
     pub trigger_kind: Option<String>,
     pub interval_seconds: Option<i64>,
+    pub triggers: Option<Vec<CreateAutomationTriggerRequest>>,
+    pub condition: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateAutomationTriggerRequest {
+    pub name: String,
+    pub kind: String,
+    #[serde(default)]
+    pub config: Value,
+    pub plugin_id: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTriggerPluginRequest {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub runtime_image: String,
+    pub command: Vec<String>,
+    pub config_schema: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1093,6 +1634,11 @@ struct ListExecutionPoolsResponse {
 }
 
 #[derive(Debug, Serialize)]
+struct ListHostGroupsResponse {
+    host_groups: Vec<HostGroupResponse>,
+}
+
+#[derive(Debug, Serialize)]
 struct ListWorkflowsResponse {
     workflows: Vec<WorkflowResponse>,
 }
@@ -1100,6 +1646,17 @@ struct ListWorkflowsResponse {
 #[derive(Debug, Serialize)]
 struct ListAutomationsResponse {
     automations: Vec<AutomationResponse>,
+}
+
+#[derive(Debug, Serialize)]
+struct ListAutomationTriggersResponse {
+    triggers: Vec<TriggerResponse>,
+    condition: Value,
+}
+
+#[derive(Debug, Serialize)]
+struct ListTriggerPluginsResponse {
+    trigger_plugins: Vec<TriggerPluginResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1112,6 +1669,16 @@ struct ExecutionPoolResponse {
     name: String,
     description: String,
     is_default: bool,
+    host_group: String,
+}
+
+#[derive(Debug, Serialize)]
+struct HostGroupResponse {
+    name: String,
+    description: String,
+    is_default: bool,
+    execution_pool: String,
+    host_count: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1141,6 +1708,7 @@ struct WorkflowStepResponse {
     name: String,
     job_definition_id: String,
     execution_pool: String,
+    host_group: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1152,6 +1720,27 @@ struct AutomationResponse {
     status: String,
     trigger_kind: String,
     interval_seconds: Option<i64>,
+    triggers: Vec<TriggerResponse>,
+    condition: Value,
+}
+
+#[derive(Debug, Serialize)]
+struct TriggerResponse {
+    name: String,
+    kind: String,
+    config: Value,
+    plugin_id: Option<String>,
+    enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct TriggerPluginResponse {
+    id: String,
+    name: String,
+    description: String,
+    runtime_image: String,
+    command: Vec<String>,
+    config_schema: Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -1179,6 +1768,7 @@ struct JobRunResponse {
     job_definition_id: String,
     status: String,
     execution_pool: String,
+    host_group: String,
     attempt_count: u32,
 }
 
@@ -1255,13 +1845,18 @@ impl From<&WorkflowStep> for WorkflowStepResponse {
             name: step.name.clone(),
             job_definition_id: step.job_definition_id.as_str().to_string(),
             execution_pool: step.execution_pool.as_str().to_string(),
+            host_group: step.execution_pool.as_str().to_string(),
         }
     }
 }
 
-impl From<&Automation> for AutomationResponse {
-    fn from(automation: &Automation) -> Self {
-        Self {
+impl AutomationResponse {
+    fn new(
+        automation: &Automation,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+    ) -> Result<Self, ApiError> {
+        Ok(Self {
             id: automation.id.as_str().to_string(),
             name: automation.name.clone(),
             description: automation.description.clone(),
@@ -1269,6 +1864,34 @@ impl From<&Automation> for AutomationResponse {
             status: automation.status.to_string(),
             trigger_kind: automation.trigger_kind.to_string(),
             interval_seconds: automation.interval_seconds,
+            triggers: triggers.iter().map(TriggerResponse::from).collect(),
+            condition: json_from_string(condition_json)?,
+        })
+    }
+}
+
+impl From<&AutomationTrigger> for TriggerResponse {
+    fn from(trigger: &AutomationTrigger) -> Self {
+        Self {
+            name: trigger.name.as_str().to_string(),
+            kind: trigger.kind.to_string(),
+            config: json_from_string(&trigger.config_json).unwrap_or_else(|_| json!({})),
+            plugin_id: trigger.plugin_id.clone(),
+            enabled: trigger.enabled,
+        }
+    }
+}
+
+impl From<&CustomTriggerPlugin> for TriggerPluginResponse {
+    fn from(plugin: &CustomTriggerPlugin) -> Self {
+        Self {
+            id: plugin.id.clone(),
+            name: plugin.name.clone(),
+            description: plugin.description.clone(),
+            runtime_image: plugin.runtime_image.clone(),
+            command: plugin.command.clone(),
+            config_schema: json_from_string(&plugin.config_schema_json)
+                .unwrap_or_else(|_| json!({})),
         }
     }
 }
@@ -1308,6 +1931,7 @@ impl From<&JobRun> for JobRunResponse {
             job_definition_id: run.job_definition_id.as_str().to_string(),
             status: status_label(run.status).to_string(),
             execution_pool: run.execution_pool.as_str().to_string(),
+            host_group: run.execution_pool.as_str().to_string(),
             attempt_count: run.attempt_count,
         }
     }
@@ -1338,6 +1962,8 @@ enum ApiError {
     WorkflowNotFound(String),
     #[error("automation not found: {0}")]
     AutomationNotFound(String),
+    #[error("trigger plugin not found: {0}")]
+    TriggerPluginNotFound(String),
     #[error("job run not found: {0}")]
     RunNotFound(String),
     #[error("job run logs not found: {0}")]
@@ -1373,6 +1999,7 @@ impl ApiError {
             }
             Self::WorkflowNotFound(_)
             | Self::AutomationNotFound(_)
+            | Self::TriggerPluginNotFound(_)
             | Self::RunNotFound(_)
             | Self::RunLogsNotFound(_)
             | Self::ArtifactNotFound(_)
@@ -1388,6 +2015,7 @@ impl ApiError {
             Self::UnknownExecutionPool(_) => "unknown_execution_pool",
             Self::WorkflowNotFound(_) => "workflow_not_found",
             Self::AutomationNotFound(_) => "automation_not_found",
+            Self::TriggerPluginNotFound(_) => "trigger_plugin_not_found",
             Self::RunNotFound(_) => "job_run_not_found",
             Self::RunLogsNotFound(_) => "job_run_logs_not_found",
             Self::ArtifactNotFound(_) => "job_artifact_not_found",
@@ -1438,9 +2066,10 @@ mod tests {
         http::{Method, Request},
     };
     use capsulet_core::{
-        ArtifactId, ArtifactObjectKind, Automation, AutomationId, ExecutionPoolName, JobArtifact,
-        JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus,
-        WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
+        ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationTrigger,
+        CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId,
+        JobRun, JobRunId, JobRunLog, JobRunStatus, WorkflowDefinition, WorkflowId, WorkflowRun,
+        WorkflowRunId, WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun,
     };
     use capsulet_storage::ObjectStore;
     use http_body_util::BodyExt;
@@ -1457,6 +2086,9 @@ mod tests {
         artifacts: Arc<Mutex<Vec<JobArtifact>>>,
         workflows: Arc<Mutex<Vec<WorkflowDefinition>>>,
         automations: Arc<Mutex<Vec<Automation>>>,
+        automation_triggers: Arc<Mutex<Vec<AutomationTrigger>>>,
+        automation_conditions: Arc<Mutex<Vec<(String, String)>>>,
+        trigger_plugins: Arc<Mutex<Vec<CustomTriggerPlugin>>>,
         workflow_runs: Arc<Mutex<Vec<WorkflowRun>>>,
     }
 
@@ -1670,6 +2302,93 @@ mod tests {
                 .cloned())
         }
 
+        async fn replace_automation_triggers(
+            &self,
+            automation_id: &AutomationId,
+            triggers: &[AutomationTrigger],
+            condition_json: &str,
+        ) -> Result<(), Self::Error> {
+            let mut stored_triggers = self
+                .automation_triggers
+                .lock()
+                .map_err(|error| error.to_string())?;
+            stored_triggers.retain(|trigger| trigger.automation_id != *automation_id);
+            stored_triggers.extend(triggers.iter().cloned());
+            let mut conditions = self
+                .automation_conditions
+                .lock()
+                .map_err(|error| error.to_string())?;
+            conditions.retain(|(id, _)| id != automation_id.as_str());
+            conditions.push((
+                automation_id.as_str().to_string(),
+                condition_json.to_string(),
+            ));
+            Ok(())
+        }
+
+        async fn list_automation_triggers(
+            &self,
+            automation_id: &AutomationId,
+        ) -> Result<(Vec<AutomationTrigger>, String), Self::Error> {
+            let triggers = self
+                .automation_triggers
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .filter(|trigger| trigger.automation_id == *automation_id)
+                .cloned()
+                .collect();
+            let condition = self
+                .automation_conditions
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .find(|(id, _)| id == automation_id.as_str())
+                .map_or_else(|| "{}".to_string(), |(_, condition)| condition.clone());
+            Ok((triggers, condition))
+        }
+
+        async fn upsert_custom_trigger_plugin(
+            &self,
+            plugin: &CustomTriggerPlugin,
+        ) -> Result<(), Self::Error> {
+            let mut plugins = self
+                .trigger_plugins
+                .lock()
+                .map_err(|error| error.to_string())?;
+            plugins.retain(|existing| existing.id != plugin.id);
+            plugins.push(plugin.clone());
+            Ok(())
+        }
+
+        async fn list_custom_trigger_plugins(
+            &self,
+            limit: i64,
+        ) -> Result<Vec<CustomTriggerPlugin>, Self::Error> {
+            let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+            Ok(self
+                .trigger_plugins
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .take(limit)
+                .cloned()
+                .collect())
+        }
+
+        async fn find_custom_trigger_plugin(
+            &self,
+            id: &str,
+        ) -> Result<Option<CustomTriggerPlugin>, Self::Error> {
+            Ok(self
+                .trigger_plugins
+                .lock()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .find(|plugin| plugin.id == id)
+                .cloned())
+        }
+
         async fn create_workflow_run(
             &self,
             workflow_id: &WorkflowId,
@@ -1797,6 +2516,29 @@ mod tests {
             store
         }
 
+        fn with_workflow(self, id: &str) -> Self {
+            let workflow_id = WorkflowId::new(id).expect("workflow id");
+            self.workflows
+                .lock()
+                .expect("workflows mutex")
+                .push(WorkflowDefinition {
+                    id: workflow_id.clone(),
+                    name: "Test workflow".to_string(),
+                    description: String::new(),
+                    status: WorkflowStatus::Enabled,
+                    steps: vec![WorkflowStep {
+                        id: WorkflowStepId::new(format!("{id}_step_1")).expect("step id"),
+                        workflow_id,
+                        position: 1,
+                        name: "Run job".to_string(),
+                        job_definition_id: JobDefinitionId::new("job_hello_python")
+                            .expect("job id"),
+                        execution_pool: ExecutionPoolName::new("mini").expect("pool"),
+                    }],
+                });
+            self
+        }
+
         fn with_run(self, run: JobRun) -> Self {
             self.runs.lock().expect("runs mutex").push(run);
             self
@@ -1872,10 +2614,155 @@ mod tests {
             response_json(response).await,
             json!({
                 "execution_pools": [
-                    { "name": "mini", "description": "Default execution pool", "is_default": true },
-                    { "name": "large", "description": "Configured execution pool", "is_default": false }
+                    { "name": "mini", "description": "Default execution pool", "is_default": true, "host_group": "mini" },
+                    { "name": "large", "description": "Configured execution pool", "is_default": false, "host_group": "large" }
                 ]
             })
+        );
+
+        let response = test_app(FakeStore::default())
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/host-groups")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(
+            response_json(response).await,
+            json!({
+                "host_groups": [
+                    { "name": "mini", "description": "Default host group", "is_default": true, "execution_pool": "mini", "host_count": null },
+                    { "name": "large", "description": "Configured host group", "is_default": false, "execution_pool": "large", "host_count": null }
+                ]
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn creates_and_lists_custom_trigger_plugins() {
+        let app = test_app(FakeStore::default());
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/trigger-plugins")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "id": "plugin_customer_threshold",
+                            "name": "Customer threshold",
+                            "runtime_image": "python:3.12-slim",
+                            "command": ["python", "/plugin/check.py"],
+                            "config_schema": { "type": "object" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+        assert_eq!(
+            response_json(response).await["id"],
+            "plugin_customer_threshold"
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/trigger-plugins")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(
+            response_json(response).await["trigger_plugins"][0]["runtime_image"],
+            "python:3.12-slim"
+        );
+    }
+
+    #[tokio::test]
+    async fn creates_automation_with_trigger_condition_graph() {
+        let store = FakeStore::with_definition("job_hello_python").with_workflow("wf_pipeline");
+        store
+            .trigger_plugins
+            .lock()
+            .expect("plugins mutex")
+            .push(CustomTriggerPlugin {
+                id: "plugin_threshold".to_string(),
+                name: "Threshold plugin".to_string(),
+                description: String::new(),
+                runtime_image: "python:3.12-slim".to_string(),
+                command: vec!["python".to_string(), "/plugin/check.py".to_string()],
+                config_schema_json: "{}".to_string(),
+            });
+
+        let response = test_app(store)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/automations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "id": "automation_customer_pipeline",
+                            "name": "Customer pipeline",
+                            "workflow_id": "wf_pipeline",
+                            "trigger_kind": "schedule",
+                            "triggers": [
+                                {
+                                    "name": "nightly",
+                                    "kind": "schedule",
+                                    "config": { "interval_seconds": 300 }
+                                },
+                                {
+                                    "name": "orders_changed",
+                                    "kind": "sql",
+                                    "config": { "connection_name": "orders", "query": "select 1" }
+                                },
+                                {
+                                    "name": "threshold",
+                                    "kind": "custom",
+                                    "plugin_id": "plugin_threshold",
+                                    "config": { "limit": 10 }
+                                }
+                            ],
+                            "condition": {
+                                "all": [
+                                    { "trigger": "nightly" },
+                                    {
+                                        "any": [
+                                            { "trigger": "orders_changed" },
+                                            { "trigger": "threshold" }
+                                        ]
+                                    }
+                                ]
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+        let body = response_json(response).await;
+        assert_eq!(body["trigger_kind"], "interval");
+        assert_eq!(body["interval_seconds"], 300);
+        assert_eq!(body["triggers"][2]["kind"], "custom");
+        assert_eq!(
+            body["condition"]["all"][1]["any"][0]["trigger"],
+            "orders_changed"
         );
     }
 
@@ -1958,7 +2845,7 @@ mod tests {
                         json!({
                             "run_id": "run_api_test",
                             "job_definition_id": "job_hello_python",
-                            "execution_pool": "mini"
+                            "host_group": "mini"
                         })
                         .to_string(),
                     ))
@@ -1975,6 +2862,7 @@ mod tests {
                 "job_definition_id": "job_hello_python",
                 "status": "queued",
                 "execution_pool": "mini",
+                "host_group": "mini",
                 "attempt_count": 0
             })
         );

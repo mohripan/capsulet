@@ -40,13 +40,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "capsulet.fullname" $root }}-config
-          {{- if or (eq $name "api") (eq $name "worker") }}
+          {{- if or (eq $name "api") (eq $name "worker") (eq $name "scheduler") }}
           env:
             - name: CAPSULET_DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "capsulet.databaseSecretName" $root }}
                   key: {{ include "capsulet.databaseSecretKey" $root }}
+            {{- if eq $name "scheduler" }}
+            - name: CAPSULET_SCHEDULER_LOOP
+              value: {{ $root.Values.scheduler.loop | quote }}
+            - name: CAPSULET_SCHEDULER_POLL_SECONDS
+              value: {{ $root.Values.scheduler.pollSeconds | quote }}
+            {{- end }}
             {{- if eq $name "worker" }}
             - name: CAPSULET_RUNNER_MODE
               value: {{ $root.Values.worker.runner.mode | quote }}

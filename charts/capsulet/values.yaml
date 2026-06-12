@@ -181,6 +181,8 @@ worker:
 scheduler:
   enabled: true
   replicaCount: 1
+  loop: true
+  pollSeconds: 5
   image:
     repositorySuffix: scheduler
   resources:

@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::fmt::{self, Display};
 
+use super::AutomationId;
+
 /// Trigger name scoped to a single automation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TriggerName(String);
@@ -29,6 +31,48 @@ impl Display for TriggerName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+/// Trigger implementation kind supported by the automation control plane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerKind {
+    Manual,
+    Schedule,
+    Sql,
+    Custom,
+}
+
+impl Display for TriggerKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Manual => "manual",
+            Self::Schedule => "schedule",
+            Self::Sql => "sql",
+            Self::Custom => "custom",
+        })
+    }
+}
+
+/// A trigger definition attached to one automation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutomationTrigger {
+    pub automation_id: AutomationId,
+    pub name: TriggerName,
+    pub kind: TriggerKind,
+    pub config_json: String,
+    pub plugin_id: Option<String>,
+    pub enabled: bool,
+}
+
+/// Registry entry for a custom trigger plugin image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomTriggerPlugin {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub runtime_image: String,
+    pub command: Vec<String>,
+    pub config_schema_json: String,
 }
 
 /// Structured boolean condition tree for automation trigger evaluation.
@@ -70,6 +114,28 @@ impl ConditionExpr {
             }
         }
     }
+
+    /// Validates that condition leaves reference existing trigger definitions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the condition is structurally invalid or refers to
+    /// a trigger name that is not part of the automation.
+    pub fn validate_references(&self, trigger_names: &HashSet<TriggerName>) -> Result<(), String> {
+        self.validate()?;
+        match self {
+            Self::Trigger(trigger) => {
+                if trigger_names.contains(trigger) {
+                    Ok(())
+                } else {
+                    Err(format!("condition references unknown trigger: {trigger}"))
+                }
+            }
+            Self::All(expressions) | Self::Any(expressions) => expressions
+                .iter()
+                .try_for_each(|expression| expression.validate_references(trigger_names)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -107,5 +173,14 @@ mod tests {
         let expression = ConditionExpr::All(Vec::new());
 
         assert!(expression.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_condition_references_to_unknown_triggers() {
+        let expression =
+            ConditionExpr::Trigger(TriggerName::new("data_ready").expect("valid trigger"));
+        let known_triggers = HashSet::from([TriggerName::new("approved").expect("valid trigger")]);
+
+        assert!(expression.validate_references(&known_triggers).is_err());
     }
 }

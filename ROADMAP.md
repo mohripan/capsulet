@@ -582,9 +582,9 @@ Exit criteria:
 - Capsulet can be recommended for a serious self-hosted deployment with documented limits.
 - The public documentation explains installation, operation, security, troubleshooting, upgrades, and contribution.
 
-## Execution Pool Concept
+## Host Group Concept
 
-Execution pools are Capsulet's routing layer for different classes of compute. A pool should describe where and how a job may run, while Kubernetes remains responsible for selecting the exact node.
+Host groups are Capsulet's routing layer for different classes of compute. A host group should describe where and how a job may run. In the Kubernetes backend, host groups are implemented through execution-pool settings, and Kubernetes remains responsible for selecting the exact node.
 
 Example Helm values shape:
 
@@ -631,28 +631,28 @@ Example job submission:
 
 ```sh
 capsulet submit examples/send-email \
-  --pool mini \
+  --host-group mini \
   --input '{"to":"team@example.com"}'
 
 capsulet submit examples/model-inference \
-  --pool large \
+  --host-group large \
   --input '{"model":"forecast-v1"}'
 ```
 
-The first implementation should treat pools as static Helm configuration. Later versions can promote them to API-managed objects if runtime pool changes become important.
+The first implementation should treat host groups as static Helm configuration. Later versions can promote them to API-managed objects if runtime host-group changes become important. The existing `executionPools` Helm values key remains the Kubernetes runner configuration surface until a chart values migration is designed.
 
 ## Automation and Trigger Model Concept
 
-Capsulet should not be limited to cron. The user-facing object should be an automation: a named rule that evaluates one or more triggers, decides whether a job or workflow should run, and applies default execution settings such as the execution pool.
+Capsulet should not be limited to cron. The user-facing object should be an automation: a named rule that evaluates one or more triggers, decides whether a job or workflow should run, and applies default execution settings such as the host group.
 
 An automation should answer four questions:
 
 - What is this automation called?
 - What job or workflow does it create?
-- Which execution pool should the created run use by default?
+- Which host group should the created run use by default?
 - Which trigger expression must evaluate to true?
 
-The execution path after an automation fires should stay the same: validate input, create a durable run, route it to an execution pool, execute it, and record the result.
+The execution path after an automation fires should stay the same: validate input, create a durable run, route it to a host group, execute it, and record the result.
 
 Initial trigger types:
 
@@ -685,7 +685,7 @@ target:
   kind: job
   name: generate-report
 execution:
-  pool: mini
+  hostGroup: mini
   timeoutSeconds: 600
 triggers:
   nightly:
@@ -707,7 +707,7 @@ target:
   kind: job
   name: resize-image
 execution:
-  pool: mini
+  hostGroup: mini
 triggers:
   upload_event:
     type: webhook
@@ -727,7 +727,7 @@ target:
   kind: workflow
   name: train-model
 execution:
-  pool: large
+  hostGroup: large
 triggers:
   data_ready:
     type: dependency

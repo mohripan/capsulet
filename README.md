@@ -56,6 +56,13 @@ The first complete architecture is expected to include:
 - Kubernetes Jobs: sandboxed script execution runtime
 - Helm chart: installable product package
 
+Capsulet uses host groups as the product-level routing concept. The current
+Kubernetes backend implements host groups through execution-pool configuration,
+where a host group maps to Kubernetes scheduling constraints such as node
+selectors, tolerations, resources, timeouts, and concurrency limits. Future
+runner backends can map host groups to external workflow hosts such as EC2
+instances or other agent-managed machines.
+
 The central execution flow:
 
 1. A user creates a reusable Python job definition.
@@ -170,6 +177,7 @@ Useful project docs:
 - [Persistence](docs/persistence.md)
 - [Worker and runner](docs/worker-runner.md)
 - [Planning](planning/README.md)
+- [Host groups and triggers](docs/design/host-groups-and-triggers.md)
 - [Backend workspace](crates/README.md)
 - [Dashboard prototype](dashboard/README.md)
 

@@ -1,3 +1,5 @@
+{{- $defaultPool := .Values.executionPools.defaultPool -}}
+{{- $otherPools := without (keys .Values.executionPools.pools | sortAlpha) $defaultPool -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,7 +10,7 @@ data:
   CAPSULET_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   CAPSULET_API_ADDR: "0.0.0.0:8080"
   CAPSULET_SEED_EXAMPLES: {{ .Values.config.seedExamples | quote }}
-  CAPSULET_EXECUTION_POOLS: {{ keys .Values.executionPools.pools | sortAlpha | join "," | quote }}
+  CAPSULET_EXECUTION_POOLS: {{ concat (list $defaultPool) $otherPools | join "," | quote }}
   CAPSULET_OBJECT_STORAGE_MODE: {{ include "capsulet.objectStorageMode" . | quote }}
   CAPSULET_OBJECT_STORAGE_PATH: {{ .Values.config.objectStorage.path | quote }}
   CAPSULET_OBJECT_STORAGE_BUCKET: {{ include "capsulet.objectStorageBucket" . | quote }}

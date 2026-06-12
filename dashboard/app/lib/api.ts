@@ -13,6 +13,7 @@ export type JobRun = {
   job_definition_id: string;
   status: RunStatus;
   execution_pool: string;
+  host_group: string;
   attempt_count: number;
 };
 
@@ -35,6 +36,7 @@ export type Artifact = {
 export type SubmitRunRequest = {
   job_definition_id: string;
   execution_pool: string;
+  host_group?: string;
   run_id?: string;
   python_script?: string;
 };
@@ -62,6 +64,15 @@ export type ExecutionPool = {
   name: string;
   description: string;
   is_default: boolean;
+  host_group: string;
+};
+
+export type HostGroup = {
+  name: string;
+  description: string;
+  is_default: boolean;
+  execution_pool: string;
+  host_count: number | null;
 };
 
 export type WorkflowStep = {
@@ -70,6 +81,7 @@ export type WorkflowStep = {
   name: string;
   job_definition_id: string;
   execution_pool: string;
+  host_group: string;
 };
 
 export type Workflow = {
@@ -98,6 +110,32 @@ export type Automation = {
   status: "enabled" | "disabled";
   trigger_kind: "manual" | "interval";
   interval_seconds: number | null;
+  triggers: AutomationTrigger[];
+  condition: TriggerCondition;
+};
+
+export type TriggerKind = "manual" | "schedule" | "sql" | "custom";
+
+export type TriggerCondition =
+  | { trigger: string }
+  | { all: TriggerCondition[] }
+  | { any: TriggerCondition[] };
+
+export type AutomationTrigger = {
+  name: string;
+  kind: TriggerKind;
+  config: Record<string, unknown>;
+  plugin_id: string | null;
+  enabled: boolean;
+};
+
+export type TriggerPlugin = {
+  id: string;
+  name: string;
+  description: string;
+  runtime_image: string;
+  command: string[];
+  config_schema: Record<string, unknown>;
 };
 
 export type WorkflowRun = {
@@ -187,6 +225,10 @@ export async function listExecutionPools() {
   return apiFetch<{ execution_pools: ExecutionPool[] }>("/v1/execution-pools");
 }
 
+export async function listHostGroups() {
+  return apiFetch<{ host_groups: HostGroup[] }>("/v1/host-groups");
+}
+
 export async function listWorkflows() {
   return apiFetch<{ workflows: Workflow[] }>("/v1/workflows");
 }
@@ -206,10 +248,36 @@ export async function createAutomation(request: {
   name: string;
   description?: string;
   workflow_id: string;
-  trigger_kind?: "manual" | "interval";
+  trigger_kind?: "manual" | "interval" | "schedule";
   interval_seconds?: number;
+  triggers?: Array<{
+    name: string;
+    kind: TriggerKind;
+    config: Record<string, unknown>;
+    plugin_id?: string;
+    enabled?: boolean;
+  }>;
+  condition?: TriggerCondition;
 }) {
   return apiFetch<Automation>("/v1/automations", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function listTriggerPlugins() {
+  return apiFetch<{ trigger_plugins: TriggerPlugin[] }>("/v1/trigger-plugins");
+}
+
+export async function createTriggerPlugin(request: {
+  id: string;
+  name: string;
+  description?: string;
+  runtime_image: string;
+  command: string[];
+  config_schema?: Record<string, unknown>;
+}) {
+  return apiFetch<TriggerPlugin>("/v1/trigger-plugins", {
     method: "POST",
     body: JSON.stringify(request)
   });

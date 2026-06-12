@@ -27,7 +27,7 @@ docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-api --build-arg B
 docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-worker --build-arg BIN=capsulet-worker -t capsulet-worker:dev .
 docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-scheduler --build-arg BIN=capsulet-scheduler -t capsulet-scheduler:dev .
 docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-evaluator --build-arg BIN=capsulet-evaluator -t capsulet-evaluator:dev .
-docker build -f Dockerfile.dashboard -t capsulet-dashboard:dev .
+docker build -f dashboard/Dockerfile -t capsulet-dashboard:dev dashboard
 ```
 
 ## Install Capsulet
