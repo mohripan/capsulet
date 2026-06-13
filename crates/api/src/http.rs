@@ -290,7 +290,12 @@ where
             "/capsulet/workspace/main.py".to_string(),
         ],
         object_key,
-        "{}",
+        &valid_json_object_string(
+            &request
+                .input_schema
+                .unwrap_or_else(|| serde_json::json!({})),
+            "job input schema",
+        )?,
         retry_policy,
     )
     .map_err(ApiError::validation)
@@ -437,7 +442,12 @@ where
     let run_id = WorkflowRunId::new(generated_id("workflow_run")).map_err(ApiError::validation)?;
     let run = state
         .store
-        .create_workflow_run(&automation.workflow_id, Some(&automation.id), &run_id)
+        .create_workflow_run(
+            &automation.workflow_id,
+            Some(&automation.id),
+            &run_id,
+            &automation.job_input_json,
+        )
         .await
         .map_err(ApiError::store)?;
     Ok((
@@ -513,6 +523,10 @@ where
         run_id,
         job_definition_id,
         execution_pool,
+        input_json: Some(valid_json_object_string(
+            &request.input.unwrap_or_else(|| serde_json::json!({})),
+            "run input",
+        )?),
     }
     .into_job_run();
 
@@ -765,6 +779,16 @@ where
 
 fn generated_run_id() -> String {
     generated_id("run")
+}
+
+pub(crate) fn valid_json_object_string(value: &Value, label: &str) -> Result<String, ApiError> {
+    if value.is_object() {
+        Ok(value.to_string())
+    } else {
+        Err(ApiError::Validation(format!(
+            "{label} must be a JSON object"
+        )))
+    }
 }
 
 pub(crate) fn generated_id(prefix: &str) -> String {

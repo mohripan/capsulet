@@ -16,18 +16,19 @@ impl PostgresStore {
         sqlx::query(
             r"
             INSERT INTO automations (
-                id, name, description, workflow_id, status, trigger_kind,
+                id, name, description, workflow_id, job_input, status, trigger_kind,
                 interval_seconds, next_fire_at, updated_at
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7,
-                CASE WHEN $6 = 'interval' THEN now() ELSE NULL END,
+                $1, $2, $3, $4, $5::jsonb, $6, $7, $8,
+                CASE WHEN $7 = 'interval' THEN now() ELSE NULL END,
                 now()
             )
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 workflow_id = EXCLUDED.workflow_id,
+                job_input = EXCLUDED.job_input,
                 status = EXCLUDED.status,
                 trigger_kind = EXCLUDED.trigger_kind,
                 interval_seconds = EXCLUDED.interval_seconds,
@@ -39,6 +40,7 @@ impl PostgresStore {
         .bind(&automation.name)
         .bind(&automation.description)
         .bind(automation.workflow_id.as_str())
+        .bind(&automation.job_input_json)
         .bind(automation.status.to_string())
         .bind(automation.trigger_kind.to_string())
         .bind(automation.interval_seconds)
@@ -59,7 +61,7 @@ impl PostgresStore {
     ) -> Result<Vec<Automation>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, name, description, workflow_id, status, trigger_kind, interval_seconds
+            SELECT id, name, description, workflow_id, job_input::text AS job_input, status, trigger_kind, interval_seconds
             FROM automations
             ORDER BY updated_at DESC, id ASC
             LIMIT $1
@@ -83,7 +85,7 @@ impl PostgresStore {
     ) -> Result<Option<Automation>, PostgresStoreError> {
         let row = sqlx::query(
             r"
-            SELECT id, name, description, workflow_id, status, trigger_kind, interval_seconds
+            SELECT id, name, description, workflow_id, job_input::text AS job_input, status, trigger_kind, interval_seconds
             FROM automations
             WHERE id = $1
             ",

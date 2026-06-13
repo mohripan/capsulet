@@ -16,6 +16,7 @@ pub(crate) fn row_to_job_run(row: &sqlx::postgres::PgRow) -> Result<JobRun, Post
     let status: String = row.try_get("status")?;
     let execution_pool: String = row.try_get("execution_pool")?;
     let attempt_count: i32 = row.try_get("attempt_count")?;
+    let input_json: String = row.try_get("input")?;
 
     let mut run = JobRun::new(
         JobRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
@@ -24,6 +25,7 @@ pub(crate) fn row_to_job_run(row: &sqlx::postgres::PgRow) -> Result<JobRun, Post
         ExecutionPoolName::new(execution_pool)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
     );
+    run.input_json = input_json;
     run.status = parse_status(&status)?;
     run.attempt_count = u32::try_from(attempt_count)
         .map_err(|_| PostgresStoreError::InvalidPersistedValue("negative attempt count".into()))?;
@@ -98,6 +100,7 @@ pub(crate) fn row_to_automation(
     let status: String = row.try_get("status")?;
     let trigger_kind: String = row.try_get("trigger_kind")?;
     let interval_seconds: Option<i32> = row.try_get("interval_seconds")?;
+    let job_input_json: String = row.try_get("job_input")?;
 
     Ok(Automation {
         id: AutomationId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
@@ -105,6 +108,7 @@ pub(crate) fn row_to_automation(
         description: row.try_get("description")?,
         workflow_id: WorkflowId::new(workflow_id)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        job_input_json,
         status: parse_automation_status(&status)?,
         trigger_kind: parse_automation_trigger_kind(&trigger_kind)?,
         interval_seconds: interval_seconds.map(i64::from),
@@ -149,6 +153,7 @@ pub(crate) fn row_to_workflow_run(
     let workflow_id: String = row.try_get("workflow_id")?;
     let automation_id: Option<String> = row.try_get("automation_id")?;
     let status: String = row.try_get("status")?;
+    let input_json: String = row.try_get("input")?;
 
     Ok(WorkflowRun {
         id: WorkflowRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
@@ -158,6 +163,7 @@ pub(crate) fn row_to_workflow_run(
             .map(AutomationId::new)
             .transpose()
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        input_json,
         status: parse_workflow_run_status(&status)?,
         current_step_position: row.try_get("current_step_position")?,
     })

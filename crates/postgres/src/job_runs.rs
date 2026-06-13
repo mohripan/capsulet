@@ -36,7 +36,7 @@ impl PostgresStore {
     pub async fn list_job_runs(&self, limit: i64) -> Result<Vec<JobRun>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, job_definition_id, status, execution_pool, attempt_count
+            SELECT id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
             FROM job_runs
             ORDER BY created_at DESC
             LIMIT $1
@@ -82,6 +82,7 @@ impl PostgresStore {
                       job_runs.job_definition_id,
                       job_runs.status,
                       job_runs.execution_pool,
+                      job_runs.input::text AS input,
                       job_runs.attempt_count
             ",
         )
@@ -109,7 +110,7 @@ impl PostgresStore {
                 updated_at = now()
             WHERE id = $1
               AND status IN ('queued', 'leased', 'running', 'retry_scheduled')
-            RETURNING id, job_definition_id, status, execution_pool, attempt_count
+            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
             ",
         )
         .bind(id.as_str())
@@ -150,7 +151,7 @@ impl PostgresStore {
             WHERE id = $1
               AND attempt_count = $2
               AND status = 'running'
-            RETURNING id, job_definition_id, status, execution_pool, attempt_count
+            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
             "
         } else {
             r"
@@ -164,7 +165,7 @@ impl PostgresStore {
             WHERE id = $1
               AND attempt_count = $2
               AND status = 'running'
-            RETURNING id, job_definition_id, status, execution_pool, attempt_count
+            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
             "
         };
 

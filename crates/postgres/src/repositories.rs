@@ -21,13 +21,15 @@ impl JobRunRepository for PostgresStore {
                 job_definition_id,
                 status,
                 execution_pool,
+                input,
                 attempt_count,
                 updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, now())
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, now())
             ON CONFLICT (id) DO UPDATE SET
                 status = EXCLUDED.status,
                 execution_pool = EXCLUDED.execution_pool,
+                input = EXCLUDED.input,
                 attempt_count = EXCLUDED.attempt_count,
                 updated_at = now()
             ",
@@ -36,6 +38,7 @@ impl JobRunRepository for PostgresStore {
         .bind(run.job_definition_id.as_str())
         .bind(run.status.to_string())
         .bind(run.execution_pool.as_str())
+        .bind(&run.input_json)
         .bind(i32::try_from(run.attempt_count).map_err(|_| PostgresStoreError::AttemptOverflow)?)
         .execute(&self.pool)
         .await?;
@@ -46,7 +49,7 @@ impl JobRunRepository for PostgresStore {
     async fn find_by_id(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
         let row = sqlx::query(
             r"
-            SELECT id, job_definition_id, status, execution_pool, attempt_count
+            SELECT id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
             FROM job_runs
             WHERE id = $1
             ",
