@@ -139,7 +139,7 @@ export default function WorkflowsPage() {
                 ))}
               </select>
             </label>
-            <button className="primaryAction inlineAction" disabled={isSubmitting || !firstJob || !secondJob || !pool}>
+            <button className="primaryAction fullWidthAction" disabled={isSubmitting || !firstJob || !secondJob || !pool}>
               <Send size={16} aria-hidden="true" />
               {isSubmitting ? "Creating" : "Create workflow"}
             </button>

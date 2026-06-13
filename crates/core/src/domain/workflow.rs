@@ -124,6 +124,7 @@ pub struct WorkflowRun {
     pub input_json: String,
     pub status: WorkflowRunStatus,
     pub current_step_position: i32,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

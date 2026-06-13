@@ -15,6 +15,7 @@ export type JobRun = {
   execution_pool: string;
   host_group: string;
   attempt_count: number;
+  created_at: string;
   input: Record<string, unknown>;
 };
 
@@ -180,6 +181,7 @@ export type WorkflowRun = {
   automation_id: string | null;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
   current_step_position: number;
+  created_at: string;
   step_runs: WorkflowStepRun[];
 };
 
@@ -200,6 +202,27 @@ export class CapsuletApiError extends Error {
     super(message);
     this.name = "CapsuletApiError";
   }
+}
+
+export type TableQuery = {
+  limit?: number;
+  start_at?: string;
+  end_at?: string;
+  q?: string;
+  state?: string;
+  sort?: string;
+  direction?: "asc" | "desc";
+};
+
+function queryString(query: TableQuery) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  const value = params.toString();
+  return value ? `?${value}` : "";
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -242,8 +265,9 @@ export function getErrorMessage(error: unknown) {
   return "Unexpected dashboard error";
 }
 
-export async function listRuns(limit = 50) {
-  return apiFetch<{ runs: JobRun[] }>(`/v1/jobs/runs?limit=${limit}`);
+export async function listRuns(query: number | TableQuery = 50) {
+  const params = typeof query === "number" ? { limit: query } : query;
+  return apiFetch<{ runs: JobRun[] }>(`/v1/jobs/runs${queryString(params)}`);
 }
 
 export async function listJobDefinitions(limit = 100) {
@@ -339,8 +363,8 @@ export async function triggerAutomation(id: string) {
   });
 }
 
-export async function listWorkflowRuns() {
-  return apiFetch<{ workflow_runs: WorkflowRun[] }>("/v1/workflow-runs");
+export async function listWorkflowRuns(query: TableQuery = {}) {
+  return apiFetch<{ workflow_runs: WorkflowRun[] }>(`/v1/workflow-runs${queryString(query)}`);
 }
 
 export async function getRun(id: string) {

@@ -69,6 +69,7 @@ pub struct JobRun {
     pub input_json: String,
     pub status: JobRunStatus,
     pub attempt_count: u32,
+    pub created_at: String,
 }
 
 impl JobRun {
@@ -85,6 +86,7 @@ impl JobRun {
             input_json: "{}".to_string(),
             status: JobRunStatus::Queued,
             attempt_count: 0,
+            created_at: String::new(),
         }
     }
 

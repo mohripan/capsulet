@@ -1,14 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Braces,
   CalendarClock,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Database,
   Edit3,
+  Eye,
   Play,
   PlugZap,
   Plus,
@@ -21,7 +22,7 @@ import {
   Workflow
 } from "lucide-react";
 import Link from "next/link";
-import { DashboardShell, PageHeader, PanelTitle, ResizableGridTable, StateBadge } from "../components";
+import { DashboardShell, DateTimePicker, DurationInput, PageHeader, PanelTitle, ResizableGridTable, StateBadge } from "../components";
 import {
   Automation,
   AutomationRequest,
@@ -61,17 +62,19 @@ type DraftTrigger = {
 const pageSize = 6;
 
 const workflowRunColumns = [
-  { label: "Workflow run", width: 250, minWidth: 160 },
-  { label: "Workflow", width: 250, minWidth: 160 },
+  { label: "Workflow run", width: 250, minWidth: 160, sortKey: "workflow_run" },
+  { label: "Created", width: 190, minWidth: 160, sortKey: "created_at" },
+  { label: "Workflow", width: 250, minWidth: 160, sortKey: "workflow" },
   { label: "Job runs", width: 230, minWidth: 150 },
-  { label: "State", width: 150, minWidth: 120 },
-  { label: "Automation", width: 230, minWidth: 150 }
+  { label: "State", width: 150, minWidth: 120, sortKey: "state" },
+  { label: "Automation", width: 230, minWidth: 150, sortKey: "automation" }
 ];
+const workflowRunStates = ["queued", "running", "succeeded", "failed", "cancelled", "timed_out"];
 
 const scheduleContract: ParameterContract = {
   fields: [
     { name: "start_at", label: "Start at", type: "datetime", required: true },
-    { name: "interval_seconds", label: "Repeat every seconds", type: "number", required: true, default: 3600 },
+    { name: "interval_seconds", label: "Repeat every", type: "number", required: true, default: 3600 },
     { name: "window_seconds", label: "Valid window seconds", type: "number", required: true, default: 300 }
   ]
 };
@@ -137,17 +140,43 @@ function conditionToText(condition: TriggerCondition): string {
   return condition.any.map(conditionToText).join(" OR ");
 }
 
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "-";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function isWorkflowRunTerminal(run: WorkflowRun) {
+  return ["succeeded", "failed", "cancelled", "timed_out"].includes(run.status);
+}
+
+function latestStepRun(run: WorkflowRun) {
+  return [...run.step_runs].sort((left, right) => right.position - left.position)[0];
+}
+
 export default function AutomationsPage() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [jobDefinitions, setJobDefinitions] = useState<JobDefinition[]>([]);
   const [hostGroups, setHostGroups] = useState<HostGroup[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
+  const [tableWorkflowRuns, setTableWorkflowRuns] = useState<WorkflowRun[]>([]);
   const [triggerPlugins, setTriggerPlugins] = useState<TriggerPlugin[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
+  const [viewingAutomation, setViewingAutomation] = useState<Automation | null>(null);
+  const [openAutomationMenuId, setOpenAutomationMenuId] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState<WizardStep>("details");
   const [automationPage, setAutomationPage] = useState(1);
   const [runPage, setRunPage] = useState(1);
+  const [runFilterStartAt, setRunFilterStartAt] = useState("");
+  const [runFilterEndAt, setRunFilterEndAt] = useState("");
+  const [runFilterText, setRunFilterText] = useState("");
+  const [runFilterState, setRunFilterState] = useState("");
+  const [runSortKey, setRunSortKey] = useState("created_at");
+  const [runSortDirection, setRunSortDirection] = useState<"asc" | "desc">("desc");
   const [name, setName] = useState("Inventory email alert");
   const [automationStatus, setAutomationStatus] = useState<Automation["status"]>("enabled");
   const [jobDefinitionId, setJobDefinitionId] = useState("");
@@ -166,6 +195,7 @@ export default function AutomationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastLiveRefresh, setLastLiveRefresh] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingPlugin, setIsSavingPlugin] = useState(false);
 
@@ -174,34 +204,53 @@ export default function AutomationsPage() {
     [jobDefinitions, jobDefinitionId]
   );
 
-  async function refresh() {
-    setIsLoading(true);
+  const refresh = useCallback(async function refresh(silent = false) {
+    if (!silent) setIsLoading(true);
     setError(null);
     try {
-      const [automationResponse, jobResponse, hostResponse, runResponse, pluginResponse] = await Promise.all([
+      const [automationResponse, jobResponse, hostResponse, runResponse, tableRunResponse, pluginResponse] = await Promise.all([
         listAutomations(),
         listJobDefinitions(),
         listHostGroups(),
-        listWorkflowRuns(),
+        listWorkflowRuns({ limit: 500 }),
+        listWorkflowRuns({
+          limit: 200,
+          start_at: runFilterStartAt,
+          end_at: runFilterEndAt,
+          q: runFilterText,
+          state: runFilterState,
+          sort: runSortKey,
+          direction: runSortDirection
+        }),
         listTriggerPlugins()
       ]);
       setAutomations(automationResponse.automations);
       setJobDefinitions(jobResponse.job_definitions);
       setHostGroups(hostResponse.host_groups);
       setWorkflowRuns(runResponse.workflow_runs);
+      setTableWorkflowRuns(tableRunResponse.workflow_runs);
       setTriggerPlugins(pluginResponse.trigger_plugins);
+      setLastLiveRefresh(new Date().toISOString());
       setJobDefinitionId((current) => current || jobResponse.job_definitions[0]?.id || "");
       setHostGroup((current) => current || hostResponse.host_groups.find((item) => item.is_default)?.name || hostResponse.host_groups[0]?.name || "");
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  }
+  }, [runFilterEndAt, runFilterStartAt, runFilterState, runFilterText, runSortDirection, runSortKey]);
 
   useEffect(() => {
+    setRunPage(1);
     void refresh();
-  }, []);
+  }, [refresh]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refresh(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
 
   useEffect(() => {
     if (!selectedJob) return;
@@ -221,6 +270,7 @@ export default function AutomationsPage() {
   }
 
   function openEditAutomation(automation: Automation) {
+    setOpenAutomationMenuId(null);
     setEditingAutomation(automation);
     setWizardStep("details");
     setName(automation.name);
@@ -313,6 +363,7 @@ export default function AutomationsPage() {
   }
 
   async function trigger(id: string) {
+    setOpenAutomationMenuId(null);
     setError(null);
     setMessage(null);
     try {
@@ -325,6 +376,7 @@ export default function AutomationsPage() {
   }
 
   async function toggleAutomation(automation: Automation) {
+    setOpenAutomationMenuId(null);
     setError(null);
     setMessage(null);
     try {
@@ -340,12 +392,14 @@ export default function AutomationsPage() {
   }
 
   async function removeAutomation(automation: Automation) {
+    setOpenAutomationMenuId(null);
     if (!window.confirm(`Delete automation "${automation.name}"?`)) return;
     setError(null);
     setMessage(null);
     try {
       await deleteAutomation(automation.id);
       setMessage(`Deleted ${automation.name}`);
+      setViewingAutomation((current) => (current?.id === automation.id ? null : current));
       await refresh();
     } catch (err) {
       setError(getErrorMessage(err));
@@ -369,7 +423,33 @@ export default function AutomationsPage() {
   }
 
   const pagedAutomations = automations.slice((automationPage - 1) * pageSize, automationPage * pageSize);
-  const pagedRuns = workflowRuns.slice((runPage - 1) * pageSize, runPage * pageSize);
+  const pagedRuns = tableWorkflowRuns.slice((runPage - 1) * pageSize, runPage * pageSize);
+  const automationRunSummary = useMemo(() => {
+    return new Map(
+      automations.map((automation) => {
+        const runs = workflowRuns
+          .filter((run) => run.automation_id === automation.id)
+          .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+        return [
+          automation.id,
+          {
+            active: runs.find((run) => !isWorkflowRunTerminal(run)),
+            latest: runs[0],
+            total: runs.length
+          }
+        ];
+      })
+    );
+  }, [automations, workflowRuns]);
+
+  function handleWorkflowRunSort(nextSortKey: string) {
+    if (nextSortKey === runSortKey) {
+      setRunSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setRunSortKey(nextSortKey);
+    setRunSortDirection("asc");
+  }
 
   return (
     <DashboardShell>
@@ -384,7 +464,7 @@ export default function AutomationsPage() {
           <Plus size={18} aria-hidden="true" />
           Automation
         </button>
-        <button className="secondaryButton" onClick={refresh} disabled={isLoading}>
+        <button className="secondaryButton" onClick={() => void refresh()} disabled={isLoading}>
           <RefreshCw size={16} aria-hidden="true" />
           {isLoading ? "Refreshing" : "Refresh"}
         </button>
@@ -395,10 +475,19 @@ export default function AutomationsPage() {
       <section className="contentGrid">
         <section className="panel span8">
           <PanelTitle icon={Workflow} title="Automations" action="Live API" />
+          <div className="liveMonitorBar">
+            <span className="liveDot" aria-hidden="true" />
+            <span>{lastLiveRefresh ? `Live refresh ${formatDateTime(lastLiveRefresh)}` : "Live refresh starting"}</span>
+          </div>
           <div className="resourceList">
             {!isLoading && automations.length === 0 ? <div className="emptyState">No automations yet.</div> : null}
-            {pagedAutomations.map((automation) => (
-              <article className="automationCard" key={automation.id}>
+            {pagedAutomations.map((automation) => {
+              const runSummary = automationRunSummary.get(automation.id);
+              const activeRun = runSummary?.active;
+              const latestRun = runSummary?.latest;
+              const latestJob = latestRun ? latestStepRun(latestRun) : undefined;
+              return (
+              <article className={`automationCard ${activeRun ? "hasActiveRun" : ""}`} key={automation.id}>
                 <div className="resourceMain">
                   <div className="automationIcon">
                     {automation.trigger_kind === "interval" ? <Clock3 size={19} /> : <Play size={19} />}
@@ -406,32 +495,81 @@ export default function AutomationsPage() {
                   <div>
                     <h2>{automation.name}</h2>
                     <p title={automation.workflow_id}>{automation.workflow_id}</p>
+                    <div className="automationMetaLine">
+                      <span>{automation.trigger_kind === "interval" ? "Scheduled" : "Manual"}</span>
+                      <span>{automation.triggers.length} trigger{automation.triggers.length === 1 ? "" : "s"}</span>
+                      {automation.interval_seconds ? <span>{automation.interval_seconds}s interval</span> : null}
+                    </div>
                   </div>
                 </div>
                 <span className={`automationState ${automation.status}`}>{automation.status}</span>
-                <div className="triggerChips">
-                  {automation.triggers.map((triggerItem) => (
-                    <span key={triggerItem.name} title={triggerItem.name}>{triggerItem.name}</span>
-                  ))}
+                <div className="automationRunMonitor">
+                  <div className="runMonitorHead">
+                    <span className={activeRun ? "runPulse active" : "runPulse"} aria-hidden="true" />
+                    <strong>{activeRun ? "Running now" : latestRun ? "Last job" : "No jobs yet"}</strong>
+                    {latestRun ? <span className={`runStatusText state-${(activeRun?.status ?? latestRun.status).toLowerCase()}`}>{activeRun?.status ?? latestRun.status}</span> : null}
+                  </div>
+                  {latestRun ? (
+                    <>
+                      <div className="runMonitorMeta">
+                        <span title={latestRun.created_at}>{formatDateTime(latestRun.created_at)}</span>
+                        <span>{runSummary?.total ?? 0} run{runSummary?.total === 1 ? "" : "s"}</span>
+                        <span>{latestRun.step_runs.length} job{latestRun.step_runs.length === 1 ? "" : "s"}</span>
+                      </div>
+                      <div className="runMonitorLink">
+                        {latestJob ? (
+                          <Link href={`/runs/${latestJob.job_run_id}`} title={latestJob.job_run_id}>
+                            Latest job {latestJob.position}: {latestJob.status}
+                          </Link>
+                        ) : (
+                          <span>No job run created yet</span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="runMonitorMeta">
+                      <span>Waiting for first trigger now</span>
+                    </div>
+                  )}
                 </div>
-                <code className="conditionPreview" title={JSON.stringify(automation.condition)}>{JSON.stringify(automation.condition)}</code>
-                <div className="automationActions">
-                  <button className="secondaryButton" onClick={() => void trigger(automation.id)} disabled={automation.status !== "enabled"}>
-                    <Play size={15} aria-hidden="true" />
-                    Trigger
+                <div className="automationMenu">
+                  <button
+                    className="secondaryButton automationMenuButton"
+                    type="button"
+                    aria-expanded={openAutomationMenuId === automation.id}
+                    onClick={() => setOpenAutomationMenuId((current) => (current === automation.id ? null : automation.id))}
+                  >
+                    Actions
+                    <ChevronDown size={16} aria-hidden="true" />
                   </button>
-                  <button className="iconButton" type="button" title="Edit automation" onClick={() => openEditAutomation(automation)}>
-                    <Edit3 size={16} aria-hidden="true" />
-                  </button>
-                  <button className="iconButton" type="button" title={automation.status === "enabled" ? "Disable automation" : "Enable automation"} onClick={() => void toggleAutomation(automation)}>
-                    {automation.status === "enabled" ? <PowerOff size={16} aria-hidden="true" /> : <Power size={16} aria-hidden="true" />}
-                  </button>
-                  <button className="iconButton dangerButton" type="button" title="Delete automation" onClick={() => void removeAutomation(automation)}>
-                    <Trash2 size={16} aria-hidden="true" />
-                  </button>
+                  {openAutomationMenuId === automation.id ? (
+                    <div className="automationMenuList">
+                      <button type="button" onClick={() => { setViewingAutomation(automation); setOpenAutomationMenuId(null); }}>
+                        <Eye size={16} aria-hidden="true" />
+                        View details
+                      </button>
+                      <button type="button" onClick={() => void trigger(automation.id)}>
+                        <Play size={16} aria-hidden="true" />
+                        Trigger
+                      </button>
+                      <button type="button" onClick={() => openEditAutomation(automation)}>
+                        <Edit3 size={16} aria-hidden="true" />
+                        Modify
+                      </button>
+                      <button type="button" onClick={() => void toggleAutomation(automation)}>
+                        {automation.status === "enabled" ? <PowerOff size={16} aria-hidden="true" /> : <Power size={16} aria-hidden="true" />}
+                        {automation.status === "enabled" ? "Disable" : "Enable"}
+                      </button>
+                      <button className="dangerMenuItem" type="button" onClick={() => void removeAutomation(automation)}>
+                        <Trash2 size={16} aria-hidden="true" />
+                        Delete
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
           <Pagination page={automationPage} total={automations.length} onPage={setAutomationPage} />
         </section>
@@ -470,10 +608,32 @@ export default function AutomationsPage() {
 
         <section className="panel span12">
           <PanelTitle icon={CalendarClock} title="Workflow Runs" action="Scheduler" />
-          <ResizableGridTable columns={workflowRunColumns}>
+          <div className="tableFilters">
+            <label>
+              <span>Start</span>
+              <DateTimePicker value={runFilterStartAt} onChange={setRunFilterStartAt} />
+            </label>
+            <label>
+              <span>End</span>
+              <DateTimePicker value={runFilterEndAt} onChange={setRunFilterEndAt} />
+            </label>
+            <label>
+              <span>Name</span>
+              <input value={runFilterText} onChange={(event) => setRunFilterText(event.target.value)} placeholder="Workflow or automation" />
+            </label>
+            <label>
+              <span>State</span>
+              <select value={runFilterState} onChange={(event) => setRunFilterState(event.target.value)}>
+                <option value="">All states</option>
+                {workflowRunStates.map((state) => <option value={state} key={state}>{state}</option>)}
+              </select>
+            </label>
+          </div>
+          <ResizableGridTable columns={workflowRunColumns} sortKey={runSortKey} sortDirection={runSortDirection} onSort={handleWorkflowRunSort}>
             {pagedRuns.map((run) => (
               <div className="resizableRow runRow" key={run.id}>
                 <span className="mono tableCell" title={run.id}>{run.id}</span>
+                <span className="tableCell" title={run.created_at}>{formatDateTime(run.created_at)}</span>
                 <span className="tableCell" title={run.workflow_id}>{run.workflow_id}</span>
                 <span className="stepRunLinks">
                   {run.step_runs.length === 0 ? "-" : run.step_runs.map((stepRun) => (
@@ -485,7 +645,7 @@ export default function AutomationsPage() {
               </div>
             ))}
           </ResizableGridTable>
-          <Pagination page={runPage} total={workflowRuns.length} onPage={setRunPage} />
+          <Pagination page={runPage} total={tableWorkflowRuns.length} onPage={setRunPage} />
         </section>
       </section>
 
@@ -575,6 +735,60 @@ export default function AutomationsPage() {
           </form>
         </div>
       ) : null}
+
+      {viewingAutomation ? (
+        <div className="modalBackdrop" role="dialog" aria-modal="true" aria-label="Automation details">
+          <section className="wizardModal automationDetailModal">
+            <div className="wizardHeader">
+              <div>
+                <span>Automation details</span>
+                <h2>{viewingAutomation.name}</h2>
+              </div>
+              <button className="iconButton" type="button" onClick={() => setViewingAutomation(null)}>x</button>
+            </div>
+            <div className="automationDetailBody">
+              <div className="detailGrid">
+                <span>ID</span>
+                <strong>{viewingAutomation.id}</strong>
+                <span>Workflow</span>
+                <strong>{viewingAutomation.workflow_id}</strong>
+                <span>Status</span>
+                <strong>{viewingAutomation.status}</strong>
+                <span>Mode</span>
+                <strong>{viewingAutomation.trigger_kind}</strong>
+                <span>Interval</span>
+                <strong>{viewingAutomation.interval_seconds ? `${viewingAutomation.interval_seconds}s` : "-"}</strong>
+                <span>Condition</span>
+                <strong>{conditionToText(viewingAutomation.condition)}</strong>
+              </div>
+              <section className="detailSection">
+                <h3>Triggers</h3>
+                <div className="automationTriggerDetails">
+                  {viewingAutomation.triggers.length === 0 ? <div className="emptyState">No triggers configured.</div> : null}
+                  {viewingAutomation.triggers.map((triggerItem) => (
+                    <article className="automationTriggerDetail" key={triggerItem.name}>
+                      <div>
+                        <strong>{triggerItem.name}</strong>
+                        <span>{triggerItem.kind}{triggerItem.plugin_id ? ` / ${triggerItem.plugin_id}` : ""}</span>
+                      </div>
+                      <span className={`automationState ${triggerItem.enabled ? "" : "disabled"}`}>{triggerItem.enabled ? "enabled" : "disabled"}</span>
+                      <code>{JSON.stringify(triggerItem.config, null, 2)}</code>
+                    </article>
+                  ))}
+                </div>
+              </section>
+              <section className="detailSection">
+                <h3>Condition JSON</h3>
+                <code className="detailCodeBlock">{JSON.stringify(viewingAutomation.condition, null, 2)}</code>
+              </section>
+              <section className="detailSection">
+                <h3>Job input</h3>
+                <code className="detailCodeBlock">{JSON.stringify(viewingAutomation.job_input || {}, null, 2)}</code>
+              </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </DashboardShell>
   );
 }
@@ -595,7 +809,17 @@ function ContractFields({ contract, values, onChange, onFieldChange }: { contrac
         return (
           <label key={field.name}>
             <span>{fieldLabel(field)}{field.required ? " *" : ""}</span>
-            {field.type === "textarea" ? <textarea value={String(value)} placeholder={field.placeholder} onChange={(event) => setValue(event.target.value)} /> : field.type === "boolean" ? <input type="checkbox" checked={Boolean(value)} onChange={(event) => setValue(event.target.checked)} /> : <input type={field.type === "datetime" ? "datetime-local" : field.type === "password" ? "password" : field.type} value={String(value)} placeholder={field.placeholder} onChange={(event) => setValue(event.target.value)} />}
+            {field.type === "textarea" ? (
+              <textarea value={String(value)} placeholder={field.placeholder} onChange={(event) => setValue(event.target.value)} />
+            ) : field.type === "boolean" ? (
+              <input type="checkbox" checked={Boolean(value)} onChange={(event) => setValue(event.target.checked)} />
+            ) : field.type === "datetime" ? (
+              <DateTimePicker value={String(value)} onChange={setValue} />
+            ) : field.name === "interval_seconds" && field.type === "number" ? (
+              <DurationInput valueSeconds={Number(value) || 60} minSeconds={60} onChange={(seconds) => setValue(String(seconds))} />
+            ) : (
+              <input type={field.type === "password" ? "password" : field.type} value={String(value)} placeholder={field.placeholder} onChange={(event) => setValue(event.target.value)} />
+            )}
           </label>
         );
       })}

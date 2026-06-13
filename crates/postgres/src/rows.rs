@@ -29,6 +29,7 @@ pub(crate) fn row_to_job_run(row: &sqlx::postgres::PgRow) -> Result<JobRun, Post
     run.status = parse_status(&status)?;
     run.attempt_count = u32::try_from(attempt_count)
         .map_err(|_| PostgresStoreError::InvalidPersistedValue("negative attempt count".into()))?;
+    run.created_at = row.try_get("created_at")?;
 
     Ok(run)
 }
@@ -166,6 +167,7 @@ pub(crate) fn row_to_workflow_run(
         input_json,
         status: parse_workflow_run_status(&status)?,
         current_step_position: row.try_get("current_step_position")?,
+        created_at: row.try_get("created_at")?,
     })
 }
 

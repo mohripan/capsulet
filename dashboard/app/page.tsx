@@ -37,6 +37,7 @@ import type { LucideIcon } from "lucide-react";
 
 const recentRunColumns = [
   { label: "Run", width: 220, minWidth: 140 },
+  { label: "Created", width: 190, minWidth: 160 },
   { label: "Job definition", width: 230, minWidth: 150 },
   { label: "Pool", width: 110, minWidth: 80 },
   { label: "State", width: 160, minWidth: 120 },
@@ -46,11 +47,21 @@ const recentRunColumns = [
 
 const workflowRunColumns = [
   { label: "Workflow run", width: 250, minWidth: 160 },
+  { label: "Created", width: 190, minWidth: 160 },
   { label: "Workflow", width: 250, minWidth: 160 },
   { label: "Job runs", width: 230, minWidth: 150 },
   { label: "State", width: 150, minWidth: 120 },
   { label: "Automation", width: 230, minWidth: 150 }
 ];
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "-";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
 
 export default function OverviewPage() {
   const [automations, setAutomations] = useState<Automation[]>([]);
@@ -220,6 +231,9 @@ export default function OverviewPage() {
                 <span className="mono tableCell" title={run.id}>
                   {run.id}
                 </span>
+                <span className="tableCell" title={run.created_at}>
+                  {formatDateTime(run.created_at)}
+                </span>
                 <span className="tableCell" title={run.job_definition_id}>
                   {run.job_definition_id}
                 </span>
@@ -284,6 +298,7 @@ export default function OverviewPage() {
             {workflowRuns.slice(0, 4).map((run) => (
               <div className="resizableRow runRow" key={run.id}>
                 <span className="mono tableCell" title={run.id}>{run.id}</span>
+                <span className="tableCell" title={run.created_at}>{formatDateTime(run.created_at)}</span>
                 <span className="tableCell" title={run.workflow_id}>{run.workflow_id}</span>
                 <span className="stepRunLinks">
                   {run.step_runs.length === 0 ? "No job runs" : run.step_runs.map((stepRun) => `${stepRun.position}: ${stepRun.status}`).join(", ")}

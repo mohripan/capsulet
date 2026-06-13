@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Archive,
@@ -174,20 +174,110 @@ export function StateBadge({ state }: { state: string }) {
   return <span className={`state state-${state.toLowerCase()}`}>{state}</span>;
 }
 
+function splitDateTime(value: string) {
+  if (!value) return { date: "", time: "" };
+  const [date, rawTime = ""] = value.includes("T") ? value.split("T") : value.split(" ");
+  return { date, time: rawTime.slice(0, 5) };
+}
+
+export function DateTimePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const parts = splitDateTime(value);
+
+  function update(nextDate: string, nextTime: string) {
+    if (!nextDate) {
+      onChange("");
+      return;
+    }
+    onChange(`${nextDate}T${nextTime || "00:00"}`);
+  }
+
+  return (
+    <div className="dateTimePicker">
+      <input type="date" value={parts.date} onChange={(event) => update(event.target.value, parts.time)} />
+      <input type="time" step={60} value={parts.time} onChange={(event) => update(parts.date, event.target.value)} />
+    </div>
+  );
+}
+
+function formatDuration(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return [hours, minutes, remainingSeconds].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
+function parseDuration(value: string) {
+  const match = value.trim().match(/^(\d{1,3}):([0-5]\d):([0-5]\d)$/);
+  if (!match) return null;
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+}
+
+export function DurationInput({
+  valueSeconds,
+  minSeconds = 60,
+  onChange
+}: {
+  valueSeconds: number;
+  minSeconds?: number;
+  onChange: (seconds: number) => void;
+}) {
+  const [draft, setDraft] = useState(formatDuration(valueSeconds));
+
+  useEffect(() => {
+    setDraft(formatDuration(valueSeconds));
+  }, [valueSeconds]);
+
+  function commit(value: string) {
+    const seconds = parseDuration(value);
+    if (seconds === null) {
+      setDraft(formatDuration(Math.max(minSeconds, valueSeconds)));
+      return;
+    }
+    const next = Math.max(minSeconds, seconds);
+    setDraft(formatDuration(next));
+    onChange(next);
+  }
+
+  return (
+    <input
+      className="durationInput"
+      inputMode="numeric"
+      placeholder="00:05:00"
+      value={draft}
+      onBlur={() => commit(draft)}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        const seconds = parseDuration(event.target.value);
+        if (seconds !== null && seconds >= minSeconds) {
+          onChange(seconds);
+        }
+      }}
+    />
+  );
+}
+
 export type ResizableGridColumn = {
   label: string;
   width: number;
   minWidth?: number;
+  sortKey?: string;
 };
 
 export function ResizableGridTable({
   columns,
   children,
-  className
+  className,
+  sortKey,
+  sortDirection,
+  onSort
 }: {
   columns: ResizableGridColumn[];
   children: ReactNode;
   className?: string;
+  sortKey?: string;
+  sortDirection?: "asc" | "desc";
+  onSort?: (sortKey: string) => void;
 }) {
   const [widths, setWidths] = useState(() => columns.map((column) => column.width));
   const template = useMemo(() => widths.map((width) => `${Math.round(width)}px`).join(" "), [widths]);
@@ -222,7 +312,14 @@ export function ResizableGridTable({
       <div className="resizableHeader">
         {columns.map((column, index) => (
           <div className="resizableHeadCell" key={column.label}>
-            <span>{column.label}</span>
+            {column.sortKey && onSort ? (
+              <button className="sortHeaderButton" type="button" onClick={() => onSort(column.sortKey!)}>
+                <span>{column.label}</span>
+                <span aria-hidden="true">{sortKey === column.sortKey ? (sortDirection === "asc" ? "↑" : "↓") : ""}</span>
+              </button>
+            ) : (
+              <span>{column.label}</span>
+            )}
             <button
               aria-label={`Resize ${column.label} column`}
               className="columnResizeHandle"

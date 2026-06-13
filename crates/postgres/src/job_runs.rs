@@ -36,7 +36,7 @@ impl PostgresStore {
     pub async fn list_job_runs(&self, limit: i64) -> Result<Vec<JobRun>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
+            SELECT id, job_definition_id, status, execution_pool, input::text AS input, attempt_count, created_at::text AS created_at
             FROM job_runs
             ORDER BY created_at DESC
             LIMIT $1

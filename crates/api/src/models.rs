@@ -87,6 +87,23 @@ pub struct CreateTriggerPluginRequest {
 #[derive(Debug, Deserialize)]
 pub(crate) struct ListRunsQuery {
     pub(crate) limit: Option<u16>,
+    pub(crate) start_at: Option<String>,
+    pub(crate) end_at: Option<String>,
+    pub(crate) q: Option<String>,
+    pub(crate) state: Option<String>,
+    pub(crate) sort: Option<String>,
+    pub(crate) direction: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ListWorkflowRunsQuery {
+    pub(crate) limit: Option<u16>,
+    pub(crate) start_at: Option<String>,
+    pub(crate) end_at: Option<String>,
+    pub(crate) q: Option<String>,
+    pub(crate) state: Option<String>,
+    pub(crate) sort: Option<String>,
+    pub(crate) direction: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,6 +245,7 @@ pub(crate) struct WorkflowRunResponse {
     pub(crate) automation_id: Option<String>,
     pub(crate) status: String,
     pub(crate) current_step_position: i32,
+    pub(crate) created_at: String,
     pub(crate) step_runs: Vec<WorkflowStepRunResponse>,
 }
 
@@ -248,6 +266,7 @@ pub(crate) struct JobRunResponse {
     pub(crate) execution_pool: String,
     pub(crate) host_group: String,
     pub(crate) attempt_count: u32,
+    pub(crate) created_at: String,
     pub(crate) input: Value,
 }
 
@@ -385,6 +404,7 @@ impl WorkflowRunResponse {
             automation_id: run.automation_id.as_ref().map(|id| id.as_str().to_string()),
             status: run.status.to_string(),
             current_step_position: run.current_step_position,
+            created_at: run.created_at.clone(),
             step_runs: step_runs
                 .iter()
                 .map(WorkflowStepRunResponse::from)
@@ -414,6 +434,7 @@ impl From<&JobRun> for JobRunResponse {
             execution_pool: run.execution_pool.as_str().to_string(),
             host_group: run.execution_pool.as_str().to_string(),
             attempt_count: run.attempt_count,
+            created_at: run.created_at.clone(),
             input: json_from_string(&run.input_json).unwrap_or_else(|_| json!({})),
         }
     }

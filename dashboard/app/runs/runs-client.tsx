@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, FileCode2, ListFilter, Play, RefreshCw, Send } from "lucide-react";
-import { DashboardShell, PageHeader, PanelTitle, PythonEditor, ResizableGridTable, StateBadge } from "../components";
+import { DashboardShell, DateTimePicker, PageHeader, PanelTitle, PythonEditor, ResizableGridTable, StateBadge } from "../components";
 import {
   ExecutionPool,
   JobDefinition,
@@ -16,14 +16,25 @@ import {
 } from "../lib/api";
 
 const runColumns = [
-  { label: "Run", width: 250, minWidth: 150 },
-  { label: "Job definition", width: 250, minWidth: 160 },
-  { label: "Pool", width: 170, minWidth: 110 },
-  { label: "State", width: 150, minWidth: 120 },
-  { label: "Attempts", width: 130, minWidth: 92 }
+  { label: "Run", width: 250, minWidth: 150, sortKey: "run" },
+  { label: "Created", width: 190, minWidth: 160, sortKey: "created_at" },
+  { label: "Job definition", width: 250, minWidth: 160, sortKey: "job_definition" },
+  { label: "Pool", width: 170, minWidth: 110, sortKey: "pool" },
+  { label: "State", width: 150, minWidth: 120, sortKey: "state" },
+  { label: "Attempts", width: 130, minWidth: 92, sortKey: "attempts" }
 ];
 
 const pageSize = 8;
+const runStates = ["queued", "leased", "running", "retry_scheduled", "succeeded", "failed", "timed_out", "cancelled"];
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "-";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
 
 export default function RunsClient() {
   const [runs, setRuns] = useState<JobRun[]>([]);
@@ -32,6 +43,12 @@ export default function RunsClient() {
   const [error, setError] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [createdRun, setCreatedRun] = useState<JobRun | null>(null);
+  const [filterStartAt, setFilterStartAt] = useState("");
+  const [filterEndAt, setFilterEndAt] = useState("");
+  const [filterText, setFilterText] = useState("");
+  const [filterState, setFilterState] = useState("");
+  const [sortKey, setSortKey] = useState("created_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobDefinitions, setJobDefinitions] = useState<JobDefinition[]>([]);
   const [executionPools, setExecutionPools] = useState<ExecutionPool[]>([]);
@@ -40,23 +57,35 @@ export default function RunsClient() {
   const [scriptPool, setScriptPool] = useState("");
   const [script, setScript] = useState("print('hello from dashboard')");
 
-  async function refresh() {
+  const refresh = useCallback(async function refresh() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await listRuns();
+      const response = await listRuns({
+        limit: 200,
+        start_at: filterStartAt,
+        end_at: filterEndAt,
+        q: filterText,
+        state: filterState,
+        sort: sortKey,
+        direction: sortDirection
+      });
       setRuns(response.runs);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [filterEndAt, filterStartAt, filterState, filterText, sortDirection, sortKey]);
 
   useEffect(() => {
-    void refresh();
     void refreshAuthoringData();
   }, []);
+
+  useEffect(() => {
+    setRunPage(1);
+    void refresh();
+  }, [refresh]);
 
   async function refreshAuthoringData() {
     try {
@@ -80,6 +109,15 @@ export default function RunsClient() {
   }, [runs]);
 
   const pagedRuns = runs.slice((runPage - 1) * pageSize, runPage * pageSize);
+
+  function handleSort(nextSortKey: string) {
+    if (nextSortKey === sortKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextSortKey);
+    setSortDirection("asc");
+  }
 
   useEffect(() => {
     const pages = Math.max(1, Math.ceil(runs.length / pageSize));
@@ -154,8 +192,29 @@ export default function RunsClient() {
               {isLoading ? "Refreshing" : "Refresh"}
             </button>
           </div>
+          <div className="tableFilters">
+            <label>
+              <span>Start</span>
+              <DateTimePicker value={filterStartAt} onChange={setFilterStartAt} />
+            </label>
+            <label>
+              <span>End</span>
+              <DateTimePicker value={filterEndAt} onChange={setFilterEndAt} />
+            </label>
+            <label>
+              <span>Name</span>
+              <input value={filterText} onChange={(event) => setFilterText(event.target.value)} placeholder="Run or job definition" />
+            </label>
+            <label>
+              <span>State</span>
+              <select value={filterState} onChange={(event) => setFilterState(event.target.value)}>
+                <option value="">All states</option>
+                {runStates.map((state) => <option value={state} key={state}>{state}</option>)}
+              </select>
+            </label>
+          </div>
           {error ? <div className="errorBox">{error}</div> : null}
-          <ResizableGridTable columns={runColumns}>
+          <ResizableGridTable columns={runColumns} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort}>
             {!isLoading && runs.length === 0 ? (
               <div className="emptyState">No runs yet. Submit a seeded job or Python script to create one.</div>
             ) : null}
@@ -163,6 +222,9 @@ export default function RunsClient() {
               <Link className="resizableRow runRow interactiveRow" href={`/runs/${run.id}`} key={run.id}>
                 <span className="mono tableCell" title={run.id}>
                   {run.id}
+                </span>
+                <span className="tableCell" title={run.created_at}>
+                  {formatDateTime(run.created_at)}
                 </span>
                 <span className="tableCell" title={run.job_definition_id}>
                   {run.job_definition_id}

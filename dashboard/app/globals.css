@@ -1097,6 +1097,10 @@ button {
   box-shadow: none;
 }
 
+.formStack .fullWidthAction {
+  width: 100%;
+}
+
 .formStack {
   display: grid;
   gap: 13px;
@@ -1124,19 +1128,97 @@ button {
   color: var(--text);
 }
 
+.tableFilters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.tableFilters label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tableFilters input,
+.tableFilters select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #071526;
+  color: var(--text);
+}
+
+.dateTimePicker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dateTimePicker input,
+.durationInput {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #071526;
+  color: var(--text);
+}
+
+.durationInput {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0;
+}
+
+.sortHeaderButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.sortHeaderButton span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .automationCard {
   display: grid;
   grid-template-areas:
     "main state action"
-    "triggers condition action";
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
-  gap: 12px;
+    "monitor monitor monitor";
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 11px 14px;
   align-items: center;
-  min-height: 82px;
-  padding: 12px;
+  min-height: 108px;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(9, 22, 38, 0.64);
+}
+
+.automationCard.hasActiveRun {
+  border-color: rgba(36, 150, 237, 0.42);
+  background:
+    linear-gradient(90deg, rgba(36, 150, 237, 0.08), transparent 42%),
+    rgba(9, 22, 38, 0.72);
 }
 
 .automationCard > *,
@@ -1154,8 +1236,166 @@ button {
   grid-area: triggers;
 }
 
+.automationMetaLine {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.automationMetaLine span {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automationMetaLine span:not(:last-child)::after {
+  content: "/";
+  margin: 0 8px;
+  color: #45617f;
+}
+
+.liveMonitorBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 5px rgba(74, 222, 128, 0.08);
+}
+
+.automationRunMonitor {
+  grid-area: monitor;
+  display: grid;
+  grid-template-columns: minmax(170px, 0.48fr) minmax(220px, 0.82fr) minmax(170px, 0.56fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 7px;
+  background: rgba(7, 21, 38, 0.36);
+}
+
+.runMonitorHead,
+.runMonitorMeta,
+.runMonitorLink {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.runMonitorHead {
+  gap: 8px;
+}
+
+.runMonitorHead strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runStatusText {
+  margin-left: auto;
+  min-height: 24px;
+  max-width: 116px;
+  overflow: hidden;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runStatusText.state-succeeded {
+  background: rgba(74, 222, 128, 0.12);
+  color: var(--green);
+}
+
+.runStatusText.state-running,
+.runStatusText.state-queued,
+.runStatusText.state-leased {
+  background: rgba(36, 150, 237, 0.12);
+  color: var(--blue-2);
+}
+
+.runStatusText.state-failed,
+.runStatusText.state-cancelled,
+.runStatusText.state-timed_out {
+  background: rgba(248, 113, 113, 0.12);
+  color: #fecaca;
+}
+
+.runPulse {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #64748b;
+}
+
+.runPulse.active {
+  background: var(--blue);
+  box-shadow: 0 0 0 5px rgba(36, 150, 237, 0.12);
+}
+
+.runMonitorMeta {
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  justify-content: center;
+}
+
+.runMonitorMeta span,
+.runMonitorLink a,
+.runMonitorLink span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runMonitorMeta span:not(:first-child)::before {
+  content: "/";
+  margin-right: 8px;
+  color: #45617f;
+}
+
+.runMonitorLink {
+  justify-content: flex-end;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.runMonitorLink a {
+  color: var(--blue-2);
+}
+
 .automationState {
   grid-area: state;
+  align-self: center;
+  justify-self: center;
   width: fit-content;
   min-height: 28px;
   padding: 6px 10px;
@@ -1179,17 +1419,69 @@ button {
   align-self: center;
 }
 
-.automationActions {
+.automationMenu {
   grid-area: action;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+  position: relative;
+  justify-self: end;
   align-self: center;
 }
 
-.automationActions .secondaryButton {
-  width: 116px;
+.automationMenuButton {
+  width: 126px;
+  justify-content: space-between;
+}
+
+.automationMenuList {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 12;
+  display: grid;
+  width: 210px;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #0b1728;
+  box-shadow: var(--shadow);
+}
+
+.automationMenuList button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.automationMenuList button:hover:not(:disabled),
+.automationMenuList button:focus-visible {
+  outline: 0;
+  background: rgba(36, 150, 237, 0.14);
+}
+
+.automationMenuList button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.automationMenuList .dangerMenuItem {
+  color: #fecaca;
+}
+
+.automationMenuList .dangerMenuItem:hover,
+.automationMenuList .dangerMenuItem:focus-visible {
+  background: rgba(248, 113, 113, 0.12);
 }
 
 .dangerButton {
@@ -1275,6 +1567,84 @@ button {
   border-radius: 8px;
   background: #0b1728;
   box-shadow: var(--shadow);
+}
+
+.automationDetailModal {
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(760px, 100%);
+}
+
+.automationDetailBody {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.detailSection {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.detailSection h3 {
+  margin: 0;
+  color: var(--soft);
+  font-size: 13px;
+}
+
+.automationTriggerDetails {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.automationTriggerDetail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(7, 21, 38, 0.62);
+}
+
+.automationTriggerDetail > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.automationTriggerDetail strong,
+.automationTriggerDetail span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automationTriggerDetail span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.automationTriggerDetail code,
+.detailCodeBlock {
+  grid-column: 1 / -1;
+  display: block;
+  min-width: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #071526;
+  color: var(--soft);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .wizardHeader,
@@ -2069,6 +2439,10 @@ button {
   .nodeMap {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .tableFilters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -2137,6 +2511,14 @@ button {
     overflow-x: auto;
   }
 
+  .tableFilters {
+    grid-template-columns: 1fr;
+  }
+
+  .dateTimePicker {
+    grid-template-columns: 1fr;
+  }
+
   .resourceRow,
   .automationCard,
   .pluginRow,
@@ -2149,17 +2531,34 @@ button {
     grid-template-areas:
       "main"
       "state"
-      "triggers"
-      "condition"
+      "monitor"
       "action";
   }
 
-  .automationActions {
+  .automationRunMonitor {
+    grid-template-columns: 1fr;
+  }
+
+  .runMonitorMeta {
     justify-content: flex-start;
   }
 
-  .automationActions .secondaryButton {
-    width: fit-content;
+  .runMonitorLink {
+    justify-content: flex-start;
+  }
+
+  .automationMenu {
+    justify-self: stretch;
+  }
+
+  .automationMenuButton {
+    width: 100%;
+  }
+
+  .automationMenuList {
+    right: auto;
+    left: 0;
+    width: 100%;
   }
 
   .workflowChain {

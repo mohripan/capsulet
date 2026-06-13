@@ -369,6 +369,7 @@ impl ApiStore for FakeStore {
             input_json: input_json.to_string(),
             status: capsulet_core::WorkflowRunStatus::Queued,
             current_step_position: 0,
+            created_at: "2026-06-13 12:00:00+00".to_string(),
         };
         self.workflow_runs
             .lock()
@@ -734,7 +735,7 @@ async fn creates_automation_with_trigger_condition_graph() {
 }
 
 #[tokio::test]
-async fn disables_and_enables_automation_triggering() {
+async fn disabled_automation_can_still_be_triggered_manually() {
     let app = test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_pipeline"));
     let create_response = app
         .clone()
@@ -774,7 +775,7 @@ async fn disables_and_enables_automation_triggering() {
     assert_eq!(disable_response.status(), axum::http::StatusCode::OK);
     assert_eq!(response_json(disable_response).await["status"], "disabled");
 
-    let blocked_trigger_response = app
+    let disabled_trigger_response = app
         .clone()
         .oneshot(
             Request::builder()
@@ -786,8 +787,8 @@ async fn disables_and_enables_automation_triggering() {
         .await
         .expect("response");
     assert_eq!(
-        blocked_trigger_response.status(),
-        axum::http::StatusCode::BAD_REQUEST
+        disabled_trigger_response.status(),
+        axum::http::StatusCode::CREATED
     );
 
     let enable_response = app
@@ -1033,6 +1034,7 @@ async fn creates_manual_run() {
             "execution_pool": "mini",
             "host_group": "mini",
             "attempt_count": 0,
+            "created_at": "",
             "input": {}
         })
     );

@@ -136,7 +136,7 @@ export default function JobDefinitionsPage() {
                 Parameter
               </button>
             </div>
-            <button className="primaryAction inlineAction" disabled={isSubmitting}>
+            <button className="primaryAction fullWidthAction" disabled={isSubmitting}>
               <Send size={16} aria-hidden="true" />
               {isSubmitting ? "Creating" : "Create job definition"}
             </button>

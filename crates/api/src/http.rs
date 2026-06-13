@@ -8,9 +8,9 @@ use axum::{
     routing::{get, post},
 };
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, AutomationId, AutomationStatus, CreateManualRunCommand,
-    ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRunId, RetryPolicy,
-    WorkflowDefinition, WorkflowId, WorkflowRunId, WorkflowStatus, WorkflowStep, WorkflowStepId,
+    ArtifactId, ArtifactObjectKind, AutomationId, CreateManualRunCommand, ExecutionPoolName,
+    JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId, RetryPolicy, WorkflowDefinition,
+    WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStatus, WorkflowStep, WorkflowStepId,
 };
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde_json::Value;
@@ -22,8 +22,8 @@ use crate::{
         ExecutionPoolResponse, HealthResponse, HostGroupResponse, JobDefinitionResponse,
         JobRunLogsResponse, JobRunResponse, ListArtifactsResponse, ListExecutionPoolsResponse,
         ListHostGroupsResponse, ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListRunsQuery,
-        ListRunsResponse, ListWorkflowRunsResponse, ListWorkflowsResponse, WorkflowResponse,
-        WorkflowRunResponse,
+        ListRunsResponse, ListWorkflowRunsQuery, ListWorkflowRunsResponse, ListWorkflowsResponse,
+        WorkflowResponse, WorkflowRunResponse,
     },
     state::AppState,
     store::ApiStore,
@@ -430,6 +430,142 @@ pub(crate) fn json_from_string(value: &str) -> Result<Value, ApiError> {
     serde_json::from_str(value).map_err(|error| ApiError::Validation(error.to_string()))
 }
 
+fn normalized_datetime(value: &str) -> String {
+    value.replace('T', " ")
+}
+
+fn matches_date_range(created_at: &str, start_at: Option<&str>, end_at: Option<&str>) -> bool {
+    let created = normalized_datetime(created_at);
+    if let Some(start) = start_at.filter(|value| !value.trim().is_empty()) {
+        if created < normalized_datetime(start) {
+            return false;
+        }
+    }
+    if let Some(end) = end_at.filter(|value| !value.trim().is_empty()) {
+        if created > normalized_datetime(end) {
+            return false;
+        }
+    }
+    true
+}
+
+fn query_contains(value: &str, query: Option<&str>) -> bool {
+    let Some(query) = query.map(str::trim).filter(|value| !value.is_empty()) else {
+        return true;
+    };
+    value.to_lowercase().contains(&query.to_lowercase())
+}
+
+fn is_desc(direction: Option<&str>) -> bool {
+    !matches!(direction, Some(value) if value.eq_ignore_ascii_case("asc"))
+}
+
+fn filter_job_runs(mut runs: Vec<JobRun>, query: &ListRunsQuery) -> Vec<JobRun> {
+    runs.retain(|run| {
+        let matches_state = query
+            .state
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none_or(|state| run.status.to_string().eq_ignore_ascii_case(state));
+        let searchable = format!(
+            "{} {} {}",
+            run.id.as_str(),
+            run.job_definition_id.as_str(),
+            run.execution_pool.as_str()
+        );
+        matches_state
+            && query_contains(&searchable, query.q.as_deref())
+            && matches_date_range(
+                &run.created_at,
+                query.start_at.as_deref(),
+                query.end_at.as_deref(),
+            )
+    });
+    let desc = is_desc(query.direction.as_deref());
+    match query.sort.as_deref().unwrap_or("created_at") {
+        "run" | "id" => runs.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str())),
+        "job_definition" | "name" => runs.sort_by(|left, right| {
+            left.job_definition_id
+                .as_str()
+                .cmp(right.job_definition_id.as_str())
+        }),
+        "state" | "status" => {
+            runs.sort_by(|left, right| left.status.to_string().cmp(&right.status.to_string()));
+        }
+        "pool" => {
+            runs.sort_by(|left, right| {
+                left.execution_pool
+                    .as_str()
+                    .cmp(right.execution_pool.as_str())
+            });
+        }
+        "attempts" => runs.sort_by(|left, right| left.attempt_count.cmp(&right.attempt_count)),
+        _ => runs.sort_by(|left, right| left.created_at.cmp(&right.created_at)),
+    }
+    if desc {
+        runs.reverse();
+    }
+    runs
+}
+
+fn filter_workflow_runs(
+    mut runs: Vec<WorkflowRun>,
+    query: &ListWorkflowRunsQuery,
+) -> Vec<WorkflowRun> {
+    runs.retain(|run| {
+        let matches_state = query
+            .state
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none_or(|state| run.status.to_string().eq_ignore_ascii_case(state));
+        let searchable = format!(
+            "{} {} {}",
+            run.id.as_str(),
+            run.workflow_id.as_str(),
+            run.automation_id
+                .as_ref()
+                .map_or("", capsulet_core::AutomationId::as_str)
+        );
+        matches_state
+            && query_contains(&searchable, query.q.as_deref())
+            && matches_date_range(
+                &run.created_at,
+                query.start_at.as_deref(),
+                query.end_at.as_deref(),
+            )
+    });
+    let desc = is_desc(query.direction.as_deref());
+    match query.sort.as_deref().unwrap_or("created_at") {
+        "workflow_run" | "id" => {
+            runs.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()))
+        }
+        "workflow" | "name" => {
+            runs.sort_by(|left, right| left.workflow_id.as_str().cmp(right.workflow_id.as_str()));
+        }
+        "state" | "status" => {
+            runs.sort_by(|left, right| left.status.to_string().cmp(&right.status.to_string()));
+        }
+        "automation" => runs.sort_by(|left, right| {
+            left.automation_id
+                .as_ref()
+                .map_or("", capsulet_core::AutomationId::as_str)
+                .cmp(
+                    right
+                        .automation_id
+                        .as_ref()
+                        .map_or("", capsulet_core::AutomationId::as_str),
+                )
+        }),
+        _ => runs.sort_by(|left, right| left.created_at.cmp(&right.created_at)),
+    }
+    if desc {
+        runs.reverse();
+    }
+    runs
+}
+
 async fn trigger_automation<S, O>(
     State(state): State<AppState<S, O>>,
     Path(id): Path<String>,
@@ -449,12 +585,6 @@ where
             automation_id.as_str().to_string(),
         ));
     };
-    if automation.status != AutomationStatus::Enabled {
-        return Err(ApiError::Validation(format!(
-            "automation {} is disabled",
-            automation.id.as_str()
-        )));
-    }
     let run_id = WorkflowRunId::new(generated_id("workflow_run")).map_err(ApiError::validation)?;
     let run = state
         .store
@@ -474,24 +604,27 @@ where
 
 async fn list_workflow_runs<S, O>(
     State(state): State<AppState<S, O>>,
+    Query(query): Query<ListWorkflowRunsQuery>,
 ) -> Result<Json<ListWorkflowRunsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let runs = state
         .store
-        .list_workflow_runs(100)
+        .list_workflow_runs(i64::from(limit))
         .await
         .map_err(ApiError::store)?;
+    let runs = filter_workflow_runs(runs, &query);
     let mut workflow_runs = Vec::with_capacity(runs.len());
-    for run in &runs {
+    for run in runs {
         let step_runs = state
             .store
             .list_workflow_step_runs(&run.id)
             .await
             .map_err(ApiError::store)?;
-        workflow_runs.push(WorkflowRunResponse::new(run, &step_runs));
+        workflow_runs.push(WorkflowRunResponse::new(&run, &step_runs));
     }
     Ok(Json(ListWorkflowRunsResponse { workflow_runs }))
 }
@@ -547,6 +680,12 @@ where
     .into_job_run();
 
     state.store.save_run(&run).await.map_err(ApiError::store)?;
+    let run = state
+        .store
+        .find_run(&run.id)
+        .await
+        .map_err(ApiError::store)?
+        .unwrap_or(run);
     if let Some(metadata) = bundle_metadata {
         state
             .store
@@ -625,12 +764,13 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
-    let limit = query.limit.unwrap_or(50).clamp(1, 100);
+    let limit = query.limit.unwrap_or(50).clamp(1, 500);
     let runs = state
         .store
         .list_runs(i64::from(limit))
         .await
         .map_err(ApiError::store)?;
+    let runs = filter_job_runs(runs, &query);
 
     Ok(Json(ListRunsResponse {
         runs: runs.iter().map(JobRunResponse::from).collect(),

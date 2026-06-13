@@ -49,7 +49,7 @@ impl JobRunRepository for PostgresStore {
     async fn find_by_id(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
         let row = sqlx::query(
             r"
-            SELECT id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
+            SELECT id, job_definition_id, status, execution_pool, input::text AS input, attempt_count, created_at::text AS created_at
             FROM job_runs
             WHERE id = $1
             ",

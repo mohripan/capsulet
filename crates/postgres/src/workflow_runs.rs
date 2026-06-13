@@ -19,19 +19,20 @@ impl PostgresStore {
         run_id: &WorkflowRunId,
         input_json: &str,
     ) -> Result<WorkflowRun, PostgresStoreError> {
-        sqlx::query(
+        let row = sqlx::query(
             r"
             INSERT INTO workflow_runs (
                 id, workflow_id, automation_id, input, status, current_step_position, updated_at
             )
             VALUES ($1, $2, $3, $4::jsonb, 'queued', 0, now())
+            RETURNING created_at::text AS created_at
             ",
         )
         .bind(run_id.as_str())
         .bind(workflow_id.as_str())
         .bind(automation_id.map(AutomationId::as_str))
         .bind(input_json)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
 
         Ok(WorkflowRun {
@@ -41,6 +42,7 @@ impl PostgresStore {
             input_json: input_json.to_string(),
             status: WorkflowRunStatus::Queued,
             current_step_position: 0,
+            created_at: row.try_get("created_at")?,
         })
     }
 
@@ -55,7 +57,7 @@ impl PostgresStore {
     ) -> Result<Vec<WorkflowRun>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, workflow_id, automation_id, input::text AS input, status, current_step_position
+            SELECT id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
             FROM workflow_runs
             ORDER BY created_at DESC
             LIMIT $1
