@@ -110,6 +110,7 @@ pub struct Automation {
     pub name: String,
     pub description: String,
     pub workflow_id: WorkflowId,
+    pub job_input_json: String,
     pub status: AutomationStatus,
     pub trigger_kind: AutomationTriggerKind,
     pub interval_seconds: Option<i64>,
@@ -120,6 +121,7 @@ pub struct WorkflowRun {
     pub id: WorkflowRunId,
     pub workflow_id: WorkflowId,
     pub automation_id: Option<AutomationId>,
+    pub input_json: String,
     pub status: WorkflowRunStatus,
     pub current_step_position: i32,
 }

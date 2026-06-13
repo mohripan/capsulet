@@ -6,12 +6,17 @@ pub struct CreateManualRunCommand {
     pub run_id: JobRunId,
     pub job_definition_id: JobDefinitionId,
     pub execution_pool: ExecutionPoolName,
+    pub input_json: Option<String>,
 }
 
 impl CreateManualRunCommand {
     #[must_use]
     pub fn into_job_run(self) -> JobRun {
-        JobRun::new(self.run_id, self.job_definition_id, self.execution_pool)
+        let mut run = JobRun::new(self.run_id, self.job_definition_id, self.execution_pool);
+        if let Some(input_json) = self.input_json {
+            run.input_json = input_json;
+        }
+        run
     }
 }
 
@@ -46,6 +51,7 @@ mod tests {
             run_id: JobRunId::new("run_1").expect("valid run id"),
             job_definition_id: JobDefinitionId::new("job_1").expect("valid job id"),
             execution_pool: ExecutionPoolName::new("mini").expect("valid pool"),
+            input_json: None,
         };
 
         let run = command.into_job_run();

@@ -324,11 +324,13 @@ impl ApiStore for FakeStore {
         workflow_id: &WorkflowId,
         automation_id: Option<&AutomationId>,
         run_id: &WorkflowRunId,
+        input_json: &str,
     ) -> Result<WorkflowRun, Self::Error> {
         let run = WorkflowRun {
             id: run_id.clone(),
             workflow_id: workflow_id.clone(),
             automation_id: automation_id.cloned(),
+            input_json: input_json.to_string(),
             status: capsulet_core::WorkflowRunStatus::Queued,
             current_step_position: 0,
         };
@@ -792,7 +794,8 @@ async fn creates_manual_run() {
             "status": "queued",
             "execution_pool": "mini",
             "host_group": "mini",
-            "attempt_count": 0
+            "attempt_count": 0,
+            "input": {}
         })
     );
 }

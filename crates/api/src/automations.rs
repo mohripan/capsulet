@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::{
     error::ApiError,
-    http::{generated_id, json_from_string},
+    http::{generated_id, json_from_string, valid_json_object_string},
     models::{
         AutomationResponse, CreateAutomationRequest, CreateAutomationTriggerRequest,
         CreateTriggerPluginRequest, ListAutomationTriggersResponse, ListAutomationsResponse,
@@ -167,6 +167,7 @@ where
     .map_err(ApiError::validation)?;
     let triggers = build_automation_triggers(&automation_id, trigger_kind, &request)?;
     validate_custom_plugin_references(state, &triggers).await?;
+    validate_trigger_contracts(state, &triggers).await?;
     let condition = request.condition.unwrap_or_else(|| {
         let trigger_name = triggers
             .first()
@@ -181,6 +182,10 @@ where
             name: request.name,
             description: request.description.unwrap_or_default(),
             workflow_id,
+            job_input_json: valid_json_object_string(
+                &request.job_input.unwrap_or_else(|| json!({})),
+                "automation job input",
+            )?,
             status: AutomationStatus::Enabled,
             trigger_kind,
             interval_seconds: inferred_interval_seconds,
@@ -284,9 +289,7 @@ fn build_trigger(
             "plugin_id is only valid for custom triggers".to_string(),
         ));
     }
-    if kind == TriggerKind::Schedule {
-        validate_schedule_config(&request.config)?;
-    }
+    validate_builtin_trigger_config(kind, &request.config)?;
 
     Ok(AutomationTrigger {
         automation_id: automation_id.clone(),
@@ -299,21 +302,114 @@ fn build_trigger(
 }
 
 fn validate_schedule_config(config: &Value) -> Result<(), ApiError> {
-    let has_cron = config
-        .get("cron")
+    let has_start_at = config
+        .get("start_at")
         .and_then(Value::as_str)
-        .is_some_and(|cron| !cron.trim().is_empty());
+        .is_some_and(|value| !value.trim().is_empty());
     let has_interval = config
         .get("interval_seconds")
         .and_then(Value::as_i64)
         .is_some_and(|seconds| seconds > 0);
-    if has_cron || has_interval {
+    let has_window = config
+        .get("window_seconds")
+        .and_then(Value::as_i64)
+        .is_some_and(|seconds| seconds > 0);
+    if has_interval && (!has_start_at || has_window) {
         Ok(())
     } else {
         Err(ApiError::Validation(
-            "schedule triggers require cron or interval_seconds".to_string(),
+            "schedule triggers require start_at, interval_seconds, and window_seconds".to_string(),
         ))
     }
+}
+
+fn validate_builtin_trigger_config(kind: TriggerKind, config: &Value) -> Result<(), ApiError> {
+    match kind {
+        TriggerKind::Schedule => validate_schedule_config(config),
+        TriggerKind::Sql => validate_sql_config(config),
+        TriggerKind::Manual | TriggerKind::Custom => Ok(()),
+    }
+}
+
+fn validate_sql_config(config: &Value) -> Result<(), ApiError> {
+    let has_connection = ["connection_string", "connection_name"]
+        .iter()
+        .any(|field| {
+            config
+                .get(field)
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty())
+        });
+    if !has_connection {
+        return Err(ApiError::Validation(
+            "sql triggers require connection_string".to_string(),
+        ));
+    }
+    for field in ["query"] {
+        if config
+            .get(field)
+            .and_then(Value::as_str)
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(ApiError::Validation(format!(
+                "sql triggers require {field}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn validate_trigger_contracts<S, O>(
+    state: &AppState<S, O>,
+    triggers: &[AutomationTrigger],
+) -> Result<(), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    for trigger in triggers {
+        if trigger.kind != TriggerKind::Custom {
+            continue;
+        }
+        let Some(plugin_id) = trigger.plugin_id.as_deref() else {
+            continue;
+        };
+        let Some(plugin) = state
+            .store
+            .find_custom_trigger_plugin(plugin_id)
+            .await
+            .map_err(ApiError::store)?
+        else {
+            continue;
+        };
+        validate_contract_fields(
+            &json_from_string(&plugin.config_schema_json)?,
+            &json_from_string(&trigger.config_json)?,
+            "custom trigger",
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_contract_fields(schema: &Value, values: &Value, label: &str) -> Result<(), ApiError> {
+    let Some(fields) = schema.get("fields").and_then(Value::as_array) else {
+        return Ok(());
+    };
+    for field in fields {
+        let Some(name) = field.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let required = field
+            .get("required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if required && values.get(name).is_none_or(Value::is_null) {
+            return Err(ApiError::Validation(format!(
+                "{label} config is missing required field {name}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn validate_condition_json(

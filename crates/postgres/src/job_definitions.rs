@@ -89,7 +89,7 @@ impl PostgresStore {
                    runtime_image,
                    command,
                    bundle_object_key,
-                   input_schema::text,
+                   input_schema::text AS input_schema,
                    retry_max_attempts,
                    retry_delay_seconds
             FROM job_definitions
@@ -120,7 +120,7 @@ impl PostgresStore {
                    runtime_image,
                    command,
                    bundle_object_key,
-                   input_schema::text,
+                   input_schema::text AS input_schema,
                    retry_max_attempts,
                    retry_delay_seconds
             FROM job_definitions

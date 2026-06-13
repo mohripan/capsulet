@@ -19,6 +19,7 @@ pub struct CreateRunRequest {
     pub execution_pool: String,
     pub run_id: Option<String>,
     pub python_script: Option<String>,
+    pub input: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,6 +28,8 @@ pub struct CreateJobDefinitionRequest {
     pub name: String,
     pub runtime_image: Option<String>,
     pub python_script: String,
+    #[serde(default)]
+    pub input_schema: Option<Value>,
     pub retry_max_attempts: Option<u32>,
     pub retry_delay_seconds: Option<u64>,
 }
@@ -55,6 +58,7 @@ pub struct CreateAutomationRequest {
     pub workflow_id: String,
     pub trigger_kind: Option<String>,
     pub interval_seconds: Option<i64>,
+    pub job_input: Option<Value>,
     pub triggers: Option<Vec<CreateAutomationTriggerRequest>>,
     pub condition: Option<Value>,
 }
@@ -159,6 +163,7 @@ pub(crate) struct JobDefinitionResponse {
     pub(crate) runtime_image: String,
     pub(crate) command: Vec<String>,
     pub(crate) bundle_object_key: String,
+    pub(crate) input_schema: Value,
     pub(crate) retry_max_attempts: u32,
     pub(crate) retry_delay_seconds: u64,
 }
@@ -193,6 +198,7 @@ pub(crate) struct AutomationResponse {
     pub(crate) interval_seconds: Option<i64>,
     pub(crate) triggers: Vec<TriggerResponse>,
     pub(crate) condition: Value,
+    pub(crate) job_input: Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -241,6 +247,7 @@ pub(crate) struct JobRunResponse {
     pub(crate) execution_pool: String,
     pub(crate) host_group: String,
     pub(crate) attempt_count: u32,
+    pub(crate) input: Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -286,6 +293,7 @@ impl From<&JobDefinition> for JobDefinitionResponse {
             runtime_image: definition.runtime_image.clone(),
             command: definition.command.clone(),
             bundle_object_key: definition.bundle_object_key.clone(),
+            input_schema: json_from_string(&definition.input_schema).unwrap_or_else(|_| json!({})),
             retry_max_attempts: definition.retry_max_attempts,
             retry_delay_seconds: definition.retry_delay_seconds,
         }
@@ -337,6 +345,7 @@ impl AutomationResponse {
             interval_seconds: automation.interval_seconds,
             triggers: triggers.iter().map(TriggerResponse::from).collect(),
             condition: json_from_string(condition_json)?,
+            job_input: json_from_string(&automation.job_input_json).unwrap_or_else(|_| json!({})),
         })
     }
 }
@@ -404,6 +413,7 @@ impl From<&JobRun> for JobRunResponse {
             execution_pool: run.execution_pool.as_str().to_string(),
             host_group: run.execution_pool.as_str().to_string(),
             attempt_count: run.attempt_count,
+            input: json_from_string(&run.input_json).unwrap_or_else(|_| json!({})),
         }
     }
 }

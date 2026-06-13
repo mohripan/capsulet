@@ -23,7 +23,7 @@ kube = { version = "2.0.1", default-features = false, features = ["client", "con
 serde.workspace = true
 serde_yaml = "0.9"
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["process", "time"] }
 
 [dev-dependencies]
 tokio.workspace = true

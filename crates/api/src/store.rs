@@ -56,6 +56,7 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         workflow_id: &WorkflowId,
         automation_id: Option<&AutomationId>,
         run_id: &WorkflowRunId,
+        input_json: &str,
     ) -> Result<WorkflowRun, Self::Error>;
     async fn list_workflow_runs(&self, limit: i64) -> Result<Vec<WorkflowRun>, Self::Error>;
     async fn list_workflow_step_runs(
@@ -177,8 +178,9 @@ impl ApiStore for PostgresStore {
         workflow_id: &WorkflowId,
         automation_id: Option<&AutomationId>,
         run_id: &WorkflowRunId,
+        input_json: &str,
     ) -> Result<WorkflowRun, Self::Error> {
-        self.create_workflow_run(workflow_id, automation_id, run_id)
+        self.create_workflow_run(workflow_id, automation_id, run_id, input_json)
             .await
     }
 

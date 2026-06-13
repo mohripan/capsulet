@@ -163,6 +163,7 @@ async fn saves_and_finds_interval_automation_when_database_is_available() {
         name: "Interval automation".to_string(),
         description: String::new(),
         workflow_id: workflow.id,
+        job_input_json: "{}".to_string(),
         status: AutomationStatus::Enabled,
         trigger_kind: AutomationTriggerKind::Interval,
         interval_seconds: Some(30),

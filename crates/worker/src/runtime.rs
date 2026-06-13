@@ -2,7 +2,7 @@ use std::{env, fs, time::Duration};
 
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_postgres::PostgresStore;
-use capsulet_runner::{ExecutionPoolsConfig, KubernetesRunner, StubRunner};
+use capsulet_runner::{ExecutionPoolsConfig, KubernetesRunner, ProcessRunner, StubRunner};
 use capsulet_storage::ConfiguredObjectStore;
 
 use crate::execute_one_queued_run;
@@ -159,9 +159,20 @@ async fn run_once(
             )
             .await?
         }
+        "process" | "local" => {
+            execute_one_queued_run(
+                store,
+                &ProcessRunner,
+                object_store,
+                pools,
+                worker_id,
+                lease_seconds,
+            )
+            .await?
+        }
         value => {
             return Err(format!(
-                "unsupported CAPSULET_RUNNER_MODE {value}; expected stub or kubernetes"
+                "unsupported CAPSULET_RUNNER_MODE {value}; expected stub, process, or kubernetes"
             )
             .into());
         }

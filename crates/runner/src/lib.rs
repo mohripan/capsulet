@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, fs, path::Path, time::Duration};
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
@@ -6,6 +6,7 @@ use capsulet_core::{JobDefinition, JobRun, JobRunId};
 use k8s_openapi::{
     api::{
         batch::v1::{Job, JobSpec},
+        core::v1::EnvVar,
         core::v1::{Container, Pod, PodSpec, PodTemplateSpec, ResourceRequirements, Toleration},
     },
     apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::ObjectMeta},
@@ -16,7 +17,10 @@ use kube::{
 };
 use serde::Deserialize;
 use thiserror::Error;
-use tokio::time::{Instant, sleep};
+use tokio::{
+    process::Command,
+    time::{Instant, sleep},
+};
 
 const APP_LABEL: &str = "capsulet.dev/managed-by";
 const RUN_LABEL: &str = "capsulet.dev/job-run-key";
@@ -159,6 +163,73 @@ pub struct StubRunner {
     outcome: RunOutcome,
     logs: Option<String>,
     artifact: Option<String>,
+}
+
+/// Local process runner for Docker Compose smoke tests.
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessRunner;
+
+#[async_trait]
+impl Runner for ProcessRunner {
+    type Error = ProcessRunnerError;
+
+    async fn execute<C>(
+        &self,
+        execution: &RunExecution,
+        cancellation: &C,
+    ) -> Result<RunReport, Self::Error>
+    where
+        C: CancellationCheck + Sync,
+    {
+        if cancellation
+            .is_cancelled(&execution.run.id)
+            .await
+            .map_err(|error| ProcessRunnerError::CancellationCheck(error.to_string()))?
+        {
+            return Ok(RunReport::cancelled(None));
+        }
+
+        reset_artifact_dir()?;
+        let Some((program, args)) = execution.definition.command.split_first() else {
+            return Err(ProcessRunnerError::EmptyCommand);
+        };
+        let output = Command::new(local_program(program))
+            .args(args)
+            .env("CAPSULET_INPUT_JSON", &execution.run.input_json)
+            .output()
+            .await?;
+        let mut logs = String::new();
+        logs.push_str(&String::from_utf8_lossy(&output.stdout));
+        logs.push_str(&String::from_utf8_lossy(&output.stderr));
+        let artifacts = collect_local_artifacts()?;
+        if output.status.success() {
+            Ok(RunReport::succeeded_with_artifacts(Some(logs), artifacts))
+        } else {
+            Ok(RunReport {
+                outcome: RunOutcome::Failed,
+                logs: Some(logs),
+                artifacts,
+            })
+        }
+    }
+}
+
+fn local_program(program: &str) -> &str {
+    if program == "python" {
+        "python3"
+    } else {
+        program
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ProcessRunnerError {
+    #[error("process command cannot be empty")]
+    EmptyCommand,
+    #[error("process execution failed: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("cancellation check failed: {0}")]
+    CancellationCheck(String),
 }
 
 impl StubRunner {
@@ -567,6 +638,11 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
                         name: "main".to_string(),
                         image: Some(execution.definition.runtime_image.clone()),
                         command: Some(wrapped_command(&execution.definition.command)),
+                        env: Some(vec![EnvVar {
+                            name: "CAPSULET_INPUT_JSON".to_string(),
+                            value: Some(execution.run.input_json.clone()),
+                            ..EnvVar::default()
+                        }]),
                         resources: Some(execution.pool.resources.to_kubernetes()),
                         ..Container::default()
                     }],
@@ -594,7 +670,9 @@ fn wrapper_script(command: &[String]) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     format!(
-        r#"{command}
+        r#"mkdir -p /capsulet
+printf '%s' "$CAPSULET_INPUT_JSON" > /capsulet/input.json
+{command}
 status=$?
 if [ -d {ARTIFACT_DIR} ]; then
   find {ARTIFACT_DIR} -maxdepth 1 -type f | sort | while IFS= read -r file; do
@@ -637,6 +715,34 @@ fn split_artifact_markers(logs: Option<String>) -> (Option<String>, Vec<Collecte
     } else {
         (Some(format!("{cleaned}\n")), artifacts)
     }
+}
+
+fn reset_artifact_dir() -> Result<(), std::io::Error> {
+    let path = Path::new(ARTIFACT_DIR);
+    if path.exists() {
+        fs::remove_dir_all(path)?;
+    }
+    fs::create_dir_all(path)
+}
+
+fn collect_local_artifacts() -> Result<Vec<CollectedArtifact>, std::io::Error> {
+    let path = Path::new(ARTIFACT_DIR);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let mut artifacts = Vec::new();
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        artifacts.push(CollectedArtifact {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            content_type: "application/octet-stream".to_string(),
+            bytes: fs::read(entry.path())?,
+        });
+    }
+    Ok(artifacts)
 }
 
 impl PoolResources {

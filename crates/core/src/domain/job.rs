@@ -66,13 +66,14 @@ pub struct JobRun {
     pub id: JobRunId,
     pub job_definition_id: JobDefinitionId,
     pub execution_pool: ExecutionPoolName,
+    pub input_json: String,
     pub status: JobRunStatus,
     pub attempt_count: u32,
 }
 
 impl JobRun {
     #[must_use]
-    pub const fn new(
+    pub fn new(
         id: JobRunId,
         job_definition_id: JobDefinitionId,
         execution_pool: ExecutionPoolName,
@@ -81,9 +82,24 @@ impl JobRun {
             id,
             job_definition_id,
             execution_pool,
+            input_json: "{}".to_string(),
             status: JobRunStatus::Queued,
             attempt_count: 0,
         }
+    }
+
+    /// Attaches validated run input as JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the input is empty.
+    pub fn with_input(mut self, input_json: impl Into<String>) -> Result<Self, String> {
+        let input_json = input_json.into();
+        if input_json.trim().is_empty() {
+            return Err("job run input cannot be empty".to_string());
+        }
+        self.input_json = input_json;
+        Ok(self)
     }
 
     /// Applies a valid job run state transition.
