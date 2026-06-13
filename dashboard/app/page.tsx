@@ -1,33 +1,135 @@
- "use client";
+"use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  Archive,
   Braces,
   CheckCircle2,
   CircleDot,
   Clock3,
-  Cpu,
-  Database,
   FileCode2,
   Gauge,
   GitBranch,
-  HardDrive,
   Network,
   Pause,
   Play,
-  RadioTower,
   Route,
   TerminalSquare,
   Workflow,
   Zap
 } from "lucide-react";
-import { DashboardShell, LoadBar, PanelTitle, StateBadge } from "./components";
-import { automations, pools, runs, timeline } from "./mock-data";
+import { DashboardShell, PanelTitle, ResizableGridTable, StateBadge } from "./components";
+import {
+  Automation,
+  ExecutionPool,
+  JobRun,
+  Workflow as ApiWorkflow,
+  WorkflowRun,
+  getErrorMessage,
+  listAutomations,
+  listExecutionPools,
+  listRuns,
+  listWorkflowRuns,
+  listWorkflows
+} from "./lib/api";
 import type { LucideIcon } from "lucide-react";
 
+const recentRunColumns = [
+  { label: "Run", width: 220, minWidth: 140 },
+  { label: "Job definition", width: 230, minWidth: 150 },
+  { label: "Pool", width: 110, minWidth: 80 },
+  { label: "State", width: 160, minWidth: 120 },
+  { label: "Attempts", width: 110, minWidth: 84 },
+  { label: "Host group", width: 170, minWidth: 120 }
+];
+
+const workflowRunColumns = [
+  { label: "Workflow run", width: 250, minWidth: 160 },
+  { label: "Workflow", width: 250, minWidth: 160 },
+  { label: "Job runs", width: 230, minWidth: 150 },
+  { label: "State", width: 150, minWidth: 120 },
+  { label: "Automation", width: 230, minWidth: 150 }
+];
+
 export default function OverviewPage() {
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [pools, setPools] = useState<ExecutionPool[]>([]);
+  const [runs, setRuns] = useState<JobRun[]>([]);
+  const [workflows, setWorkflows] = useState<ApiWorkflow[]>([]);
+  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  async function refresh() {
+    setIsLoading(true);
+    setErrors([]);
+    const [automationResult, poolResult, runResult, workflowResult, workflowRunResult] = await Promise.allSettled([
+      listAutomations(),
+      listExecutionPools(),
+      listRuns(50),
+      listWorkflows(),
+      listWorkflowRuns()
+    ]);
+
+    const nextErrors: string[] = [];
+    if (automationResult.status === "fulfilled") {
+      setAutomations(automationResult.value.automations);
+    } else {
+      setAutomations([]);
+      nextErrors.push(`Automations: ${getErrorMessage(automationResult.reason)}`);
+    }
+    if (poolResult.status === "fulfilled") {
+      setPools(poolResult.value.execution_pools);
+    } else {
+      setPools([]);
+      nextErrors.push(`Execution pools: ${getErrorMessage(poolResult.reason)}`);
+    }
+    if (runResult.status === "fulfilled") {
+      setRuns(runResult.value.runs);
+    } else {
+      setRuns([]);
+      nextErrors.push(`Runs: ${getErrorMessage(runResult.reason)}`);
+    }
+    if (workflowResult.status === "fulfilled") {
+      setWorkflows(workflowResult.value.workflows);
+    } else {
+      setWorkflows([]);
+      nextErrors.push(`Workflows: ${getErrorMessage(workflowResult.reason)}`);
+    }
+    if (workflowRunResult.status === "fulfilled") {
+      setWorkflowRuns(workflowRunResult.value.workflow_runs);
+    } else {
+      setWorkflowRuns([]);
+      nextErrors.push(`Workflow runs: ${getErrorMessage(workflowRunResult.reason)}`);
+    }
+
+    setErrors(nextErrors);
+    setIsLoading(false);
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const metrics = useMemo(() => {
+    const running = runs.filter((run) => run.status === "running" || run.status === "leased").length;
+    const queued = runs.filter((run) => run.status === "queued" || run.status === "retry_scheduled").length;
+    const failed = runs.filter((run) => ["failed", "timed_out", "cancelled"].includes(run.status)).length;
+    const terminal = runs.filter((run) => ["succeeded", "failed", "timed_out", "cancelled"].includes(run.status));
+    const succeeded = terminal.filter((run) => run.status === "succeeded").length;
+    return {
+      running: runs.length ? String(running) : "No data",
+      queued: runs.length ? String(queued) : "No data",
+      success: terminal.length ? `${((succeeded / terminal.length) * 100).toFixed(1)}%` : "No data",
+      failed: runs.length ? String(failed) : "No data"
+    };
+  }, [runs]);
+
+  const workflowById = useMemo(() => new Map(workflows.map((workflow) => [workflow.id, workflow])), [workflows]);
+  const selectedAutomation = automations[0];
+  const selectedWorkflow = selectedAutomation ? workflowById.get(selectedAutomation.workflow_id) : undefined;
+
   return (
     <DashboardShell>
       <section className="heroBand">
@@ -40,43 +142,46 @@ export default function OverviewPage() {
           <p>Route jobs from manual, scheduled, webhook, and dependency triggers into the right compute pool.</p>
         </div>
         <div className="heroStats" aria-label="Run summary">
-          <Metric icon={Zap} label="Running" value="24" tone="good" />
-          <Metric icon={Clock3} label="Queued" value="10" tone="warn" />
-          <Metric icon={CheckCircle2} label="Success" value="98.2%" tone="good" />
-          <Metric icon={AlertTriangle} label="Failed" value="3" tone="bad" />
+          <Metric icon={Zap} label="Running" value={isLoading ? "Loading" : metrics.running} tone="good" />
+          <Metric icon={Clock3} label="Queued" value={isLoading ? "Loading" : metrics.queued} tone="warn" />
+          <Metric icon={CheckCircle2} label="Success" value={isLoading ? "Loading" : metrics.success} tone="good" />
+          <Metric icon={AlertTriangle} label="Failed" value={isLoading ? "Loading" : metrics.failed} tone="bad" />
         </div>
       </section>
 
+      {errors.length ? <div className="errorBox">{errors.join(" | ")}</div> : null}
+
       <section className="contentGrid">
         <section className="panel span8">
-          <PanelTitle icon={Workflow} title="Automations" action="View all" />
+          <PanelTitle icon={Workflow} title="Automations" action="Live API" />
           <div className="automationList">
+            {!isLoading && automations.length === 0 ? <div className="emptyState">No automations exist in the backend.</div> : null}
             {automations.slice(0, 3).map((automation) => (
-              <article className="automationRow" key={automation.name}>
+              <article className="automationRow" key={automation.id}>
                 <div className="automationMain">
                   <div className="automationIcon">
                     <Workflow size={19} aria-hidden="true" />
                   </div>
                   <div>
                     <h2>{automation.name}</h2>
-                    <p>{automation.target}</p>
+                    <p title={automation.workflow_id}>{automation.workflow_id}</p>
                   </div>
                 </div>
                 <div className="triggerExpr">
                   <Braces size={16} aria-hidden="true" />
-                  <span>{automation.trigger}</span>
+                  <span title={conditionToText(automation.condition)}>{conditionToText(automation.condition)}</span>
                 </div>
                 <div className="poolPill">
                   <Route size={15} aria-hidden="true" />
-                  {automation.pool}
+                  {workflowById.get(automation.workflow_id)?.steps[0]?.execution_pool || "No pool"}
                 </div>
-                <div className={automation.status === "enabled" ? "status enabled" : "status paused"}>
-                  {automation.status === "enabled" ? <Play size={14} /> : <Pause size={14} />}
+                <div className={automation.status === "enabled" ? "status enabled" : "status paused"} title={automation.status}>
+                  {automation.status === "enabled" ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />}
                   {automation.status}
                 </div>
                 <div className="successCell">
-                  <strong>{automation.success}%</strong>
-                  <span>{automation.lastRun}</span>
+                  <strong>{automation.triggers.length}</strong>
+                  <span>{automation.trigger_kind}</span>
                 </div>
               </article>
             ))}
@@ -84,85 +189,71 @@ export default function OverviewPage() {
         </section>
 
         <section className="panel span4">
-          <PanelTitle icon={GitBranch} title="Condition Builder" action="Edit" />
-          <div className="logicBuilder">
-            <div className="logicLine">
-              <span className="logicToken group">(</span>
-              <ConditionToken label="data_ready" />
-              <span className="logicToken op">AND</span>
-              <ConditionToken label="approved" />
-              <span className="logicToken group">)</span>
-            </div>
-            <div className="logicLine">
-              <span className="logicToken op">OR</span>
-              <ConditionToken label="manual_override" />
-            </div>
-          </div>
-          <div className="targetBox">
-            <div>
-              <span>Target workflow</span>
-              <strong>train-model</strong>
-            </div>
-            <div>
-              <span>Execution pool</span>
-              <strong>large</strong>
-            </div>
-          </div>
+          <PanelTitle icon={GitBranch} title="Condition" action="Live API" />
+          {selectedAutomation ? (
+            <>
+              <div className="logicBuilder">
+                <code className="conditionPreview">{conditionToText(selectedAutomation.condition)}</code>
+              </div>
+              <div className="targetBox">
+                <div>
+                  <span>Target workflow</span>
+                  <strong title={selectedAutomation.workflow_id}>{selectedWorkflow?.name || selectedAutomation.workflow_id}</strong>
+                </div>
+                <div>
+                  <span>Execution pool</span>
+                  <strong>{selectedWorkflow?.steps[0]?.execution_pool || "No pool"}</strong>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="emptyState">No automation condition exists in the backend.</div>
+          )}
         </section>
 
         <section className="panel span7">
-          <PanelTitle icon={Activity} title="Recent Runs" action="Open queue" />
-          <div className="runTable">
-            <div className="runHeader">
-              <span>Run</span>
-              <span>Automation</span>
-              <span>Pool</span>
-              <span>State</span>
-              <span>Duration</span>
-              <span>Node</span>
-            </div>
+          <PanelTitle icon={Activity} title="Recent Runs" action="Live API" />
+          <ResizableGridTable columns={recentRunColumns}>
+            {!isLoading && runs.length === 0 ? <div className="emptyState">No job runs exist in the backend.</div> : null}
             {runs.slice(0, 4).map((run) => (
-              <div className="runRow" key={run.id}>
+              <div className="resizableRow runRow" key={run.id}>
                 <span className="mono tableCell" title={run.id}>
                   {run.id}
                 </span>
-                <span className="tableCell" title={run.automation}>
-                  {run.automation}
+                <span className="tableCell" title={run.job_definition_id}>
+                  {run.job_definition_id}
                 </span>
-                <span className="tableCell" title={run.pool}>
-                  {run.pool}
+                <span className="tableCell" title={run.execution_pool}>
+                  {run.execution_pool}
                 </span>
-                <StateBadge state={run.state} />
-                <span className="tableCell" title={run.duration}>
-                  {run.duration}
+                <StateBadge state={run.status} />
+                <span className="tableCell" title={String(run.attempt_count)}>
+                  {run.attempt_count}
                 </span>
-                <span className="tableCell" title={run.node}>
-                  {run.node}
+                <span className="tableCell" title={run.host_group}>
+                  {run.host_group || "No host group"}
                 </span>
               </div>
             ))}
-          </div>
+          </ResizableGridTable>
         </section>
 
         <section className="panel span5">
-          <PanelTitle icon={Route} title="Execution Pools" action="Manage" />
+          <PanelTitle icon={Route} title="Execution Pools" action="Live API" />
           <div className="poolStack">
+            {!isLoading && pools.length === 0 ? <div className="emptyState">No execution pools exist in the backend.</div> : null}
             {pools.map((pool) => (
-              <article className={`poolCard ${pool.accent}`} key={pool.name}>
+              <article className="poolCard flat" key={pool.name}>
                 <div className="poolTop">
                   <div>
                     <h2>{pool.name}</h2>
-                    <p>{pool.label}</p>
+                    <p>{pool.description || "No description"}</p>
                   </div>
-                  <span>{pool.nodes} nodes</span>
-                </div>
-                <div className="poolLoad">
-                  <LoadBar label="CPU" value={pool.cpu} />
-                  <LoadBar label="Memory" value={pool.memory} />
+                  <span>{pool.is_default ? "default" : "available"}</span>
                 </div>
                 <div className="poolFoot">
-                  <span>{pool.running} running</span>
-                  <span>{pool.queued} queued</span>
+                  <span>{runs.filter((run) => run.execution_pool === pool.name && run.status === "running").length} running</span>
+                  <span>{runs.filter((run) => run.execution_pool === pool.name && run.status === "queued").length} queued</span>
                 </div>
               </article>
             ))}
@@ -170,44 +261,38 @@ export default function OverviewPage() {
         </section>
 
         <section className="panel span4">
-          <PanelTitle icon={Network} title="Topology" action="Inspect" />
-          <div className="topology">
-            <Node icon={RadioTower} label="Triggers" />
-            <Connector />
-            <Node icon={Gauge} label="Evaluator" />
-            <Connector />
-            <Node icon={Database} label="Postgres" />
-            <Connector />
-            <Node icon={Cpu} label="Workers" />
-            <Connector />
-            <Node icon={HardDrive} label="Object store" />
+          <PanelTitle icon={Network} title="Topology" action="No endpoint" />
+          <div className="emptyState">No topology endpoint exists for the overview.</div>
+        </section>
+
+        <section className="panel span4">
+          <PanelTitle icon={TerminalSquare} title="Live Logs" action="No endpoint" />
+          <div className="terminal">
+            <div className="emptyState">No global live log stream endpoint exists for the overview.</div>
           </div>
         </section>
 
         <section className="panel span4">
-          <PanelTitle icon={TerminalSquare} title="Live Logs" action="Tail" />
-          <div className="terminal">
-            {timeline.map(([time, event, detail]) => (
-              <div className="logLine" key={`${time}-${event}`}>
-                <span>{time}</span>
-                <code>{event}</code>
-                <em>{detail}</em>
+          <PanelTitle icon={FileCode2} title="YAML Export" action="No endpoint" />
+          <div className="yamlPreview">No automation export endpoint exists for the overview.</div>
+        </section>
+
+        <section className="panel span12">
+          <PanelTitle icon={Gauge} title="Workflow Runs" action="Live API" />
+          <ResizableGridTable columns={workflowRunColumns}>
+            {!isLoading && workflowRuns.length === 0 ? <div className="emptyState">No workflow runs exist in the backend.</div> : null}
+            {workflowRuns.slice(0, 4).map((run) => (
+              <div className="resizableRow runRow" key={run.id}>
+                <span className="mono tableCell" title={run.id}>{run.id}</span>
+                <span className="tableCell" title={run.workflow_id}>{run.workflow_id}</span>
+                <span className="stepRunLinks">
+                  {run.step_runs.length === 0 ? "No job runs" : run.step_runs.map((stepRun) => `${stepRun.position}: ${stepRun.status}`).join(", ")}
+                </span>
+                <StateBadge state={run.status} />
+                <span className="tableCell" title={run.automation_id ?? ""}>{run.automation_id ?? "No automation"}</span>
               </div>
             ))}
-          </div>
-        </section>
-
-        <section className="panel span4">
-          <PanelTitle icon={FileCode2} title="YAML Export" action="Copy" />
-          <pre className="yamlPreview">{`apiVersion: capsulet.dev/v1alpha1
-kind: Automation
-metadata:
-  name: nightly-report
-spec:
-  execution:
-    pool: mini
-  condition:
-    trigger: nightly`}</pre>
+          </ResizableGridTable>
         </section>
       </section>
     </DashboardShell>
@@ -234,24 +319,12 @@ function Metric({
   );
 }
 
-function ConditionToken({ label }: { label: string }) {
-  return (
-    <span className="conditionToken">
-      <CircleDot size={13} aria-hidden="true" />
-      {label}
-    </span>
-  );
-}
-
-function Node({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
-  return (
-    <div className="topologyNode">
-      <Icon size={17} aria-hidden="true" />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function Connector() {
-  return <div className="connector" aria-hidden="true" />;
+function conditionToText(condition: Automation["condition"]): string {
+  if ("trigger" in condition) {
+    return condition.trigger;
+  }
+  if ("all" in condition) {
+    return condition.all.map(conditionToText).join(" AND ");
+  }
+  return condition.any.map(conditionToText).join(" OR ");
 }
