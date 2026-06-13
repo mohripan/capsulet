@@ -1,0 +1,121 @@
+{{- if eq .Values.minio.mode "bundled" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "capsulet.minioName" . }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+type: Opaque
+stringData:
+  root-user: {{ .Values.minio.auth.rootUser | quote }}
+  root-password: {{ .Values.minio.auth.rootPassword | quote }}
+  access-key-id: {{ .Values.minio.auth.rootUser | quote }}
+  secret-access-key: {{ .Values.minio.auth.rootPassword | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "capsulet.minioName" . }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: {{ .Values.minio.service.port }}
+      targetPort: api
+      protocol: TCP
+    - name: console
+      port: {{ .Values.minio.service.consolePort }}
+      targetPort: console
+      protocol: TCP
+  selector:
+    {{- include "capsulet.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "capsulet.minioName" . }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  serviceName: {{ include "capsulet.minioName" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "capsulet.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "capsulet.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      securityContext:
+        {{- toYaml .Values.minio.securityContext | nindent 8 }}
+      containers:
+        - name: minio
+          image: {{ printf "%s:%s" .Values.minio.image.repository .Values.minio.image.tag | quote }}
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.minio.containerSecurityContext | nindent 12 }}
+          args:
+            - server
+            - /data
+            - --console-address
+            - :{{ .Values.minio.service.consolePort }}
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "capsulet.minioName" . }}
+                  key: root-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "capsulet.minioName" . }}
+                  key: root-password
+          ports:
+            - name: api
+              containerPort: 9000
+              protocol: TCP
+            - name: console
+              containerPort: {{ .Values.minio.service.consolePort }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+  {{- if .Values.minio.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: minio-data
+        labels:
+          {{- include "capsulet.labels" . | nindent 10 }}
+          app.kubernetes.io/component: minio
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.minio.persistence.storageClass }}
+        storageClassName: {{ .Values.minio.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.minio.persistence.size | quote }}
+  {{- else }}
+      volumes:
+        - name: minio-data
+          emptyDir: {}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "docker-expert": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/docker-expert/SKILL.md",
+      "computedHash": "7be30b1c18b91628dcd8437a89e7e20acce76bae4349533e4ebdeb376a660bcb"
+    },
+    "rust-best-practices": {
+      "source": "apollographql/skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-best-practices/SKILL.md",
+      "computedHash": "3f89cd417842ca60bffefea01ee88fc28116b75a8e69329c4d6db446fbfcad02"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
+    }
+  }
+}

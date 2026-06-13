@@ -41,18 +41,52 @@ Current crates:
 - `capsulet-runner`: execution backend boundary with stub and Kubernetes Job runners
 - `capsulet-cli`: operator and developer CLI for the HTTP API
 
-## Local PostgreSQL And MinIO
+## Local Docker Compose Stack
 
-Capsulet uses PostgreSQL as the durable metadata store and object storage for script bundles, large logs, and artifacts. Start local dependencies from the repository root:
+Capsulet uses PostgreSQL as the durable metadata store and object storage for script bundles, large logs, and artifacts. For a full local product check, start the Compose stack from the repository root:
 
 ```sh
-docker compose up -d postgres minio
+docker compose up --build
 ```
 
-The development database URL is:
+This starts:
+
+- PostgreSQL on `localhost:5432`
+- MinIO on `localhost:9000`
+- MinIO console on `localhost:9001`
+- Capsulet API on `localhost:8080`
+- Capsulet dashboard on `localhost:3000`
+- Capsulet worker in continuous stub-runner mode
+
+Open the live dashboard:
+
+```text
+http://127.0.0.1:3000/runs
+```
+
+The Compose worker uses `CAPSULET_RUNNER_MODE=stub` so the full API/dashboard/job/artifact flow can be checked without a Kubernetes cluster. Use the Helm/minikube path for Kubernetes Job execution.
+
+The Compose database URL is:
 
 ```sh
 postgres://capsulet:capsulet@localhost:5432/capsulet
+```
+
+The Compose MinIO credentials are:
+
+```text
+endpoint: http://127.0.0.1:9000
+bucket: capsulet-artifacts
+access key: capsulet
+secret key: capsuletpassword
+```
+
+The `minio-init` Compose service creates the `capsulet-artifacts` bucket automatically.
+
+To start only the data services for manual local backend work:
+
+```sh
+docker compose up -d postgres minio minio-init
 ```
 
 The persistence crate embeds migrations from `migrations/` with SQLx. To run the PostgreSQL-backed tests against the local database:
@@ -73,12 +107,6 @@ Stop the local database when you are done:
 
 ```sh
 docker compose down
-```
-
-Create the local MinIO bucket for S3-compatible smoke tests:
-
-```powershell
-docker run --rm --network capsulet_default --entrypoint /bin/sh minio/mc:latest -c "mc alias set local http://minio:9000 capsulet capsuletpassword && mc mb -p local/capsulet-artifacts"
 ```
 
 Use timestamped SQL migration files in `migrations/`:
@@ -215,5 +243,5 @@ The chart can install the API and worker runtime path when local images, a Postg
 
 Sprint planning lives in `planning/`.
 
-- Current sprint plan: `planning/sprints/sprint-006-dashboard-api-and-alpha-ux.md`
-- Current sprint backlog: `planning/backlog/sprint-006-backlog.md`
+- Current sprint plan: `planning/sprints/sprint-010-mvp-hardening-and-alpha-readiness.md`
+- Current sprint backlog: `planning/backlog/sprint-010-backlog.md`

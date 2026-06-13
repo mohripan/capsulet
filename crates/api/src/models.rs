@@ -1,0 +1,422 @@
+use capsulet_core::{
+    Automation, AutomationTrigger, CustomTriggerPlugin, JobArtifact, JobDefinition, JobRun,
+    JobRunStatus, WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepRun,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use crate::{error::ApiError, http::json_from_string};
+
+#[derive(Debug, Serialize)]
+pub(crate) struct HealthResponse {
+    pub(crate) status: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateRunRequest {
+    pub job_definition_id: String,
+    #[serde(alias = "host_group")]
+    pub execution_pool: String,
+    pub run_id: Option<String>,
+    pub python_script: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateJobDefinitionRequest {
+    pub id: Option<String>,
+    pub name: String,
+    pub runtime_image: Option<String>,
+    pub python_script: String,
+    pub retry_max_attempts: Option<u32>,
+    pub retry_delay_seconds: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateWorkflowRequest {
+    pub id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub steps: Vec<CreateWorkflowStepRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateWorkflowStepRequest {
+    pub name: String,
+    pub job_definition_id: String,
+    #[serde(alias = "host_group")]
+    pub execution_pool: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateAutomationRequest {
+    pub id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub workflow_id: String,
+    pub trigger_kind: Option<String>,
+    pub interval_seconds: Option<i64>,
+    pub triggers: Option<Vec<CreateAutomationTriggerRequest>>,
+    pub condition: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateAutomationTriggerRequest {
+    pub name: String,
+    pub kind: String,
+    #[serde(default)]
+    pub config: Value,
+    pub plugin_id: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTriggerPluginRequest {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub runtime_image: String,
+    pub command: Vec<String>,
+    pub config_schema: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ListRunsQuery {
+    pub(crate) limit: Option<u16>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ListJobDefinitionsQuery {
+    pub(crate) limit: Option<u16>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListRunsResponse {
+    pub(crate) runs: Vec<JobRunResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListJobDefinitionsResponse {
+    pub(crate) job_definitions: Vec<JobDefinitionResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListExecutionPoolsResponse {
+    pub(crate) execution_pools: Vec<ExecutionPoolResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListHostGroupsResponse {
+    pub(crate) host_groups: Vec<HostGroupResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListWorkflowsResponse {
+    pub(crate) workflows: Vec<WorkflowResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListAutomationsResponse {
+    pub(crate) automations: Vec<AutomationResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListAutomationTriggersResponse {
+    pub(crate) triggers: Vec<TriggerResponse>,
+    pub(crate) condition: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListTriggerPluginsResponse {
+    pub(crate) trigger_plugins: Vec<TriggerPluginResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListWorkflowRunsResponse {
+    pub(crate) workflow_runs: Vec<WorkflowRunResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ExecutionPoolResponse {
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) is_default: bool,
+    pub(crate) host_group: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct HostGroupResponse {
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) is_default: bool,
+    pub(crate) execution_pool: String,
+    pub(crate) host_count: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct JobDefinitionResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) runtime_image: String,
+    pub(crate) command: Vec<String>,
+    pub(crate) bundle_object_key: String,
+    pub(crate) retry_max_attempts: u32,
+    pub(crate) retry_delay_seconds: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkflowResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) status: String,
+    pub(crate) steps: Vec<WorkflowStepResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkflowStepResponse {
+    pub(crate) id: String,
+    pub(crate) position: i32,
+    pub(crate) name: String,
+    pub(crate) job_definition_id: String,
+    pub(crate) execution_pool: String,
+    pub(crate) host_group: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AutomationResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) workflow_id: String,
+    pub(crate) status: String,
+    pub(crate) trigger_kind: String,
+    pub(crate) interval_seconds: Option<i64>,
+    pub(crate) triggers: Vec<TriggerResponse>,
+    pub(crate) condition: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TriggerResponse {
+    pub(crate) name: String,
+    pub(crate) kind: String,
+    pub(crate) config: Value,
+    pub(crate) plugin_id: Option<String>,
+    pub(crate) enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TriggerPluginResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) runtime_image: String,
+    pub(crate) command: Vec<String>,
+    pub(crate) config_schema: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkflowRunResponse {
+    pub(crate) id: String,
+    pub(crate) workflow_id: String,
+    pub(crate) automation_id: Option<String>,
+    pub(crate) status: String,
+    pub(crate) current_step_position: i32,
+    pub(crate) step_runs: Vec<WorkflowStepRunResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkflowStepRunResponse {
+    pub(crate) id: String,
+    pub(crate) workflow_step_id: String,
+    pub(crate) job_run_id: String,
+    pub(crate) position: i32,
+    pub(crate) status: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct JobRunResponse {
+    pub(crate) id: String,
+    pub(crate) job_definition_id: String,
+    pub(crate) status: String,
+    pub(crate) execution_pool: String,
+    pub(crate) host_group: String,
+    pub(crate) attempt_count: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct JobRunLogsResponse {
+    pub(crate) run_id: String,
+    pub(crate) logs: String,
+    pub(crate) object_log_available: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListArtifactsResponse {
+    pub(crate) artifacts: Vec<ArtifactResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ArtifactResponse {
+    pub(crate) id: String,
+    pub(crate) run_id: String,
+    pub(crate) name: String,
+    pub(crate) content_type: String,
+    pub(crate) size_bytes: u64,
+    pub(crate) kind: String,
+}
+
+impl From<&JobArtifact> for ArtifactResponse {
+    fn from(artifact: &JobArtifact) -> Self {
+        Self {
+            id: artifact.id.as_str().to_string(),
+            run_id: artifact.run_id.as_str().to_string(),
+            name: artifact.name.clone(),
+            content_type: artifact.content_type.clone(),
+            size_bytes: artifact.size_bytes,
+            kind: artifact.kind.as_str().to_string(),
+        }
+    }
+}
+
+impl From<&JobDefinition> for JobDefinitionResponse {
+    fn from(definition: &JobDefinition) -> Self {
+        Self {
+            id: definition.id.as_str().to_string(),
+            name: definition.name.clone(),
+            runtime_image: definition.runtime_image.clone(),
+            command: definition.command.clone(),
+            bundle_object_key: definition.bundle_object_key.clone(),
+            retry_max_attempts: definition.retry_max_attempts,
+            retry_delay_seconds: definition.retry_delay_seconds,
+        }
+    }
+}
+
+impl From<&WorkflowDefinition> for WorkflowResponse {
+    fn from(workflow: &WorkflowDefinition) -> Self {
+        Self {
+            id: workflow.id.as_str().to_string(),
+            name: workflow.name.clone(),
+            description: workflow.description.clone(),
+            status: workflow.status.to_string(),
+            steps: workflow
+                .steps
+                .iter()
+                .map(WorkflowStepResponse::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<&WorkflowStep> for WorkflowStepResponse {
+    fn from(step: &WorkflowStep) -> Self {
+        Self {
+            id: step.id.as_str().to_string(),
+            position: step.position,
+            name: step.name.clone(),
+            job_definition_id: step.job_definition_id.as_str().to_string(),
+            execution_pool: step.execution_pool.as_str().to_string(),
+            host_group: step.execution_pool.as_str().to_string(),
+        }
+    }
+}
+
+impl AutomationResponse {
+    pub(crate) fn new(
+        automation: &Automation,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+    ) -> Result<Self, ApiError> {
+        Ok(Self {
+            id: automation.id.as_str().to_string(),
+            name: automation.name.clone(),
+            description: automation.description.clone(),
+            workflow_id: automation.workflow_id.as_str().to_string(),
+            status: automation.status.to_string(),
+            trigger_kind: automation.trigger_kind.to_string(),
+            interval_seconds: automation.interval_seconds,
+            triggers: triggers.iter().map(TriggerResponse::from).collect(),
+            condition: json_from_string(condition_json)?,
+        })
+    }
+}
+
+impl From<&AutomationTrigger> for TriggerResponse {
+    fn from(trigger: &AutomationTrigger) -> Self {
+        Self {
+            name: trigger.name.as_str().to_string(),
+            kind: trigger.kind.to_string(),
+            config: json_from_string(&trigger.config_json).unwrap_or_else(|_| json!({})),
+            plugin_id: trigger.plugin_id.clone(),
+            enabled: trigger.enabled,
+        }
+    }
+}
+
+impl From<&CustomTriggerPlugin> for TriggerPluginResponse {
+    fn from(plugin: &CustomTriggerPlugin) -> Self {
+        Self {
+            id: plugin.id.clone(),
+            name: plugin.name.clone(),
+            description: plugin.description.clone(),
+            runtime_image: plugin.runtime_image.clone(),
+            command: plugin.command.clone(),
+            config_schema: json_from_string(&plugin.config_schema_json)
+                .unwrap_or_else(|_| json!({})),
+        }
+    }
+}
+
+impl WorkflowRunResponse {
+    pub(crate) fn new(run: &WorkflowRun, step_runs: &[WorkflowStepRun]) -> Self {
+        Self {
+            id: run.id.as_str().to_string(),
+            workflow_id: run.workflow_id.as_str().to_string(),
+            automation_id: run.automation_id.as_ref().map(|id| id.as_str().to_string()),
+            status: run.status.to_string(),
+            current_step_position: run.current_step_position,
+            step_runs: step_runs
+                .iter()
+                .map(WorkflowStepRunResponse::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<&WorkflowStepRun> for WorkflowStepRunResponse {
+    fn from(step_run: &WorkflowStepRun) -> Self {
+        Self {
+            id: step_run.id.as_str().to_string(),
+            workflow_step_id: step_run.workflow_step_id.as_str().to_string(),
+            job_run_id: step_run.job_run_id.as_str().to_string(),
+            position: step_run.position,
+            status: step_run.status.to_string(),
+        }
+    }
+}
+
+impl From<&JobRun> for JobRunResponse {
+    fn from(run: &JobRun) -> Self {
+        Self {
+            id: run.id.as_str().to_string(),
+            job_definition_id: run.job_definition_id.as_str().to_string(),
+            status: status_label(run.status).to_string(),
+            execution_pool: run.execution_pool.as_str().to_string(),
+            host_group: run.execution_pool.as_str().to_string(),
+            attempt_count: run.attempt_count,
+        }
+    }
+}
+
+const fn status_label(status: JobRunStatus) -> &'static str {
+    match status {
+        JobRunStatus::Queued => "queued",
+        JobRunStatus::Leased => "leased",
+        JobRunStatus::Running => "running",
+        JobRunStatus::Succeeded => "succeeded",
+        JobRunStatus::Failed => "failed",
+        JobRunStatus::Cancelled => "cancelled",
+        JobRunStatus::TimedOut => "timed_out",
+        JobRunStatus::RetryScheduled => "retry_scheduled",
+    }
+}

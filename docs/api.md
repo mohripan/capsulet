@@ -1,13 +1,19 @@
 # API
 
-Capsulet's API exposes the manual job-run path, script-backed submission, cancellation, status inspection, log inspection, and artifact retrieval.
+Capsulet's API exposes job definition authoring, manual job runs, workflow definition authoring, automation triggers, cancellation, status inspection, log inspection, and artifact retrieval.
 
 ## Run Locally
 
-Start PostgreSQL:
+For the full local stack, including PostgreSQL, MinIO, API, worker, and dashboard, run:
 
 ```sh
-docker compose up -d postgres
+docker compose up --build
+```
+
+For manual API development, start only the local data services:
+
+```sh
+docker compose up -d postgres minio minio-init
 ```
 
 Set the API environment:
@@ -55,6 +61,38 @@ Health:
 
 ```sh
 curl http://127.0.0.1:8080/healthz
+```
+
+List execution pools:
+
+```sh
+curl http://127.0.0.1:8080/v1/execution-pools
+```
+
+Create a reusable Python job definition:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/job-definitions \
+  -H "content-type: application/json" \
+  -d '{"name":"Hourly email","runtime_image":"python:3.12-slim","python_script":"print(\"send email\")"}'
+```
+
+List job definitions:
+
+```sh
+curl http://127.0.0.1:8080/v1/job-definitions
+```
+
+Fetch, update, or delete one job definition:
+
+```sh
+curl http://127.0.0.1:8080/v1/job-definitions/job_123
+
+curl -X PUT http://127.0.0.1:8080/v1/job-definitions/job_123 \
+  -H "content-type: application/json" \
+  -d '{"name":"Hourly email","runtime_image":"python:3.12-slim","python_script":"print(\"updated\")"}'
+
+curl -X DELETE http://127.0.0.1:8080/v1/job-definitions/job_123
 ```
 
 Create a manual run:
@@ -110,6 +148,65 @@ Cancel a queued or running run:
 ```sh
 curl -X POST http://127.0.0.1:8080/v1/jobs/runs/run_123/cancel
 ```
+
+Create a two-step linear workflow:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/workflows \
+  -H "content-type: application/json" \
+  -d '{
+    "name":"Hourly email workflow",
+    "description":"Send an email and write a follow-up artifact",
+    "steps":[
+      {"name":"Send email","job_definition_id":"job_email","execution_pool":"mini"},
+      {"name":"Follow-up","job_definition_id":"job_report","execution_pool":"mini"}
+    ]
+  }'
+```
+
+List and fetch workflows:
+
+```sh
+curl http://127.0.0.1:8080/v1/workflows
+curl http://127.0.0.1:8080/v1/workflows/workflow_123
+```
+
+Create a manual automation:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/automations \
+  -H "content-type: application/json" \
+  -d '{"name":"Manual email","workflow_id":"workflow_123","trigger_kind":"manual"}'
+```
+
+Create an interval automation. For hourly execution, use `3600` seconds:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/automations \
+  -H "content-type: application/json" \
+  -d '{"name":"Hourly email","workflow_id":"workflow_123","trigger_kind":"interval","interval_seconds":3600}'
+```
+
+List and fetch automations:
+
+```sh
+curl http://127.0.0.1:8080/v1/automations
+curl http://127.0.0.1:8080/v1/automations/automation_123
+```
+
+Trigger one automation manually:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/automations/automation_123/trigger
+```
+
+List workflow runs:
+
+```sh
+curl http://127.0.0.1:8080/v1/workflow-runs
+```
+
+Each workflow run includes `step_runs`. A step run exposes its `position`, `status`, `workflow_step_id`, and underlying `job_run_id`; use that job run ID with the existing logs and artifacts endpoints.
 
 Visible run states are:
 
@@ -175,6 +272,17 @@ Cancel a run:
 cargo run -p capsulet-cli -- cancel run_123
 ```
 
+## Docker Compose Stub Runner
+
+The local Docker Compose worker uses the stub runner. It does not execute the authored Python inside a container, but it does exercise the complete control plane path: API authoring, scheduler workflow advancement, worker leasing, logs, and artifacts.
+
+Compose sets deterministic stub logs and `stub-artifact.txt`, so workflow-created job runs can be inspected through:
+
+```sh
+curl http://127.0.0.1:8080/v1/jobs/runs/run_123/logs
+curl http://127.0.0.1:8080/v1/jobs/runs/run_123/artifacts
+```
+
 ## Error Shape
 
 Errors return JSON:
@@ -191,6 +299,8 @@ Known API error codes:
 - `validation_error`
 - `unknown_job_definition`
 - `unknown_execution_pool`
+- `workflow_not_found`
+- `automation_not_found`
 - `job_run_not_found`
 - `job_run_logs_not_found`
 - `job_artifact_not_found`

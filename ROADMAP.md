@@ -143,20 +143,82 @@ Exit criteria:
 - Job metadata survives API and worker restarts.
 - Basic logs are retrievable after completion.
 
-## Phase 2: Public Alpha v0.1.0
+## Phase 2: Authoring MVP
 
-Goal: publish the first installable version as a real Kubernetes application.
+Goal: let users create the objects they actually care about instead of only submitting one-off jobs.
+
+The user-facing model should become:
+
+1. Job definitions describe reusable executable work.
+2. Execution pools describe where work may run.
+3. Workflows compose one or more job-definition steps.
+4. Automations bind a trigger to a workflow.
+5. A manual automation trigger creates a workflow run and the underlying job runs.
 
 Runtime features:
 
+- user-created Python job definitions
+- job definition list/detail/update/delete APIs
+- execution pool list API backed by configured pools, not dashboard mock data
+- workflow definitions with ordered steps
+- workflow runs that create job runs step by step
+- automation records that target workflows
+- manual automation trigger from API and dashboard
+- dashboard create/edit/list/detail flows for job definitions, workflows, and automations
+- dashboard workflow run view that links to underlying job runs, logs, and artifacts
+
+Initial workflow scope:
+
+- linear workflows are required
+- each step references one job definition and one execution pool
+- a later step starts only after the previous step succeeds
+- workflow run fails when any step fails, times out, or is cancelled
+- no branching, fan-out, fan-in, schedules, webhooks, or dependency triggers yet
+
+Exit criteria:
+
+- A user can create a Python job definition in the dashboard.
+- A user can create a workflow with at least two sequential steps.
+- A user can create a manual automation targeting that workflow.
+- A user can trigger the automation from the dashboard.
+- Capsulet executes the workflow end to end and shows the workflow run, underlying job runs, logs, and artifacts.
+- Execution pool choices shown in the dashboard come from the API, not hard-coded mock data.
+
+## Phase 3: Product Reality and Dashboard Coverage
+
+Goal: remove mock-heavy product surfaces and make the dashboard accurately reflect implemented backend behavior.
+
+Dashboard coverage:
+
+- overview backed by live API summaries
+- automations page backed by automation APIs
+- workflows page backed by workflow APIs
+- execution pools page backed by configured pool APIs
+- artifacts page backed by artifact APIs
+- security and settings pages either implemented or clearly deferred outside the app
+- no primary action that silently does nothing
+
+Exit criteria:
+
+- Dashboard pages do not present mock operational state as real state.
+- Every visible primary action is a real command, a real link to an implemented flow, or absent.
+- End-to-end authoring and manual workflow execution can be tested through the dashboard.
+
+## Phase 4: Public Alpha v0.1.0
+
+Goal: publish the first installable version only after the authoring workflow is real.
+
+Runtime features:
+
+- authoring MVP from Phase 2
+- dashboard coverage from Phase 3
 - script job submission
 - durable job attempts
 - retry policy
 - job timeout
-- basic artifact upload to MinIO or S3-compatible storage
-- dashboard with job list and job detail
+- artifact upload to MinIO or S3-compatible storage
 - execution image selection from safe defaults
-- example jobs
+- example workflows and automations
 
 Chart features:
 
@@ -165,7 +227,7 @@ Chart features:
 - external database support
 - external object storage support
 - dashboard deployment and service
-- scheduler deployment
+- scheduler/orchestrator deployment
 - configurable resource requests and limits
 - configurable probes
 - optional ingress
@@ -174,16 +236,6 @@ Chart features:
 - `values.schema.json`
 - `helm lint` clean
 - `helm template` smoke tests
-
-Security defaults:
-
-- non-root containers
-- privilege escalation disabled
-- dropped capabilities
-- seccomp `RuntimeDefault`
-- dedicated service account for script jobs
-- configurable job resource limits
-- default job timeout
 
 Release automation:
 
@@ -194,21 +246,12 @@ Release automation:
 - optionally publish OCI Helm chart to GHCR
 - generate release notes
 
-Documentation:
-
-- quickstart
-- architecture
-- Helm values reference
-- security model
-- local development
-- troubleshooting
-
 Exit criteria:
 
-- A user can run `helm install capsulet ...`, submit an example Python script, inspect logs, and retrieve an artifact.
+- A user can install Capsulet, create job definitions/workflows/automations, trigger a workflow, inspect logs, and retrieve artifacts.
 - The release is reproducible from a Git tag.
 
-## Phase 3: Operability and Chart Maturity
+## Phase 5: Operability and Chart Maturity
 
 Goal: make Capsulet feel like a product operators can evaluate seriously.
 
@@ -257,7 +300,7 @@ Exit criteria:
 - Users can define at least one named execution pool that maps jobs onto a specific class of Kubernetes nodes.
 - Metrics and logs make failures diagnosable.
 
-## Phase 4: Workflow Engine Capabilities
+## Phase 6: Workflow Engine Capabilities
 
 Goal: evolve from single script execution into lightweight workflows.
 
@@ -312,7 +355,7 @@ Exit criteria:
 - Users can trigger jobs manually, on a schedule, from a webhook, or from another job's result.
 - Workflow state is durable and understandable through API, CLI, and dashboard.
 
-## Phase 5: Security Hardening
+## Phase 7: Security Hardening
 
 Goal: improve the trust boundary around untrusted script execution.
 
@@ -349,7 +392,7 @@ Exit criteria:
 - The project clearly documents what it protects against and what it does not.
 - Administrators can restrict runtime images, network access, resource usage, and secret exposure.
 
-## Phase 6: Reliability and Scale
+## Phase 8: Reliability and Scale
 
 Goal: make the queue and workers robust under load and failure.
 
@@ -539,9 +582,9 @@ Exit criteria:
 - Capsulet can be recommended for a serious self-hosted deployment with documented limits.
 - The public documentation explains installation, operation, security, troubleshooting, upgrades, and contribution.
 
-## Execution Pool Concept
+## Host Group Concept
 
-Execution pools are Capsulet's routing layer for different classes of compute. A pool should describe where and how a job may run, while Kubernetes remains responsible for selecting the exact node.
+Host groups are Capsulet's routing layer for different classes of compute. A host group should describe where and how a job may run. In the Kubernetes backend, host groups are implemented through execution-pool settings, and Kubernetes remains responsible for selecting the exact node.
 
 Example Helm values shape:
 
@@ -588,28 +631,28 @@ Example job submission:
 
 ```sh
 capsulet submit examples/send-email \
-  --pool mini \
+  --host-group mini \
   --input '{"to":"team@example.com"}'
 
 capsulet submit examples/model-inference \
-  --pool large \
+  --host-group large \
   --input '{"model":"forecast-v1"}'
 ```
 
-The first implementation should treat pools as static Helm configuration. Later versions can promote them to API-managed objects if runtime pool changes become important.
+The first implementation should treat host groups as static Helm configuration. Later versions can promote them to API-managed objects if runtime host-group changes become important. The existing `executionPools` Helm values key remains the Kubernetes runner configuration surface until a chart values migration is designed.
 
 ## Automation and Trigger Model Concept
 
-Capsulet should not be limited to cron. The user-facing object should be an automation: a named rule that evaluates one or more triggers, decides whether a job or workflow should run, and applies default execution settings such as the execution pool.
+Capsulet should not be limited to cron. The user-facing object should be an automation: a named rule that evaluates one or more triggers, decides whether a job or workflow should run, and applies default execution settings such as the host group.
 
 An automation should answer four questions:
 
 - What is this automation called?
 - What job or workflow does it create?
-- Which execution pool should the created run use by default?
+- Which host group should the created run use by default?
 - Which trigger expression must evaluate to true?
 
-The execution path after an automation fires should stay the same: validate input, create a durable run, route it to an execution pool, execute it, and record the result.
+The execution path after an automation fires should stay the same: validate input, create a durable run, route it to a host group, execute it, and record the result.
 
 Initial trigger types:
 
@@ -642,7 +685,7 @@ target:
   kind: job
   name: generate-report
 execution:
-  pool: mini
+  hostGroup: mini
   timeoutSeconds: 600
 triggers:
   nightly:
@@ -664,7 +707,7 @@ target:
   kind: job
   name: resize-image
 execution:
-  pool: mini
+  hostGroup: mini
 triggers:
   upload_event:
     type: webhook
@@ -684,7 +727,7 @@ target:
   kind: workflow
   name: train-model
 execution:
-  pool: large
+  hostGroup: large
 triggers:
   data_ready:
     type: dependency
@@ -769,12 +812,30 @@ The examples directory should eventually include:
 
 ## Suggested Public Milestones
 
+Pre-alpha authoring MVP:
+
+- user-created job definitions
+- API-backed execution-pool choices
+- linear workflow definitions
+- manual automations
+- workflow runs linked to job runs
+- dashboard authoring flow
+
+Pre-alpha workflow hardening:
+
+- workflow cancellation
+- workflow retry behavior
+- workflow run detail polish
+- end-to-end Compose smoke
+- end-to-end minikube smoke
+
 `v0.1.0` public alpha:
 
 - installable Helm chart
-- API, worker, scheduler, dashboard
+- API, worker, scheduler/orchestrator, dashboard
 - PostgreSQL and MinIO options
 - Python script execution via Kubernetes Jobs
+- user-created job definitions, workflows, and manual automations
 - logs, attempts, retries, artifacts
 - GHCR images
 - GitHub Pages Helm repository
@@ -786,7 +847,6 @@ The examples directory should eventually include:
 - retention settings
 - migration job
 - chart schema
-- better dashboard
 - better troubleshooting docs
 
 `v0.3.0` workflow basics:
@@ -840,7 +900,7 @@ These should be resolved through design notes before implementation locks them i
 
 ## Current Status
 
-Capsulet has completed the first five implementation sprints:
+Capsulet has completed the first seven implementation sprints:
 
 - Sprint 001 scaffolded the Rust workspace, dashboard prototype, Helm chart, docs, and CI foundation.
 - Sprint 002 added manual job submission, PostgreSQL persistence, API basics, and a worker with a stub runner.
@@ -848,5 +908,6 @@ Capsulet has completed the first five implementation sprints:
 - Sprint 004 added cancellation, timeout classification, retry scheduling, lease recovery, and Kubernetes Job cleanup policy.
 - Sprint 005 added object storage for script bundles, large logs, and artifacts, plus artifact API/CLI commands and MinIO-backed smoke coverage.
 - Sprint 006 connected the dashboard runs surface to the live API for run listing, seeded job and script submission, run detail, cancellation, logs, artifact listing, and artifact download.
+- Sprint 007 added bundled PostgreSQL and MinIO chart resources, migration and bucket initialization Jobs, external dependency modes, chart install notes, and a minikube-backed bundled chart smoke.
 
-The current planned next step is to choose the Sprint 007 path: bundled PostgreSQL and MinIO chart maturity, release automation, observability metrics, or security hardening foundations.
+Sprint 008 is planned as the authoring foundation sprint: user-created reusable Python job definitions, API-backed execution-pool choices, dashboard authoring for job definitions, removal of misleading mock automation/workflow/pool state, and a concrete linear workflow plus manual automation design. Release automation and alpha packaging are deferred until users can create and run workflows/automations end to end.

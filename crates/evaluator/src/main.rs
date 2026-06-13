@@ -1,4 +1,5 @@
 use capsulet_core::{ComponentDescriptor, ComponentKind};
+use std::{thread, time::Duration};
 
 fn main() {
     let descriptor = ComponentDescriptor::new(
@@ -6,4 +7,7 @@ fn main() {
         "evaluates automation conditions and creates durable runs",
     );
     println!("{}", descriptor.banner());
+    loop {
+        thread::sleep(Duration::from_secs(60));
+    }
 }
