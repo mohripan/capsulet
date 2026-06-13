@@ -6,9 +6,10 @@ By default it runs in dry-run mode, prints what it would send, and writes an art
 
 ## Environment
 
-- `CAPSULET_EMAIL_TO`: recipient address. Defaults to `mohripan16@gmail.com`.
-- `CAPSULET_EMAIL_SUBJECT`: email subject.
-- `CAPSULET_EMAIL_BODY`: plain-text body.
+- Capsulet input `recipient`: recipient address. Defaults to `mohripan16@gmail.com`.
+- Capsulet input `subject`: email subject.
+- Capsulet input `body`: plain-text body.
+- `CAPSULET_EMAIL_TO`, `CAPSULET_EMAIL_SUBJECT`, `CAPSULET_EMAIL_BODY`: fallback environment variables.
 - `CAPSULET_EMAIL_DRY_RUN`: defaults to `true`.
 - `SMTP_HOST`: SMTP host, required only when dry-run is disabled.
 - `SMTP_PORT`: defaults to `587`.

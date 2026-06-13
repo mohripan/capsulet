@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Activity, FileCode2, ListFilter, Play, RefreshCw, Send } from "lucide-react";
-import { DashboardShell, PageHeader, PanelTitle, StateBadge } from "../components";
+import { DashboardShell, PageHeader, PanelTitle, PythonEditor, ResizableGridTable, StateBadge } from "../components";
 import {
   ExecutionPool,
   JobDefinition,
@@ -15,8 +15,19 @@ import {
   submitRun
 } from "../lib/api";
 
+const runColumns = [
+  { label: "Run", width: 250, minWidth: 150 },
+  { label: "Job definition", width: 250, minWidth: 160 },
+  { label: "Pool", width: 170, minWidth: 110 },
+  { label: "State", width: 150, minWidth: 120 },
+  { label: "Attempts", width: 130, minWidth: 92 }
+];
+
+const pageSize = 8;
+
 export default function RunsClient() {
   const [runs, setRuns] = useState<JobRun[]>([]);
+  const [runPage, setRunPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
@@ -67,6 +78,15 @@ export default function RunsClient() {
       return acc;
     }, {});
   }, [runs]);
+
+  const pagedRuns = runs.slice((runPage - 1) * pageSize, runPage * pageSize);
+
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(runs.length / pageSize));
+    if (runPage > pages) {
+      setRunPage(pages);
+    }
+  }, [runPage, runs.length]);
 
   async function submitDefinitionJob(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,19 +155,12 @@ export default function RunsClient() {
             </button>
           </div>
           {error ? <div className="errorBox">{error}</div> : null}
-          <div className="runTable">
-            <div className="runHeader liveRunGrid">
-              <span>Run</span>
-              <span>Job definition</span>
-              <span>Pool</span>
-              <span>State</span>
-              <span>Attempts</span>
-            </div>
+          <ResizableGridTable columns={runColumns}>
             {!isLoading && runs.length === 0 ? (
               <div className="emptyState">No runs yet. Submit a seeded job or Python script to create one.</div>
             ) : null}
-            {runs.map((run) => (
-              <Link className="runRow liveRunGrid interactiveRow" href={`/runs/${run.id}`} key={run.id}>
+            {pagedRuns.map((run) => (
+              <Link className="resizableRow runRow interactiveRow" href={`/runs/${run.id}`} key={run.id}>
                 <span className="mono tableCell" title={run.id}>
                   {run.id}
                 </span>
@@ -163,7 +176,8 @@ export default function RunsClient() {
                 </span>
               </Link>
             ))}
-          </div>
+          </ResizableGridTable>
+          <Pagination page={runPage} total={runs.length} onPage={setRunPage} />
         </section>
 
         <section className="panel span4">
@@ -225,7 +239,7 @@ export default function RunsClient() {
             </label>
             <label>
               <span>Script</span>
-              <textarea value={script} onChange={(event) => setScript(event.target.value)} rows={8} />
+              <PythonEditor value={script} onChange={setScript} rows={8} />
             </label>
             <button className="primaryAction inlineAction" disabled={isSubmitting}>
               <Send size={16} aria-hidden="true" />
@@ -246,5 +260,20 @@ export default function RunsClient() {
         ) : null}
       </section>
     </DashboardShell>
+  );
+}
+
+function Pagination({ page, total, onPage }: { page: number; total: number; onPage: (page: number) => void }) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <div className="pagination">
+      <button className="secondaryButton" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+        Prev
+      </button>
+      <span>{page} / {pages}</span>
+      <button className="secondaryButton" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+        Next
+      </button>
+    </div>
   );
 }

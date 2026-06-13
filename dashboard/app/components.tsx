@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo, useState } from "react";
 import {
   Activity,
   Archive,
@@ -21,6 +22,7 @@ import {
   Workflow
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 const nav: Array<[LucideIcon, string, string]> = [
   [Home, "Overview", "/"],
@@ -39,7 +41,7 @@ export function DashboardShell({
   actionLabel,
   actionHref
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   actionLabel?: string;
   actionHref?: string;
 }) {
@@ -170,4 +172,111 @@ export function LoadBar({ label, value }: { label: string; value: number }) {
 
 export function StateBadge({ state }: { state: string }) {
   return <span className={`state state-${state.toLowerCase()}`}>{state}</span>;
+}
+
+export type ResizableGridColumn = {
+  label: string;
+  width: number;
+  minWidth?: number;
+};
+
+export function ResizableGridTable({
+  columns,
+  children,
+  className
+}: {
+  columns: ResizableGridColumn[];
+  children: ReactNode;
+  className?: string;
+}) {
+  const [widths, setWidths] = useState(() => columns.map((column) => column.width));
+  const template = useMemo(() => widths.map((width) => `${Math.round(width)}px`).join(" "), [widths]);
+  const style = { "--table-columns": template } as CSSProperties;
+
+  function startResize(index: number, event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = widths[index];
+    const minWidth = columns[index].minWidth ?? 88;
+
+    function onPointerMove(pointerEvent: PointerEvent) {
+      const nextWidth = Math.max(minWidth, startWidth + pointerEvent.clientX - startX);
+      setWidths((current) => current.map((width, widthIndex) => (widthIndex === index ? nextWidth : width)));
+    }
+
+    function onPointerUp() {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }
+
+  return (
+    <div className={className ? `resizableTable ${className}` : "resizableTable"} style={style}>
+      <div className="resizableHeader">
+        {columns.map((column, index) => (
+          <div className="resizableHeadCell" key={column.label}>
+            <span>{column.label}</span>
+            <button
+              aria-label={`Resize ${column.label} column`}
+              className="columnResizeHandle"
+              title={`Resize ${column.label} column`}
+              type="button"
+              onPointerDown={(event) => startResize(index, event)}
+            />
+          </div>
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function PythonEditor({ value, onChange, rows = 16 }: { value: string; onChange: (value: string) => void; rows?: number }) {
+  const minHeight = Math.max(190, rows * 20 + 34);
+  const style = { "--python-editor-min-height": `${minHeight}px` } as CSSProperties;
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Tab") return;
+    event.preventDefault();
+    const target = event.currentTarget;
+    const start = target.selectionStart;
+    const end = target.selectionEnd;
+    const next = `${value.slice(0, start)}    ${value.slice(end)}`;
+    onChange(next);
+    requestAnimationFrame(() => {
+      target.selectionStart = start + 4;
+      target.selectionEnd = start + 4;
+    });
+  }
+
+  return (
+    <div className="pythonEditor" style={style}>
+      <pre aria-hidden="true" dangerouslySetInnerHTML={{ __html: highlightPython(value) }} />
+      <textarea
+        value={value}
+        spellCheck={false}
+        rows={rows}
+        onKeyDown={handleKeyDown}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
+function highlightPython(value: string) {
+  return escapeHtml(value)
+    .replace(/\b(import|from|def|return|if|else|for|while|in|with|as|print|class|try|except)\b/g, "<span class=\"pyKeyword\">$1</span>")
+    .replace(/(&quot;[^&]*?&quot;|'[^']*?')/g, "<span class=\"pyString\">$1</span>")
+    .replace(/(#.*)$/gm, "<span class=\"pyComment\">$1</span>");
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

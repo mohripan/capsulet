@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { GitBranch, Plus, RefreshCw, Send, Workflow as WorkflowIcon } from "lucide-react";
+import { FormEvent, Fragment, useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, FileCode2, GitBranch, Plus, RefreshCw, Send, Workflow as WorkflowIcon } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle } from "../components";
 import {
   ExecutionPool,
@@ -16,6 +16,7 @@ import {
 
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [selectedWorkflowIndex, setSelectedWorkflowIndex] = useState(0);
   const [definitions, setDefinitions] = useState<JobDefinition[]>([]);
   const [pools, setPools] = useState<ExecutionPool[]>([]);
   const [name, setName] = useState("Hourly email workflow");
@@ -59,6 +60,12 @@ export default function WorkflowsPage() {
     void refresh();
   }, []);
 
+  useEffect(() => {
+    if (selectedWorkflowIndex > Math.max(0, workflows.length - 1)) {
+      setSelectedWorkflowIndex(Math.max(0, workflows.length - 1));
+    }
+  }, [selectedWorkflowIndex, workflows.length]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
@@ -79,6 +86,8 @@ export default function WorkflowsPage() {
       setIsSubmitting(false);
     }
   }
+
+  const selectedWorkflow = workflows[selectedWorkflowIndex];
 
   return (
     <DashboardShell>
@@ -150,25 +159,47 @@ export default function WorkflowsPage() {
             {!isLoading && workflows.length === 0 ? (
               <div className="emptyState">No workflows yet. Create job definitions first, then compose them here.</div>
             ) : null}
-            {workflows.map((workflow) => (
-              <article className="workflowCard" key={workflow.id}>
+            {selectedWorkflow ? (
+              <article className="workflowCard workflowFocusCard" key={selectedWorkflow.id}>
                 <div className="poolTop">
                   <div>
-                    <h2>{workflow.name}</h2>
-                    <p>{workflow.id} / {workflow.status}</p>
+                    <h2 title={selectedWorkflow.name}>{selectedWorkflow.name}</h2>
+                    <p title={`${selectedWorkflow.id} / ${selectedWorkflow.status}`}>{selectedWorkflow.id} / {selectedWorkflow.status}</p>
                   </div>
-                  <span>{workflow.steps.length} steps</span>
+                  <span>{selectedWorkflow.steps.length} steps</span>
                 </div>
-                <div className="stepRail">
-                  {workflow.steps.map((step) => (
-                    <div className="stepItem" key={step.id}>
-                      <span>{step.position}</span>
-                      <strong title={step.job_definition_id}>{step.name}: {step.job_definition_id}</strong>
+                <div className="workflowChain" aria-label={`${selectedWorkflow.name} steps`}>
+                  {selectedWorkflow.steps.map((step, index) => (
+                    <Fragment key={step.id}>
+                      <div className="workflowChainSegment">
+                      <div className="workflowChainNode">
+                        <div className="workflowNodeIcon">
+                          <FileCode2 size={18} aria-hidden="true" />
+                        </div>
+                        <div>
+                          <span>Step {step.position}</span>
+                          <strong title={step.name}>{step.name}</strong>
+                          <p title={step.job_definition_id}>{step.job_definition_id}</p>
+                        </div>
+                      </div>
                     </div>
+                      {index < selectedWorkflow.steps.length - 1 ? <div className="workflowConnector" aria-hidden="true" /> : null}
+                    </Fragment>
                   ))}
                 </div>
+                <div className="workflowPager">
+                  <button className="secondaryButton" disabled={selectedWorkflowIndex <= 0} onClick={() => setSelectedWorkflowIndex((current) => current - 1)}>
+                    <ChevronLeft size={15} aria-hidden="true" />
+                    Prev
+                  </button>
+                  <span>{selectedWorkflowIndex + 1} / {workflows.length}</span>
+                  <button className="secondaryButton" disabled={selectedWorkflowIndex >= workflows.length - 1} onClick={() => setSelectedWorkflowIndex((current) => current + 1)}>
+                    Next
+                    <ChevronRight size={15} aria-hidden="true" />
+                  </button>
+                </div>
               </article>
-            ))}
+            ) : null}
           </div>
         </section>
 

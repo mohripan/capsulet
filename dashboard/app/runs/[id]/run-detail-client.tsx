@@ -11,7 +11,7 @@ import {
   RefreshCw,
   TerminalSquare
 } from "lucide-react";
-import { DashboardShell, PageHeader, PanelTitle, StateBadge } from "../../components";
+import { DashboardShell, PageHeader, PanelTitle, ResizableGridTable, StateBadge } from "../../components";
 import {
   Artifact,
   JobRun,
@@ -25,6 +25,14 @@ import {
   isTerminalStatus,
   listArtifacts
 } from "../../lib/api";
+
+const artifactColumns = [
+  { label: "Name", width: 320, minWidth: 180 },
+  { label: "Kind", width: 120, minWidth: 90 },
+  { label: "Size", width: 120, minWidth: 90 },
+  { label: "Content type", width: 240, minWidth: 150 },
+  { label: "Action", width: 140, minWidth: 126 }
+];
 
 export default function RunDetailClient({ id }: { id: string }) {
   const [run, setRun] = useState<JobRun | null>(null);
@@ -155,16 +163,9 @@ export default function RunDetailClient({ id }: { id: string }) {
           {artifacts.length === 0 ? (
             <div className="emptyState">No artifacts are recorded for this run.</div>
           ) : (
-            <div className="artifactTable">
-              <div className="artifactHeader">
-                <span>Name</span>
-                <span>Kind</span>
-                <span>Size</span>
-                <span>Content type</span>
-                <span>Action</span>
-              </div>
+            <ResizableGridTable columns={artifactColumns} className="artifactTable">
               {artifacts.map((artifact) => (
-                <div className="artifactDetailRow" key={artifact.id}>
+                <div className="resizableRow artifactDetailRow" key={artifact.id}>
                   <div>
                     <strong>{artifact.name}</strong>
                     <span className="mono">{artifact.id}</span>
@@ -178,7 +179,7 @@ export default function RunDetailClient({ id }: { id: string }) {
                   </button>
                 </div>
               ))}
-            </div>
+            </ResizableGridTable>
           )}
           {stdoutArtifact ? (
             <div className="wideNotice compactNotice">

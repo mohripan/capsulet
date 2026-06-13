@@ -15,6 +15,7 @@ export type JobRun = {
   execution_pool: string;
   host_group: string;
   attempt_count: number;
+  input: Record<string, unknown>;
 };
 
 export type LogsResponse = {
@@ -39,6 +40,7 @@ export type SubmitRunRequest = {
   host_group?: string;
   run_id?: string;
   python_script?: string;
+  input?: Record<string, unknown>;
 };
 
 export type JobDefinition = {
@@ -47,8 +49,22 @@ export type JobDefinition = {
   runtime_image: string;
   command: string[];
   bundle_object_key: string;
+  input_schema: ParameterContract;
   retry_max_attempts: number;
   retry_delay_seconds: number;
+};
+
+export type ContractField = {
+  name: string;
+  label?: string;
+  type: "string" | "number" | "boolean" | "datetime" | "textarea" | "password";
+  required?: boolean;
+  default?: string | number | boolean;
+  placeholder?: string;
+};
+
+export type ParameterContract = {
+  fields?: ContractField[];
 };
 
 export type CreateJobDefinitionRequest = {
@@ -56,6 +72,7 @@ export type CreateJobDefinitionRequest = {
   name: string;
   runtime_image?: string;
   python_script: string;
+  input_schema?: ParameterContract;
   retry_max_attempts?: number;
   retry_delay_seconds?: number;
 };
@@ -112,6 +129,7 @@ export type Automation = {
   interval_seconds: number | null;
   triggers: AutomationTrigger[];
   condition: TriggerCondition;
+  job_input: Record<string, unknown>;
 };
 
 export type TriggerKind = "manual" | "schedule" | "sql" | "custom";
@@ -250,6 +268,7 @@ export async function createAutomation(request: {
   workflow_id: string;
   trigger_kind?: "manual" | "interval" | "schedule";
   interval_seconds?: number;
+  job_input?: Record<string, unknown>;
   triggers?: Array<{
     name: string;
     kind: TriggerKind;
@@ -275,7 +294,7 @@ export async function createTriggerPlugin(request: {
   description?: string;
   runtime_image: string;
   command: string[];
-  config_schema?: Record<string, unknown>;
+  config_schema?: ParameterContract;
 }) {
   return apiFetch<TriggerPlugin>("/v1/trigger-plugins", {
     method: "POST",
