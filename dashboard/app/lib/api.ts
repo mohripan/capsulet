@@ -147,6 +147,24 @@ export type AutomationTrigger = {
   enabled: boolean;
 };
 
+export type AutomationRequest = {
+  name: string;
+  description?: string;
+  workflow_id: string;
+  status?: "enabled" | "disabled";
+  trigger_kind?: "manual" | "interval" | "schedule";
+  interval_seconds?: number;
+  job_input?: Record<string, unknown>;
+  triggers?: Array<{
+    name: string;
+    kind: TriggerKind;
+    config: Record<string, unknown>;
+    plugin_id?: string;
+    enabled?: boolean;
+  }>;
+  condition?: TriggerCondition;
+};
+
 export type TriggerPlugin = {
   id: string;
   name: string;
@@ -262,25 +280,37 @@ export async function listAutomations() {
   return apiFetch<{ automations: Automation[] }>("/v1/automations");
 }
 
-export async function createAutomation(request: {
-  name: string;
-  description?: string;
-  workflow_id: string;
-  trigger_kind?: "manual" | "interval" | "schedule";
-  interval_seconds?: number;
-  job_input?: Record<string, unknown>;
-  triggers?: Array<{
-    name: string;
-    kind: TriggerKind;
-    config: Record<string, unknown>;
-    plugin_id?: string;
-    enabled?: boolean;
-  }>;
-  condition?: TriggerCondition;
-}) {
+export async function createAutomation(request: AutomationRequest) {
   return apiFetch<Automation>("/v1/automations", {
     method: "POST",
     body: JSON.stringify(request)
+  });
+}
+
+export async function updateAutomation(id: string, request: AutomationRequest) {
+  return apiFetch<Automation>(`/v1/automations/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function deleteAutomation(id: string) {
+  return apiFetch<void>(`/v1/automations/${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function enableAutomation(id: string) {
+  return apiFetch<Automation>(`/v1/automations/${encodeURIComponent(id)}/enable`, {
+    method: "POST",
+    body: "{}"
+  });
+}
+
+export async function disableAutomation(id: string) {
+  return apiFetch<Automation>(`/v1/automations/${encodeURIComponent(id)}/disable`, {
+    method: "POST",
+    body: "{}"
   });
 }
 

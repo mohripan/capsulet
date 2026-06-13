@@ -56,6 +56,7 @@ pub struct CreateAutomationRequest {
     pub name: String,
     pub description: Option<String>,
     pub workflow_id: String,
+    pub status: Option<String>,
     pub trigger_kind: Option<String>,
     pub interval_seconds: Option<i64>,
     pub job_input: Option<Value>,

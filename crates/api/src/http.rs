@@ -8,9 +8,9 @@ use axum::{
     routing::{get, post},
 };
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, AutomationId, CreateManualRunCommand, ExecutionPoolName,
-    JobArtifact, JobDefinition, JobDefinitionId, JobRunId, RetryPolicy, WorkflowDefinition,
-    WorkflowId, WorkflowRunId, WorkflowStatus, WorkflowStep, WorkflowStepId,
+    ArtifactId, ArtifactObjectKind, AutomationId, AutomationStatus, CreateManualRunCommand,
+    ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRunId, RetryPolicy,
+    WorkflowDefinition, WorkflowId, WorkflowRunId, WorkflowStatus, WorkflowStep, WorkflowStepId,
 };
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde_json::Value;
@@ -55,7 +55,17 @@ where
         )
         .route(
             "/v1/automations/{id}",
-            get(crate::automations::get_automation),
+            get(crate::automations::get_automation)
+                .put(crate::automations::update_automation)
+                .delete(crate::automations::delete_automation),
+        )
+        .route(
+            "/v1/automations/{id}/enable",
+            post(crate::automations::enable_automation),
+        )
+        .route(
+            "/v1/automations/{id}/disable",
+            post(crate::automations::disable_automation),
         )
         .route(
             "/v1/automations/{id}/triggers",
@@ -439,6 +449,12 @@ where
             automation_id.as_str().to_string(),
         ));
     };
+    if automation.status != AutomationStatus::Enabled {
+        return Err(ApiError::Validation(format!(
+            "automation {} is disabled",
+            automation.id.as_str()
+        )));
+    }
     let run_id = WorkflowRunId::new(generated_id("workflow_run")).map_err(ApiError::validation)?;
     let run = state
         .store

@@ -1127,9 +1127,9 @@ button {
 .automationCard {
   display: grid;
   grid-template-areas:
-    "main triggers action"
-    "main condition action";
-  grid-template-columns: minmax(220px, 1.05fr) minmax(220px, 1fr) auto;
+    "main state action"
+    "triggers condition action";
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
   gap: 12px;
   align-items: center;
   min-height: 82px;
@@ -1154,15 +1154,70 @@ button {
   grid-area: triggers;
 }
 
+.automationState {
+  grid-area: state;
+  width: fit-content;
+  min-height: 28px;
+  padding: 6px 10px;
+  border: 1px solid rgba(32, 214, 210, 0.25);
+  border-radius: 999px;
+  background: rgba(32, 214, 210, 0.08);
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.automationState.disabled {
+  border-color: rgba(148, 163, 184, 0.32);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--muted);
+}
+
 .automationCard .conditionPreview {
   grid-area: condition;
   align-self: center;
 }
 
-.automationCard .secondaryButton {
+.automationActions {
   grid-area: action;
-  width: 136px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
   align-self: center;
+}
+
+.automationActions .secondaryButton {
+  width: 116px;
+}
+
+.dangerButton {
+  border-color: rgba(248, 113, 113, 0.38);
+  color: #fecaca;
+}
+
+.readonlyField {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.readonlyField span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.readonlyField code {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #071526;
+  color: var(--soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .triggerChips {
@@ -2093,12 +2148,17 @@ button {
   .automationCard {
     grid-template-areas:
       "main"
+      "state"
       "triggers"
       "condition"
       "action";
   }
 
-  .automationCard .secondaryButton {
+  .automationActions {
+    justify-content: flex-start;
+  }
+
+  .automationActions .secondaryButton {
     width: fit-content;
   }
 

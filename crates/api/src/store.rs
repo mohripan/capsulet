@@ -29,6 +29,12 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error>;
     async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error>;
     async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error>;
+    async fn set_automation_status(
+        &self,
+        id: &AutomationId,
+        status: capsulet_core::AutomationStatus,
+    ) -> Result<Option<Automation>, Self::Error>;
+    async fn delete_automation(&self, id: &AutomationId) -> Result<bool, Self::Error>;
     async fn replace_automation_triggers(
         &self,
         automation_id: &AutomationId,
@@ -133,6 +139,18 @@ impl ApiStore for PostgresStore {
 
     async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error> {
         self.find_automation(id).await
+    }
+
+    async fn set_automation_status(
+        &self,
+        id: &AutomationId,
+        status: capsulet_core::AutomationStatus,
+    ) -> Result<Option<Automation>, Self::Error> {
+        self.set_automation_status(id, status).await
+    }
+
+    async fn delete_automation(&self, id: &AutomationId) -> Result<bool, Self::Error> {
+        self.delete_automation(id).await
     }
 
     async fn replace_automation_triggers(

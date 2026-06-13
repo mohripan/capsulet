@@ -1,4 +1,6 @@
-use capsulet_core::{Automation, AutomationId, AutomationTrigger, CustomTriggerPlugin};
+use capsulet_core::{
+    Automation, AutomationId, AutomationStatus, AutomationTrigger, CustomTriggerPlugin,
+};
 
 use crate::{
     PostgresStore, PostgresStoreError,
@@ -95,6 +97,60 @@ impl PostgresStore {
         .await?;
 
         row.as_ref().map(row_to_automation).transpose()
+    }
+
+    /// Updates automation enabled/disabled status.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn set_automation_status(
+        &self,
+        id: &AutomationId,
+        status: AutomationStatus,
+    ) -> Result<Option<Automation>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            UPDATE automations
+            SET status = $2,
+                next_fire_at = CASE
+                    WHEN $2 = 'enabled' AND trigger_kind = 'interval'
+                        THEN COALESCE(next_fire_at, now())
+                    ELSE NULL
+                END,
+                updated_at = now()
+            WHERE id = $1
+            RETURNING id, name, description, workflow_id, job_input::text AS job_input,
+                      status, trigger_kind, interval_seconds
+            ",
+        )
+        .bind(id.as_str())
+        .bind(status.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.as_ref().map(row_to_automation).transpose()
+    }
+
+    /// Deletes an automation and its trigger graph.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when deletion fails.
+    pub async fn delete_automation(&self, id: &AutomationId) -> Result<bool, PostgresStoreError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("UPDATE workflow_runs SET automation_id = NULL WHERE automation_id = $1")
+            .bind(id.as_str())
+            .execute(&mut *tx)
+            .await?;
+
+        let result = sqlx::query("DELETE FROM automations WHERE id = $1")
+            .bind(id.as_str())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Replaces an automation trigger graph and its condition tree.

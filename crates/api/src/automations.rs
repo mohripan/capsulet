@@ -54,6 +54,93 @@ where
     ))
 }
 
+pub(crate) async fn update_automation<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+    Json(mut request): Json<CreateAutomationRequest>,
+) -> Result<Json<AutomationResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    if state
+        .store
+        .find_automation(&automation_id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::AutomationNotFound(
+            automation_id.as_str().to_string(),
+        ));
+    }
+    request.id = Some(automation_id.as_str().to_string());
+    let build = build_automation(&state, request).await?;
+    let automation = build.automation;
+    state
+        .store
+        .upsert_automation(&automation)
+        .await
+        .map_err(ApiError::store)?;
+    state
+        .store
+        .replace_automation_triggers(&automation.id, &build.triggers, &build.condition_json)
+        .await
+        .map_err(ApiError::store)?;
+
+    Ok(Json(AutomationResponse::new(
+        &automation,
+        &build.triggers,
+        &build.condition_json,
+    )?))
+}
+
+pub(crate) async fn delete_automation<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    let deleted = state
+        .store
+        .delete_automation(&automation_id)
+        .await
+        .map_err(ApiError::store)?;
+    if !deleted {
+        return Err(ApiError::AutomationNotFound(
+            automation_id.as_str().to_string(),
+        ));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(crate) async fn enable_automation<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<AutomationResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    set_automation_status(state, id, AutomationStatus::Enabled).await
+}
+
+pub(crate) async fn disable_automation<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<AutomationResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    set_automation_status(state, id, AutomationStatus::Disabled).await
+}
+
 pub(crate) async fn list_automations<S, O>(
     State(state): State<AppState<S, O>>,
 ) -> Result<Json<ListAutomationsResponse>, ApiError>
@@ -186,13 +273,56 @@ where
                 &request.job_input.unwrap_or_else(|| json!({})),
                 "automation job input",
             )?,
-            status: AutomationStatus::Enabled,
+            status: request
+                .status
+                .as_deref()
+                .map(parse_automation_status)
+                .transpose()?
+                .unwrap_or(AutomationStatus::Enabled),
             trigger_kind,
             interval_seconds: inferred_interval_seconds,
         },
         triggers,
         condition_json: condition.to_string(),
     })
+}
+
+async fn set_automation_status<S, O>(
+    state: AppState<S, O>,
+    id: String,
+    status: AutomationStatus,
+) -> Result<Json<AutomationResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    let Some(automation) = state
+        .store
+        .set_automation_status(&automation_id, status)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::AutomationNotFound(
+            automation_id.as_str().to_string(),
+        ));
+    };
+    let (triggers, condition_json) = trigger_graph_for_response(&state, &automation).await?;
+    Ok(Json(AutomationResponse::new(
+        &automation,
+        &triggers,
+        &condition_json,
+    )?))
+}
+
+fn parse_automation_status(status: &str) -> Result<AutomationStatus, ApiError> {
+    match status {
+        "enabled" => Ok(AutomationStatus::Enabled),
+        "disabled" => Ok(AutomationStatus::Disabled),
+        value => Err(ApiError::Validation(format!(
+            "unsupported automation status: {value}"
+        ))),
+    }
 }
 
 struct AutomationBuild {

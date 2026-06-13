@@ -5,7 +5,7 @@ use axum::{
     http::{Method, Request},
 };
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationTrigger,
+    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
     CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun,
     JobRunId, JobRunLog, JobRunStatus, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId,
     WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun,
@@ -230,6 +230,42 @@ impl ApiStore for FakeStore {
             .iter()
             .find(|automation| automation.id == *id)
             .cloned())
+    }
+
+    async fn set_automation_status(
+        &self,
+        id: &AutomationId,
+        status: AutomationStatus,
+    ) -> Result<Option<Automation>, Self::Error> {
+        let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
+        let Some(automation) = automations
+            .iter_mut()
+            .find(|automation| automation.id == *id)
+        else {
+            return Ok(None);
+        };
+        automation.status = status;
+        Ok(Some(automation.clone()))
+    }
+
+    async fn delete_automation(&self, id: &AutomationId) -> Result<bool, Self::Error> {
+        let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
+        let initial_len = automations.len();
+        automations.retain(|automation| automation.id != *id);
+        let deleted = automations.len() != initial_len;
+        drop(automations);
+
+        if deleted {
+            self.automation_triggers
+                .lock()
+                .map_err(|error| error.to_string())?
+                .retain(|trigger| trigger.automation_id != *id);
+            self.automation_conditions
+                .lock()
+                .map_err(|error| error.to_string())?
+                .retain(|(stored_id, _)| stored_id != id.as_str());
+        }
+        Ok(deleted)
     }
 
     async fn replace_automation_triggers(
@@ -695,6 +731,208 @@ async fn creates_automation_with_trigger_condition_graph() {
         body["condition"]["all"][1]["any"][0]["trigger"],
         "orders_changed"
     );
+}
+
+#[tokio::test]
+async fn disables_and_enables_automation_triggering() {
+    let app = test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_pipeline"));
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "automation_toggle_test",
+                        "name": "Toggle test",
+                        "workflow_id": "wf_pipeline",
+                        "trigger_kind": "manual",
+                        "triggers": [{ "name": "manual_ready", "kind": "manual", "config": {} }],
+                        "condition": { "trigger": "manual_ready" }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+
+    let disable_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations/automation_toggle_test/disable")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(disable_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(response_json(disable_response).await["status"], "disabled");
+
+    let blocked_trigger_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations/automation_toggle_test/trigger")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        blocked_trigger_response.status(),
+        axum::http::StatusCode::BAD_REQUEST
+    );
+
+    let enable_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations/automation_toggle_test/enable")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(enable_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(response_json(enable_response).await["status"], "enabled");
+
+    let trigger_response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations/automation_toggle_test/trigger")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(trigger_response.status(), axum::http::StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn updates_existing_automation() {
+    let app = test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_pipeline"));
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "automation_update_test",
+                        "name": "Before update",
+                        "workflow_id": "wf_pipeline",
+                        "trigger_kind": "manual",
+                        "triggers": [{ "name": "manual_ready", "kind": "manual", "config": {} }],
+                        "condition": { "trigger": "manual_ready" }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+
+    let update_response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/automations/automation_update_test")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name": "After update",
+                        "workflow_id": "wf_pipeline",
+                        "status": "disabled",
+                        "trigger_kind": "schedule",
+                        "job_input": { "email": "mohripan16@gmail.com" },
+                        "triggers": [{
+                            "name": "schedule_ready",
+                            "kind": "schedule",
+                            "config": {
+                                "start_at": "2026-06-13T09:00",
+                                "interval_seconds": 600,
+                                "window_seconds": 60
+                            }
+                        }],
+                        "condition": { "trigger": "schedule_ready" }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(update_response.status(), axum::http::StatusCode::OK);
+    let body = response_json(update_response).await;
+    assert_eq!(body["name"], "After update");
+    assert_eq!(body["status"], "disabled");
+    assert_eq!(body["interval_seconds"], 600);
+    assert_eq!(body["job_input"]["email"], "mohripan16@gmail.com");
+    assert_eq!(body["triggers"][0]["name"], "schedule_ready");
+}
+
+#[tokio::test]
+async fn deletes_existing_automation() {
+    let app = test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_pipeline"));
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "automation_delete_test",
+                        "name": "Delete test",
+                        "workflow_id": "wf_pipeline",
+                        "trigger_kind": "manual",
+                        "triggers": [{ "name": "manual_ready", "kind": "manual", "config": {} }],
+                        "condition": { "trigger": "manual_ready" }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+
+    let delete_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::DELETE)
+                .uri("/v1/automations/automation_delete_test")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(delete_response.status(), axum::http::StatusCode::NO_CONTENT);
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/automations/automation_delete_test")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(get_response.status(), axum::http::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
