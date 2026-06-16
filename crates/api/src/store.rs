@@ -65,6 +65,18 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         input_json: &str,
     ) -> Result<WorkflowRun, Self::Error>;
     async fn list_workflow_runs(&self, limit: i64) -> Result<Vec<WorkflowRun>, Self::Error>;
+    async fn find_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error>;
+    async fn remove_queued_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error>;
+    async fn cancel_running_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error>;
     async fn list_workflow_step_runs(
         &self,
         workflow_run_id: &WorkflowRunId,
@@ -204,6 +216,27 @@ impl ApiStore for PostgresStore {
 
     async fn list_workflow_runs(&self, limit: i64) -> Result<Vec<WorkflowRun>, Self::Error> {
         self.list_workflow_runs(limit).await
+    }
+
+    async fn find_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error> {
+        self.find_workflow_run(workflow_run_id).await
+    }
+
+    async fn remove_queued_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error> {
+        self.remove_queued_workflow_run(workflow_run_id).await
+    }
+
+    async fn cancel_running_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error> {
+        self.cancel_running_workflow_run(workflow_run_id).await
     }
 
     async fn list_workflow_step_runs(

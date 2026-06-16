@@ -34,12 +34,12 @@ impl JobRunRepository for PostgresStore {
                 updated_at = now()
             ",
         )
-        .bind(run.id.as_str())
-        .bind(run.job_definition_id.as_str())
-        .bind(run.status.to_string())
-        .bind(run.execution_pool.as_str())
-        .bind(&run.input_json)
-        .bind(i32::try_from(run.attempt_count).map_err(|_| PostgresStoreError::AttemptOverflow)?)
+        .bind(run.id().as_str())
+        .bind(run.job_definition_id().as_str())
+        .bind(run.status().to_string())
+        .bind(run.execution_pool().as_str())
+        .bind(run.input_json())
+        .bind(i32::try_from(run.attempt_count()).map_err(|_| PostgresStoreError::AttemptOverflow)?)
         .execute(&self.pool)
         .await?;
 

@@ -22,7 +22,7 @@ import {
   Workflow
 } from "lucide-react";
 import Link from "next/link";
-import { DashboardShell, DateTimePicker, DurationInput, PageHeader, PanelTitle, ResizableGridTable, StateBadge } from "../components";
+import { DashboardShell, DateTimePicker, DurationInput, PageHeader, PanelTitle, ResizableGridTable, StateBadge, defaultDateTimeRange } from "../components";
 import {
   Automation,
   AutomationRequest,
@@ -34,6 +34,7 @@ import {
   TriggerKind,
   TriggerPlugin,
   WorkflowRun,
+  cancelWorkflowRun,
   createAutomation,
   createTriggerPlugin,
   createWorkflow,
@@ -46,6 +47,7 @@ import {
   listJobDefinitions,
   listTriggerPlugins,
   listWorkflowRuns,
+  removeWorkflowRun,
   triggerAutomation,
   updateAutomation
 } from "../lib/api";
@@ -60,16 +62,18 @@ type DraftTrigger = {
 };
 
 const pageSize = 6;
+const defaultRunRange = defaultDateTimeRange();
 
 const workflowRunColumns = [
-  { label: "Workflow run", width: 250, minWidth: 160, sortKey: "workflow_run" },
-  { label: "Created", width: 190, minWidth: 160, sortKey: "created_at" },
-  { label: "Workflow", width: 250, minWidth: 160, sortKey: "workflow" },
-  { label: "Job runs", width: 230, minWidth: 150 },
-  { label: "State", width: 150, minWidth: 120, sortKey: "state" },
-  { label: "Automation", width: 230, minWidth: 150, sortKey: "automation" }
+  { label: "Workflow run", width: 210, minWidth: 150, sortKey: "workflow_run" },
+  { label: "Created", width: 165, minWidth: 140, sortKey: "created_at" },
+  { label: "Workflow", width: 210, minWidth: 150, sortKey: "workflow" },
+  { label: "Job runs", width: 165, minWidth: 130 },
+  { label: "State", width: 120, minWidth: 100, sortKey: "state" },
+  { label: "Actions", width: 160, minWidth: 145 },
+  { label: "Automation", width: 190, minWidth: 140, sortKey: "automation" }
 ];
-const workflowRunStates = ["queued", "running", "succeeded", "failed", "cancelled", "timed_out"];
+const workflowRunStates = ["queued", "running", "removed", "succeeded", "failed", "cancelled", "timed_out"];
 
 const scheduleContract: ParameterContract = {
   fields: [
@@ -171,8 +175,8 @@ export default function AutomationsPage() {
   const [wizardStep, setWizardStep] = useState<WizardStep>("details");
   const [automationPage, setAutomationPage] = useState(1);
   const [runPage, setRunPage] = useState(1);
-  const [runFilterStartAt, setRunFilterStartAt] = useState("");
-  const [runFilterEndAt, setRunFilterEndAt] = useState("");
+  const [runFilterStartAt, setRunFilterStartAt] = useState(defaultRunRange.start);
+  const [runFilterEndAt, setRunFilterEndAt] = useState(defaultRunRange.end);
   const [runFilterText, setRunFilterText] = useState("");
   const [runFilterState, setRunFilterState] = useState("");
   const [runSortKey, setRunSortKey] = useState("created_at");
@@ -400,6 +404,32 @@ export default function AutomationsPage() {
       await deleteAutomation(automation.id);
       setMessage(`Deleted ${automation.name}`);
       setViewingAutomation((current) => (current?.id === automation.id ? null : current));
+      await refresh();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function removeWorkflow(run: WorkflowRun) {
+    if (!window.confirm(`Remove queued workflow run "${run.id}"?`)) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await removeWorkflowRun(run.id);
+      setMessage(`Removed workflow run ${updated.id}`);
+      await refresh();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function cancelWorkflow(run: WorkflowRun) {
+    if (!window.confirm(`Cancel running workflow run "${run.id}"?`)) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await cancelWorkflowRun(run.id);
+      setMessage(`Cancelled workflow run ${updated.id}`);
       await refresh();
     } catch (err) {
       setError(getErrorMessage(err));
@@ -641,6 +671,26 @@ export default function AutomationsPage() {
                   ))}
                 </span>
                 <StateBadge state={run.status} />
+                <span className="workflowRunActions">
+                  <button
+                    className="secondaryButton compactButton"
+                    type="button"
+                    disabled={run.status !== "queued" || run.step_runs.length > 0}
+                    onClick={() => void removeWorkflow(run)}
+                    title="Remove only before any node executes"
+                  >
+                    Remove
+                  </button>
+                  <button
+                    className="secondaryButton compactButton dangerButton"
+                    type="button"
+                    disabled={run.status !== "running"}
+                    onClick={() => void cancelWorkflow(run)}
+                    title="Cancel a running workflow"
+                  >
+                    Cancel
+                  </button>
+                </span>
                 <span className="tableCell" title={run.automation_id ?? ""}>{run.automation_id ?? "-"}</span>
               </div>
             ))}

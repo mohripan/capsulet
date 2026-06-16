@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, FileCode2, ListFilter, Play, RefreshCw, Send } from "lucide-react";
-import { DashboardShell, DateTimePicker, PageHeader, PanelTitle, PythonEditor, ResizableGridTable, StateBadge } from "../components";
+import { DashboardShell, DateTimePicker, PageHeader, PanelTitle, PythonEditor, ResizableGridTable, StateBadge, defaultDateTimeRange } from "../components";
 import {
   ExecutionPool,
   JobDefinition,
@@ -26,6 +26,7 @@ const runColumns = [
 
 const pageSize = 8;
 const runStates = ["queued", "leased", "running", "retry_scheduled", "succeeded", "failed", "timed_out", "cancelled"];
+const defaultRunRange = defaultDateTimeRange();
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -43,8 +44,8 @@ export default function RunsClient() {
   const [error, setError] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [createdRun, setCreatedRun] = useState<JobRun | null>(null);
-  const [filterStartAt, setFilterStartAt] = useState("");
-  const [filterEndAt, setFilterEndAt] = useState("");
+  const [filterStartAt, setFilterStartAt] = useState(defaultRunRange.start);
+  const [filterEndAt, setFilterEndAt] = useState(defaultRunRange.end);
   const [filterText, setFilterText] = useState("");
   const [filterState, setFilterState] = useState("");
   const [sortKey, setSortKey] = useState("created_at");

@@ -44,8 +44,20 @@ impl Display for JobRunStatus {
 /// Invalid state transition.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateTransitionError {
-    pub from: JobRunStatus,
-    pub to: JobRunStatus,
+    from: JobRunStatus,
+    to: JobRunStatus,
+}
+
+impl StateTransitionError {
+    #[must_use]
+    pub const fn from(&self) -> JobRunStatus {
+        self.from
+    }
+
+    #[must_use]
+    pub const fn to(&self) -> JobRunStatus {
+        self.to
+    }
 }
 
 impl Display for StateTransitionError {
@@ -63,13 +75,13 @@ impl std::error::Error for StateTransitionError {}
 /// Job run aggregate root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobRun {
-    pub id: JobRunId,
-    pub job_definition_id: JobDefinitionId,
-    pub execution_pool: ExecutionPoolName,
-    pub input_json: String,
-    pub status: JobRunStatus,
-    pub attempt_count: u32,
-    pub created_at: String,
+    id: JobRunId,
+    job_definition_id: JobDefinitionId,
+    execution_pool: ExecutionPoolName,
+    input_json: String,
+    status: JobRunStatus,
+    attempt_count: u32,
+    created_at: String,
 }
 
 impl JobRun {
@@ -88,6 +100,68 @@ impl JobRun {
             attempt_count: 0,
             created_at: String::new(),
         }
+    }
+
+    #[must_use]
+    pub fn from_persisted(
+        id: JobRunId,
+        job_definition_id: JobDefinitionId,
+        execution_pool: ExecutionPoolName,
+        input_json: impl Into<String>,
+        status: JobRunStatus,
+        attempt_count: u32,
+        created_at: impl Into<String>,
+    ) -> Self {
+        Self {
+            id,
+            job_definition_id,
+            execution_pool,
+            input_json: input_json.into(),
+            status,
+            attempt_count,
+            created_at: created_at.into(),
+        }
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> &JobRunId {
+        &self.id
+    }
+
+    #[must_use]
+    pub const fn job_definition_id(&self) -> &JobDefinitionId {
+        &self.job_definition_id
+    }
+
+    #[must_use]
+    pub const fn execution_pool(&self) -> &ExecutionPoolName {
+        &self.execution_pool
+    }
+
+    #[must_use]
+    pub fn input_json(&self) -> &str {
+        &self.input_json
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> JobRunStatus {
+        self.status
+    }
+
+    #[must_use]
+    pub const fn attempt_count(&self) -> u32 {
+        self.attempt_count
+    }
+
+    #[must_use]
+    pub fn created_at(&self) -> &str {
+        &self.created_at
+    }
+
+    #[must_use]
+    pub const fn with_status(mut self, status: JobRunStatus) -> Self {
+        self.status = status;
+        self
     }
 
     /// Attaches validated run input as JSON.
@@ -172,8 +246,8 @@ mod tests {
     fn job_run_starts_queued() {
         let run = run();
 
-        assert_eq!(run.status, JobRunStatus::Queued);
-        assert_eq!(run.attempt_count, 0);
+        assert_eq!(run.status(), JobRunStatus::Queued);
+        assert_eq!(run.attempt_count(), 0);
     }
 
     #[test]
@@ -186,9 +260,9 @@ mod tests {
         run.transition_to(JobRunStatus::Succeeded)
             .expect("running to succeeded");
 
-        assert_eq!(run.status, JobRunStatus::Succeeded);
-        assert_eq!(run.attempt_count, 1);
-        assert!(run.status.is_terminal());
+        assert_eq!(run.status(), JobRunStatus::Succeeded);
+        assert_eq!(run.attempt_count(), 1);
+        assert!(run.status().is_terminal());
     }
 
     #[test]
@@ -199,8 +273,8 @@ mod tests {
             .transition_to(JobRunStatus::Succeeded)
             .expect_err("queued cannot go directly to succeeded");
 
-        assert_eq!(error.from, JobRunStatus::Queued);
-        assert_eq!(error.to, JobRunStatus::Succeeded);
+        assert_eq!(error.from(), JobRunStatus::Queued);
+        assert_eq!(error.to(), JobRunStatus::Succeeded);
     }
 
     #[test]
@@ -209,7 +283,7 @@ mod tests {
         queued
             .transition_to(JobRunStatus::Cancelled)
             .expect("queued to cancelled");
-        assert!(queued.status.is_terminal());
+        assert!(queued.status().is_terminal());
 
         let mut leased = run();
         leased
@@ -218,7 +292,7 @@ mod tests {
         leased
             .transition_to(JobRunStatus::Cancelled)
             .expect("leased to cancelled");
-        assert!(leased.status.is_terminal());
+        assert!(leased.status().is_terminal());
 
         let mut running = run();
         running
@@ -228,7 +302,7 @@ mod tests {
         running
             .transition_to(JobRunStatus::Cancelled)
             .expect("running to cancelled");
-        assert!(running.status.is_terminal());
+        assert!(running.status().is_terminal());
     }
 
     #[test]
@@ -248,7 +322,7 @@ mod tests {
             let error = run
                 .transition_to(JobRunStatus::Queued)
                 .expect_err("terminal state cannot be overwritten");
-            assert_eq!(error.from, terminal);
+            assert_eq!(error.from(), terminal);
         }
     }
 

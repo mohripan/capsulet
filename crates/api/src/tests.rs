@@ -8,7 +8,8 @@ use capsulet_core::{
     ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
     CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun,
     JobRunId, JobRunLog, JobRunStatus, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId,
-    WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun,
+    WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun,
+    WorkflowStepRunId,
 };
 use capsulet_storage::ObjectStore;
 use http_body_util::BodyExt;
@@ -29,6 +30,7 @@ struct FakeStore {
     automation_conditions: Arc<Mutex<Vec<(String, String)>>>,
     trigger_plugins: Arc<Mutex<Vec<CustomTriggerPlugin>>>,
     workflow_runs: Arc<Mutex<Vec<WorkflowRun>>>,
+    workflow_step_runs: Arc<Mutex<Vec<WorkflowStepRun>>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -99,9 +101,9 @@ impl ApiStore for FakeStore {
             .map_err(|error| error.to_string())?;
         if !definitions
             .iter()
-            .any(|known| known == definition.id.as_str())
+            .any(|known| known == definition.id().as_str())
         {
-            definitions.push(definition.id.as_str().to_string());
+            definitions.push(definition.id().as_str().to_string());
         }
         Ok(())
     }
@@ -173,7 +175,7 @@ impl ApiStore for FakeStore {
 
     async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error> {
         let mut workflows = self.workflows.lock().map_err(|error| error.to_string())?;
-        workflows.retain(|existing| existing.id != workflow.id);
+        workflows.retain(|existing| existing.id() != workflow.id());
         workflows.push(workflow.clone());
         Ok(())
     }
@@ -199,13 +201,13 @@ impl ApiStore for FakeStore {
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .find(|workflow| workflow.id == *id)
+            .find(|workflow| workflow.id().clone() == *id)
             .cloned())
     }
 
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {
         let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
-        automations.retain(|existing| existing.id != automation.id);
+        automations.retain(|existing| existing.id() != automation.id());
         automations.push(automation.clone());
         Ok(())
     }
@@ -228,7 +230,7 @@ impl ApiStore for FakeStore {
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .find(|automation| automation.id == *id)
+            .find(|automation| automation.id().clone() == *id)
             .cloned())
     }
 
@@ -240,18 +242,18 @@ impl ApiStore for FakeStore {
         let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
         let Some(automation) = automations
             .iter_mut()
-            .find(|automation| automation.id == *id)
+            .find(|automation| automation.id().clone() == *id)
         else {
             return Ok(None);
         };
-        automation.status = status;
+        *automation = automation.clone().with_status(status);
         Ok(Some(automation.clone()))
     }
 
     async fn delete_automation(&self, id: &AutomationId) -> Result<bool, Self::Error> {
         let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
         let initial_len = automations.len();
-        automations.retain(|automation| automation.id != *id);
+        automations.retain(|automation| automation.id().clone() != *id);
         let deleted = automations.len() != initial_len;
         drop(automations);
 
@@ -259,7 +261,7 @@ impl ApiStore for FakeStore {
             self.automation_triggers
                 .lock()
                 .map_err(|error| error.to_string())?
-                .retain(|trigger| trigger.automation_id != *id);
+                .retain(|trigger| trigger.automation_id() != id);
             self.automation_conditions
                 .lock()
                 .map_err(|error| error.to_string())?
@@ -278,7 +280,7 @@ impl ApiStore for FakeStore {
             .automation_triggers
             .lock()
             .map_err(|error| error.to_string())?;
-        stored_triggers.retain(|trigger| trigger.automation_id != *automation_id);
+        stored_triggers.retain(|trigger| trigger.automation_id() != automation_id);
         stored_triggers.extend(triggers.iter().cloned());
         let mut conditions = self
             .automation_conditions
@@ -301,7 +303,7 @@ impl ApiStore for FakeStore {
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .filter(|trigger| trigger.automation_id == *automation_id)
+            .filter(|trigger| trigger.automation_id() == automation_id)
             .cloned()
             .collect();
         let condition = self
@@ -322,7 +324,7 @@ impl ApiStore for FakeStore {
             .trigger_plugins
             .lock()
             .map_err(|error| error.to_string())?;
-        plugins.retain(|existing| existing.id != plugin.id);
+        plugins.retain(|existing| existing.id() != plugin.id());
         plugins.push(plugin.clone());
         Ok(())
     }
@@ -351,7 +353,7 @@ impl ApiStore for FakeStore {
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .find(|plugin| plugin.id == id)
+            .find(|plugin| plugin.id() == id)
             .cloned())
     }
 
@@ -362,15 +364,15 @@ impl ApiStore for FakeStore {
         run_id: &WorkflowRunId,
         input_json: &str,
     ) -> Result<WorkflowRun, Self::Error> {
-        let run = WorkflowRun {
-            id: run_id.clone(),
-            workflow_id: workflow_id.clone(),
-            automation_id: automation_id.cloned(),
-            input_json: input_json.to_string(),
-            status: capsulet_core::WorkflowRunStatus::Queued,
-            current_step_position: 0,
-            created_at: "2026-06-13 12:00:00+00".to_string(),
-        };
+        let run = WorkflowRun::new(
+            run_id.clone(),
+            workflow_id.clone(),
+            automation_id.cloned(),
+            input_json,
+            capsulet_core::WorkflowRunStatus::Queued,
+            0,
+            "2026-06-13 12:00:00+00",
+        );
         self.workflow_runs
             .lock()
             .map_err(|error| error.to_string())?
@@ -390,11 +392,90 @@ impl ApiStore for FakeStore {
             .collect())
     }
 
+    async fn find_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error> {
+        Ok(self
+            .workflow_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|run| run.id() == workflow_run_id)
+            .cloned())
+    }
+
+    async fn remove_queued_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error> {
+        let has_step = self
+            .workflow_step_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .any(|step_run| step_run.workflow_run_id() == workflow_run_id);
+        let mut runs = self
+            .workflow_runs
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let Some(run) = runs.iter_mut().find(|run| run.id() == workflow_run_id) else {
+            return Ok(None);
+        };
+        if run.status() == WorkflowRunStatus::Queued && !has_step {
+            *run = run.clone().with_status(WorkflowRunStatus::Removed);
+        }
+        Ok(Some(run.clone()))
+    }
+
+    async fn cancel_running_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error> {
+        let mut runs = self
+            .workflow_runs
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let Some(run) = runs.iter_mut().find(|run| run.id() == workflow_run_id) else {
+            return Ok(None);
+        };
+        if run.status() != WorkflowRunStatus::Running {
+            return Ok(Some(run.clone()));
+        }
+        *run = run.clone().with_status(WorkflowRunStatus::Cancelled);
+
+        let mut step_runs = self
+            .workflow_step_runs
+            .lock()
+            .map_err(|error| error.to_string())?;
+        if let Some(step_run) = step_runs.iter_mut().find(|step_run| {
+            step_run.workflow_run_id() == workflow_run_id
+                && step_run.position() == run.current_step_position()
+        }) {
+            *step_run = step_run.clone().with_status(WorkflowRunStatus::Cancelled);
+            let mut job_runs = self.runs.lock().map_err(|error| error.to_string())?;
+            if let Some(job_run) = job_runs
+                .iter_mut()
+                .find(|job_run| job_run.id() == step_run.job_run_id())
+            {
+                *job_run = job_run.clone().with_status(JobRunStatus::Cancelled);
+            }
+        }
+        Ok(Some(run.clone()))
+    }
+
     async fn list_workflow_step_runs(
         &self,
-        _workflow_run_id: &WorkflowRunId,
+        workflow_run_id: &WorkflowRunId,
     ) -> Result<Vec<WorkflowStepRun>, Self::Error> {
-        Ok(Vec::new())
+        Ok(self
+            .workflow_step_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|step_run| step_run.workflow_run_id() == workflow_run_id)
+            .cloned()
+            .collect())
     }
 
     async fn list_runs(&self, limit: i64) -> Result<Vec<JobRun>, Self::Error> {
@@ -415,7 +496,7 @@ impl ApiStore for FakeStore {
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .find(|run| run.id == *id)
+            .find(|run| run.id() == id)
             .cloned())
     }
 
@@ -431,11 +512,11 @@ impl ApiStore for FakeStore {
 
     async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
         let mut runs = self.runs.lock().map_err(|error| error.to_string())?;
-        let Some(run) = runs.iter_mut().rev().find(|run| run.id == *id) else {
+        let Some(run) = runs.iter_mut().rev().find(|run| run.id() == id) else {
             return Ok(None);
         };
-        if !run.status.is_terminal() {
-            run.status = JobRunStatus::Cancelled;
+        if !run.status().is_terminal() {
+            *run = run.clone().with_status(JobRunStatus::Cancelled);
         }
         Ok(Some(run.clone()))
     }
@@ -446,7 +527,7 @@ impl ApiStore for FakeStore {
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .filter(|artifact| artifact.run_id == *id)
+            .filter(|artifact| artifact.run_id() == id)
             .cloned()
             .collect())
     }
@@ -461,7 +542,7 @@ impl ApiStore for FakeStore {
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .find(|artifact| artifact.run_id == *run_id && artifact.id == *artifact_id)
+            .find(|artifact| artifact.run_id() == run_id && artifact.id() == artifact_id)
             .cloned())
     }
 
@@ -490,20 +571,20 @@ impl FakeStore {
         self.workflows
             .lock()
             .expect("workflows mutex")
-            .push(WorkflowDefinition {
-                id: workflow_id.clone(),
-                name: "Test workflow".to_string(),
-                description: String::new(),
-                status: WorkflowStatus::Enabled,
-                steps: vec![WorkflowStep {
-                    id: WorkflowStepId::new(format!("{id}_step_1")).expect("step id"),
+            .push(WorkflowDefinition::new(
+                workflow_id.clone(),
+                "Test workflow",
+                "",
+                WorkflowStatus::Enabled,
+                vec![WorkflowStep::new(
+                    WorkflowStepId::new(format!("{id}_step_1")).expect("step id"),
                     workflow_id,
-                    position: 1,
-                    name: "Run job".to_string(),
-                    job_definition_id: JobDefinitionId::new("job_hello_python").expect("job id"),
-                    execution_pool: ExecutionPoolName::new("mini").expect("pool"),
-                }],
-            });
+                    1,
+                    "Run job",
+                    JobDefinitionId::new("job_hello_python").expect("job id"),
+                    ExecutionPoolName::new("mini").expect("pool"),
+                )],
+            ));
         self
     }
 
@@ -522,6 +603,22 @@ impl FakeStore {
             .lock()
             .expect("artifacts mutex")
             .push(artifact);
+        self
+    }
+
+    fn with_workflow_run(self, run: WorkflowRun) -> Self {
+        self.workflow_runs
+            .lock()
+            .expect("workflow runs mutex")
+            .push(run);
+        self
+    }
+
+    fn with_workflow_step_run(self, step_run: WorkflowStepRun) -> Self {
+        self.workflow_step_runs
+            .lock()
+            .expect("workflow step runs mutex")
+            .push(step_run);
         self
     }
 }
@@ -665,14 +762,14 @@ async fn creates_automation_with_trigger_condition_graph() {
         .trigger_plugins
         .lock()
         .expect("plugins mutex")
-        .push(CustomTriggerPlugin {
-            id: "plugin_threshold".to_string(),
-            name: "Threshold plugin".to_string(),
-            description: String::new(),
-            runtime_image: "python:3.12-slim".to_string(),
-            command: vec!["python".to_string(), "/plugin/check.py".to_string()],
-            config_schema_json: "{}".to_string(),
-        });
+        .push(CustomTriggerPlugin::new(
+            "plugin_threshold",
+            "Threshold plugin",
+            "",
+            "python:3.12-slim",
+            vec!["python".to_string(), "/plugin/check.py".to_string()],
+            "{}",
+        ));
 
     let response = test_app(store)
         .oneshot(
@@ -1216,7 +1313,7 @@ async fn fetches_run_logs() {
         JobDefinitionId::new("job_hello_python").expect("valid definition id"),
         ExecutionPoolName::new("mini").expect("valid pool"),
     );
-    let log = JobRunLog::new(run.id.clone(), "hello from logs\n").expect("valid log");
+    let log = JobRunLog::new(run.id().clone(), "hello from logs\n").expect("valid log");
     let response = test_app(
         FakeStore::with_definition("job_hello_python")
             .with_run(run)
@@ -1239,6 +1336,246 @@ async fn fetches_run_logs() {
             "logs": "hello from logs\n",
             "object_log_available": false
         })
+    );
+}
+
+#[tokio::test]
+async fn fetches_workflow_run_logs_for_step_runs() {
+    let workflow_id = WorkflowId::new("wf_logs").expect("workflow id");
+    let workflow_run_id = WorkflowRunId::new("workflow_run_logs").expect("workflow run id");
+    let first_job_run_id = JobRunId::new("run_step_one").expect("first job run id");
+    let second_job_run_id = JobRunId::new("run_step_two").expect("second job run id");
+    let workflow_run = WorkflowRun::new(
+        workflow_run_id.clone(),
+        workflow_id.clone(),
+        None,
+        "{}",
+        WorkflowRunStatus::Running,
+        2,
+        "2026-06-13 12:00:00+00",
+    );
+    let first_step_run = WorkflowStepRun::new(
+        WorkflowStepRunId::new("workflow_step_run_one").expect("first step run id"),
+        workflow_run_id.clone(),
+        WorkflowStepId::new("wf_logs_step_1").expect("first step id"),
+        first_job_run_id.clone(),
+        1,
+        WorkflowRunStatus::Succeeded,
+    );
+    let second_step_run = WorkflowStepRun::new(
+        WorkflowStepRunId::new("workflow_step_run_two").expect("second step run id"),
+        workflow_run_id.clone(),
+        WorkflowStepId::new("wf_logs_step_2").expect("second step id"),
+        second_job_run_id.clone(),
+        2,
+        WorkflowRunStatus::Running,
+    );
+    let first_log =
+        JobRunLog::new(first_job_run_id.clone(), "step one complete\n").expect("first log");
+    let log_artifact = JobArtifact::new(
+        ArtifactId::new("artifact_stdout_log").expect("artifact id"),
+        first_job_run_id,
+        None,
+        "stdout.log",
+        "artifacts/run_step_one/stdout.log",
+        "text/plain",
+        4096,
+        None,
+        ArtifactObjectKind::Log,
+    )
+    .expect("log artifact");
+
+    let response = test_app(
+        FakeStore::default()
+            .with_workflow_run(workflow_run)
+            .with_workflow_step_run(first_step_run)
+            .with_workflow_step_run(second_step_run)
+            .with_log(first_log)
+            .with_artifact(log_artifact),
+    )
+    .oneshot(
+        Request::builder()
+            .uri("/v1/workflow-runs/workflow_run_logs/logs")
+            .body(Body::empty())
+            .expect("request"),
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response_json(response).await,
+        json!({
+            "workflow_run_id": "workflow_run_logs",
+            "workflow_id": "wf_logs",
+            "status": "running",
+            "entries": [
+                {
+                    "step_run_id": "workflow_step_run_one",
+                    "workflow_step_id": "wf_logs_step_1",
+                    "job_run_id": "run_step_one",
+                    "position": 1,
+                    "status": "succeeded",
+                    "logs": "step one complete\n",
+                    "object_log_available": true
+                },
+                {
+                    "step_run_id": "workflow_step_run_two",
+                    "workflow_step_id": "wf_logs_step_2",
+                    "job_run_id": "run_step_two",
+                    "position": 2,
+                    "status": "running",
+                    "logs": "",
+                    "object_log_available": false
+                }
+            ]
+        })
+    );
+}
+
+#[tokio::test]
+async fn removes_queued_workflow_run_before_steps_start() {
+    let workflow_run = WorkflowRun::new(
+        WorkflowRunId::new("workflow_run_remove").expect("workflow run id"),
+        WorkflowId::new("wf_remove").expect("workflow id"),
+        None,
+        "{}",
+        WorkflowRunStatus::Queued,
+        0,
+        "2026-06-13 12:00:00+00",
+    );
+
+    let response = test_app(FakeStore::default().with_workflow_run(workflow_run))
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/workflow-runs/workflow_run_remove/remove")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(response_json(response).await["status"], "removed");
+}
+
+#[tokio::test]
+async fn rejects_removing_workflow_run_after_step_started() {
+    let workflow_run_id = WorkflowRunId::new("workflow_run_started").expect("workflow run id");
+    let workflow_run = WorkflowRun::new(
+        workflow_run_id.clone(),
+        WorkflowId::new("wf_started").expect("workflow id"),
+        None,
+        "{}",
+        WorkflowRunStatus::Queued,
+        0,
+        "2026-06-13 12:00:00+00",
+    );
+    let step_run = WorkflowStepRun::new(
+        WorkflowStepRunId::new("workflow_step_started").expect("step run id"),
+        workflow_run_id,
+        WorkflowStepId::new("wf_started_step").expect("step id"),
+        JobRunId::new("run_started_step").expect("job run id"),
+        1,
+        WorkflowRunStatus::Running,
+    );
+
+    let response = test_app(
+        FakeStore::default()
+            .with_workflow_run(workflow_run)
+            .with_workflow_step_run(step_run),
+    )
+    .oneshot(
+        Request::builder()
+            .method(Method::POST)
+            .uri("/v1/workflow-runs/workflow_run_started/remove")
+            .body(Body::empty())
+            .expect("request"),
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(response).await["code"],
+        json!("invalid_workflow_run_transition")
+    );
+}
+
+#[tokio::test]
+async fn cancels_running_workflow_run_and_active_step() {
+    let workflow_run_id = WorkflowRunId::new("workflow_run_cancel").expect("workflow run id");
+    let job_run = JobRun::new(
+        JobRunId::new("run_cancel_step").expect("job run id"),
+        JobDefinitionId::new("job_hello_python").expect("definition id"),
+        ExecutionPoolName::new("mini").expect("pool"),
+    );
+    let workflow_run = WorkflowRun::new(
+        workflow_run_id.clone(),
+        WorkflowId::new("wf_cancel").expect("workflow id"),
+        None,
+        "{}",
+        WorkflowRunStatus::Running,
+        1,
+        "2026-06-13 12:00:00+00",
+    );
+    let step_run = WorkflowStepRun::new(
+        WorkflowStepRunId::new("workflow_step_cancel").expect("step run id"),
+        workflow_run_id,
+        WorkflowStepId::new("wf_cancel_step").expect("step id"),
+        job_run.id().clone(),
+        1,
+        WorkflowRunStatus::Running,
+    );
+
+    let response = test_app(
+        FakeStore::with_definition("job_hello_python")
+            .with_run(job_run)
+            .with_workflow_run(workflow_run)
+            .with_workflow_step_run(step_run),
+    )
+    .oneshot(
+        Request::builder()
+            .method(Method::POST)
+            .uri("/v1/workflow-runs/workflow_run_cancel/cancel")
+            .body(Body::empty())
+            .expect("request"),
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(response_json(response).await["status"], "cancelled");
+}
+
+#[tokio::test]
+async fn rejects_cancelling_queued_workflow_run() {
+    let workflow_run = WorkflowRun::new(
+        WorkflowRunId::new("workflow_run_cancel_queued").expect("workflow run id"),
+        WorkflowId::new("wf_cancel_queued").expect("workflow id"),
+        None,
+        "{}",
+        WorkflowRunStatus::Queued,
+        0,
+        "2026-06-13 12:00:00+00",
+    );
+
+    let response = test_app(FakeStore::default().with_workflow_run(workflow_run))
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/workflow-runs/workflow_run_cancel_queued/cancel")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(response).await["code"],
+        json!("invalid_workflow_run_transition")
     );
 }
 
@@ -1275,7 +1612,7 @@ async fn lists_artifacts() {
     );
     let artifact = JobArtifact::new(
         ArtifactId::new("artifact_1").expect("artifact id"),
-        run.id.clone(),
+        run.id().clone(),
         None,
         "report.txt",
         "artifacts/run_with_artifact/report.txt",
@@ -1315,7 +1652,7 @@ async fn downloads_artifact() {
     );
     let artifact = JobArtifact::new(
         ArtifactId::new("artifact_1").expect("artifact id"),
-        run.id.clone(),
+        run.id().clone(),
         None,
         "report.txt",
         "artifacts/run_with_artifact/report.txt",

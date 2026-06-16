@@ -35,19 +35,21 @@ impl PostgresStore {
                 updated_at = now()
             ",
         )
-        .bind(definition.id.as_str())
-        .bind(&definition.name)
-        .bind(&definition.runtime_image)
-        .bind(&definition.command)
-        .bind(&definition.bundle_object_key)
-        .bind(&definition.input_schema)
+        .bind(definition.id().as_str())
+        .bind(definition.name())
+        .bind(definition.runtime_image())
+        .bind(definition.command())
+        .bind(definition.bundle_object_key())
+        .bind(definition.input_schema())
         .bind(
-            i32::try_from(definition.retry_max_attempts)
+            i32::try_from(definition.retry_max_attempts())
                 .map_err(|_| PostgresStoreError::AttemptOverflow)?,
         )
-        .bind(i32::try_from(definition.retry_delay_seconds).map_err(|_| {
-            PostgresStoreError::InvalidPersistedValue("retry delay is too large".into())
-        })?)
+        .bind(
+            i32::try_from(definition.retry_delay_seconds()).map_err(|_| {
+                PostgresStoreError::InvalidPersistedValue("retry delay is too large".into())
+            })?,
+        )
         .execute(&self.pool)
         .await?;
 

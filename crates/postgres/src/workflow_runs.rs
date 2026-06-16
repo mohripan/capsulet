@@ -35,15 +35,15 @@ impl PostgresStore {
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(WorkflowRun {
-            id: run_id.clone(),
-            workflow_id: workflow_id.clone(),
-            automation_id: automation_id.cloned(),
-            input_json: input_json.to_string(),
-            status: WorkflowRunStatus::Queued,
-            current_step_position: 0,
-            created_at: row.try_get("created_at")?,
-        })
+        Ok(WorkflowRun::new(
+            run_id.clone(),
+            workflow_id.clone(),
+            automation_id.cloned(),
+            input_json,
+            WorkflowRunStatus::Queued,
+            0,
+            row.try_get::<String, _>("created_at")?,
+        ))
     }
 
     /// Lists workflow runs.
@@ -68,6 +68,133 @@ impl PostgresStore {
         .await?;
 
         rows.iter().map(row_to_workflow_run).collect()
+    }
+
+    /// Finds one workflow run.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn find_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
+            FROM workflow_runs
+            WHERE id = $1
+            ",
+        )
+        .bind(workflow_run_id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.as_ref().map(row_to_workflow_run).transpose()
+    }
+
+    /// Marks a queued workflow run as removed when no step has started.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup or persistence fails.
+    pub async fn remove_queued_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            UPDATE workflow_runs
+            SET status = 'removed', updated_at = now(), finished_at = now()
+            WHERE id = $1
+              AND status = 'queued'
+              AND NOT EXISTS (
+                  SELECT 1 FROM workflow_step_runs WHERE workflow_run_id = workflow_runs.id
+              )
+            RETURNING id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
+            ",
+        )
+        .bind(workflow_run_id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            return row_to_workflow_run(&row).map(Some);
+        }
+
+        self.find_workflow_run(workflow_run_id).await
+    }
+
+    /// Cancels a running workflow run and its active job run.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup or persistence fails.
+    pub async fn cancel_running_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, PostgresStoreError> {
+        let mut tx = self.pool.begin().await?;
+        let active = sqlx::query(
+            r"
+            SELECT wsr.id, wsr.job_run_id
+            FROM workflow_runs wr
+            JOIN workflow_step_runs wsr
+              ON wsr.workflow_run_id = wr.id
+             AND wsr.position = wr.current_step_position
+            WHERE wr.id = $1
+              AND wr.status = 'running'
+            FOR UPDATE
+            ",
+        )
+        .bind(workflow_run_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(active) = active else {
+            tx.rollback().await?;
+            return self.find_workflow_run(workflow_run_id).await;
+        };
+        let step_run_id: String = active.try_get("id")?;
+        let job_run_id: String = active.try_get("job_run_id")?;
+
+        sqlx::query(
+            r"
+            UPDATE job_runs
+            SET status = 'cancelled',
+                lease_expires_at = NULL,
+                retry_ready_at = NULL,
+                updated_at = now()
+            WHERE id = $1
+              AND status IN ('queued', 'leased', 'running', 'retry_scheduled')
+            ",
+        )
+        .bind(&job_run_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "UPDATE workflow_step_runs SET status = 'cancelled', updated_at = now() WHERE id = $1",
+        )
+        .bind(&step_run_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let row = sqlx::query(
+            r"
+            UPDATE workflow_runs
+            SET status = 'cancelled', updated_at = now(), finished_at = now()
+            WHERE id = $1
+              AND status = 'running'
+            RETURNING id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
+            ",
+        )
+        .bind(workflow_run_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        row.as_ref().map(row_to_workflow_run).transpose()
     }
 
     /// Lists step runs for one workflow run.
@@ -163,7 +290,7 @@ impl PostgresStore {
     pub async fn advance_workflow_runs(&self) -> Result<u64, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, workflow_id, automation_id, input::text AS input, status, current_step_position
+            SELECT id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
             FROM workflow_runs
             WHERE status IN ('queued', 'running')
             ORDER BY created_at ASC
@@ -176,7 +303,7 @@ impl PostgresStore {
         let mut advanced = 0;
         for row in rows {
             let run = row_to_workflow_run(&row)?;
-            match run.status {
+            match run.status() {
                 WorkflowRunStatus::Queued => {
                     if self.start_workflow_step(&run, 1).await? {
                         advanced += 1;
@@ -205,8 +332,8 @@ impl PostgresStore {
             WHERE wsr.workflow_run_id = $1 AND wsr.position = $2
             ",
         )
-        .bind(run.id.as_str())
-        .bind(run.current_step_position)
+        .bind(run.id().as_str())
+        .bind(run.current_step_position())
         .fetch_optional(&self.pool)
         .await?
         else {
@@ -224,9 +351,9 @@ impl PostgresStore {
                 .bind(step_run_row.try_get::<String, _>("id")?)
                 .execute(&self.pool)
                 .await?;
-                let next_position = run.current_step_position + 1;
+                let next_position = run.current_step_position() + 1;
                 if self
-                    .workflow_step_exists(&run.workflow_id, next_position)
+                    .workflow_step_exists(run.workflow_id(), next_position)
                     .await?
                 {
                     self.start_workflow_step(run, next_position).await
@@ -282,7 +409,7 @@ impl PostgresStore {
             WHERE workflow_id = $1 AND position = $2
             ",
         )
-        .bind(run.workflow_id.as_str())
+        .bind(run.workflow_id().as_str())
         .bind(position)
         .fetch_optional(&self.pool)
         .await?
@@ -306,7 +433,7 @@ impl PostgresStore {
         .bind(&job_run_id)
         .bind(&job_definition_id)
         .bind(&execution_pool)
-        .bind(run.input_json.as_str())
+        .bind(run.input_json())
         .execute(&mut *tx)
         .await?;
         sqlx::query(
@@ -318,7 +445,7 @@ impl PostgresStore {
             ",
         )
         .bind(&step_run_id)
-        .bind(run.id.as_str())
+        .bind(run.id().as_str())
         .bind(&step_id)
         .bind(&job_run_id)
         .bind(position)
@@ -331,7 +458,7 @@ impl PostgresStore {
             WHERE id = $1
             ",
         )
-        .bind(run.id.as_str())
+        .bind(run.id().as_str())
         .bind(position)
         .execute(&mut *tx)
         .await?;
@@ -351,7 +478,7 @@ impl PostgresStore {
             WHERE id = $1
             ",
         )
-        .bind(run.id.as_str())
+        .bind(run.id().as_str())
         .bind(status.to_string())
         .execute(&self.pool)
         .await?;

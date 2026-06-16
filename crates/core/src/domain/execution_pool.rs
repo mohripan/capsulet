@@ -34,8 +34,8 @@ impl Display for ExecutionPoolName {
 /// Runtime resource defaults for jobs routed through an execution pool.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceRequirements {
-    pub cpu_millis: u32,
-    pub memory_mib: u32,
+    cpu_millis: u32,
+    memory_mib: u32,
 }
 
 impl ResourceRequirements {
@@ -46,15 +46,25 @@ impl ResourceRequirements {
             memory_mib,
         }
     }
+
+    #[must_use]
+    pub const fn cpu_millis(&self) -> u32 {
+        self.cpu_millis
+    }
+
+    #[must_use]
+    pub const fn memory_mib(&self) -> u32 {
+        self.memory_mib
+    }
 }
 
 /// Execution pool configuration as understood by the domain.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionPool {
-    pub name: ExecutionPoolName,
-    pub timeout: Duration,
-    pub max_concurrent_jobs: u32,
-    pub resources: ResourceRequirements,
+    name: ExecutionPoolName,
+    timeout: Duration,
+    max_concurrent_jobs: u32,
+    resources: ResourceRequirements,
 }
 
 impl ExecutionPool {
@@ -83,6 +93,26 @@ impl ExecutionPool {
             max_concurrent_jobs,
             resources,
         })
+    }
+
+    #[must_use]
+    pub const fn name(&self) -> &ExecutionPoolName {
+        &self.name
+    }
+
+    #[must_use]
+    pub const fn timeout(&self) -> Duration {
+        self.timeout
+    }
+
+    #[must_use]
+    pub const fn max_concurrent_jobs(&self) -> u32 {
+        self.max_concurrent_jobs
+    }
+
+    #[must_use]
+    pub const fn resources(&self) -> &ResourceRequirements {
+        &self.resources
     }
 }
 
@@ -114,7 +144,7 @@ mod tests {
         )
         .expect("valid pool");
 
-        assert_eq!(pool.name.as_str(), "large");
-        assert_eq!(pool.max_concurrent_jobs, 10);
+        assert_eq!(pool.name().as_str(), "large");
+        assert_eq!(pool.max_concurrent_jobs(), 10);
     }
 }

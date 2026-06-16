@@ -31,15 +31,15 @@ impl ArtifactObjectKind {
 /// Metadata for one object-backed artifact or log object.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobArtifact {
-    pub id: ArtifactId,
-    pub run_id: JobRunId,
-    pub attempt_id: Option<JobAttemptId>,
-    pub name: String,
-    pub object_key: String,
-    pub content_type: String,
-    pub size_bytes: u64,
-    pub checksum_sha256: Option<String>,
-    pub kind: ArtifactObjectKind,
+    id: ArtifactId,
+    run_id: JobRunId,
+    attempt_id: Option<JobAttemptId>,
+    name: String,
+    object_key: String,
+    content_type: String,
+    size_bytes: u64,
+    checksum_sha256: Option<String>,
+    kind: ArtifactObjectKind,
 }
 
 impl JobArtifact {
@@ -88,6 +88,51 @@ impl JobArtifact {
             kind,
         })
     }
+
+    #[must_use]
+    pub const fn id(&self) -> &ArtifactId {
+        &self.id
+    }
+
+    #[must_use]
+    pub const fn run_id(&self) -> &JobRunId {
+        &self.run_id
+    }
+
+    #[must_use]
+    pub const fn attempt_id(&self) -> Option<&JobAttemptId> {
+        self.attempt_id.as_ref()
+    }
+
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[must_use]
+    pub fn object_key(&self) -> &str {
+        &self.object_key
+    }
+
+    #[must_use]
+    pub fn content_type(&self) -> &str {
+        &self.content_type
+    }
+
+    #[must_use]
+    pub const fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+
+    #[must_use]
+    pub fn checksum_sha256(&self) -> Option<&str> {
+        self.checksum_sha256.as_deref()
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> ArtifactObjectKind {
+        self.kind
+    }
 }
 
 #[cfg(test)]
@@ -109,7 +154,7 @@ mod tests {
         )
         .expect("artifact");
 
-        assert_eq!(artifact.name, "report.txt");
+        assert_eq!(artifact.name(), "report.txt");
     }
 
     #[test]

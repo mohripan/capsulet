@@ -56,23 +56,125 @@ impl Display for TriggerKind {
 /// A trigger definition attached to one automation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutomationTrigger {
-    pub automation_id: AutomationId,
-    pub name: TriggerName,
-    pub kind: TriggerKind,
-    pub config_json: String,
-    pub plugin_id: Option<String>,
-    pub enabled: bool,
+    automation_id: AutomationId,
+    name: TriggerName,
+    kind: TriggerKind,
+    config_json: String,
+    plugin_id: Option<String>,
+    enabled: bool,
+}
+
+impl AutomationTrigger {
+    #[must_use]
+    pub fn new(
+        automation_id: AutomationId,
+        name: TriggerName,
+        kind: TriggerKind,
+        config_json: impl Into<String>,
+        plugin_id: Option<String>,
+        enabled: bool,
+    ) -> Self {
+        Self {
+            automation_id,
+            name,
+            kind,
+            config_json: config_json.into(),
+            plugin_id,
+            enabled,
+        }
+    }
+
+    #[must_use]
+    pub const fn automation_id(&self) -> &AutomationId {
+        &self.automation_id
+    }
+
+    #[must_use]
+    pub const fn name(&self) -> &TriggerName {
+        &self.name
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> TriggerKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub fn config_json(&self) -> &str {
+        &self.config_json
+    }
+
+    #[must_use]
+    pub fn plugin_id(&self) -> Option<&str> {
+        self.plugin_id.as_deref()
+    }
+
+    #[must_use]
+    pub const fn enabled(&self) -> bool {
+        self.enabled
+    }
 }
 
 /// Registry entry for a custom trigger plugin image.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomTriggerPlugin {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub runtime_image: String,
-    pub command: Vec<String>,
-    pub config_schema_json: String,
+    id: String,
+    name: String,
+    description: String,
+    runtime_image: String,
+    command: Vec<String>,
+    config_schema_json: String,
+}
+
+impl CustomTriggerPlugin {
+    #[must_use]
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        runtime_image: impl Into<String>,
+        command: Vec<String>,
+        config_schema_json: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            description: description.into(),
+            runtime_image: runtime_image.into(),
+            command,
+            config_schema_json: config_schema_json.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[must_use]
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    #[must_use]
+    pub fn runtime_image(&self) -> &str {
+        &self.runtime_image
+    }
+
+    #[must_use]
+    pub fn command(&self) -> &[String] {
+        &self.command
+    }
+
+    #[must_use]
+    pub fn config_schema_json(&self) -> &str {
+        &self.config_schema_json
+    }
 }
 
 /// Structured boolean condition tree for automation trigger evaluation.

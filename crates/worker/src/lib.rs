@@ -177,14 +177,14 @@ where
     };
 
     let definition = store
-        .find_job_definition(&run.job_definition_id)
+        .find_job_definition(run.job_definition_id())
         .await
         .map_err(WorkerError::store)?
-        .ok_or_else(|| WorkerError::MissingJobDefinition(run.job_definition_id.to_string()))?;
+        .ok_or_else(|| WorkerError::MissingJobDefinition(run.job_definition_id().to_string()))?;
     let pool = pools
-        .find(run.execution_pool.as_str())
+        .find(run.execution_pool().as_str())
         .cloned()
-        .ok_or_else(|| WorkerError::MissingExecutionPool(run.execution_pool.to_string()))?;
+        .ok_or_else(|| WorkerError::MissingExecutionPool(run.execution_pool().to_string()))?;
 
     run.record_attempt_started()
         .map_err(|error| WorkerError::InvalidState(error.to_string()))?;
@@ -232,16 +232,16 @@ where
     };
 
     let latest = store
-        .finish_running_attempt(&run.id, run.attempt_count, final_status, retry_delay)
+        .finish_running_attempt(run.id(), run.attempt_count(), final_status, retry_delay)
         .await
         .map_err(WorkerError::store)?;
     if latest.is_none() {
         return Ok(
             match store
-                .find_run(&run.id)
+                .find_run(run.id())
                 .await
                 .map_err(WorkerError::store)?
-                .map(|latest| latest.status)
+                .map(|latest| latest.status())
             {
                 Some(JobRunStatus::Cancelled) => WorkerTickOutcome::RunCancelled,
                 _ => outcome,
@@ -254,13 +254,13 @@ where
 
 async fn materialize_script_bundle<O>(
     object_store: &O,
-    mut definition: JobDefinition,
+    definition: JobDefinition,
 ) -> Result<JobDefinition, WorkerError>
 where
     O: ObjectStore,
 {
     if !definition
-        .command
+        .command()
         .iter()
         .any(|part| part == "/capsulet/workspace/main.py")
     {
@@ -268,18 +268,18 @@ where
     }
 
     let Some(bytes) = object_store
-        .get(&definition.bundle_object_key)
+        .get(definition.bundle_object_key())
         .await
         .map_err(WorkerError::object_store)?
     else {
         return Err(WorkerError::MissingScriptBundle(
-            definition.bundle_object_key,
+            definition.bundle_object_key().to_string(),
         ));
     };
     let script = String::from_utf8_lossy(&bytes).into_owned();
-    definition.command = vec!["python".to_string(), "-c".to_string(), script];
-
-    Ok(definition)
+    definition
+        .with_command(vec!["python".to_string(), "-c".to_string(), script])
+        .map_err(WorkerError::InvalidJobDefinition)
 }
 
 async fn persist_logs<S, O>(
@@ -297,7 +297,7 @@ where
     };
     let inline = truncate_utf8(&logs, INLINE_LOG_LIMIT_BYTES);
     store
-        .save_log(&JobRunLog::new(run.id.clone(), inline).map_err(WorkerError::InvalidLog)?)
+        .save_log(&JobRunLog::new(run.id().clone(), inline).map_err(WorkerError::InvalidLog)?)
         .await
         .map_err(WorkerError::store)?;
 
@@ -305,7 +305,7 @@ where
         return Ok(());
     }
 
-    let object_key = run_object_key(&run.id, ArtifactObjectKind::Log, "stdout.log")
+    let object_key = run_object_key(run.id(), ArtifactObjectKind::Log, "stdout.log")
         .map_err(WorkerError::object_store)?;
     let size_bytes = u64::try_from(logs.len())
         .map_err(|_| WorkerError::InvalidArtifact("log is too large".to_string()))?;
@@ -314,9 +314,9 @@ where
         .await
         .map_err(WorkerError::object_store)?;
     let metadata = JobArtifact::new(
-        ArtifactId::new(format!("log_{}_stdout", run.id.as_str()))
+        ArtifactId::new(format!("log_{}_stdout", run.id().as_str()))
             .map_err(WorkerError::InvalidArtifact)?,
-        run.id.clone(),
+        run.id().clone(),
         None,
         "stdout.log",
         object_key,
@@ -354,7 +354,7 @@ where
     O: ObjectStore,
 {
     for artifact in artifacts {
-        let object_key = run_object_key(&run.id, ArtifactObjectKind::Artifact, &artifact.name)
+        let object_key = run_object_key(run.id(), ArtifactObjectKind::Artifact, &artifact.name)
             .map_err(WorkerError::object_store)?;
         let size_bytes = u64::try_from(artifact.bytes.len())
             .map_err(|_| WorkerError::InvalidArtifact("artifact is too large".to_string()))?;
@@ -363,9 +363,9 @@ where
             .await
             .map_err(WorkerError::object_store)?;
         let metadata = JobArtifact::new(
-            ArtifactId::new(format!("artifact_{}_{}", run.id.as_str(), artifact.name))
+            ArtifactId::new(format!("artifact_{}_{}", run.id().as_str(), artifact.name))
                 .map_err(WorkerError::InvalidArtifact)?,
-            run.id.clone(),
+            run.id().clone(),
             None,
             artifact.name,
             object_key,
@@ -390,10 +390,10 @@ fn retry_decision(
     failed_status: JobRunStatus,
     exhausted_outcome: WorkerTickOutcome,
 ) -> (JobRunStatus, Option<u64>, WorkerTickOutcome) {
-    if run.attempt_count < definition.retry_max_attempts {
+    if run.attempt_count() < definition.retry_max_attempts() {
         (
             JobRunStatus::RetryScheduled,
-            Some(definition.retry_delay_seconds),
+            Some(definition.retry_delay_seconds()),
             WorkerTickOutcome::RunRetryScheduled,
         )
     } else {
@@ -433,6 +433,8 @@ pub enum WorkerError {
     MissingExecutionPool(String),
     #[error("missing script bundle object: {0}")]
     MissingScriptBundle(String),
+    #[error("invalid job definition: {0}")]
+    InvalidJobDefinition(String),
     #[error("invalid captured log: {0}")]
     InvalidLog(String),
     #[error("invalid artifact metadata: {0}")]

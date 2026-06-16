@@ -1,11 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
-    AutomationTriggerKind, CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobAttemptId,
-    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus, RetryPolicy,
-    TriggerKind, TriggerName, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus,
-    WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
+    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationSettings, AutomationStatus,
+    AutomationTrigger, AutomationTriggerKind, CustomTriggerPlugin, ExecutionPoolName, JobArtifact,
+    JobAttemptId, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus,
+    RetryPolicy, TriggerKind, TriggerName, WorkflowId, WorkflowRun, WorkflowRunId,
+    WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun,
+    WorkflowStepRunId,
 };
 use sqlx::Row;
 
@@ -18,20 +19,19 @@ pub(crate) fn row_to_job_run(row: &sqlx::postgres::PgRow) -> Result<JobRun, Post
     let attempt_count: i32 = row.try_get("attempt_count")?;
     let input_json: String = row.try_get("input")?;
 
-    let mut run = JobRun::new(
+    Ok(JobRun::from_persisted(
         JobRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         JobDefinitionId::new(job_definition_id)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
         ExecutionPoolName::new(execution_pool)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
-    );
-    run.input_json = input_json;
-    run.status = parse_status(&status)?;
-    run.attempt_count = u32::try_from(attempt_count)
-        .map_err(|_| PostgresStoreError::InvalidPersistedValue("negative attempt count".into()))?;
-    run.created_at = row.try_get("created_at")?;
-
-    Ok(run)
+        input_json,
+        parse_status(&status)?,
+        u32::try_from(attempt_count).map_err(|_| {
+            PostgresStoreError::InvalidPersistedValue("negative attempt count".into())
+        })?,
+        row.try_get::<String, _>("created_at")?,
+    ))
 }
 
 pub(crate) fn generated_store_id(prefix: &str) -> String {
@@ -60,14 +60,15 @@ pub(crate) fn row_to_job_definition(
         command,
         bundle_object_key,
         input_schema,
-        RetryPolicy {
-            max_attempts: u32::try_from(retry_max_attempts).map_err(|_| {
+        RetryPolicy::new(
+            u32::try_from(retry_max_attempts).map_err(|_| {
                 PostgresStoreError::InvalidPersistedValue("negative retry max attempts".into())
             })?,
-            delay_seconds: u64::try_from(retry_delay_seconds).map_err(|_| {
+            u64::try_from(retry_delay_seconds).map_err(|_| {
                 PostgresStoreError::InvalidPersistedValue("negative retry delay".into())
             })?,
-        },
+        )
+        .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?,
     )
     .map_err(PostgresStoreError::InvalidPersistedValue)
 }
@@ -80,17 +81,16 @@ pub(crate) fn row_to_workflow_step(
     let job_definition_id: String = row.try_get("job_definition_id")?;
     let execution_pool: String = row.try_get("execution_pool")?;
 
-    Ok(WorkflowStep {
-        id: WorkflowStepId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
-        workflow_id: WorkflowId::new(workflow_id)
+    Ok(WorkflowStep::new(
+        WorkflowStepId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        WorkflowId::new(workflow_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        row.try_get("position")?,
+        row.try_get::<String, _>("name")?,
+        JobDefinitionId::new(job_definition_id)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
-        position: row.try_get("position")?,
-        name: row.try_get("name")?,
-        job_definition_id: JobDefinitionId::new(job_definition_id)
+        ExecutionPoolName::new(execution_pool)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
-        execution_pool: ExecutionPoolName::new(execution_pool)
-            .map_err(PostgresStoreError::InvalidPersistedValue)?,
-    })
+    ))
 }
 
 pub(crate) fn row_to_automation(
@@ -103,17 +103,18 @@ pub(crate) fn row_to_automation(
     let interval_seconds: Option<i32> = row.try_get("interval_seconds")?;
     let job_input_json: String = row.try_get("job_input")?;
 
-    Ok(Automation {
-        id: AutomationId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
-        name: row.try_get("name")?,
-        description: row.try_get("description")?,
-        workflow_id: WorkflowId::new(workflow_id)
-            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+    Ok(Automation::new(
+        AutomationId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        row.try_get::<String, _>("name")?,
+        row.try_get::<String, _>("description")?,
+        WorkflowId::new(workflow_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         job_input_json,
-        status: parse_automation_status(&status)?,
-        trigger_kind: parse_automation_trigger_kind(&trigger_kind)?,
-        interval_seconds: interval_seconds.map(i64::from),
-    })
+        AutomationSettings::new(
+            parse_automation_status(&status)?,
+            parse_automation_trigger_kind(&trigger_kind)?,
+            interval_seconds.map(i64::from),
+        ),
+    ))
 }
 
 pub(crate) fn row_to_automation_trigger(
@@ -123,28 +124,27 @@ pub(crate) fn row_to_automation_trigger(
     let name: String = row.try_get("name")?;
     let kind: String = row.try_get("kind")?;
 
-    Ok(AutomationTrigger {
-        automation_id: AutomationId::new(automation_id)
-            .map_err(PostgresStoreError::InvalidPersistedValue)?,
-        name: TriggerName::new(name).map_err(PostgresStoreError::InvalidPersistedValue)?,
-        kind: parse_trigger_kind(&kind)?,
-        config_json: row.try_get("config")?,
-        plugin_id: row.try_get("plugin_id")?,
-        enabled: row.try_get("enabled")?,
-    })
+    Ok(AutomationTrigger::new(
+        AutomationId::new(automation_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        TriggerName::new(name).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        parse_trigger_kind(&kind)?,
+        row.try_get::<String, _>("config")?,
+        row.try_get("plugin_id")?,
+        row.try_get("enabled")?,
+    ))
 }
 
 pub(crate) fn row_to_custom_trigger_plugin(
     row: &sqlx::postgres::PgRow,
 ) -> Result<CustomTriggerPlugin, PostgresStoreError> {
-    Ok(CustomTriggerPlugin {
-        id: row.try_get("id")?,
-        name: row.try_get("name")?,
-        description: row.try_get("description")?,
-        runtime_image: row.try_get("runtime_image")?,
-        command: row.try_get("command")?,
-        config_schema_json: row.try_get("config_schema")?,
-    })
+    Ok(CustomTriggerPlugin::new(
+        row.try_get::<String, _>("id")?,
+        row.try_get::<String, _>("name")?,
+        row.try_get::<String, _>("description")?,
+        row.try_get::<String, _>("runtime_image")?,
+        row.try_get("command")?,
+        row.try_get::<String, _>("config_schema")?,
+    ))
 }
 
 pub(crate) fn row_to_workflow_run(
@@ -156,19 +156,18 @@ pub(crate) fn row_to_workflow_run(
     let status: String = row.try_get("status")?;
     let input_json: String = row.try_get("input")?;
 
-    Ok(WorkflowRun {
-        id: WorkflowRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
-        workflow_id: WorkflowId::new(workflow_id)
-            .map_err(PostgresStoreError::InvalidPersistedValue)?,
-        automation_id: automation_id
+    Ok(WorkflowRun::new(
+        WorkflowRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        WorkflowId::new(workflow_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        automation_id
             .map(AutomationId::new)
             .transpose()
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
         input_json,
-        status: parse_workflow_run_status(&status)?,
-        current_step_position: row.try_get("current_step_position")?,
-        created_at: row.try_get("created_at")?,
-    })
+        parse_workflow_run_status(&status)?,
+        row.try_get("current_step_position")?,
+        row.try_get::<String, _>("created_at")?,
+    ))
 }
 
 pub(crate) fn row_to_workflow_step_run(
@@ -180,16 +179,14 @@ pub(crate) fn row_to_workflow_step_run(
     let job_run_id: String = row.try_get("job_run_id")?;
     let status: String = row.try_get("status")?;
 
-    Ok(WorkflowStepRun {
-        id: WorkflowStepRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
-        workflow_run_id: WorkflowRunId::new(workflow_run_id)
-            .map_err(PostgresStoreError::InvalidPersistedValue)?,
-        workflow_step_id: WorkflowStepId::new(workflow_step_id)
-            .map_err(PostgresStoreError::InvalidPersistedValue)?,
-        job_run_id: JobRunId::new(job_run_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
-        position: row.try_get("position")?,
-        status: parse_workflow_run_status(&status)?,
-    })
+    Ok(WorkflowStepRun::new(
+        WorkflowStepRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        WorkflowRunId::new(workflow_run_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        WorkflowStepId::new(workflow_step_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        JobRunId::new(job_run_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        row.try_get("position")?,
+        parse_workflow_run_status(&status)?,
+    ))
 }
 
 pub(crate) fn row_to_job_run_log(
@@ -270,6 +267,7 @@ pub(crate) fn parse_workflow_run_status(
     match status {
         "queued" => Ok(WorkflowRunStatus::Queued),
         "running" => Ok(WorkflowRunStatus::Running),
+        "removed" => Ok(WorkflowRunStatus::Removed),
         "succeeded" => Ok(WorkflowRunStatus::Succeeded),
         "failed" => Ok(WorkflowRunStatus::Failed),
         "cancelled" => Ok(WorkflowRunStatus::Cancelled),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -19,13 +19,15 @@ import {
   Workflow,
   Zap
 } from "lucide-react";
-import { DashboardShell, PanelTitle, ResizableGridTable, StateBadge } from "./components";
+import { DashboardShell, DateTimePicker, PanelTitle, ResizableGridTable, StateBadge, defaultDateTimeRange } from "./components";
 import {
   Automation,
   ExecutionPool,
   JobRun,
   Workflow as ApiWorkflow,
   WorkflowRun,
+  WorkflowRunLogsResponse,
+  getWorkflowRunLogs,
   getErrorMessage,
   listAutomations,
   listExecutionPools,
@@ -53,6 +55,7 @@ const workflowRunColumns = [
   { label: "State", width: 150, minWidth: 120 },
   { label: "Automation", width: 230, minWidth: 150 }
 ];
+const defaultOverviewRange = defaultDateTimeRange();
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -69,18 +72,22 @@ export default function OverviewPage() {
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [workflows, setWorkflows] = useState<ApiWorkflow[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
+  const [overviewStartAt, setOverviewStartAt] = useState(defaultOverviewRange.start);
+  const [overviewEndAt, setOverviewEndAt] = useState(defaultOverviewRange.end);
+  const [selectedLogRunId, setSelectedLogRunId] = useState("");
+  const [overviewLogs, setOverviewLogs] = useState<WorkflowRunLogsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
 
-  async function refresh() {
+  const refresh = useCallback(async function refresh() {
     setIsLoading(true);
     setErrors([]);
     const [automationResult, poolResult, runResult, workflowResult, workflowRunResult] = await Promise.allSettled([
       listAutomations(),
       listExecutionPools(),
-      listRuns(50),
+      listRuns({ limit: 50, start_at: overviewStartAt, end_at: overviewEndAt }),
       listWorkflows(),
-      listWorkflowRuns()
+      listWorkflowRuns({ limit: 100, start_at: overviewStartAt, end_at: overviewEndAt })
     ]);
 
     const nextErrors: string[] = [];
@@ -117,11 +124,11 @@ export default function OverviewPage() {
 
     setErrors(nextErrors);
     setIsLoading(false);
-  }
+  }, [overviewEndAt, overviewStartAt]);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   const metrics = useMemo(() => {
     const running = runs.filter((run) => run.status === "running" || run.status === "leased").length;
@@ -140,6 +147,38 @@ export default function OverviewPage() {
   const workflowById = useMemo(() => new Map(workflows.map((workflow) => [workflow.id, workflow])), [workflows]);
   const selectedAutomation = automations[0];
   const selectedWorkflow = selectedAutomation ? workflowById.get(selectedAutomation.workflow_id) : undefined;
+  const overviewLogRuns = useMemo(() => workflowRuns.slice(0, 5), [workflowRuns]);
+  const selectedLogRun = overviewLogRuns.find((run) => run.id === selectedLogRunId) ?? overviewLogRuns[0];
+  const overviewLogText = useMemo(() => {
+    if (!overviewLogs?.entries.length) return "";
+    return overviewLogs.entries
+      .map((entry) => [`Step ${entry.position} / ${entry.status}`, entry.logs || "No logs captured for this step yet."].join("\n"))
+      .join("\n\n");
+  }, [overviewLogs]);
+
+  useEffect(() => {
+    setSelectedLogRunId((current) => (overviewLogRuns.some((run) => run.id === current) ? current : overviewLogRuns[0]?.id || ""));
+  }, [overviewLogRuns]);
+
+  useEffect(() => {
+    if (!selectedLogRun?.id) {
+      setOverviewLogs(null);
+      return;
+    }
+    let isActive = true;
+    getWorkflowRunLogs(selectedLogRun.id)
+      .then((response) => {
+        if (isActive) setOverviewLogs(response);
+      })
+      .catch((err) => {
+        if (!isActive) return;
+        setOverviewLogs(null);
+        setErrors((current) => [...current, `Live logs: ${getErrorMessage(err)}`]);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [selectedLogRun?.id]);
 
   return (
     <DashboardShell>
@@ -163,6 +202,20 @@ export default function OverviewPage() {
       {errors.length ? <div className="errorBox">{errors.join(" | ")}</div> : null}
 
       <section className="contentGrid">
+        <section className="panel span12">
+          <PanelTitle icon={Clock3} title="Overview Range" action="Date picker" />
+          <div className="tableFilters overviewRangeFilters">
+            <label>
+              <span>Start</span>
+              <DateTimePicker value={overviewStartAt} onChange={setOverviewStartAt} />
+            </label>
+            <label>
+              <span>End</span>
+              <DateTimePicker value={overviewEndAt} onChange={setOverviewEndAt} />
+            </label>
+          </div>
+        </section>
+
         <section className="panel span8">
           <PanelTitle icon={Workflow} title="Automations" action="Live API" />
           <div className="automationList">
@@ -280,9 +333,21 @@ export default function OverviewPage() {
         </section>
 
         <section className="panel span4">
-          <PanelTitle icon={TerminalSquare} title="Live Logs" action="No endpoint" />
-          <div className="terminal">
-            <div className="emptyState">No global live log stream endpoint exists for the overview.</div>
+          <PanelTitle icon={TerminalSquare} title="Live Logs" action={overviewLogRuns.length ? "Latest runs" : "No runs"} />
+          <label className="overviewLogSelect">
+            <span>Workflow run</span>
+            <select value={selectedLogRun?.id || ""} onChange={(event) => setSelectedLogRunId(event.target.value)}>
+              {overviewLogRuns.map((run) => (
+                <option value={run.id} key={run.id}>
+                  {(workflowById.get(run.workflow_id)?.name || run.workflow_id).slice(0, 42)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="terminal overviewLogTerminal">
+            {!selectedLogRun ? <div className="emptyState">No workflow runs exist in this range.</div> : null}
+            {selectedLogRun && !overviewLogText ? <div className="emptyState">No logs captured for this workflow run yet.</div> : null}
+            {overviewLogText ? <code>{overviewLogText}</code> : null}
           </div>
         </section>
 

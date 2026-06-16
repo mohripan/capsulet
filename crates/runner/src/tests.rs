@@ -10,7 +10,7 @@ fn execution(pool: ExecutionPoolConfig) -> RunExecution {
     RunExecution {
         run: JobRun::new(
             JobRunId::new("run_hello_python").expect("valid run id"),
-            JobDefinition::hello_python().id,
+            JobDefinition::hello_python().id().clone(),
             ExecutionPoolName::new("mini").expect("valid pool"),
         ),
         definition: JobDefinition::hello_python(),
@@ -93,7 +93,7 @@ fn renders_job_metadata_and_container() {
 #[test]
 fn renders_run_label_on_job_and_pod_template() {
     let execution = execution(pool());
-    let expected = run_label_value(&execution.run.id);
+    let expected = run_label_value(execution.run.id());
     let job = build_job(&execution, "capsulet-exec");
 
     assert_eq!(

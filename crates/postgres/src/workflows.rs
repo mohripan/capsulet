@@ -26,19 +26,19 @@ impl PostgresStore {
                 updated_at = now()
             ",
         )
-        .bind(workflow.id.as_str())
-        .bind(&workflow.name)
-        .bind(&workflow.description)
-        .bind(workflow.status.to_string())
+        .bind(workflow.id().as_str())
+        .bind(workflow.name())
+        .bind(workflow.description())
+        .bind(workflow.status().to_string())
         .execute(&mut *tx)
         .await?;
 
         sqlx::query("DELETE FROM workflow_steps WHERE workflow_id = $1")
-            .bind(workflow.id.as_str())
+            .bind(workflow.id().as_str())
             .execute(&mut *tx)
             .await?;
 
-        for step in &workflow.steps {
+        for step in workflow.steps() {
             sqlx::query(
                 r"
                 INSERT INTO workflow_steps (
@@ -47,12 +47,12 @@ impl PostgresStore {
                 VALUES ($1, $2, $3, $4, $5, $6, now())
                 ",
             )
-            .bind(step.id.as_str())
-            .bind(workflow.id.as_str())
-            .bind(step.position)
-            .bind(&step.name)
-            .bind(step.job_definition_id.as_str())
-            .bind(step.execution_pool.as_str())
+            .bind(step.id().as_str())
+            .bind(workflow.id().as_str())
+            .bind(step.position())
+            .bind(step.name())
+            .bind(step.job_definition_id().as_str())
+            .bind(step.execution_pool().as_str())
             .execute(&mut *tx)
             .await?;
         }
@@ -133,15 +133,15 @@ impl PostgresStore {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(WorkflowDefinition {
-            id: workflow_id,
-            name: row.try_get("name")?,
-            description: row.try_get("description")?,
-            status: parse_workflow_status(row.try_get::<String, _>("status")?.as_str())?,
-            steps: step_rows
+        Ok(WorkflowDefinition::new(
+            workflow_id,
+            row.try_get::<String, _>("name")?,
+            row.try_get::<String, _>("description")?,
+            parse_workflow_status(row.try_get::<String, _>("status")?.as_str())?,
+            step_rows
                 .iter()
                 .map(row_to_workflow_step)
                 .collect::<Result<Vec<_>, _>>()?,
-        })
+        ))
     }
 }

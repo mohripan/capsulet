@@ -10,7 +10,8 @@ use axum::{
 use capsulet_core::{
     ArtifactId, ArtifactObjectKind, AutomationId, CreateManualRunCommand, ExecutionPoolName,
     JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId, RetryPolicy, WorkflowDefinition,
-    WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStatus, WorkflowStep, WorkflowStepId,
+    WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep,
+    WorkflowStepId,
 };
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde_json::Value;
@@ -23,7 +24,8 @@ use crate::{
         JobRunLogsResponse, JobRunResponse, ListArtifactsResponse, ListExecutionPoolsResponse,
         ListHostGroupsResponse, ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListRunsQuery,
         ListRunsResponse, ListWorkflowRunsQuery, ListWorkflowRunsResponse, ListWorkflowsResponse,
-        WorkflowResponse, WorkflowRunResponse,
+        WorkflowResponse, WorkflowRunLogEntryResponse, WorkflowRunLogsResponse,
+        WorkflowRunResponse,
     },
     state::AppState,
     store::ApiStore,
@@ -82,6 +84,9 @@ where
             get(crate::automations::get_trigger_plugin),
         )
         .route("/v1/workflow-runs", get(list_workflow_runs))
+        .route("/v1/workflow-runs/{id}/logs", get(get_workflow_run_logs))
+        .route("/v1/workflow-runs/{id}/remove", post(remove_workflow_run))
+        .route("/v1/workflow-runs/{id}/cancel", post(cancel_workflow_run))
         .route("/v1/jobs/runs", post(create_run).get(list_runs))
         .route("/v1/jobs/runs/{id}", get(get_run))
         .route("/v1/jobs/runs/{id}/cancel", post(cancel_run))
@@ -277,10 +282,11 @@ where
             "python script cannot be empty".to_string(),
         ));
     }
-    let retry_policy = RetryPolicy {
-        max_attempts: request.retry_max_attempts.unwrap_or(1),
-        delay_seconds: request.retry_delay_seconds.unwrap_or(0),
-    };
+    let retry_policy = RetryPolicy::new(
+        request.retry_max_attempts.unwrap_or(1),
+        request.retry_delay_seconds.unwrap_or(0),
+    )
+    .map_err(|error| ApiError::validation(error.to_string()))?;
     let runtime_image = request
         .runtime_image
         .unwrap_or_else(|| "python:3.12-slim".to_string());
@@ -406,24 +412,24 @@ where
         }
         let position = i32::try_from(index + 1)
             .map_err(|_| ApiError::Validation("too many workflow steps".to_string()))?;
-        steps.push(WorkflowStep {
-            id: WorkflowStepId::new(format!("{}_step_{position}", workflow_id.as_str()))
+        steps.push(WorkflowStep::new(
+            WorkflowStepId::new(format!("{}_step_{position}", workflow_id.as_str()))
                 .map_err(ApiError::validation)?,
-            workflow_id: workflow_id.clone(),
+            workflow_id.clone(),
             position,
-            name: step.name,
+            step.name,
             job_definition_id,
             execution_pool,
-        });
+        ));
     }
 
-    Ok(WorkflowDefinition {
-        id: workflow_id,
-        name: request.name,
-        description: request.description.unwrap_or_default(),
-        status: WorkflowStatus::Enabled,
+    Ok(WorkflowDefinition::new(
+        workflow_id,
+        request.name,
+        request.description.unwrap_or_default(),
+        WorkflowStatus::Enabled,
         steps,
-    })
+    ))
 }
 
 pub(crate) fn json_from_string(value: &str) -> Result<Value, ApiError> {
@@ -467,41 +473,41 @@ fn filter_job_runs(mut runs: Vec<JobRun>, query: &ListRunsQuery) -> Vec<JobRun> 
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .is_none_or(|state| run.status.to_string().eq_ignore_ascii_case(state));
+            .is_none_or(|state| run.status().to_string().eq_ignore_ascii_case(state));
         let searchable = format!(
             "{} {} {}",
-            run.id.as_str(),
-            run.job_definition_id.as_str(),
-            run.execution_pool.as_str()
+            run.id().as_str(),
+            run.job_definition_id().as_str(),
+            run.execution_pool().as_str()
         );
         matches_state
             && query_contains(&searchable, query.q.as_deref())
             && matches_date_range(
-                &run.created_at,
+                run.created_at(),
                 query.start_at.as_deref(),
                 query.end_at.as_deref(),
             )
     });
     let desc = is_desc(query.direction.as_deref());
     match query.sort.as_deref().unwrap_or("created_at") {
-        "run" | "id" => runs.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str())),
+        "run" | "id" => runs.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str())),
         "job_definition" | "name" => runs.sort_by(|left, right| {
-            left.job_definition_id
+            left.job_definition_id()
                 .as_str()
-                .cmp(right.job_definition_id.as_str())
+                .cmp(right.job_definition_id().as_str())
         }),
         "state" | "status" => {
-            runs.sort_by(|left, right| left.status.to_string().cmp(&right.status.to_string()));
+            runs.sort_by_key(|run| run.status().to_string());
         }
         "pool" => {
             runs.sort_by(|left, right| {
-                left.execution_pool
+                left.execution_pool()
                     .as_str()
-                    .cmp(right.execution_pool.as_str())
+                    .cmp(right.execution_pool().as_str())
             });
         }
-        "attempts" => runs.sort_by(|left, right| left.attempt_count.cmp(&right.attempt_count)),
-        _ => runs.sort_by(|left, right| left.created_at.cmp(&right.created_at)),
+        "attempts" => runs.sort_by_key(JobRun::attempt_count),
+        _ => runs.sort_by(|left, right| left.created_at().cmp(right.created_at())),
     }
     if desc {
         runs.reverse();
@@ -519,19 +525,18 @@ fn filter_workflow_runs(
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .is_none_or(|state| run.status.to_string().eq_ignore_ascii_case(state));
+            .is_none_or(|state| run.status().to_string().eq_ignore_ascii_case(state));
         let searchable = format!(
             "{} {} {}",
-            run.id.as_str(),
-            run.workflow_id.as_str(),
-            run.automation_id
-                .as_ref()
+            run.id().as_str(),
+            run.workflow_id().as_str(),
+            run.automation_id()
                 .map_or("", capsulet_core::AutomationId::as_str)
         );
         matches_state
             && query_contains(&searchable, query.q.as_deref())
             && matches_date_range(
-                &run.created_at,
+                run.created_at(),
                 query.start_at.as_deref(),
                 query.end_at.as_deref(),
             )
@@ -539,26 +544,28 @@ fn filter_workflow_runs(
     let desc = is_desc(query.direction.as_deref());
     match query.sort.as_deref().unwrap_or("created_at") {
         "workflow_run" | "id" => {
-            runs.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()))
+            runs.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
         }
         "workflow" | "name" => {
-            runs.sort_by(|left, right| left.workflow_id.as_str().cmp(right.workflow_id.as_str()));
+            runs.sort_by(|left, right| {
+                left.workflow_id()
+                    .as_str()
+                    .cmp(right.workflow_id().as_str())
+            });
         }
         "state" | "status" => {
-            runs.sort_by(|left, right| left.status.to_string().cmp(&right.status.to_string()));
+            runs.sort_by_key(|run| run.status().to_string());
         }
         "automation" => runs.sort_by(|left, right| {
-            left.automation_id
-                .as_ref()
+            left.automation_id()
                 .map_or("", capsulet_core::AutomationId::as_str)
                 .cmp(
                     right
-                        .automation_id
-                        .as_ref()
+                        .automation_id()
                         .map_or("", capsulet_core::AutomationId::as_str),
                 )
         }),
-        _ => runs.sort_by(|left, right| left.created_at.cmp(&right.created_at)),
+        _ => runs.sort_by(|left, right| left.created_at().cmp(right.created_at())),
     }
     if desc {
         runs.reverse();
@@ -589,10 +596,10 @@ where
     let run = state
         .store
         .create_workflow_run(
-            &automation.workflow_id,
-            Some(&automation.id),
+            automation.workflow_id(),
+            Some(automation.id()),
             &run_id,
-            &automation.job_input_json,
+            automation.job_input_json(),
         )
         .await
         .map_err(ApiError::store)?;
@@ -621,12 +628,131 @@ where
     for run in runs {
         let step_runs = state
             .store
-            .list_workflow_step_runs(&run.id)
+            .list_workflow_step_runs(run.id())
             .await
             .map_err(ApiError::store)?;
         workflow_runs.push(WorkflowRunResponse::new(&run, &step_runs));
     }
     Ok(Json(ListWorkflowRunsResponse { workflow_runs }))
+}
+
+async fn get_workflow_run_logs<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<WorkflowRunLogsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    let Some(run) = state
+        .store
+        .find_workflow_run(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::WorkflowRunNotFound(id.as_str().to_string()));
+    };
+
+    let step_runs = state
+        .store
+        .list_workflow_step_runs(&id)
+        .await
+        .map_err(ApiError::store)?;
+    let mut entries = Vec::with_capacity(step_runs.len());
+    for step_run in step_runs {
+        let log = state
+            .store
+            .find_run_log(step_run.job_run_id())
+            .await
+            .map_err(ApiError::store)?;
+        let object_log_available = state
+            .store
+            .list_artifacts(step_run.job_run_id())
+            .await
+            .map_err(ApiError::store)?
+            .iter()
+            .any(|artifact| artifact.kind() == ArtifactObjectKind::Log);
+
+        entries.push(WorkflowRunLogEntryResponse {
+            step_run_id: step_run.id().as_str().to_string(),
+            workflow_step_id: step_run.workflow_step_id().as_str().to_string(),
+            job_run_id: step_run.job_run_id().as_str().to_string(),
+            position: step_run.position(),
+            status: step_run.status().to_string(),
+            logs: log.map_or_else(String::new, |log| log.text),
+            object_log_available,
+        });
+    }
+
+    Ok(Json(WorkflowRunLogsResponse {
+        workflow_run_id: run.id().as_str().to_string(),
+        workflow_id: run.workflow_id().as_str().to_string(),
+        status: run.status().to_string(),
+        entries,
+    }))
+}
+
+async fn remove_workflow_run<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<WorkflowRunResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    let Some(run) = state
+        .store
+        .remove_queued_workflow_run(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::WorkflowRunNotFound(id.as_str().to_string()));
+    };
+    if run.status() != WorkflowRunStatus::Removed {
+        return Err(ApiError::InvalidWorkflowRunTransition(format!(
+            "workflow run {} can only be removed while queued and before any node executes",
+            id.as_str()
+        )));
+    }
+    let step_runs = state
+        .store
+        .list_workflow_step_runs(&id)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(WorkflowRunResponse::new(&run, &step_runs)))
+}
+
+async fn cancel_workflow_run<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<WorkflowRunResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    let Some(run) = state
+        .store
+        .cancel_running_workflow_run(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::WorkflowRunNotFound(id.as_str().to_string()));
+    };
+    if run.status() != WorkflowRunStatus::Cancelled {
+        return Err(ApiError::InvalidWorkflowRunTransition(format!(
+            "workflow run {} can only be cancelled while running",
+            id.as_str()
+        )));
+    }
+    let step_runs = state
+        .store
+        .list_workflow_step_runs(&id)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(WorkflowRunResponse::new(&run, &step_runs)))
 }
 
 async fn create_run<S, O>(
@@ -682,7 +808,7 @@ where
     state.store.save_run(&run).await.map_err(ApiError::store)?;
     let run = state
         .store
-        .find_run(&run.id)
+        .find_run(run.id())
         .await
         .map_err(ApiError::store)?
         .unwrap_or(run);
@@ -827,7 +953,7 @@ where
         .await
         .map_err(ApiError::store)?
         .iter()
-        .any(|artifact| artifact.kind == ArtifactObjectKind::Log);
+        .any(|artifact| artifact.kind() == ArtifactObjectKind::Log);
 
     Ok(Json(JobRunLogsResponse {
         run_id: log.run_id.as_str().to_string(),
@@ -912,20 +1038,22 @@ where
     };
     let Some(bytes) = state
         .object_store
-        .get(&artifact.object_key)
+        .get(artifact.object_key())
         .await
         .map_err(ApiError::object_store)?
     else {
-        return Err(ApiError::ArtifactObjectNotFound(artifact.object_key));
+        return Err(ApiError::ArtifactObjectNotFound(
+            artifact.object_key().to_string(),
+        ));
     };
 
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, artifact.content_type),
+            (header::CONTENT_TYPE, artifact.content_type().to_string()),
             (
                 header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", artifact.name),
+                format!("attachment; filename=\"{}\"", artifact.name()),
             ),
         ],
         bytes,

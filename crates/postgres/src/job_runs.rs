@@ -83,7 +83,8 @@ impl PostgresStore {
                       job_runs.status,
                       job_runs.execution_pool,
                       job_runs.input::text AS input,
-                      job_runs.attempt_count
+                      job_runs.attempt_count,
+                      job_runs.created_at::text AS created_at
             ",
         )
         .bind(worker_id)
@@ -110,7 +111,7 @@ impl PostgresStore {
                 updated_at = now()
             WHERE id = $1
               AND status IN ('queued', 'leased', 'running', 'retry_scheduled')
-            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
+            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count, created_at::text AS created_at
             ",
         )
         .bind(id.as_str())
@@ -151,7 +152,7 @@ impl PostgresStore {
             WHERE id = $1
               AND attempt_count = $2
               AND status = 'running'
-            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
+            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count, created_at::text AS created_at
             "
         } else {
             r"
@@ -165,7 +166,7 @@ impl PostgresStore {
             WHERE id = $1
               AND attempt_count = $2
               AND status = 'running'
-            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count
+            RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count, created_at::text AS created_at
             "
         };
 

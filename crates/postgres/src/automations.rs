@@ -38,14 +38,14 @@ impl PostgresStore {
                 updated_at = now()
             ",
         )
-        .bind(automation.id.as_str())
-        .bind(&automation.name)
-        .bind(&automation.description)
-        .bind(automation.workflow_id.as_str())
-        .bind(&automation.job_input_json)
-        .bind(automation.status.to_string())
-        .bind(automation.trigger_kind.to_string())
-        .bind(automation.interval_seconds)
+        .bind(automation.id().as_str())
+        .bind(automation.name())
+        .bind(automation.description())
+        .bind(automation.workflow_id().as_str())
+        .bind(automation.job_input_json())
+        .bind(automation.status().to_string())
+        .bind(automation.trigger_kind().to_string())
+        .bind(automation.interval_seconds())
         .execute(&self.pool)
         .await?;
 
@@ -195,14 +195,14 @@ impl PostgresStore {
             .bind(format!(
                 "{}_{}",
                 automation_id.as_str(),
-                trigger.name.as_str()
+                trigger.name().as_str()
             ))
             .bind(automation_id.as_str())
-            .bind(trigger.name.as_str())
-            .bind(trigger.kind.to_string())
-            .bind(&trigger.config_json)
-            .bind(trigger.plugin_id.as_deref())
-            .bind(trigger.enabled)
+            .bind(trigger.name().as_str())
+            .bind(trigger.kind().to_string())
+            .bind(trigger.config_json())
+            .bind(trigger.plugin_id())
+            .bind(trigger.enabled())
             .execute(&mut *tx)
             .await?;
         }
@@ -269,12 +269,12 @@ impl PostgresStore {
                 updated_at = now()
             ",
         )
-        .bind(&plugin.id)
-        .bind(&plugin.name)
-        .bind(&plugin.description)
-        .bind(&plugin.runtime_image)
-        .bind(&plugin.command)
-        .bind(&plugin.config_schema_json)
+        .bind(plugin.id())
+        .bind(plugin.name())
+        .bind(plugin.description())
+        .bind(plugin.runtime_image())
+        .bind(plugin.command())
+        .bind(plugin.config_schema_json())
         .execute(&self.pool)
         .await?;
 

@@ -20,6 +20,6 @@ pub use job::{JobRun, JobRunStatus, StateTransitionError};
 pub use job_definition::{JobDefinition, RetryPolicy};
 pub use job_log::JobRunLog;
 pub use workflow::{
-    Automation, AutomationStatus, AutomationTriggerKind, WorkflowDefinition, WorkflowRun,
-    WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepRun,
+    Automation, AutomationSettings, AutomationStatus, AutomationTriggerKind, WorkflowDefinition,
+    WorkflowRun, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepRun,
 };

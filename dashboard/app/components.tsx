@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Archive,
   Bell,
   Box,
+  CalendarClock,
   ChevronDown,
   FileCode2,
   GitBranch,
   Home,
+  ListTree,
   Plus,
   RefreshCw,
   Route,
@@ -30,6 +32,7 @@ const nav: Array<[LucideIcon, string, string]> = [
   [GitBranch, "Workflows", "/workflows"],
   [FileCode2, "Job Definitions", "/job-definitions"],
   [Activity, "Runs", "/runs"],
+  [ListTree, "Live Logs", "/logs"],
   [Route, "Execution Pools", "/execution-pools"],
   [Archive, "Artifacts", "/artifacts"],
   [ShieldCheck, "Security", "/security"],
@@ -174,27 +177,54 @@ export function StateBadge({ state }: { state: string }) {
   return <span className={`state state-${state.toLowerCase()}`}>{state}</span>;
 }
 
-function splitDateTime(value: string) {
-  if (!value) return { date: "", time: "" };
+function normalizedDateTimeValue(value: string) {
+  if (!value) return "";
   const [date, rawTime = ""] = value.includes("T") ? value.split("T") : value.split(" ");
-  return { date, time: rawTime.slice(0, 5) };
+  if (!date) return "";
+  return `${date}T${rawTime.slice(0, 5) || "00:00"}`;
+}
+
+function dateTimeInputValue(date: Date) {
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return offsetDate.toISOString().slice(0, 16);
+}
+
+export function defaultDateTimeRange(daysBack = 2) {
+  const end = new Date();
+  const start = new Date(end.getTime() - daysBack * 24 * 60 * 60 * 1000);
+  return {
+    start: dateTimeInputValue(start),
+    end: dateTimeInputValue(end)
+  };
 }
 
 export function DateTimePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const parts = splitDateTime(value);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  function update(nextDate: string, nextTime: string) {
-    if (!nextDate) {
-      onChange("");
-      return;
+  function openPicker() {
+    const picker = inputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    try {
+      picker?.showPicker?.();
+    } catch {
+      // Some browsers only allow showPicker from direct pointer activation.
     }
-    onChange(`${nextDate}T${nextTime || "00:00"}`);
+    picker?.focus();
   }
 
   return (
     <div className="dateTimePicker">
-      <input type="date" value={parts.date} onChange={(event) => update(event.target.value, parts.time)} />
-      <input type="time" step={60} value={parts.time} onChange={(event) => update(parts.date, event.target.value)} />
+      <input
+        ref={inputRef}
+        type="datetime-local"
+        step={60}
+        value={normalizedDateTimeValue(value)}
+        onClick={openPicker}
+        onFocus={openPicker}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button type="button" aria-label="Open date and time picker" title="Open date and time picker" onClick={openPicker}>
+        <CalendarClock size={16} aria-hidden="true" />
+      </button>
     </div>
   );
 }

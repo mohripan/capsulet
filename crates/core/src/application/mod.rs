@@ -12,9 +12,17 @@ pub struct CreateManualRunCommand {
 impl CreateManualRunCommand {
     #[must_use]
     pub fn into_job_run(self) -> JobRun {
-        let mut run = JobRun::new(self.run_id, self.job_definition_id, self.execution_pool);
+        let run = JobRun::new(self.run_id, self.job_definition_id, self.execution_pool);
         if let Some(input_json) = self.input_json {
-            run.input_json = input_json;
+            return JobRun::from_persisted(
+                run.id().clone(),
+                run.job_definition_id().clone(),
+                run.execution_pool().clone(),
+                input_json,
+                run.status(),
+                run.attempt_count(),
+                run.created_at(),
+            );
         }
         run
     }
@@ -32,10 +40,10 @@ pub struct JobRunSummary {
 impl From<&JobRun> for JobRunSummary {
     fn from(run: &JobRun) -> Self {
         Self {
-            id: run.id.clone(),
-            status: run.status,
-            execution_pool: run.execution_pool.clone(),
-            attempt_count: run.attempt_count,
+            id: run.id().clone(),
+            status: run.status(),
+            execution_pool: run.execution_pool().clone(),
+            attempt_count: run.attempt_count(),
         }
     }
 }

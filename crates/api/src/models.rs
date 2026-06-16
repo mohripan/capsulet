@@ -158,6 +158,25 @@ pub(crate) struct ListWorkflowRunsResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct WorkflowRunLogsResponse {
+    pub(crate) workflow_run_id: String,
+    pub(crate) workflow_id: String,
+    pub(crate) status: String,
+    pub(crate) entries: Vec<WorkflowRunLogEntryResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkflowRunLogEntryResponse {
+    pub(crate) step_run_id: String,
+    pub(crate) workflow_step_id: String,
+    pub(crate) job_run_id: String,
+    pub(crate) position: i32,
+    pub(crate) status: String,
+    pub(crate) logs: String,
+    pub(crate) object_log_available: bool,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct ExecutionPoolResponse {
     pub(crate) name: String,
     pub(crate) description: String,
@@ -295,12 +314,12 @@ pub(crate) struct ArtifactResponse {
 impl From<&JobArtifact> for ArtifactResponse {
     fn from(artifact: &JobArtifact) -> Self {
         Self {
-            id: artifact.id.as_str().to_string(),
-            run_id: artifact.run_id.as_str().to_string(),
-            name: artifact.name.clone(),
-            content_type: artifact.content_type.clone(),
-            size_bytes: artifact.size_bytes,
-            kind: artifact.kind.as_str().to_string(),
+            id: artifact.id().as_str().to_string(),
+            run_id: artifact.run_id().as_str().to_string(),
+            name: artifact.name().to_string(),
+            content_type: artifact.content_type().to_string(),
+            size_bytes: artifact.size_bytes(),
+            kind: artifact.kind().as_str().to_string(),
         }
     }
 }
@@ -308,14 +327,14 @@ impl From<&JobArtifact> for ArtifactResponse {
 impl From<&JobDefinition> for JobDefinitionResponse {
     fn from(definition: &JobDefinition) -> Self {
         Self {
-            id: definition.id.as_str().to_string(),
-            name: definition.name.clone(),
-            runtime_image: definition.runtime_image.clone(),
-            command: definition.command.clone(),
-            bundle_object_key: definition.bundle_object_key.clone(),
-            input_schema: json_from_string(&definition.input_schema).unwrap_or_else(|_| json!({})),
-            retry_max_attempts: definition.retry_max_attempts,
-            retry_delay_seconds: definition.retry_delay_seconds,
+            id: definition.id().as_str().to_string(),
+            name: definition.name().to_string(),
+            runtime_image: definition.runtime_image().to_string(),
+            command: definition.command().to_vec(),
+            bundle_object_key: definition.bundle_object_key().to_string(),
+            input_schema: json_from_string(definition.input_schema()).unwrap_or_else(|_| json!({})),
+            retry_max_attempts: definition.retry_max_attempts(),
+            retry_delay_seconds: definition.retry_delay_seconds(),
         }
     }
 }
@@ -323,12 +342,12 @@ impl From<&JobDefinition> for JobDefinitionResponse {
 impl From<&WorkflowDefinition> for WorkflowResponse {
     fn from(workflow: &WorkflowDefinition) -> Self {
         Self {
-            id: workflow.id.as_str().to_string(),
-            name: workflow.name.clone(),
-            description: workflow.description.clone(),
-            status: workflow.status.to_string(),
+            id: workflow.id().as_str().to_string(),
+            name: workflow.name().to_string(),
+            description: workflow.description().to_string(),
+            status: workflow.status().to_string(),
             steps: workflow
-                .steps
+                .steps()
                 .iter()
                 .map(WorkflowStepResponse::from)
                 .collect(),
@@ -339,12 +358,12 @@ impl From<&WorkflowDefinition> for WorkflowResponse {
 impl From<&WorkflowStep> for WorkflowStepResponse {
     fn from(step: &WorkflowStep) -> Self {
         Self {
-            id: step.id.as_str().to_string(),
-            position: step.position,
-            name: step.name.clone(),
-            job_definition_id: step.job_definition_id.as_str().to_string(),
-            execution_pool: step.execution_pool.as_str().to_string(),
-            host_group: step.execution_pool.as_str().to_string(),
+            id: step.id().as_str().to_string(),
+            position: step.position(),
+            name: step.name().to_string(),
+            job_definition_id: step.job_definition_id().as_str().to_string(),
+            execution_pool: step.execution_pool().as_str().to_string(),
+            host_group: step.execution_pool().as_str().to_string(),
         }
     }
 }
@@ -356,16 +375,16 @@ impl AutomationResponse {
         condition_json: &str,
     ) -> Result<Self, ApiError> {
         Ok(Self {
-            id: automation.id.as_str().to_string(),
-            name: automation.name.clone(),
-            description: automation.description.clone(),
-            workflow_id: automation.workflow_id.as_str().to_string(),
-            status: automation.status.to_string(),
-            trigger_kind: automation.trigger_kind.to_string(),
-            interval_seconds: automation.interval_seconds,
+            id: automation.id().as_str().to_string(),
+            name: automation.name().to_string(),
+            description: automation.description().to_string(),
+            workflow_id: automation.workflow_id().as_str().to_string(),
+            status: automation.status().to_string(),
+            trigger_kind: automation.trigger_kind().to_string(),
+            interval_seconds: automation.interval_seconds(),
             triggers: triggers.iter().map(TriggerResponse::from).collect(),
             condition: json_from_string(condition_json)?,
-            job_input: json_from_string(&automation.job_input_json).unwrap_or_else(|_| json!({})),
+            job_input: json_from_string(automation.job_input_json()).unwrap_or_else(|_| json!({})),
         })
     }
 }
@@ -373,11 +392,11 @@ impl AutomationResponse {
 impl From<&AutomationTrigger> for TriggerResponse {
     fn from(trigger: &AutomationTrigger) -> Self {
         Self {
-            name: trigger.name.as_str().to_string(),
-            kind: trigger.kind.to_string(),
-            config: json_from_string(&trigger.config_json).unwrap_or_else(|_| json!({})),
-            plugin_id: trigger.plugin_id.clone(),
-            enabled: trigger.enabled,
+            name: trigger.name().as_str().to_string(),
+            kind: trigger.kind().to_string(),
+            config: json_from_string(trigger.config_json()).unwrap_or_else(|_| json!({})),
+            plugin_id: trigger.plugin_id().map(str::to_string),
+            enabled: trigger.enabled(),
         }
     }
 }
@@ -385,12 +404,12 @@ impl From<&AutomationTrigger> for TriggerResponse {
 impl From<&CustomTriggerPlugin> for TriggerPluginResponse {
     fn from(plugin: &CustomTriggerPlugin) -> Self {
         Self {
-            id: plugin.id.clone(),
-            name: plugin.name.clone(),
-            description: plugin.description.clone(),
-            runtime_image: plugin.runtime_image.clone(),
-            command: plugin.command.clone(),
-            config_schema: json_from_string(&plugin.config_schema_json)
+            id: plugin.id().to_string(),
+            name: plugin.name().to_string(),
+            description: plugin.description().to_string(),
+            runtime_image: plugin.runtime_image().to_string(),
+            command: plugin.command().to_vec(),
+            config_schema: json_from_string(plugin.config_schema_json())
                 .unwrap_or_else(|_| json!({})),
         }
     }
@@ -399,12 +418,12 @@ impl From<&CustomTriggerPlugin> for TriggerPluginResponse {
 impl WorkflowRunResponse {
     pub(crate) fn new(run: &WorkflowRun, step_runs: &[WorkflowStepRun]) -> Self {
         Self {
-            id: run.id.as_str().to_string(),
-            workflow_id: run.workflow_id.as_str().to_string(),
-            automation_id: run.automation_id.as_ref().map(|id| id.as_str().to_string()),
-            status: run.status.to_string(),
-            current_step_position: run.current_step_position,
-            created_at: run.created_at.clone(),
+            id: run.id().as_str().to_string(),
+            workflow_id: run.workflow_id().as_str().to_string(),
+            automation_id: run.automation_id().map(|id| id.as_str().to_string()),
+            status: run.status().to_string(),
+            current_step_position: run.current_step_position(),
+            created_at: run.created_at().to_string(),
             step_runs: step_runs
                 .iter()
                 .map(WorkflowStepRunResponse::from)
@@ -416,11 +435,11 @@ impl WorkflowRunResponse {
 impl From<&WorkflowStepRun> for WorkflowStepRunResponse {
     fn from(step_run: &WorkflowStepRun) -> Self {
         Self {
-            id: step_run.id.as_str().to_string(),
-            workflow_step_id: step_run.workflow_step_id.as_str().to_string(),
-            job_run_id: step_run.job_run_id.as_str().to_string(),
-            position: step_run.position,
-            status: step_run.status.to_string(),
+            id: step_run.id().as_str().to_string(),
+            workflow_step_id: step_run.workflow_step_id().as_str().to_string(),
+            job_run_id: step_run.job_run_id().as_str().to_string(),
+            position: step_run.position(),
+            status: step_run.status().to_string(),
         }
     }
 }
@@ -428,14 +447,14 @@ impl From<&WorkflowStepRun> for WorkflowStepRunResponse {
 impl From<&JobRun> for JobRunResponse {
     fn from(run: &JobRun) -> Self {
         Self {
-            id: run.id.as_str().to_string(),
-            job_definition_id: run.job_definition_id.as_str().to_string(),
-            status: status_label(run.status).to_string(),
-            execution_pool: run.execution_pool.as_str().to_string(),
-            host_group: run.execution_pool.as_str().to_string(),
-            attempt_count: run.attempt_count,
-            created_at: run.created_at.clone(),
-            input: json_from_string(&run.input_json).unwrap_or_else(|_| json!({})),
+            id: run.id().as_str().to_string(),
+            job_definition_id: run.job_definition_id().as_str().to_string(),
+            status: status_label(run.status()).to_string(),
+            execution_pool: run.execution_pool().as_str().to_string(),
+            host_group: run.execution_pool().as_str().to_string(),
+            attempt_count: run.attempt_count(),
+            created_at: run.created_at().to_string(),
+            input: json_from_string(run.input_json()).unwrap_or_else(|_| json!({})),
         }
     }
 }

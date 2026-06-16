@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs, path::Path, time::Duration};
+use std::{collections::BTreeMap, fs, path::Path, process::Stdio, time::Duration};
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
@@ -182,7 +182,7 @@ impl Runner for ProcessRunner {
         C: CancellationCheck + Sync,
     {
         if cancellation
-            .is_cancelled(&execution.run.id)
+            .is_cancelled(execution.run.id())
             .await
             .map_err(|error| ProcessRunnerError::CancellationCheck(error.to_string()))?
         {
@@ -190,17 +190,33 @@ impl Runner for ProcessRunner {
         }
 
         reset_artifact_dir()?;
-        let Some((program, args)) = execution.definition.command.split_first() else {
+        let Some((program, args)) = execution.definition.command().split_first() else {
             return Err(ProcessRunnerError::EmptyCommand);
         };
-        let output = Command::new(local_program(program))
+        let mut child = Command::new(local_program(program))
             .args(args)
-            .env("CAPSULET_INPUT_JSON", &execution.run.input_json)
-            .output()
-            .await?;
-        let mut logs = String::new();
-        logs.push_str(&String::from_utf8_lossy(&output.stdout));
-        logs.push_str(&String::from_utf8_lossy(&output.stderr));
+            .env("CAPSULET_INPUT_JSON", execution.run.input_json())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        loop {
+            if cancellation
+                .is_cancelled(execution.run.id())
+                .await
+                .map_err(|error| ProcessRunnerError::CancellationCheck(error.to_string()))?
+            {
+                child.start_kill()?;
+                let output = child.wait_with_output().await?;
+                let logs = combined_output_logs(&output);
+                return Ok(RunReport::cancelled(Some(logs)));
+            }
+            if child.try_wait()?.is_some() {
+                break;
+            }
+            sleep(POLL_INTERVAL).await;
+        }
+        let output = child.wait_with_output().await?;
+        let logs = combined_output_logs(&output);
         let artifacts = collect_local_artifacts()?;
         if output.status.success() {
             Ok(RunReport::succeeded_with_artifacts(Some(logs), artifacts))
@@ -212,6 +228,13 @@ impl Runner for ProcessRunner {
             })
         }
     }
+}
+
+fn combined_output_logs(output: &std::process::Output) -> String {
+    let mut logs = String::new();
+    logs.push_str(&String::from_utf8_lossy(&output.stdout));
+    logs.push_str(&String::from_utf8_lossy(&output.stderr));
+    logs
 }
 
 fn local_program(program: &str) -> &str {
@@ -300,7 +323,7 @@ impl Runner for StubRunner {
         C: CancellationCheck + Sync,
     {
         if cancellation
-            .is_cancelled(&execution.run.id)
+            .is_cancelled(execution.run.id())
             .await
             .map_err(|_| StubRunnerError::CancellationCheck)?
         {
@@ -489,7 +512,7 @@ impl KubernetesRunner {
         execution: &RunExecution,
     ) -> Result<Option<String>, KubernetesRunnerError> {
         let pods: Api<Pod> = Api::namespaced(self.client.clone(), &self.namespace);
-        let run_key = run_label_value(&execution.run.id);
+        let run_key = run_label_value(execution.run.id());
         let list = pods
             .list(&ListParams::default().labels(&format!("{RUN_LABEL}={run_key}")))
             .await?;
@@ -522,11 +545,11 @@ async fn wait_for_job(
     let deadline = Instant::now() + Duration::from_secs(timeout_seconds);
     loop {
         if cancellation
-            .is_cancelled(&execution.run.id)
+            .is_cancelled(execution.run.id())
             .await
             .map_err(|error| KubernetesRunnerError::CancellationCheck(error.to_string()))?
         {
-            cleanup_cancelled_job(jobs, pods, job_name, &execution.run.id).await;
+            cleanup_cancelled_job(jobs, pods, job_name, execution.run.id()).await;
             return Ok(RunOutcome::Cancelled);
         }
 
@@ -569,7 +592,11 @@ async fn cleanup_cancelled_job(
     job_name: &str,
     run_id: &JobRunId,
 ) {
-    let _ = jobs.delete(job_name, &DeleteParams::default()).await;
+    let delete_params = DeleteParams {
+        grace_period_seconds: Some(30),
+        ..DeleteParams::default()
+    };
+    let _ = jobs.delete(job_name, &delete_params).await;
 
     let run_key = run_label_value(run_id);
     let Ok(list) = pods
@@ -583,15 +610,15 @@ async fn cleanup_cancelled_job(
         let Some(name) = pod.metadata.name else {
             continue;
         };
-        let _ = pods.delete(&name, &DeleteParams::default()).await;
+        let _ = pods.delete(&name, &delete_params).await;
     }
 }
 
 /// Renders the Kubernetes Job for an execution.
 #[must_use]
 pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
-    let job_name = kubernetes_job_name(&execution.run.id);
-    let run_key = run_label_value(&execution.run.id);
+    let job_name = kubernetes_job_name(execution.run.id());
+    let run_key = run_label_value(execution.run.id());
     let mut labels = BTreeMap::new();
     labels.insert(APP_LABEL.to_string(), "capsulet".to_string());
     labels.insert(RUN_LABEL.to_string(), run_key);
@@ -636,11 +663,11 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
                     },
                     containers: vec![Container {
                         name: "main".to_string(),
-                        image: Some(execution.definition.runtime_image.clone()),
-                        command: Some(wrapped_command(&execution.definition.command)),
+                        image: Some(execution.definition.runtime_image().to_string()),
+                        command: Some(wrapped_command(execution.definition.command())),
                         env: Some(vec![EnvVar {
                             name: "CAPSULET_INPUT_JSON".to_string(),
-                            value: Some(execution.run.input_json.clone()),
+                            value: Some(execution.run.input_json().to_string()),
                             ..EnvVar::default()
                         }]),
                         resources: Some(execution.pool.resources.to_kubernetes()),

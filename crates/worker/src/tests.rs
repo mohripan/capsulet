@@ -55,7 +55,7 @@ impl WorkerStore for FakeStore {
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .find(|definition| definition.id == *id)
+            .find(|definition| definition.id() == id)
             .cloned())
     }
 
@@ -91,7 +91,7 @@ impl WorkerStore for FakeStore {
             .iter()
             .rev()
             .chain(queued.iter().rev())
-            .find(|run| run.id == *id)
+            .find(|run| run.id() == id)
             .cloned())
     }
 
@@ -105,11 +105,12 @@ impl WorkerStore for FakeStore {
         let Some(mut run) = self.find_run(id).await? else {
             return Ok(None);
         };
-        if run.status != capsulet_core::JobRunStatus::Running || run.attempt_count != attempt_count
+        if run.status() != capsulet_core::JobRunStatus::Running
+            || run.attempt_count() != attempt_count
         {
             return Ok(None);
         }
-        run.status = status;
+        run = run.with_status(status);
         self.save_run(&run).await?;
         Ok(Some(run))
     }
@@ -229,9 +230,9 @@ async fn stub_success_runner_completes_run() {
 
     assert_eq!(outcome, WorkerTickOutcome::RunSucceeded);
     let saved = store.saved_runs();
-    assert_eq!(saved[0].status, capsulet_core::JobRunStatus::Running);
-    assert_eq!(saved[0].attempt_count, 1);
-    assert_eq!(saved[1].status, capsulet_core::JobRunStatus::Succeeded);
+    assert_eq!(saved[0].status(), capsulet_core::JobRunStatus::Running);
+    assert_eq!(saved[0].attempt_count(), 1);
+    assert_eq!(saved[1].status(), capsulet_core::JobRunStatus::Succeeded);
 }
 
 #[tokio::test]
@@ -251,15 +252,26 @@ async fn stub_failure_runner_fails_run() {
 
     assert_eq!(outcome, WorkerTickOutcome::RunFailed);
     let saved = store.saved_runs();
-    assert_eq!(saved[0].status, capsulet_core::JobRunStatus::Running);
-    assert_eq!(saved[1].status, capsulet_core::JobRunStatus::Failed);
+    assert_eq!(saved[0].status(), capsulet_core::JobRunStatus::Running);
+    assert_eq!(saved[1].status(), capsulet_core::JobRunStatus::Failed);
 }
 
 #[tokio::test]
 async fn stub_failure_runner_schedules_retry_when_attempts_remain() {
-    let mut definition = JobDefinition::hello_python();
-    definition.retry_max_attempts = 2;
-    definition.retry_delay_seconds = 1;
+    let definition = JobDefinition::new(
+        JobDefinition::hello_python().id().clone(),
+        "Hello Python",
+        "python:3.12-slim",
+        vec![
+            "python".to_string(),
+            "-c".to_string(),
+            "print('hello from capsulet')".to_string(),
+        ],
+        "bundles/job_hello_python.tar.gz",
+        "{}",
+        capsulet_core::RetryPolicy::new(2, 1).expect("retry policy"),
+    )
+    .expect("retryable definition");
     let store = FakeStore::with_run(run()).with_definition(definition);
 
     let outcome = execute_one_queued_run(
@@ -275,14 +287,17 @@ async fn stub_failure_runner_schedules_retry_when_attempts_remain() {
 
     assert_eq!(outcome, WorkerTickOutcome::RunRetryScheduled);
     let saved = store.saved_runs();
-    assert_eq!(saved[0].status, capsulet_core::JobRunStatus::Running);
-    assert_eq!(saved[1].status, capsulet_core::JobRunStatus::RetryScheduled);
+    assert_eq!(saved[0].status(), capsulet_core::JobRunStatus::Running);
+    assert_eq!(
+        saved[1].status(),
+        capsulet_core::JobRunStatus::RetryScheduled
+    );
 }
 
 #[tokio::test]
 async fn cancelled_run_is_not_completed_by_runner() {
     let run = run();
-    let store = FakeStore::with_run(run.clone()).with_cancelled(run.id.clone());
+    let store = FakeStore::with_run(run.clone()).with_cancelled(run.id().clone());
 
     let outcome = execute_one_queued_run(
         &store,
@@ -297,7 +312,7 @@ async fn cancelled_run_is_not_completed_by_runner() {
 
     assert_eq!(outcome, WorkerTickOutcome::RunCancelled);
     let saved = store.saved_runs();
-    assert_eq!(saved[1].status, capsulet_core::JobRunStatus::Cancelled);
+    assert_eq!(saved[1].status(), capsulet_core::JobRunStatus::Cancelled);
 }
 
 #[tokio::test]
@@ -358,7 +373,7 @@ async fn stores_runner_artifacts() {
     assert_eq!(outcome, WorkerTickOutcome::RunSucceeded);
     let artifacts = store.saved_artifacts();
     assert_eq!(artifacts.len(), 1);
-    assert_eq!(artifacts[0].name, "stub-artifact.txt");
+    assert_eq!(artifacts[0].name(), "stub-artifact.txt");
 }
 
 #[tokio::test]
@@ -380,5 +395,5 @@ async fn offloads_large_logs_as_artifact() {
     assert_eq!(outcome, WorkerTickOutcome::RunSucceeded);
     let artifacts = store.saved_artifacts();
     assert_eq!(artifacts.len(), 1);
-    assert_eq!(artifacts[0].kind, capsulet_core::ArtifactObjectKind::Log);
+    assert_eq!(artifacts[0].kind(), capsulet_core::ArtifactObjectKind::Log);
 }

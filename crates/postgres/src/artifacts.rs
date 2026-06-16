@@ -28,17 +28,17 @@ impl PostgresStore {
                 checksum_sha256 = EXCLUDED.checksum_sha256
             ",
         )
-        .bind(artifact.id.as_str())
-        .bind(artifact.run_id.as_str())
-        .bind(artifact.attempt_id.as_ref().map(JobAttemptId::as_str))
-        .bind(&artifact.name)
-        .bind(&artifact.object_key)
-        .bind(&artifact.content_type)
-        .bind(i64::try_from(artifact.size_bytes).map_err(|_| {
+        .bind(artifact.id().as_str())
+        .bind(artifact.run_id().as_str())
+        .bind(artifact.attempt_id().map(JobAttemptId::as_str))
+        .bind(artifact.name())
+        .bind(artifact.object_key())
+        .bind(artifact.content_type())
+        .bind(i64::try_from(artifact.size_bytes()).map_err(|_| {
             PostgresStoreError::InvalidPersistedValue("artifact size is too large".into())
         })?)
-        .bind(&artifact.checksum_sha256)
-        .bind(artifact.kind.as_str())
+        .bind(artifact.checksum_sha256())
+        .bind(artifact.kind().as_str())
         .execute(&self.pool)
         .await?;
 

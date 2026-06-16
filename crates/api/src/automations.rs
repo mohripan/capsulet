@@ -6,8 +6,9 @@ use axum::{
     http::StatusCode,
 };
 use capsulet_core::{
-    Automation, AutomationId, AutomationStatus, AutomationTrigger, AutomationTriggerKind,
-    ConditionExpr, CustomTriggerPlugin, TriggerKind, TriggerName, WorkflowId,
+    Automation, AutomationId, AutomationSettings, AutomationStatus, AutomationTrigger,
+    AutomationTriggerKind, ConditionExpr, CustomTriggerPlugin, TriggerKind, TriggerName,
+    WorkflowId,
 };
 use capsulet_storage::ObjectStore;
 use serde_json::{Value, json};
@@ -40,7 +41,7 @@ where
         .map_err(ApiError::store)?;
     state
         .store
-        .replace_automation_triggers(&automation.id, &build.triggers, &build.condition_json)
+        .replace_automation_triggers(automation.id(), &build.triggers, &build.condition_json)
         .await
         .map_err(ApiError::store)?;
 
@@ -85,7 +86,7 @@ where
         .map_err(ApiError::store)?;
     state
         .store
-        .replace_automation_triggers(&automation.id, &build.triggers, &build.condition_json)
+        .replace_automation_triggers(automation.id(), &build.triggers, &build.condition_json)
         .await
         .map_err(ApiError::store)?;
 
@@ -258,30 +259,32 @@ where
     let condition = request.condition.unwrap_or_else(|| {
         let trigger_name = triggers
             .first()
-            .map_or("manual", |trigger| trigger.name.as_str());
+            .map_or("manual", |trigger| trigger.name().as_str());
         json!({ "trigger": trigger_name })
     });
     validate_condition_json(&condition, &triggers)?;
 
     Ok(AutomationBuild {
-        automation: Automation {
-            id: automation_id,
-            name: request.name,
-            description: request.description.unwrap_or_default(),
+        automation: Automation::new(
+            automation_id,
+            request.name,
+            request.description.unwrap_or_default(),
             workflow_id,
-            job_input_json: valid_json_object_string(
+            valid_json_object_string(
                 &request.job_input.unwrap_or_else(|| json!({})),
                 "automation job input",
             )?,
-            status: request
-                .status
-                .as_deref()
-                .map(parse_automation_status)
-                .transpose()?
-                .unwrap_or(AutomationStatus::Enabled),
-            trigger_kind,
-            interval_seconds: inferred_interval_seconds,
-        },
+            AutomationSettings::new(
+                request
+                    .status
+                    .as_deref()
+                    .map(parse_automation_status)
+                    .transpose()?
+                    .unwrap_or(AutomationStatus::Enabled),
+                trigger_kind,
+                inferred_interval_seconds,
+            ),
+        ),
         triggers,
         condition_json: condition.to_string(),
     })
@@ -364,14 +367,14 @@ fn build_automation_triggers(
         "{}".to_string()
     };
 
-    Ok(vec![AutomationTrigger {
-        automation_id: automation_id.clone(),
-        name: TriggerName::new(name).map_err(ApiError::validation)?,
+    Ok(vec![AutomationTrigger::new(
+        automation_id.clone(),
+        TriggerName::new(name).map_err(ApiError::validation)?,
         kind,
         config_json,
-        plugin_id: None,
-        enabled: true,
-    }])
+        None,
+        true,
+    )])
 }
 
 async fn validate_custom_plugin_references<S, O>(
@@ -383,10 +386,10 @@ where
     O: ObjectStore,
 {
     for trigger in triggers {
-        if trigger.kind != TriggerKind::Custom {
+        if trigger.kind() != TriggerKind::Custom {
             continue;
         }
-        let Some(plugin_id) = &trigger.plugin_id else {
+        let Some(plugin_id) = trigger.plugin_id() else {
             return Err(ApiError::Validation(
                 "custom triggers require plugin_id".to_string(),
             ));
@@ -398,7 +401,7 @@ where
             .map_err(ApiError::store)?
             .is_none()
         {
-            return Err(ApiError::TriggerPluginNotFound(plugin_id.clone()));
+            return Err(ApiError::TriggerPluginNotFound(plugin_id.to_string()));
         }
     }
     Ok(())
@@ -421,14 +424,14 @@ fn build_trigger(
     }
     validate_builtin_trigger_config(kind, &request.config)?;
 
-    Ok(AutomationTrigger {
-        automation_id: automation_id.clone(),
-        name: TriggerName::new(request.name.clone()).map_err(ApiError::validation)?,
+    Ok(AutomationTrigger::new(
+        automation_id.clone(),
+        TriggerName::new(request.name.clone()).map_err(ApiError::validation)?,
         kind,
-        config_json: request.config.to_string(),
-        plugin_id: request.plugin_id.clone(),
-        enabled: request.enabled.unwrap_or(true),
-    })
+        request.config.to_string(),
+        request.plugin_id.clone(),
+        request.enabled.unwrap_or(true),
+    ))
 }
 
 fn validate_schedule_config(config: &Value) -> Result<(), ApiError> {
@@ -498,10 +501,10 @@ where
     O: ObjectStore,
 {
     for trigger in triggers {
-        if trigger.kind != TriggerKind::Custom {
+        if trigger.kind() != TriggerKind::Custom {
             continue;
         }
-        let Some(plugin_id) = trigger.plugin_id.as_deref() else {
+        let Some(plugin_id) = trigger.plugin_id() else {
             continue;
         };
         let Some(plugin) = state
@@ -513,8 +516,8 @@ where
             continue;
         };
         validate_contract_fields(
-            &json_from_string(&plugin.config_schema_json)?,
-            &json_from_string(&trigger.config_json)?,
+            &json_from_string(plugin.config_schema_json())?,
+            &json_from_string(trigger.config_json())?,
             "custom trigger",
         )?;
     }
@@ -549,7 +552,7 @@ fn validate_condition_json(
     let expression = condition_expr_from_json(condition)?;
     let trigger_names = triggers
         .iter()
-        .map(|trigger| trigger.name.clone())
+        .map(|trigger| trigger.name().clone())
         .collect::<HashSet<_>>();
     expression
         .validate_references(&trigger_names)
@@ -603,7 +606,7 @@ where
 {
     let (triggers, condition_json) = state
         .store
-        .list_automation_triggers(&automation.id)
+        .list_automation_triggers(automation.id())
         .await
         .map_err(ApiError::store)?;
     if triggers.is_empty() {
@@ -617,27 +620,27 @@ where
 
 fn legacy_triggers(automation: &Automation) -> Result<Vec<AutomationTrigger>, ApiError> {
     let trigger_name = legacy_trigger_name(automation);
-    let kind = if automation.trigger_kind == AutomationTriggerKind::Interval {
+    let kind = if automation.trigger_kind() == AutomationTriggerKind::Interval {
         TriggerKind::Schedule
     } else {
         TriggerKind::Manual
     };
-    let config_json = automation.interval_seconds.map_or_else(
+    let config_json = automation.interval_seconds().map_or_else(
         || "{}".to_string(),
         |seconds| json!({ "interval_seconds": seconds }).to_string(),
     );
-    Ok(vec![AutomationTrigger {
-        automation_id: automation.id.clone(),
-        name: TriggerName::new(trigger_name).map_err(ApiError::validation)?,
+    Ok(vec![AutomationTrigger::new(
+        automation.id().clone(),
+        TriggerName::new(trigger_name).map_err(ApiError::validation)?,
         kind,
         config_json,
-        plugin_id: None,
-        enabled: true,
-    }])
+        None,
+        true,
+    )])
 }
 
 fn legacy_trigger_name(automation: &Automation) -> &'static str {
-    if automation.trigger_kind == AutomationTriggerKind::Interval {
+    if automation.trigger_kind() == AutomationTriggerKind::Interval {
         "schedule"
     } else {
         "manual"
@@ -750,15 +753,15 @@ fn build_trigger_plugin(
         ));
     }
 
-    Ok(CustomTriggerPlugin {
-        id: request.id,
-        name: request.name,
-        description: request.description.unwrap_or_default(),
-        runtime_image: request.runtime_image,
-        command: request.command,
-        config_schema_json: request
+    Ok(CustomTriggerPlugin::new(
+        request.id,
+        request.name,
+        request.description.unwrap_or_default(),
+        request.runtime_image,
+        request.command,
+        request
             .config_schema
             .unwrap_or_else(|| json!({}))
             .to_string(),
-    })
+    ))
 }

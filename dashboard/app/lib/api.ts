@@ -2,6 +2,7 @@ export type RunStatus =
   | "queued"
   | "leased"
   | "running"
+  | "removed"
   | "succeeded"
   | "failed"
   | "cancelled"
@@ -21,6 +22,23 @@ export type JobRun = {
 
 export type LogsResponse = {
   run_id: string;
+  logs: string;
+  object_log_available: boolean;
+};
+
+export type WorkflowRunLogsResponse = {
+  workflow_run_id: string;
+  workflow_id: string;
+  status: WorkflowRun["status"];
+  entries: WorkflowRunLogEntry[];
+};
+
+export type WorkflowRunLogEntry = {
+  step_run_id: string;
+  workflow_step_id: string;
+  job_run_id: string;
+  position: number;
+  status: WorkflowRun["status"];
   logs: string;
   object_log_available: boolean;
 };
@@ -179,7 +197,7 @@ export type WorkflowRun = {
   id: string;
   workflow_id: string;
   automation_id: string | null;
-  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+  status: "queued" | "running" | "removed" | "succeeded" | "failed" | "cancelled" | "timed_out";
   current_step_position: number;
   created_at: string;
   step_runs: WorkflowStepRun[];
@@ -190,7 +208,7 @@ export type WorkflowStepRun = {
   workflow_step_id: string;
   job_run_id: string;
   position: number;
-  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+  status: "queued" | "running" | "removed" | "succeeded" | "failed" | "cancelled" | "timed_out";
 };
 
 export class CapsuletApiError extends Error {
@@ -373,6 +391,24 @@ export async function getRun(id: string) {
 
 export async function getRunLogs(id: string) {
   return apiFetch<LogsResponse>(`/v1/jobs/runs/${encodeURIComponent(id)}/logs`);
+}
+
+export async function getWorkflowRunLogs(id: string) {
+  return apiFetch<WorkflowRunLogsResponse>(`/v1/workflow-runs/${encodeURIComponent(id)}/logs`);
+}
+
+export async function removeWorkflowRun(id: string) {
+  return apiFetch<WorkflowRun>(`/v1/workflow-runs/${encodeURIComponent(id)}/remove`, {
+    method: "POST",
+    body: "{}"
+  });
+}
+
+export async function cancelWorkflowRun(id: string) {
+  return apiFetch<WorkflowRun>(`/v1/workflow-runs/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    body: "{}"
+  });
 }
 
 export async function listArtifacts(id: string) {

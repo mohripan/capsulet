@@ -18,6 +18,10 @@ pub(crate) enum ApiError {
     UnknownExecutionPool(String),
     #[error("workflow not found: {0}")]
     WorkflowNotFound(String),
+    #[error("workflow run not found: {0}")]
+    WorkflowRunNotFound(String),
+    #[error("invalid workflow run transition: {0}")]
+    InvalidWorkflowRunTransition(String),
     #[error("automation not found: {0}")]
     AutomationNotFound(String),
     #[error("trigger plugin not found: {0}")]
@@ -51,11 +55,12 @@ impl ApiError {
 
     const fn status_code(&self) -> StatusCode {
         match self {
-            Self::Validation(_) => StatusCode::BAD_REQUEST,
+            Self::Validation(_) | Self::InvalidWorkflowRunTransition(_) => StatusCode::BAD_REQUEST,
             Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             Self::WorkflowNotFound(_)
+            | Self::WorkflowRunNotFound(_)
             | Self::AutomationNotFound(_)
             | Self::TriggerPluginNotFound(_)
             | Self::RunNotFound(_)
@@ -72,6 +77,8 @@ impl ApiError {
             Self::UnknownJobDefinition(_) => "unknown_job_definition",
             Self::UnknownExecutionPool(_) => "unknown_execution_pool",
             Self::WorkflowNotFound(_) => "workflow_not_found",
+            Self::WorkflowRunNotFound(_) => "workflow_run_not_found",
+            Self::InvalidWorkflowRunTransition(_) => "invalid_workflow_run_transition",
             Self::AutomationNotFound(_) => "automation_not_found",
             Self::TriggerPluginNotFound(_) => "trigger_plugin_not_found",
             Self::RunNotFound(_) => "job_run_not_found",
