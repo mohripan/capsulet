@@ -200,8 +200,8 @@ Initial fields:
 - webhook triggers
 - dependency triggers
 - condition builder
-- DAG branching
-- fan-out/fan-in
+- DAG branching. See [Workflow DAG Graph Plan](workflow-dag-graph-plan.md).
+- fan-out/fan-in. See [Workflow DAG Graph Plan](workflow-dag-graph-plan.md).
 - artifact passing between steps
 - parameter schemas
 - authentication and RBAC

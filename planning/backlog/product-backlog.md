@@ -38,6 +38,7 @@
 - Add workflow run detail page with step-level job links. Planned for Sprint 010.
 - Add edit/delete management controls for authoring resources. Planned for Sprint 010.
 - Add simple condition tree. Deferred until after linear workflow MVP.
+- Add workflow DAG graph engine with cycle detection, topological sort, and ready-step discovery. Deferred until after linear workflow MVP. See `docs/design/workflow-dag-graph-plan.md`.
 
 ## Execution Pools
 
