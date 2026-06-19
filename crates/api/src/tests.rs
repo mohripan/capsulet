@@ -77,6 +77,10 @@ impl ObjectStore for FakeObjectStore {
 impl ApiStore for FakeStore {
     type Error = String;
 
+    async fn ping(&self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
     async fn job_definition_exists(&self, id: &JobDefinitionId) -> Result<bool, Self::Error> {
         Ok(self
             .known_definitions
@@ -464,6 +468,33 @@ impl ApiStore for FakeStore {
         Ok(Some(run.clone()))
     }
 
+    async fn resume_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error> {
+        let mut runs = self
+            .workflow_runs
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let Some(run) = runs.iter_mut().find(|run| run.id() == workflow_run_id) else {
+            return Ok(None);
+        };
+        if matches!(
+            run.status(),
+            WorkflowRunStatus::Failed | WorkflowRunStatus::TimedOut
+        ) {
+            *run = run.clone().with_status(WorkflowRunStatus::Running);
+            self.workflow_step_runs
+                .lock()
+                .map_err(|error| error.to_string())?
+                .retain(|step| {
+                    step.workflow_run_id() != workflow_run_id
+                        || step.status() == WorkflowRunStatus::Succeeded
+                });
+        }
+        Ok(Some(run.clone()))
+    }
+
     async fn list_workflow_step_runs(
         &self,
         workflow_run_id: &WorkflowRunId,
@@ -644,6 +675,82 @@ async fn response_json(response: axum::response::Response) -> Value {
         .expect("collect response")
         .to_bytes();
     serde_json::from_slice(&bytes).expect("json response")
+}
+
+#[tokio::test]
+async fn creates_and_returns_workflow_dag_dependencies() {
+    let app = test_app(FakeStore::with_definition("job_graph"));
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/workflows")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({
+                    "id": "workflow_graph",
+                    "name": "Graph",
+                    "steps": [
+                        { "id": "root_a", "name": "A", "job_definition_id": "job_graph", "execution_pool": "mini" },
+                        { "id": "root_b", "name": "B", "job_definition_id": "job_graph", "execution_pool": "mini" },
+                        { "id": "merge", "name": "Merge", "job_definition_id": "job_graph", "execution_pool": "mini" }
+                    ],
+                    "dependencies": [
+                        { "from_step_id": "root_a", "to_step_id": "merge" },
+                        { "from_step_id": "root_b", "to_step_id": "merge" }
+                    ]
+                }).to_string())).expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    assert_eq!(
+        response_json(response).await["dependencies"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/workflows/workflow_graph")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response_json(response).await["dependencies"][1]["to_step_id"],
+        "merge"
+    );
+}
+
+#[tokio::test]
+async fn rejects_cyclic_workflow_dependencies() {
+    let app = test_app(FakeStore::with_definition("job_graph"));
+    let response = app.oneshot(
+        Request::builder().method(Method::POST).uri("/v1/workflows").header("content-type", "application/json")
+            .body(Body::from(json!({
+                "name": "Cycle",
+                "steps": [
+                    { "id": "a", "name": "A", "job_definition_id": "job_graph", "execution_pool": "mini" },
+                    { "id": "b", "name": "B", "job_definition_id": "job_graph", "execution_pool": "mini" }
+                ],
+                "dependencies": [
+                    { "from_step_id": "a", "to_step_id": "b" },
+                    { "from_step_id": "b", "to_step_id": "a" }
+                ]
+            }).to_string())).expect("request")
+    ).await.expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    assert!(
+        response_json(response).await["message"]
+            .as_str()
+            .unwrap()
+            .contains("cycle")
+    );
 }
 
 #[tokio::test]

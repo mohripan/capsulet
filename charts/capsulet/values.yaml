@@ -169,6 +169,7 @@ worker:
     logLimitBytes: 65536
     loop: true
     pollSeconds: 5
+    leaseSeconds: 60
     stubArtifactText: ""
   resources:
     requests:

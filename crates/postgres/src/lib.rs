@@ -60,6 +60,18 @@ impl PostgresStore {
         MIGRATOR.run(&self.pool).await?;
         Ok(())
     }
+
+    /// Verifies that the database can serve a query.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when `PostgreSQL` is unavailable.
+    pub async fn ping(&self) -> Result<(), PostgresStoreError> {
+        sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
 
 /// `PostgreSQL` adapter error.
@@ -73,4 +85,6 @@ pub enum PostgresStoreError {
     InvalidPersistedValue(String),
     #[error("job attempt count is too large to persist")]
     AttemptOverflow,
+    #[error("invalid workflow graph: {0}")]
+    WorkflowGraph(#[from] capsulet_core::WorkflowGraphError),
 }

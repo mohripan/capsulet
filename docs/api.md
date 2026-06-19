@@ -57,10 +57,12 @@ docker exec -i capsulet-postgres psql -U capsulet -d capsulet -c "INSERT INTO jo
 
 ## Endpoints
 
-Health:
+Liveness, readiness, and the backward-compatible health alias:
 
 ```sh
 curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8080/livez
+curl http://127.0.0.1:8080/readyz
 ```
 
 List execution pools:
@@ -149,20 +151,28 @@ Cancel a queued or running run:
 curl -X POST http://127.0.0.1:8080/v1/jobs/runs/run_123/cancel
 ```
 
-Create a two-step linear workflow:
+Create a fan-out/fan-in workflow DAG:
 
 ```sh
 curl -X POST http://127.0.0.1:8080/v1/workflows \
   -H "content-type: application/json" \
   -d '{
-    "name":"Hourly email workflow",
-    "description":"Send an email and write a follow-up artifact",
+    "id":"workflow_daily_report",
+    "name":"Daily report",
+    "description":"Extract sources in parallel, then merge them",
     "steps":[
-      {"name":"Send email","job_definition_id":"job_email","execution_pool":"mini"},
-      {"name":"Follow-up","job_definition_id":"job_report","execution_pool":"mini"}
+      {"id":"extract_customers","name":"Extract customers","job_definition_id":"job_customers","execution_pool":"mini"},
+      {"id":"extract_orders","name":"Extract orders","job_definition_id":"job_orders","execution_pool":"mini"},
+      {"id":"merge_reports","name":"Merge reports","job_definition_id":"job_merge","execution_pool":"mini"}
+    ],
+    "dependencies":[
+      {"from_step_id":"extract_customers","to_step_id":"merge_reports"},
+      {"from_step_id":"extract_orders","to_step_id":"merge_reports"}
     ]
   }'
 ```
+
+Every dependency endpoint must reference a step in the same workflow. Duplicate edges, self-dependencies, unknown endpoints, and cycles return `400 validation_error`. Omitting `dependencies` preserves the legacy behavior by creating a position-ordered chain; sending an empty array creates independent root nodes. Workflow responses always include the persisted dependency list. Replace a definition with `PUT /v1/workflows/{id}` using the same request shape.
 
 List and fetch workflows:
 
@@ -207,6 +217,14 @@ curl http://127.0.0.1:8080/v1/workflow-runs
 ```
 
 Each workflow run includes `step_runs`. A step run exposes its `position`, `status`, `workflow_step_id`, and underlying `job_run_id`; use that job run ID with the existing logs and artifacts endpoints.
+
+Resume a failed or timed-out workflow from successful step checkpoints:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/workflow-runs/workflow_run_123/resume
+```
+
+Successful step runs and their artifacts are preserved. Unsuccessful attempts are removed, and the scheduler creates only graph nodes whose prerequisites are satisfied and which do not already have a successful checkpoint.
 
 Visible run states are:
 

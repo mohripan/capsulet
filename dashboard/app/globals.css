@@ -2813,6 +2813,115 @@ select {
   }
 }
 
+.dagStepEditor {
+  display: grid;
+  gap: 12px;
+  max-height: 650px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.dagStep {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(7, 17, 31, 0.52);
+}
+
+.dagStep legend,
+.dagLayerLabel {
+  padding: 0 6px;
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dependencyPicker {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dependencyPicker > label {
+  display: flex;
+  min-height: 28px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--soft);
+}
+
+.dependencyPicker input {
+  width: 16px;
+  min-height: 16px;
+}
+
+.textButton {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.dagCard { min-height: 520px; }
+
+.dagCanvas {
+  display: flex;
+  min-height: 360px;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(rgba(156, 189, 222, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(156, 189, 222, 0.05) 1px, transparent 1px), #071526;
+  background-size: 24px 24px;
+}
+
+.dagLayer {
+  position: relative;
+  display: flex;
+  min-width: 178px;
+  flex: 1 0 178px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding: 26px 20px 10px;
+}
+
+.dagLayerLabel { position: absolute; top: 0; left: 14px; }
+
+.dagNode {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(32, 214, 210, 0.34);
+  border-radius: 8px;
+  background: #0f2034;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+  color: var(--cyan);
+}
+
+.dagNode strong,
+.dagNode small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dagNode strong { color: var(--text); font-size: 12px; }
+.dagNode small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.dagRail { position: absolute; top: 50%; right: -10px; z-index: 2; color: var(--cyan); transform: translateY(-50%); }
+
 @media (max-width: 760px) {
   .shell {
     display: block;

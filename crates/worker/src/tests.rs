@@ -6,7 +6,10 @@ use std::{
 use capsulet_core::{
     ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
 };
-use capsulet_runner::{ExecutionPoolConfig, ExecutionPoolsConfig, PoolResources, StubRunner};
+use capsulet_runner::{
+    CancellationCheck, ExecutionPoolConfig, ExecutionPoolsConfig, PoolResources, RunExecution,
+    RunReport, Runner, StubRunner,
+};
 use capsulet_storage::FilesystemObjectStore;
 
 use super::{WorkerStore, WorkerTickOutcome, execute_one_queued_run};
@@ -19,6 +22,7 @@ struct FakeStore {
     logs: Arc<Mutex<Vec<JobRunLog>>>,
     artifacts: Arc<Mutex<Vec<JobArtifact>>>,
     cancelled: Arc<Mutex<Vec<capsulet_core::JobRunId>>>,
+    heartbeat_count: Arc<Mutex<u32>>,
 }
 
 #[async_trait::async_trait]
@@ -123,6 +127,19 @@ impl WorkerStore for FakeStore {
         Ok(0)
     }
 
+    async fn heartbeat_run(
+        &self,
+        _id: &capsulet_core::JobRunId,
+        _worker_id: &str,
+        _lease_seconds: i64,
+    ) -> Result<bool, Self::Error> {
+        *self
+            .heartbeat_count
+            .lock()
+            .map_err(|error| error.to_string())? += 1;
+        Ok(true)
+    }
+
     async fn is_run_cancelled(&self, id: &capsulet_core::JobRunId) -> Result<bool, Self::Error> {
         Ok(self
             .cancelled
@@ -142,6 +159,7 @@ impl FakeStore {
             logs: Arc::default(),
             artifacts: Arc::default(),
             cancelled: Arc::default(),
+            heartbeat_count: Arc::default(),
         }
     }
 
@@ -166,6 +184,30 @@ impl FakeStore {
 
     fn saved_artifacts(&self) -> Vec<JobArtifact> {
         self.artifacts.lock().expect("artifacts mutex").clone()
+    }
+
+    fn heartbeat_count(&self) -> u32 {
+        *self.heartbeat_count.lock().expect("heartbeat mutex")
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SlowRunner;
+
+#[async_trait::async_trait]
+impl Runner for SlowRunner {
+    type Error = std::convert::Infallible;
+
+    async fn execute<C>(
+        &self,
+        _execution: &RunExecution,
+        _cancellation: &C,
+    ) -> Result<RunReport, Self::Error>
+    where
+        C: CancellationCheck + Sync,
+    {
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+        Ok(RunReport::succeeded(None))
     }
 }
 
@@ -195,6 +237,25 @@ fn run() -> JobRun {
         JobDefinitionId::new("job_hello_python").expect("valid definition id"),
         ExecutionPoolName::new("mini").expect("valid pool"),
     )
+}
+
+#[tokio::test]
+async fn renews_lease_while_runner_is_active() {
+    let store = FakeStore::with_run(run());
+
+    let outcome = execute_one_queued_run(
+        &store,
+        &SlowRunner,
+        &object_store(),
+        &pools(),
+        "worker-test",
+        3,
+    )
+    .await
+    .expect("slow execution succeeds");
+
+    assert_eq!(outcome, WorkerTickOutcome::RunSucceeded);
+    assert!(store.heartbeat_count() >= 3);
 }
 
 #[tokio::test]

@@ -4,7 +4,7 @@ use capsulet_core::{
     ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationSettings, AutomationStatus,
     AutomationTriggerKind, ExecutionPoolName, JobArtifact, JobDefinition, JobRun, JobRunId,
     JobRunLog, JobRunLogRepository, JobRunRepository, WorkflowDefinition, WorkflowId,
-    WorkflowStatus,
+    WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 
 use super::{PostgresStore, rows::parse_status};
@@ -13,6 +13,72 @@ fn database_url() -> Option<String> {
     std::env::var("CAPSULET_TEST_DATABASE_URL")
         .or_else(|_| std::env::var("DATABASE_URL"))
         .ok()
+}
+
+#[tokio::test]
+async fn saves_loads_and_cascades_workflow_dependencies_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+    let job = JobDefinition::hello_python();
+    store
+        .upsert_job_definition(&job)
+        .await
+        .expect("save job definition");
+    let workflow_id = WorkflowId::new(unique_id("workflow_dag_test")).expect("workflow id");
+    let root_a = WorkflowStepId::new(unique_id("dag_root_a")).expect("step id");
+    let root_b = WorkflowStepId::new(unique_id("dag_root_b")).expect("step id");
+    let merge = WorkflowStepId::new(unique_id("dag_merge")).expect("step id");
+    let make_step = |id: WorkflowStepId, position, name| {
+        WorkflowStep::new(
+            id,
+            workflow_id.clone(),
+            position,
+            name,
+            job.id().clone(),
+            ExecutionPoolName::new("mini").expect("pool"),
+        )
+    };
+    let workflow = WorkflowDefinition::with_dependencies(
+        workflow_id.clone(),
+        "DAG",
+        "",
+        WorkflowStatus::Enabled,
+        vec![
+            make_step(root_a.clone(), 1, "A"),
+            make_step(root_b.clone(), 2, "B"),
+            make_step(merge.clone(), 3, "Merge"),
+        ],
+        vec![
+            WorkflowStepDependency::new(root_a, merge.clone()),
+            WorkflowStepDependency::new(root_b, merge),
+        ],
+    );
+    store.upsert_workflow(&workflow).await.expect("save DAG");
+    let persisted = store
+        .find_workflow(&workflow_id)
+        .await
+        .expect("load DAG")
+        .expect("workflow exists");
+    assert_eq!(persisted.dependencies(), workflow.dependencies());
+
+    sqlx::query("DELETE FROM workflow_definitions WHERE id = $1")
+        .bind(workflow_id.as_str())
+        .execute(store.pool())
+        .await
+        .expect("delete workflow");
+    let edge_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM workflow_step_dependencies WHERE workflow_id = $1",
+    )
+    .bind(workflow_id.as_str())
+    .fetch_one(store.pool())
+    .await
+    .expect("count edges");
+    assert_eq!(edge_count, 0);
 }
 
 fn unique_id(prefix: &str) -> String {

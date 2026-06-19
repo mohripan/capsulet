@@ -243,6 +243,7 @@ name = "capsulet-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "thiserror",
 ]
 
 [[package]]
@@ -282,6 +283,7 @@ dependencies = [
 name = "capsulet-scheduler"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "capsulet-core",
  "capsulet-postgres",
  "tokio",
@@ -303,6 +305,7 @@ name = "capsulet-worker"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "capsulet-core",
  "capsulet-postgres",
  "capsulet-runner",

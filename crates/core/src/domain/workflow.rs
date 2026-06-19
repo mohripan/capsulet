@@ -97,6 +97,32 @@ pub struct WorkflowStep {
     execution_pool: ExecutionPoolName,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WorkflowStepDependency {
+    from_step_id: WorkflowStepId,
+    to_step_id: WorkflowStepId,
+}
+
+impl WorkflowStepDependency {
+    #[must_use]
+    pub const fn new(from_step_id: WorkflowStepId, to_step_id: WorkflowStepId) -> Self {
+        Self {
+            from_step_id,
+            to_step_id,
+        }
+    }
+
+    #[must_use]
+    pub const fn from_step_id(&self) -> &WorkflowStepId {
+        &self.from_step_id
+    }
+
+    #[must_use]
+    pub const fn to_step_id(&self) -> &WorkflowStepId {
+        &self.to_step_id
+    }
+}
+
 impl WorkflowStep {
     #[must_use]
     pub fn new(
@@ -155,6 +181,7 @@ pub struct WorkflowDefinition {
     description: String,
     status: WorkflowStatus,
     steps: Vec<WorkflowStep>,
+    dependencies: Vec<WorkflowStepDependency>,
 }
 
 impl WorkflowDefinition {
@@ -166,12 +193,36 @@ impl WorkflowDefinition {
         status: WorkflowStatus,
         steps: Vec<WorkflowStep>,
     ) -> Self {
+        let dependencies = steps
+            .windows(2)
+            .map(|pair| WorkflowStepDependency::new(pair[0].id().clone(), pair[1].id().clone()))
+            .collect();
         Self {
             id,
             name: name.into(),
             description: description.into(),
             status,
             steps,
+            dependencies,
+        }
+    }
+
+    #[must_use]
+    pub fn with_dependencies(
+        id: WorkflowId,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        status: WorkflowStatus,
+        steps: Vec<WorkflowStep>,
+        dependencies: Vec<WorkflowStepDependency>,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            description: description.into(),
+            status,
+            steps,
+            dependencies,
         }
     }
 
@@ -198,6 +249,11 @@ impl WorkflowDefinition {
     #[must_use]
     pub fn steps(&self) -> &[WorkflowStep] {
         &self.steps
+    }
+
+    #[must_use]
+    pub fn dependencies(&self) -> &[WorkflowStepDependency] {
+        &self.dependencies
     }
 }
 

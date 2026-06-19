@@ -16,6 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 async-trait.workspace = true
+axum.workspace = true
 capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-runner = { path = "../runner" }

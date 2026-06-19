@@ -15,6 +15,7 @@ services:
       retries: 10
     volumes:
       - capsulet-postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   minio:
     image: minio/minio:latest
@@ -28,13 +29,19 @@ services:
       - "9001:9001"
     volumes:
       - capsulet-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   minio-init:
     image: minio/mc:latest
     container_name: capsulet-minio-init
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
     entrypoint: /bin/sh
     command:
       - -c
@@ -55,6 +62,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   api:
     build:
@@ -88,6 +96,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
   worker:
     build:
@@ -109,6 +118,8 @@ services:
       CAPSULET_WORKER_ID: worker-compose
       CAPSULET_WORKER_LOOP: "true"
       CAPSULET_WORKER_POLL_SECONDS: "2"
+      CAPSULET_WORKER_LEASE_SECONDS: "60"
+      CAPSULET_WORKER_HEALTH_ADDR: 0.0.0.0:8081
       CAPSULET_RUNNER_MODE: process
       CAPSULET_STUB_RUNNER_LOGS: |
         Docker Compose stub runner completed the job.
@@ -125,6 +136,12 @@ services:
       CAPSULET_OBJECT_STORAGE_PATH_STYLE: "true"
       CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID: capsulet
       CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY: capsuletpassword
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   scheduler:
     build:
@@ -143,6 +160,13 @@ services:
       CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
       CAPSULET_SCHEDULER_LOOP: "true"
       CAPSULET_SCHEDULER_POLL_SECONDS: "3"
+      CAPSULET_SCHEDULER_HEALTH_ADDR: 0.0.0.0:8082
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   evaluator:
     build:
@@ -167,6 +191,12 @@ services:
       CAPSULET_DASHBOARD_API_URL: http://api:8080
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
 volumes:
   capsulet-postgres-data:

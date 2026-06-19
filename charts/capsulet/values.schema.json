@@ -197,7 +197,8 @@
             "executionNamespace": { "type": "string" },
             "logLimitBytes": { "type": "integer", "minimum": 1 },
             "loop": { "type": "boolean" },
-            "pollSeconds": { "type": "integer", "minimum": 1 }
+            "pollSeconds": { "type": "integer", "minimum": 1 },
+            "leaseSeconds": { "type": "integer", "minimum": 2 }
           }
         }
       }

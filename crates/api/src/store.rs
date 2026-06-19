@@ -12,6 +12,8 @@ use capsulet_postgres::{PostgresStore, PostgresStoreError};
 pub trait ApiStore: Clone + Send + Sync + 'static {
     type Error: Display + Send + Sync + 'static;
 
+    async fn ping(&self) -> Result<(), Self::Error>;
+
     async fn job_definition_exists(&self, id: &JobDefinitionId) -> Result<bool, Self::Error>;
     async fn upsert_job_definition(&self, definition: &JobDefinition) -> Result<(), Self::Error>;
     async fn list_job_definitions(&self, limit: i64) -> Result<Vec<JobDefinition>, Self::Error>;
@@ -77,6 +79,10 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         workflow_run_id: &WorkflowRunId,
     ) -> Result<Option<WorkflowRun>, Self::Error>;
+    async fn resume_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error>;
     async fn list_workflow_step_runs(
         &self,
         workflow_run_id: &WorkflowRunId,
@@ -98,6 +104,10 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
 #[async_trait]
 impl ApiStore for PostgresStore {
     type Error = PostgresStoreError;
+
+    async fn ping(&self) -> Result<(), Self::Error> {
+        self.ping().await
+    }
 
     async fn job_definition_exists(&self, id: &JobDefinitionId) -> Result<bool, Self::Error> {
         self.job_definition_exists(id).await
@@ -237,6 +247,13 @@ impl ApiStore for PostgresStore {
         workflow_run_id: &WorkflowRunId,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
         self.cancel_running_workflow_run(workflow_run_id).await
+    }
+
+    async fn resume_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, Self::Error> {
+        self.resume_workflow_run(workflow_run_id).await
     }
 
     async fn list_workflow_step_runs(

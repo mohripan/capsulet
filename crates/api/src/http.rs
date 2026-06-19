@@ -10,8 +10,8 @@ use axum::{
 use capsulet_core::{
     ArtifactId, ArtifactObjectKind, AutomationId, CreateManualRunCommand, ExecutionPoolName,
     JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId, RetryPolicy, WorkflowDefinition,
-    WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep,
-    WorkflowStepId,
+    WorkflowGraph, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus,
+    WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde_json::Value;
@@ -36,7 +36,9 @@ where
     O: ObjectStore,
 {
     Router::new()
-        .route("/healthz", get(healthz))
+        .route("/healthz", get(healthz::<S, O>))
+        .route("/livez", get(livez))
+        .route("/readyz", get(readyz::<S, O>))
         .route(
             "/v1/job-definitions",
             post(create_job_definition).get(list_job_definitions),
@@ -50,7 +52,7 @@ where
         .route("/v1/execution-pools", get(list_execution_pools))
         .route("/v1/host-groups", get(list_host_groups))
         .route("/v1/workflows", post(create_workflow).get(list_workflows))
-        .route("/v1/workflows/{id}", get(get_workflow))
+        .route("/v1/workflows/{id}", get(get_workflow).put(update_workflow))
         .route(
             "/v1/automations",
             post(crate::automations::create_automation).get(crate::automations::list_automations),
@@ -87,6 +89,7 @@ where
         .route("/v1/workflow-runs/{id}/logs", get(get_workflow_run_logs))
         .route("/v1/workflow-runs/{id}/remove", post(remove_workflow_run))
         .route("/v1/workflow-runs/{id}/cancel", post(cancel_workflow_run))
+        .route("/v1/workflow-runs/{id}/resume", post(resume_workflow_run))
         .route("/v1/jobs/runs", post(create_run).get(list_runs))
         .route("/v1/jobs/runs/{id}", get(get_run))
         .route("/v1/jobs/runs/{id}/cancel", post(cancel_run))
@@ -99,8 +102,40 @@ where
         .with_state(state)
 }
 
-async fn healthz() -> Json<HealthResponse> {
-    Json(HealthResponse { status: "ok" })
+async fn livez() -> Json<HealthResponse> {
+    Json(HealthResponse { status: "alive" })
+}
+
+async fn healthz<S, O>(State(state): State<AppState<S, O>>) -> (StatusCode, Json<HealthResponse>)
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    match state.store.ping().await {
+        Ok(()) => (StatusCode::OK, Json(HealthResponse { status: "ok" })),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(HealthResponse {
+                status: "not_ready",
+            }),
+        ),
+    }
+}
+
+async fn readyz<S, O>(State(state): State<AppState<S, O>>) -> (StatusCode, Json<HealthResponse>)
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    match state.store.ping().await {
+        Ok(()) => (StatusCode::OK, Json(HealthResponse { status: "ready" })),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(HealthResponse {
+                status: "not_ready",
+            }),
+        ),
+    }
 }
 
 async fn list_execution_pools<S, O>(
@@ -335,6 +370,25 @@ where
     Ok((StatusCode::CREATED, Json(WorkflowResponse::from(&workflow))))
 }
 
+async fn update_workflow<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+    Json(mut request): Json<CreateWorkflowRequest>,
+) -> Result<Json<WorkflowResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    request.id = Some(id);
+    let workflow = build_workflow(&state, request).await?;
+    state
+        .store
+        .upsert_workflow(&workflow)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(WorkflowResponse::from(&workflow)))
+}
+
 async fn list_workflows<S, O>(
     State(state): State<AppState<S, O>>,
 ) -> Result<Json<ListWorkflowsResponse>, ApiError>
@@ -388,6 +442,7 @@ where
     }
     let workflow_id = WorkflowId::new(request.id.unwrap_or_else(|| generated_id("workflow")))
         .map_err(ApiError::validation)?;
+    let dependency_requests = request.dependencies;
     let mut steps = Vec::with_capacity(request.steps.len());
     for (index, step) in request.steps.into_iter().enumerate() {
         let job_definition_id =
@@ -413,8 +468,11 @@ where
         let position = i32::try_from(index + 1)
             .map_err(|_| ApiError::Validation("too many workflow steps".to_string()))?;
         steps.push(WorkflowStep::new(
-            WorkflowStepId::new(format!("{}_step_{position}", workflow_id.as_str()))
-                .map_err(ApiError::validation)?,
+            WorkflowStepId::new(
+                step.id
+                    .unwrap_or_else(|| format!("{}_step_{position}", workflow_id.as_str())),
+            )
+            .map_err(ApiError::validation)?,
             workflow_id.clone(),
             position,
             step.name,
@@ -423,12 +481,31 @@ where
         ));
     }
 
-    Ok(WorkflowDefinition::new(
+    let dependencies = match dependency_requests {
+        Some(dependencies) => dependencies
+            .into_iter()
+            .map(|dependency| {
+                Ok(WorkflowStepDependency::new(
+                    WorkflowStepId::new(dependency.from_step_id).map_err(ApiError::validation)?,
+                    WorkflowStepId::new(dependency.to_step_id).map_err(ApiError::validation)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, ApiError>>()?,
+        None => steps
+            .windows(2)
+            .map(|pair| WorkflowStepDependency::new(pair[0].id().clone(), pair[1].id().clone()))
+            .collect(),
+    };
+    WorkflowGraph::new(&workflow_id, &steps, &dependencies)
+        .map_err(|error| ApiError::validation(error.to_string()))?;
+
+    Ok(WorkflowDefinition::with_dependencies(
         workflow_id,
         request.name,
         request.description.unwrap_or_default(),
         WorkflowStatus::Enabled,
         steps,
+        dependencies,
     ))
 }
 
@@ -744,6 +821,37 @@ where
     if run.status() != WorkflowRunStatus::Cancelled {
         return Err(ApiError::InvalidWorkflowRunTransition(format!(
             "workflow run {} can only be cancelled while running",
+            id.as_str()
+        )));
+    }
+    let step_runs = state
+        .store
+        .list_workflow_step_runs(&id)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(WorkflowRunResponse::new(&run, &step_runs)))
+}
+
+async fn resume_workflow_run<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<WorkflowRunResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    let Some(run) = state
+        .store
+        .resume_workflow_run(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::WorkflowRunNotFound(id.as_str().to_string()));
+    };
+    if run.status() != WorkflowRunStatus::Running {
+        return Err(ApiError::InvalidWorkflowRunTransition(format!(
+            "workflow run {} can only resume after failure or timeout",
             id.as_str()
         )));
     }

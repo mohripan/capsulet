@@ -1,5 +1,8 @@
+use std::collections::BTreeSet;
+
 use capsulet_core::{
-    AutomationId, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStepRun,
+    AutomationId, WorkflowGraph, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus,
+    WorkflowStepId, WorkflowStepRun,
 };
 use sqlx::Row;
 
@@ -141,44 +144,45 @@ impl PostgresStore {
             FROM workflow_runs wr
             JOIN workflow_step_runs wsr
               ON wsr.workflow_run_id = wr.id
-             AND wsr.position = wr.current_step_position
             WHERE wr.id = $1
               AND wr.status = 'running'
+              AND wsr.status IN ('queued', 'running')
             FOR UPDATE
             ",
         )
         .bind(workflow_run_id.as_str())
-        .fetch_optional(&mut *tx)
+        .fetch_all(&mut *tx)
         .await?;
 
-        let Some(active) = active else {
+        if active.is_empty() {
             tx.rollback().await?;
             return self.find_workflow_run(workflow_run_id).await;
-        };
-        let step_run_id: String = active.try_get("id")?;
-        let job_run_id: String = active.try_get("job_run_id")?;
+        }
 
-        sqlx::query(
-            r"
+        for step in &active {
+            sqlx::query(
+                r"
             UPDATE job_runs
             SET status = 'cancelled',
                 lease_expires_at = NULL,
+                heartbeat_at = NULL,
                 retry_ready_at = NULL,
                 updated_at = now()
             WHERE id = $1
               AND status IN ('queued', 'leased', 'running', 'retry_scheduled')
             ",
-        )
-        .bind(&job_run_id)
-        .execute(&mut *tx)
-        .await?;
+            )
+            .bind(step.try_get::<String, _>("job_run_id")?)
+            .execute(&mut *tx)
+            .await?;
 
-        sqlx::query(
-            "UPDATE workflow_step_runs SET status = 'cancelled', updated_at = now() WHERE id = $1",
-        )
-        .bind(&step_run_id)
-        .execute(&mut *tx)
-        .await?;
+            sqlx::query(
+                "UPDATE workflow_step_runs SET status = 'cancelled', updated_at = now() WHERE id = $1",
+            )
+            .bind(step.try_get::<String, _>("id")?)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         let row = sqlx::query(
             r"
@@ -219,6 +223,73 @@ impl PostgresStore {
         .await?;
 
         rows.iter().map(row_to_workflow_step_run).collect()
+    }
+
+    /// Resumes a failed workflow from its persisted successful step checkpoints.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup or persistence fails.
+    pub async fn resume_workflow_run(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+    ) -> Result<Option<WorkflowRun>, PostgresStoreError> {
+        let mut tx = self.pool.begin().await?;
+        let status = sqlx::query_scalar::<_, String>(
+            "SELECT status FROM workflow_runs WHERE id = $1 FOR UPDATE",
+        )
+        .bind(workflow_run_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(status) = status else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
+        if !matches!(status.as_str(), "failed" | "timed_out") {
+            tx.rollback().await?;
+            return self.find_workflow_run(workflow_run_id).await;
+        }
+
+        let discarded_job_run_ids = sqlx::query_scalar::<_, String>(
+            r"
+            DELETE FROM workflow_step_runs
+            WHERE workflow_run_id = $1
+              AND status <> 'succeeded'
+            RETURNING job_run_id
+            ",
+        )
+        .bind(workflow_run_id.as_str())
+        .fetch_all(&mut *tx)
+        .await?;
+
+        if !discarded_job_run_ids.is_empty() {
+            sqlx::query("DELETE FROM job_runs WHERE id = ANY($1)")
+                .bind(&discarded_job_run_ids)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        sqlx::query(
+            r"
+            UPDATE workflow_runs
+            SET status = 'running',
+                current_step_position = COALESCE((
+                    SELECT max(position)
+                    FROM workflow_step_runs
+                    WHERE workflow_run_id = $1 AND status = 'succeeded'
+                ), 0),
+                finished_at = NULL,
+                updated_at = now()
+            WHERE id = $1
+            ",
+        )
+        .bind(workflow_run_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        self.find_workflow_run(workflow_run_id).await
     }
 
     /// Creates workflow runs for enabled interval automations whose fire time is due.
@@ -288,9 +359,9 @@ impl PostgresStore {
     ///
     /// Returns [`PostgresStoreError`] when lookup or persistence fails.
     pub async fn advance_workflow_runs(&self) -> Result<u64, PostgresStoreError> {
-        let rows = sqlx::query(
+        let run_ids = sqlx::query_scalar::<_, String>(
             r"
-            SELECT id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
+            SELECT id
             FROM workflow_runs
             WHERE status IN ('queued', 'running')
             ORDER BY created_at ASC
@@ -301,187 +372,186 @@ impl PostgresStore {
         .await?;
 
         let mut advanced = 0;
-        for row in rows {
-            let run = row_to_workflow_run(&row)?;
-            match run.status() {
-                WorkflowRunStatus::Queued => {
-                    if self.start_workflow_step(&run, 1).await? {
-                        advanced += 1;
-                    }
-                }
-                WorkflowRunStatus::Running => {
-                    if self.advance_running_workflow(&run).await? {
-                        advanced += 1;
-                    }
-                }
-                _ => {}
+        for run_id in run_ids {
+            if self.reconcile_workflow_run(&run_id).await? {
+                advanced += 1;
             }
         }
         Ok(advanced)
     }
 
-    async fn advance_running_workflow(
-        &self,
-        run: &WorkflowRun,
-    ) -> Result<bool, PostgresStoreError> {
-        let Some(step_run_row) = sqlx::query(
-            r"
-            SELECT wsr.id, wsr.job_run_id, jr.status
-            FROM workflow_step_runs wsr
-            JOIN job_runs jr ON jr.id = wsr.job_run_id
-            WHERE wsr.workflow_run_id = $1 AND wsr.position = $2
-            ",
-        )
-        .bind(run.id().as_str())
-        .bind(run.current_step_position())
-        .fetch_optional(&self.pool)
-        .await?
-        else {
-            self.finish_workflow_run(run, WorkflowRunStatus::Failed)
-                .await?;
-            return Ok(true);
-        };
-
-        let job_status: String = step_run_row.try_get("status")?;
-        match job_status.as_str() {
-            "succeeded" => {
-                sqlx::query(
-                    "UPDATE workflow_step_runs SET status = 'succeeded', updated_at = now() WHERE id = $1",
-                )
-                .bind(step_run_row.try_get::<String, _>("id")?)
-                .execute(&self.pool)
-                .await?;
-                let next_position = run.current_step_position() + 1;
-                if self
-                    .workflow_step_exists(run.workflow_id(), next_position)
-                    .await?
-                {
-                    self.start_workflow_step(run, next_position).await
-                } else {
-                    self.finish_workflow_run(run, WorkflowRunStatus::Succeeded)
-                        .await?;
-                    Ok(true)
-                }
-            }
-            "failed" => {
-                self.finish_workflow_run(run, WorkflowRunStatus::Failed)
-                    .await?;
-                Ok(true)
-            }
-            "cancelled" => {
-                self.finish_workflow_run(run, WorkflowRunStatus::Cancelled)
-                    .await?;
-                Ok(true)
-            }
-            "timed_out" => {
-                self.finish_workflow_run(run, WorkflowRunStatus::TimedOut)
-                    .await?;
-                Ok(true)
-            }
-            _ => Ok(false),
-        }
-    }
-
-    async fn workflow_step_exists(
-        &self,
-        workflow_id: &WorkflowId,
-        position: i32,
-    ) -> Result<bool, PostgresStoreError> {
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM workflow_steps WHERE workflow_id = $1 AND position = $2)",
-        )
-        .bind(workflow_id.as_str())
-        .bind(position)
-        .fetch_one(&self.pool)
-        .await?;
-        Ok(exists)
-    }
-
-    async fn start_workflow_step(
-        &self,
-        run: &WorkflowRun,
-        position: i32,
-    ) -> Result<bool, PostgresStoreError> {
-        let Some(step_row) = sqlx::query(
-            r"
-            SELECT id, job_definition_id, execution_pool
-            FROM workflow_steps
-            WHERE workflow_id = $1 AND position = $2
-            ",
-        )
-        .bind(run.workflow_id().as_str())
-        .bind(position)
-        .fetch_optional(&self.pool)
-        .await?
-        else {
-            self.finish_workflow_run(run, WorkflowRunStatus::Failed)
-                .await?;
-            return Ok(true);
-        };
-        let step_id: String = step_row.try_get("id")?;
-        let job_definition_id: String = step_row.try_get("job_definition_id")?;
-        let execution_pool: String = step_row.try_get("execution_pool")?;
-        let job_run_id = generated_store_id("run_workflow_step");
-        let step_run_id = generated_store_id("workflow_step_run");
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the scheduler state transition stays in one database transaction"
+    )]
+    async fn reconcile_workflow_run(&self, run_id: &str) -> Result<bool, PostgresStoreError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
+        let acquired: bool =
+            sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0))")
+                .bind(run_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if !acquired {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+
+        let Some(run_row) = sqlx::query(
             r"
-            INSERT INTO job_runs (id, job_definition_id, status, execution_pool, input, updated_at)
-            VALUES ($1, $2, 'queued', $3, $4::jsonb, now())
+            SELECT id, workflow_id, automation_id, input::text AS input, status,
+                   current_step_position, created_at::text AS created_at
+            FROM workflow_runs
+            WHERE id = $1 AND status IN ('queued', 'running')
+            FOR UPDATE
             ",
         )
-        .bind(&job_run_id)
-        .bind(&job_definition_id)
-        .bind(&execution_pool)
-        .bind(run.input_json())
-        .execute(&mut *tx)
-        .await?;
+        .bind(run_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+        let run = row_to_workflow_run(&run_row)?;
+        let workflow = self
+            .find_workflow(run.workflow_id())
+            .await?
+            .ok_or_else(|| {
+                PostgresStoreError::InvalidPersistedValue(format!(
+                    "workflow {} not found",
+                    run.workflow_id()
+                ))
+            })?;
+        let graph = WorkflowGraph::new(workflow.id(), workflow.steps(), workflow.dependencies())?;
+
         sqlx::query(
             r"
-            INSERT INTO workflow_step_runs (
-                id, workflow_run_id, workflow_step_id, job_run_id, position, status, updated_at
+            UPDATE workflow_step_runs wsr
+            SET status = CASE
+                    WHEN jr.status = 'succeeded' THEN 'succeeded'
+                    WHEN jr.status = 'failed' THEN 'failed'
+                    WHEN jr.status = 'cancelled' THEN 'cancelled'
+                    WHEN jr.status = 'timed_out' THEN 'timed_out'
+                    WHEN jr.status IN ('leased', 'running') THEN 'running'
+                    ELSE 'queued'
+                END,
+                updated_at = now()
+            FROM job_runs jr
+            WHERE wsr.workflow_run_id = $1
+              AND jr.id = wsr.job_run_id
+              AND wsr.status IS DISTINCT FROM CASE
+                    WHEN jr.status = 'succeeded' THEN 'succeeded'
+                    WHEN jr.status = 'failed' THEN 'failed'
+                    WHEN jr.status = 'cancelled' THEN 'cancelled'
+                    WHEN jr.status = 'timed_out' THEN 'timed_out'
+                    WHEN jr.status IN ('leased', 'running') THEN 'running'
+                    ELSE 'queued'
+                END
+            ",
+        )
+        .bind(run_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let states = sqlx::query(
+            r"
+            SELECT workflow_step_id, status
+            FROM workflow_step_runs
+            WHERE workflow_run_id = $1
+            ",
+        )
+        .bind(run_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let mut started = BTreeSet::new();
+        let mut succeeded = BTreeSet::new();
+        let mut active = 0_usize;
+        let mut failed = false;
+        for state in &states {
+            let step_id = WorkflowStepId::new(state.try_get::<String, _>("workflow_step_id")?)
+                .map_err(PostgresStoreError::InvalidPersistedValue)?;
+            started.insert(step_id.clone());
+            match state.try_get::<String, _>("status")?.as_str() {
+                "succeeded" => {
+                    succeeded.insert(step_id);
+                }
+                "queued" | "running" => active += 1,
+                "failed" | "cancelled" | "timed_out" => failed = true,
+                _ => {}
+            }
+        }
+
+        if succeeded.len() == workflow.steps().len() {
+            Self::finish_workflow_run_in(&mut tx, run_id, WorkflowRunStatus::Succeeded).await?;
+            tx.commit().await?;
+            return Ok(true);
+        }
+
+        let ready = graph.ready_steps(&started, &succeeded);
+        let ready_count = ready.len();
+        let progress_position = workflow
+            .steps()
+            .iter()
+            .filter(|step| started.contains(step.id()))
+            .map(capsulet_core::WorkflowStep::position)
+            .chain(
+                ready
+                    .iter()
+                    .copied()
+                    .map(capsulet_core::WorkflowStep::position),
             )
-            VALUES ($1, $2, $3, $4, $5, 'queued', now())
-            ",
-        )
-        .bind(&step_run_id)
-        .bind(run.id().as_str())
-        .bind(&step_id)
-        .bind(&job_run_id)
-        .bind(position)
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query(
-            r"
-            UPDATE workflow_runs
-            SET status = 'running', current_step_position = $2, updated_at = now()
-            WHERE id = $1
-            ",
-        )
-        .bind(run.id().as_str())
-        .bind(position)
-        .execute(&mut *tx)
-        .await?;
+            .max()
+            .unwrap_or(0);
+        for step in ready {
+            let job_run_id = generated_store_id("run_workflow_step");
+            let step_run_id = generated_store_id("workflow_step_run");
+            sqlx::query(
+                "INSERT INTO job_runs (id, job_definition_id, status, execution_pool, input, updated_at) VALUES ($1, $2, 'queued', $3, $4::jsonb, now())",
+            )
+            .bind(&job_run_id)
+            .bind(step.job_definition_id().as_str())
+            .bind(step.execution_pool().as_str())
+            .bind(run.input_json())
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query(
+                "INSERT INTO workflow_step_runs (id, workflow_run_id, workflow_step_id, job_run_id, position, status, updated_at) VALUES ($1, $2, $3, $4, $5, 'queued', now())",
+            )
+            .bind(&step_run_id)
+            .bind(run_id)
+            .bind(step.id().as_str())
+            .bind(&job_run_id)
+            .bind(step.position())
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        if failed && active == 0 && ready_count == 0 {
+            Self::finish_workflow_run_in(&mut tx, run_id, WorkflowRunStatus::Failed).await?;
+        } else if ready_count > 0 || run.status() == WorkflowRunStatus::Queued {
+            sqlx::query(
+                "UPDATE workflow_runs SET status = 'running', current_step_position = GREATEST(current_step_position, $2), updated_at = now() WHERE id = $1",
+            )
+            .bind(run_id)
+            .bind(progress_position)
+            .execute(&mut *tx)
+            .await?;
+        }
         tx.commit().await?;
-        Ok(true)
+        Ok(ready_count > 0 || failed)
     }
 
-    async fn finish_workflow_run(
-        &self,
-        run: &WorkflowRun,
+    async fn finish_workflow_run_in(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        run_id: &str,
         status: WorkflowRunStatus,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
-            r"
-            UPDATE workflow_runs
-            SET status = $2, updated_at = now(), finished_at = now()
-            WHERE id = $1
-            ",
-        )
-        .bind(run.id().as_str())
-        .bind(status.to_string())
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE workflow_runs SET status = $2, updated_at = now(), finished_at = now() WHERE id = $1")
+            .bind(run_id)
+            .bind(status.to_string())
+            .execute(&mut **tx)
+            .await?;
         Ok(())
     }
 }

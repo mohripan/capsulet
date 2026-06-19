@@ -1,6 +1,7 @@
 use capsulet_core::{
     Automation, AutomationTrigger, CustomTriggerPlugin, JobArtifact, JobDefinition, JobRun,
-    JobRunStatus, WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepRun,
+    JobRunStatus, WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepDependency,
+    WorkflowStepRun,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -40,10 +41,12 @@ pub struct CreateWorkflowRequest {
     pub name: String,
     pub description: Option<String>,
     pub steps: Vec<CreateWorkflowStepRequest>,
+    pub dependencies: Option<Vec<CreateWorkflowDependencyRequest>>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateWorkflowStepRequest {
+    pub id: Option<String>,
     pub name: String,
     pub job_definition_id: String,
     #[serde(alias = "host_group")]
@@ -93,6 +96,12 @@ pub(crate) struct ListRunsQuery {
     pub(crate) state: Option<String>,
     pub(crate) sort: Option<String>,
     pub(crate) direction: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateWorkflowDependencyRequest {
+    pub from_step_id: String,
+    pub to_step_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -212,6 +221,13 @@ pub(crate) struct WorkflowResponse {
     pub(crate) description: String,
     pub(crate) status: String,
     pub(crate) steps: Vec<WorkflowStepResponse>,
+    pub(crate) dependencies: Vec<WorkflowDependencyResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkflowDependencyResponse {
+    pub(crate) from_step_id: String,
+    pub(crate) to_step_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -351,6 +367,20 @@ impl From<&WorkflowDefinition> for WorkflowResponse {
                 .iter()
                 .map(WorkflowStepResponse::from)
                 .collect(),
+            dependencies: workflow
+                .dependencies()
+                .iter()
+                .map(WorkflowDependencyResponse::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<&WorkflowStepDependency> for WorkflowDependencyResponse {
+    fn from(dependency: &WorkflowStepDependency) -> Self {
+        Self {
+            from_step_id: dependency.from_step_id().as_str().to_string(),
+            to_step_id: dependency.to_step_id().as_str().to_string(),
         }
     }
 }

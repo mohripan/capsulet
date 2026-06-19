@@ -1,4 +1,6 @@
-use capsulet_core::{WorkflowDefinition, WorkflowId};
+use capsulet_core::{
+    WorkflowDefinition, WorkflowGraph, WorkflowId, WorkflowStepDependency, WorkflowStepId,
+};
 use sqlx::Row;
 
 use crate::{
@@ -14,6 +16,7 @@ impl PostgresStore {
         &self,
         workflow: &WorkflowDefinition,
     ) -> Result<(), PostgresStoreError> {
+        WorkflowGraph::new(workflow.id(), workflow.steps(), workflow.dependencies())?;
         let mut tx = self.pool.begin().await?;
         sqlx::query(
             r"
@@ -32,6 +35,11 @@ impl PostgresStore {
         .bind(workflow.status().to_string())
         .execute(&mut *tx)
         .await?;
+
+        sqlx::query("DELETE FROM workflow_step_dependencies WHERE workflow_id = $1")
+            .bind(workflow.id().as_str())
+            .execute(&mut *tx)
+            .await?;
 
         sqlx::query("DELETE FROM workflow_steps WHERE workflow_id = $1")
             .bind(workflow.id().as_str())
@@ -53,6 +61,17 @@ impl PostgresStore {
             .bind(step.name())
             .bind(step.job_definition_id().as_str())
             .bind(step.execution_pool().as_str())
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        for dependency in workflow.dependencies() {
+            sqlx::query(
+                "INSERT INTO workflow_step_dependencies (workflow_id, from_step_id, to_step_id) VALUES ($1, $2, $3)",
+            )
+            .bind(workflow.id().as_str())
+            .bind(dependency.from_step_id().as_str())
+            .bind(dependency.to_step_id().as_str())
             .execute(&mut *tx)
             .await?;
         }
@@ -133,8 +152,32 @@ impl PostgresStore {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(WorkflowDefinition::new(
-            workflow_id,
+        let dependency_rows = sqlx::query(
+            r"
+            SELECT from_step_id, to_step_id
+            FROM workflow_step_dependencies
+            WHERE workflow_id = $1
+            ORDER BY from_step_id ASC, to_step_id ASC
+            ",
+        )
+        .bind(workflow_id.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+
+        let dependencies = dependency_rows
+            .iter()
+            .map(|dependency| {
+                Ok(WorkflowStepDependency::new(
+                    WorkflowStepId::new(dependency.try_get::<String, _>("from_step_id")?)
+                        .map_err(PostgresStoreError::InvalidPersistedValue)?,
+                    WorkflowStepId::new(dependency.try_get::<String, _>("to_step_id")?)
+                        .map_err(PostgresStoreError::InvalidPersistedValue)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, PostgresStoreError>>()?;
+
+        let workflow = WorkflowDefinition::with_dependencies(
+            workflow_id.clone(),
             row.try_get::<String, _>("name")?,
             row.try_get::<String, _>("description")?,
             parse_workflow_status(row.try_get::<String, _>("status")?.as_str())?,
@@ -142,6 +185,9 @@ impl PostgresStore {
                 .iter()
                 .map(row_to_workflow_step)
                 .collect::<Result<Vec<_>, _>>()?,
-        ))
+            dependencies,
+        );
+        WorkflowGraph::new(&workflow_id, workflow.steps(), workflow.dependencies())?;
+        Ok(workflow)
     }
 }

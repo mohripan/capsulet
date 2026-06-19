@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 async-trait.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

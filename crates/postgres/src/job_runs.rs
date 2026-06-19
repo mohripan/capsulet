@@ -75,6 +75,7 @@ impl PostgresStore {
                 status = 'leased',
                 lease_owner = $1,
                 lease_expires_at = now() + ($2 * interval '1 second'),
+                heartbeat_at = now(),
                 updated_at = now()
             FROM candidate
             WHERE job_runs.id = candidate.id
@@ -95,6 +96,37 @@ impl PostgresStore {
         row.as_ref().map(row_to_job_run).transpose()
     }
 
+    /// Renews an active lease when it is still owned by the calling worker.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn heartbeat_run(
+        &self,
+        id: &JobRunId,
+        worker_id: &str,
+        lease_seconds: i64,
+    ) -> Result<bool, PostgresStoreError> {
+        let result = sqlx::query(
+            r"
+            UPDATE job_runs
+            SET heartbeat_at = now(),
+                lease_expires_at = now() + ($3 * interval '1 second'),
+                updated_at = now()
+            WHERE id = $1
+              AND lease_owner = $2
+              AND status IN ('leased', 'running')
+            ",
+        )
+        .bind(id.as_str())
+        .bind(worker_id)
+        .bind(lease_seconds)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() == 1)
+    }
+
     /// Cancels a non-terminal run and returns its latest state.
     ///
     /// # Errors
@@ -106,7 +138,9 @@ impl PostgresStore {
             UPDATE job_runs
             SET
                 status = 'cancelled',
+                lease_owner = NULL,
                 lease_expires_at = NULL,
+                heartbeat_at = NULL,
                 retry_ready_at = NULL,
                 updated_at = now()
             WHERE id = $1
@@ -147,6 +181,7 @@ impl PostgresStore {
                 status = $3,
                 lease_owner = NULL,
                 lease_expires_at = NULL,
+                heartbeat_at = NULL,
                 retry_ready_at = now() + ($4 * interval '1 second'),
                 updated_at = now()
             WHERE id = $1
@@ -161,6 +196,7 @@ impl PostgresStore {
                 status = $3,
                 lease_owner = NULL,
                 lease_expires_at = NULL,
+                heartbeat_at = NULL,
                 retry_ready_at = NULL,
                 updated_at = now()
             WHERE id = $1
@@ -220,6 +256,7 @@ impl PostgresStore {
                 status = 'queued',
                 lease_owner = NULL,
                 lease_expires_at = NULL,
+                heartbeat_at = NULL,
                 updated_at = now()
             WHERE status IN ('leased', 'running')
               AND lease_expires_at <= now()

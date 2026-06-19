@@ -23,6 +23,8 @@ yarn-error.log*
 pnpm-debug.log*
 next-dev.log
 next-dev.err.log
+test-results/
+playwright-report/
 
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

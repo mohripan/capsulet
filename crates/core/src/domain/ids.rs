@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 macro_rules! id_type {
     ($name:ident) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name(String);
 
         impl $name {

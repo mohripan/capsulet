@@ -4,7 +4,9 @@ use capsulet_core::{
     JobRunLogRepository, JobRunRepository, JobRunStatus,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
-use capsulet_runner::{CancellationCheck, ExecutionPoolsConfig, RunExecution, RunOutcome, Runner};
+use capsulet_runner::{
+    CancellationCheck, ExecutionPoolsConfig, RunExecution, RunOutcome, RunReport, Runner,
+};
 use capsulet_storage::{ObjectStore, run_object_key};
 use thiserror::Error;
 
@@ -67,6 +69,13 @@ pub trait WorkerStore: Clone + Send + Sync + 'static {
 
     async fn recover_expired_leases(&self) -> Result<u64, Self::Error>;
 
+    async fn heartbeat_run(
+        &self,
+        id: &capsulet_core::JobRunId,
+        worker_id: &str,
+        lease_seconds: i64,
+    ) -> Result<bool, Self::Error>;
+
     async fn is_run_cancelled(&self, id: &capsulet_core::JobRunId) -> Result<bool, Self::Error>;
 }
 
@@ -124,6 +133,15 @@ impl WorkerStore for PostgresStore {
         self.recover_expired_leases().await
     }
 
+    async fn heartbeat_run(
+        &self,
+        id: &capsulet_core::JobRunId,
+        worker_id: &str,
+        lease_seconds: i64,
+    ) -> Result<bool, Self::Error> {
+        self.heartbeat_run(id, worker_id, lease_seconds).await
+    }
+
     async fn is_run_cancelled(&self, id: &capsulet_core::JobRunId) -> Result<bool, Self::Error> {
         self.is_run_cancelled(id).await
     }
@@ -159,6 +177,7 @@ where
     R: Runner,
     O: ObjectStore,
 {
+    let heartbeat_seconds = heartbeat_seconds(lease_seconds)?;
     store
         .recover_expired_leases()
         .await
@@ -190,6 +209,14 @@ where
         .map_err(|error| WorkerError::InvalidState(error.to_string()))?;
     store.save_run(&run).await.map_err(WorkerError::store)?;
 
+    if !store
+        .heartbeat_run(run.id(), worker_id, lease_seconds)
+        .await
+        .map_err(WorkerError::store)?
+    {
+        return Err(WorkerError::LeaseLost(run.id().to_string()));
+    }
+
     let definition = materialize_script_bundle(object_store, definition).await?;
     let execution = RunExecution {
         run: run.clone(),
@@ -197,10 +224,16 @@ where
         pool,
     };
     let cancellation = StoreCancellationCheck { store };
-    let report = runner
-        .execute(&execution, &cancellation)
-        .await
-        .map_err(WorkerError::runner)?;
+    let report = execute_with_heartbeat(
+        store,
+        runner,
+        &execution,
+        &cancellation,
+        worker_id,
+        lease_seconds,
+        heartbeat_seconds,
+    )
+    .await?;
 
     persist_logs(store, object_store, &run, report.logs).await?;
 
@@ -250,6 +283,57 @@ where
     }
 
     Ok(outcome)
+}
+
+fn heartbeat_seconds(lease_seconds: i64) -> Result<u64, WorkerError> {
+    u64::try_from(lease_seconds)
+        .ok()
+        .filter(|seconds| *seconds > 0)
+        .map(|seconds| (seconds / 3).max(1))
+        .ok_or(WorkerError::InvalidLeaseDuration(lease_seconds))
+}
+
+async fn execute_with_heartbeat<S, R, C>(
+    store: &S,
+    runner: &R,
+    execution: &RunExecution,
+    cancellation: &C,
+    worker_id: &str,
+    lease_seconds: i64,
+    heartbeat_seconds: u64,
+) -> Result<RunReport, WorkerError>
+where
+    S: WorkerStore,
+    R: Runner,
+    C: CancellationCheck + Sync,
+{
+    let execution_future = runner.execute(execution, cancellation);
+    tokio::pin!(execution_future);
+    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(heartbeat_seconds));
+    heartbeat.tick().await;
+    let report = loop {
+        tokio::select! {
+            result = &mut execution_future => break result.map_err(WorkerError::runner)?,
+            _ = heartbeat.tick() => {
+                let renewed = store
+                    .heartbeat_run(execution.run.id(), worker_id, lease_seconds)
+                    .await
+                    .map_err(WorkerError::store)?;
+                if !renewed {
+                    return Err(WorkerError::LeaseLost(execution.run.id().to_string()));
+                }
+            }
+        }
+    };
+
+    if !store
+        .heartbeat_run(execution.run.id(), worker_id, lease_seconds)
+        .await
+        .map_err(WorkerError::store)?
+    {
+        return Err(WorkerError::LeaseLost(execution.run.id().to_string()));
+    }
+    Ok(report)
 }
 
 async fn materialize_script_bundle<O>(
@@ -443,6 +527,10 @@ pub enum WorkerError {
     ObjectStore(String),
     #[error("invalid job run state: {0}")]
     InvalidState(String),
+    #[error("job run lease was lost: {0}")]
+    LeaseLost(String),
+    #[error("worker lease duration must be positive, got {0}")]
+    InvalidLeaseDuration(i64),
 }
 
 impl WorkerError {

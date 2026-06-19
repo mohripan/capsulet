@@ -126,16 +126,24 @@ export type Workflow = {
   description: string;
   status: "draft" | "enabled" | "disabled";
   steps: WorkflowStep[];
+  dependencies: WorkflowDependency[];
+};
+
+export type WorkflowDependency = {
+  from_step_id: string;
+  to_step_id: string;
 };
 
 export type CreateWorkflowRequest = {
   name: string;
   description?: string;
   steps: Array<{
+    id?: string;
     name: string;
     job_definition_id: string;
     execution_pool: string;
   }>;
+  dependencies?: WorkflowDependency[];
 };
 
 export type Automation = {

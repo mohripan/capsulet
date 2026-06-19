@@ -52,6 +52,8 @@ spec:
               value: {{ $root.Values.scheduler.loop | quote }}
             - name: CAPSULET_SCHEDULER_POLL_SECONDS
               value: {{ $root.Values.scheduler.pollSeconds | quote }}
+            - name: CAPSULET_SCHEDULER_HEALTH_ADDR
+              value: "0.0.0.0:8082"
             {{- end }}
             {{- if eq $name "worker" }}
             - name: CAPSULET_RUNNER_MODE
@@ -64,6 +66,10 @@ spec:
               value: {{ $root.Values.worker.runner.loop | quote }}
             - name: CAPSULET_WORKER_POLL_SECONDS
               value: {{ $root.Values.worker.runner.pollSeconds | quote }}
+            - name: CAPSULET_WORKER_LEASE_SECONDS
+              value: {{ $root.Values.worker.runner.leaseSeconds | quote }}
+            - name: CAPSULET_WORKER_HEALTH_ADDR
+              value: "0.0.0.0:8081"
             - name: CAPSULET_EXECUTION_POOLS_FILE
               value: /etc/capsulet/execution-pools.yaml
             {{- if $root.Values.worker.runner.stubArtifactText }}
@@ -84,8 +90,12 @@ spec:
                   key: {{ include "capsulet.objectStorageSecretKeyKey" $root }}
             {{- end }}
           {{- end }}
-          {{- if or (eq $name "worker") (and (eq $name "api") (eq (include "capsulet.objectStorageMode" $root) "filesystem")) }}
+          {{- if or (eq $name "worker") (eq $name "dashboard") (and (eq $name "api") (eq (include "capsulet.objectStorageMode" $root) "filesystem")) }}
           volumeMounts:
+            {{- if eq $name "dashboard" }}
+            - name: dashboard-cache
+              mountPath: /app/.next/cache
+            {{- end }}
             {{- if eq (include "capsulet.objectStorageMode" $root) "filesystem" }}
             - name: object-storage
               mountPath: {{ $root.Values.config.objectStorage.path | quote }}
@@ -101,23 +111,56 @@ spec:
             - name: http
               containerPort: {{ dig "service" "targetPort" 8080 $component }}
               protocol: TCP
+          startupProbe:
+            httpGet:
+              path: {{ ternary "/readyz" "/healthz" (eq $name "api") }}
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
           readinessProbe:
             httpGet:
-              path: {{ ternary "/healthz" "/" (eq $name "api") }}
+              path: {{ ternary "/readyz" "/healthz" (eq $name "api") }}
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: {{ ternary "/healthz" "/" (eq $name "api") }}
+              path: {{ ternary "/livez" "/healthz" (eq $name "api") }}
               port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          {{- end }}
+          {{- if or (eq $name "worker") (eq $name "scheduler") }}
+          ports:
+            - name: health
+              containerPort: {{ ternary 8081 8082 (eq $name "worker") }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: health
             initialDelaySeconds: 15
             periodSeconds: 20
           {{- end }}
           resources:
             {{- toYaml $component.resources | nindent 12 }}
-      {{- if or (eq $name "worker") (and (eq $name "api") (eq (include "capsulet.objectStorageMode" $root) "filesystem")) }}
+      {{- if or (eq $name "worker") (eq $name "dashboard") (and (eq $name "api") (eq (include "capsulet.objectStorageMode" $root) "filesystem")) }}
       volumes:
+        {{- if eq $name "dashboard" }}
+        - name: dashboard-cache
+          emptyDir: {}
+        {{- end }}
         {{- if eq (include "capsulet.objectStorageMode" $root) "filesystem" }}
         - name: object-storage
           emptyDir: {}
