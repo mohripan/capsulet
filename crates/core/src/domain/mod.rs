@@ -5,6 +5,7 @@ mod ids;
 mod job;
 mod job_definition;
 mod job_log;
+mod parse;
 mod workflow;
 mod workflow_graph;
 
@@ -17,9 +18,10 @@ pub use ids::{
     ArtifactId, AutomationId, JobAttemptId, JobDefinitionId, JobRunId, WorkflowId, WorkflowRunId,
     WorkflowStepId, WorkflowStepRunId,
 };
-pub use job::{JobRun, JobRunStatus, StateTransitionError};
+pub use job::{JobRun, JobRunStatus, JobRunTransition, StateTransitionError};
 pub use job_definition::{JobDefinition, RetryPolicy};
 pub use job_log::JobRunLog;
+pub use parse::ParseDomainValueError;
 pub use workflow::{
     Automation, AutomationSettings, AutomationStatus, AutomationTriggerKind, WorkflowDefinition,
     WorkflowRun, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepDependency,

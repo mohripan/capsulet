@@ -4,7 +4,7 @@ This guide describes the current development workflow for Capsulet.
 
 ## Required Tools
 
-- Rust 1.87 or newer
+- Rust 1.96.0 (installed automatically by `rustup` from `rust-toolchain.toml`)
 - Cargo
 - Node.js 20.x
 - npm 10.x

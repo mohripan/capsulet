@@ -134,10 +134,10 @@ impl WorkflowGraph {
             .collect::<BTreeMap<_, _>>();
         let mut ready = BTreeSet::new();
         for (id, degree) in &degrees {
-            if *degree == 0 {
-                if let Some(step) = nodes.get(id) {
-                    ready.insert((step.position(), id.clone()));
-                }
+            if *degree == 0
+                && let Some(step) = nodes.get(id)
+            {
+                ready.insert((step.position(), id.clone()));
             }
         }
         let mut result = Vec::with_capacity(nodes.len());
@@ -148,10 +148,10 @@ impl WorkflowGraph {
                 for child in children {
                     if let Some(degree) = degrees.get_mut(child) {
                         *degree -= 1;
-                        if *degree == 0 {
-                            if let Some(step) = nodes.get(child) {
-                                ready.insert((step.position(), child.clone()));
-                            }
+                        if *degree == 0
+                            && let Some(step) = nodes.get(child)
+                        {
+                            ready.insert((step.position(), child.clone()));
                         }
                     }
                 }

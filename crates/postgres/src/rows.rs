@@ -1,12 +1,12 @@
+use std::fmt::Display;
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationSettings, AutomationStatus,
-    AutomationTrigger, AutomationTriggerKind, CustomTriggerPlugin, ExecutionPoolName, JobArtifact,
-    JobAttemptId, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus,
-    RetryPolicy, TriggerKind, TriggerName, WorkflowId, WorkflowRun, WorkflowRunId,
-    WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun,
-    WorkflowStepRunId,
+    ArtifactId, Automation, AutomationId, AutomationSettings, AutomationTrigger,
+    CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobAttemptId, JobDefinition,
+    JobDefinitionId, JobRun, JobRunId, JobRunLog, RetryPolicy, TriggerName, WorkflowId,
+    WorkflowRun, WorkflowRunId, WorkflowStep, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
 };
 use sqlx::Row;
 
@@ -26,7 +26,7 @@ pub(crate) fn row_to_job_run(row: &sqlx::postgres::PgRow) -> Result<JobRun, Post
         ExecutionPoolName::new(execution_pool)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
         input_json,
-        parse_status(&status)?,
+        parse_domain_value(&status)?,
         u32::try_from(attempt_count).map_err(|_| {
             PostgresStoreError::InvalidPersistedValue("negative attempt count".into())
         })?,
@@ -110,8 +110,8 @@ pub(crate) fn row_to_automation(
         WorkflowId::new(workflow_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         job_input_json,
         AutomationSettings::new(
-            parse_automation_status(&status)?,
-            parse_automation_trigger_kind(&trigger_kind)?,
+            parse_domain_value(&status)?,
+            parse_domain_value(&trigger_kind)?,
             interval_seconds.map(i64::from),
         ),
     ))
@@ -127,7 +127,7 @@ pub(crate) fn row_to_automation_trigger(
     Ok(AutomationTrigger::new(
         AutomationId::new(automation_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         TriggerName::new(name).map_err(PostgresStoreError::InvalidPersistedValue)?,
-        parse_trigger_kind(&kind)?,
+        parse_domain_value(&kind)?,
         row.try_get::<String, _>("config")?,
         row.try_get("plugin_id")?,
         row.try_get("enabled")?,
@@ -164,7 +164,7 @@ pub(crate) fn row_to_workflow_run(
             .transpose()
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
         input_json,
-        parse_workflow_run_status(&status)?,
+        parse_domain_value(&status)?,
         row.try_get("current_step_position")?,
         row.try_get::<String, _>("created_at")?,
     ))
@@ -185,7 +185,7 @@ pub(crate) fn row_to_workflow_step_run(
         WorkflowStepId::new(workflow_step_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         JobRunId::new(job_run_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         row.try_get("position")?,
-        parse_workflow_run_status(&status)?,
+        parse_domain_value(&status)?,
     ))
 }
 
@@ -229,98 +229,17 @@ pub(crate) fn row_to_job_artifact(
             PostgresStoreError::InvalidPersistedValue("negative artifact size".into())
         })?,
         checksum_sha256,
-        parse_artifact_kind(&kind)?,
+        parse_domain_value(&kind)?,
     )
     .map_err(PostgresStoreError::InvalidPersistedValue)
 }
 
-pub(crate) fn parse_status(status: &str) -> Result<JobRunStatus, PostgresStoreError> {
-    match status {
-        "queued" => Ok(JobRunStatus::Queued),
-        "leased" => Ok(JobRunStatus::Leased),
-        "running" => Ok(JobRunStatus::Running),
-        "succeeded" => Ok(JobRunStatus::Succeeded),
-        "failed" => Ok(JobRunStatus::Failed),
-        "cancelled" => Ok(JobRunStatus::Cancelled),
-        "timed_out" => Ok(JobRunStatus::TimedOut),
-        "retry_scheduled" => Ok(JobRunStatus::RetryScheduled),
-        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
-            "unknown job run status {value}"
-        ))),
-    }
-}
-
-pub(crate) fn parse_workflow_status(status: &str) -> Result<WorkflowStatus, PostgresStoreError> {
-    match status {
-        "draft" => Ok(WorkflowStatus::Draft),
-        "enabled" => Ok(WorkflowStatus::Enabled),
-        "disabled" => Ok(WorkflowStatus::Disabled),
-        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
-            "unknown workflow status {value}"
-        ))),
-    }
-}
-
-pub(crate) fn parse_workflow_run_status(
-    status: &str,
-) -> Result<WorkflowRunStatus, PostgresStoreError> {
-    match status {
-        "queued" => Ok(WorkflowRunStatus::Queued),
-        "running" => Ok(WorkflowRunStatus::Running),
-        "removed" => Ok(WorkflowRunStatus::Removed),
-        "succeeded" => Ok(WorkflowRunStatus::Succeeded),
-        "failed" => Ok(WorkflowRunStatus::Failed),
-        "cancelled" => Ok(WorkflowRunStatus::Cancelled),
-        "timed_out" => Ok(WorkflowRunStatus::TimedOut),
-        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
-            "unknown workflow run status {value}"
-        ))),
-    }
-}
-
-pub(crate) fn parse_automation_status(
-    status: &str,
-) -> Result<AutomationStatus, PostgresStoreError> {
-    match status {
-        "enabled" => Ok(AutomationStatus::Enabled),
-        "disabled" => Ok(AutomationStatus::Disabled),
-        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
-            "unknown automation status {value}"
-        ))),
-    }
-}
-
-pub(crate) fn parse_automation_trigger_kind(
-    trigger_kind: &str,
-) -> Result<AutomationTriggerKind, PostgresStoreError> {
-    match trigger_kind {
-        "manual" => Ok(AutomationTriggerKind::Manual),
-        "interval" => Ok(AutomationTriggerKind::Interval),
-        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
-            "unknown automation trigger kind {value}"
-        ))),
-    }
-}
-
-pub(crate) fn parse_trigger_kind(trigger_kind: &str) -> Result<TriggerKind, PostgresStoreError> {
-    match trigger_kind {
-        "manual" => Ok(TriggerKind::Manual),
-        "schedule" => Ok(TriggerKind::Schedule),
-        "sql" => Ok(TriggerKind::Sql),
-        "custom" => Ok(TriggerKind::Custom),
-        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
-            "unknown trigger kind {value}"
-        ))),
-    }
-}
-
-pub(crate) fn parse_artifact_kind(kind: &str) -> Result<ArtifactObjectKind, PostgresStoreError> {
-    match kind {
-        "bundle" => Ok(ArtifactObjectKind::Bundle),
-        "log" => Ok(ArtifactObjectKind::Log),
-        "artifact" => Ok(ArtifactObjectKind::Artifact),
-        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
-            "unknown artifact kind {value}"
-        ))),
-    }
+pub(crate) fn parse_domain_value<T>(value: &str) -> Result<T, PostgresStoreError>
+where
+    T: FromStr,
+    T::Err: Display,
+{
+    value
+        .parse()
+        .map_err(|error: T::Err| PostgresStoreError::InvalidPersistedValue(error.to_string()))
 }

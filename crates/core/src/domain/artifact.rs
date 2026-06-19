@@ -1,4 +1,6 @@
-use super::{ArtifactId, JobAttemptId, JobRunId};
+use std::str::FromStr;
+
+use super::{ArtifactId, JobAttemptId, JobRunId, ParseDomainValueError};
 
 /// Run-scoped object kind stored in object storage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +26,19 @@ impl ArtifactObjectKind {
             Self::Bundle => "bundles",
             Self::Log => "logs",
             Self::Artifact => "artifacts",
+        }
+    }
+}
+
+impl FromStr for ArtifactObjectKind {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "bundle" => Ok(Self::Bundle),
+            "log" => Ok(Self::Log),
+            "artifact" => Ok(Self::Artifact),
+            value => Err(ParseDomainValueError::new("artifact object kind", value)),
         }
     }
 }

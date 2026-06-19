@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 use std::fmt::{self, Display};
+use std::str::FromStr;
 
-use super::AutomationId;
+use super::{AutomationId, ParseDomainValueError};
 
 /// Trigger name scoped to a single automation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -62,6 +63,20 @@ pub struct AutomationTrigger {
     config_json: String,
     plugin_id: Option<String>,
     enabled: bool,
+}
+
+impl FromStr for TriggerKind {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "manual" => Ok(Self::Manual),
+            "schedule" => Ok(Self::Schedule),
+            "sql" => Ok(Self::Sql),
+            "custom" => Ok(Self::Custom),
+            value => Err(ParseDomainValueError::new("trigger kind", value)),
+        }
+    }
 }
 
 impl AutomationTrigger {

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use capsulet_core::{
     ArtifactId, ArtifactObjectKind, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunLog,
-    JobRunLogRepository, JobRunRepository, JobRunStatus,
+    JobRunLogRepository, JobRunRepository, JobRunStatus, JobRunTransition,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
 use capsulet_runner::{
@@ -205,7 +205,7 @@ where
         .cloned()
         .ok_or_else(|| WorkerError::MissingExecutionPool(run.execution_pool().to_string()))?;
 
-    run.record_attempt_started()
+    run.apply(JobRunTransition::StartAttempt)
         .map_err(|error| WorkerError::InvalidState(error.to_string()))?;
     store.save_run(&run).await.map_err(WorkerError::store)?;
 

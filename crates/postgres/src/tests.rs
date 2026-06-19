@@ -7,7 +7,9 @@ use capsulet_core::{
     WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 
-use super::{PostgresStore, rows::parse_status};
+use capsulet_core::JobRunStatus;
+
+use super::PostgresStore;
 
 fn database_url() -> Option<String> {
     std::env::var("CAPSULET_TEST_DATABASE_URL")
@@ -91,9 +93,9 @@ fn unique_id(prefix: &str) -> String {
 
 #[test]
 fn parses_known_status() {
-    assert!(parse_status("queued").is_ok());
-    assert!(parse_status("leased").is_ok());
-    assert!(parse_status("not-real").is_err());
+    assert!("queued".parse::<JobRunStatus>().is_ok());
+    assert!("leased".parse::<JobRunStatus>().is_ok());
+    assert!("not-real".parse::<JobRunStatus>().is_err());
 }
 
 #[tokio::test]

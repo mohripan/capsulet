@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
+use std::str::FromStr;
 
-use super::{ExecutionPoolName, JobDefinitionId, JobRunId};
+use super::{ExecutionPoolName, JobDefinitionId, JobRunId, ParseDomainValueError};
 
 /// Durable state of a job run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +47,52 @@ impl Display for JobRunStatus {
 pub struct StateTransitionError {
     from: JobRunStatus,
     to: JobRunStatus,
+}
+
+impl FromStr for JobRunStatus {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "queued" => Ok(Self::Queued),
+            "leased" => Ok(Self::Leased),
+            "running" => Ok(Self::Running),
+            "succeeded" => Ok(Self::Succeeded),
+            "failed" => Ok(Self::Failed),
+            "cancelled" => Ok(Self::Cancelled),
+            "timed_out" => Ok(Self::TimedOut),
+            "retry_scheduled" => Ok(Self::RetryScheduled),
+            value => Err(ParseDomainValueError::new("job run status", value)),
+        }
+    }
+}
+
+/// Intent that drives a job run state change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobRunTransition {
+    Lease,
+    StartAttempt,
+    Succeed,
+    Fail,
+    Cancel,
+    TimeOut,
+    ScheduleRetry,
+    Requeue,
+}
+
+impl JobRunTransition {
+    const fn target(self) -> JobRunStatus {
+        match self {
+            Self::Lease => JobRunStatus::Leased,
+            Self::StartAttempt => JobRunStatus::Running,
+            Self::Succeed => JobRunStatus::Succeeded,
+            Self::Fail => JobRunStatus::Failed,
+            Self::Cancel => JobRunStatus::Cancelled,
+            Self::TimeOut => JobRunStatus::TimedOut,
+            Self::ScheduleRetry => JobRunStatus::RetryScheduled,
+            Self::Requeue => JobRunStatus::Queued,
+        }
+    }
 }
 
 impl StateTransitionError {
@@ -158,12 +205,6 @@ impl JobRun {
         &self.created_at
     }
 
-    #[must_use]
-    pub const fn with_status(mut self, status: JobRunStatus) -> Self {
-        self.status = status;
-        self
-    }
-
     /// Attaches validated run input as JSON.
     ///
     /// # Errors
@@ -184,7 +225,7 @@ impl JobRun {
     ///
     /// Returns [`StateTransitionError`] when the transition is not allowed by
     /// the job run state machine.
-    pub fn transition_to(&mut self, next: JobRunStatus) -> Result<(), StateTransitionError> {
+    fn transition_to(&mut self, next: JobRunStatus) -> Result<(), StateTransitionError> {
         if is_allowed_transition(self.status, next) {
             self.status = next;
             return Ok(());
@@ -196,14 +237,16 @@ impl JobRun {
         })
     }
 
-    /// Records that a new execution attempt has started.
+    /// Applies a domain transition to this job run.
     ///
     /// # Errors
     ///
-    /// Returns [`StateTransitionError`] when the run cannot move to `running`.
-    pub fn record_attempt_started(&mut self) -> Result<(), StateTransitionError> {
-        self.transition_to(JobRunStatus::Running)?;
-        self.attempt_count += 1;
+    /// Returns [`StateTransitionError`] when the transition is invalid for the current state.
+    pub fn apply(&mut self, transition: JobRunTransition) -> Result<(), StateTransitionError> {
+        self.transition_to(transition.target())?;
+        if transition == JobRunTransition::StartAttempt {
+            self.attempt_count += 1;
+        }
         Ok(())
     }
 }
@@ -232,7 +275,9 @@ const fn is_allowed_transition(from: JobRunStatus, to: JobRunStatus) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunStatus};
+    use super::{
+        ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunStatus, JobRunTransition,
+    };
 
     fn run() -> JobRun {
         JobRun::new(
@@ -254,10 +299,11 @@ mod tests {
     fn allows_valid_run_lifecycle() {
         let mut run = run();
 
-        run.transition_to(JobRunStatus::Leased)
+        run.apply(JobRunTransition::Lease)
             .expect("queued to leased");
-        run.record_attempt_started().expect("leased to running");
-        run.transition_to(JobRunStatus::Succeeded)
+        run.apply(JobRunTransition::StartAttempt)
+            .expect("leased to running");
+        run.apply(JobRunTransition::Succeed)
             .expect("running to succeeded");
 
         assert_eq!(run.status(), JobRunStatus::Succeeded);
@@ -270,7 +316,7 @@ mod tests {
         let mut run = run();
 
         let error = run
-            .transition_to(JobRunStatus::Succeeded)
+            .apply(JobRunTransition::Succeed)
             .expect_err("queued cannot go directly to succeeded");
 
         assert_eq!(error.from(), JobRunStatus::Queued);
@@ -281,46 +327,49 @@ mod tests {
     fn allows_cancellation_from_non_terminal_states() {
         let mut queued = run();
         queued
-            .transition_to(JobRunStatus::Cancelled)
+            .apply(JobRunTransition::Cancel)
             .expect("queued to cancelled");
         assert!(queued.status().is_terminal());
 
         let mut leased = run();
         leased
-            .transition_to(JobRunStatus::Leased)
+            .apply(JobRunTransition::Lease)
             .expect("queued to leased");
         leased
-            .transition_to(JobRunStatus::Cancelled)
+            .apply(JobRunTransition::Cancel)
             .expect("leased to cancelled");
         assert!(leased.status().is_terminal());
 
         let mut running = run();
         running
-            .transition_to(JobRunStatus::Leased)
+            .apply(JobRunTransition::Lease)
             .expect("queued to leased");
-        running.record_attempt_started().expect("leased to running");
         running
-            .transition_to(JobRunStatus::Cancelled)
+            .apply(JobRunTransition::StartAttempt)
+            .expect("leased to running");
+        running
+            .apply(JobRunTransition::Cancel)
             .expect("running to cancelled");
         assert!(running.status().is_terminal());
     }
 
     #[test]
     fn terminal_states_are_stable() {
-        for terminal in [
-            JobRunStatus::Succeeded,
-            JobRunStatus::Failed,
-            JobRunStatus::Cancelled,
-            JobRunStatus::TimedOut,
+        for (transition, terminal) in [
+            (JobRunTransition::Succeed, JobRunStatus::Succeeded),
+            (JobRunTransition::Fail, JobRunStatus::Failed),
+            (JobRunTransition::Cancel, JobRunStatus::Cancelled),
+            (JobRunTransition::TimeOut, JobRunStatus::TimedOut),
         ] {
             let mut run = run();
-            run.transition_to(JobRunStatus::Leased)
+            run.apply(JobRunTransition::Lease)
                 .expect("queued to leased");
-            run.record_attempt_started().expect("leased to running");
-            run.transition_to(terminal).expect("terminal transition");
+            run.apply(JobRunTransition::StartAttempt)
+                .expect("leased to running");
+            run.apply(transition).expect("terminal transition");
 
             let error = run
-                .transition_to(JobRunStatus::Queued)
+                .apply(JobRunTransition::Requeue)
                 .expect_err("terminal state cannot be overwritten");
             assert_eq!(error.from(), terminal);
         }
@@ -328,15 +377,16 @@ mod tests {
 
     #[test]
     fn supports_retry_scheduling_after_failure_or_timeout() {
-        for retryable in [JobRunStatus::Failed, JobRunStatus::TimedOut] {
+        for retryable in [JobRunTransition::Fail, JobRunTransition::TimeOut] {
             let mut run = run();
-            run.transition_to(JobRunStatus::Leased)
+            run.apply(JobRunTransition::Lease)
                 .expect("queued to leased");
-            run.record_attempt_started().expect("leased to running");
-            run.transition_to(retryable).expect("retryable terminal");
-            run.transition_to(JobRunStatus::RetryScheduled)
+            run.apply(JobRunTransition::StartAttempt)
+                .expect("leased to running");
+            run.apply(retryable).expect("retryable terminal");
+            run.apply(JobRunTransition::ScheduleRetry)
                 .expect("schedule retry");
-            run.transition_to(JobRunStatus::Queued)
+            run.apply(JobRunTransition::Requeue)
                 .expect("retry back to queue");
         }
     }

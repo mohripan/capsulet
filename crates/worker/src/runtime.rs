@@ -84,9 +84,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
     let object_store = load_object_store()?;
 
-    let runner_mode = env::var("CAPSULET_RUNNER_MODE")
-        .unwrap_or_else(|_| DEFAULT_RUNNER_MODE.to_string())
-        .to_string();
+    let runner_mode =
+        env::var("CAPSULET_RUNNER_MODE").unwrap_or_else(|_| DEFAULT_RUNNER_MODE.to_string());
     let loop_enabled = env_bool("CAPSULET_WORKER_LOOP");
     let poll_seconds = env::var("CAPSULET_WORKER_POLL_SECONDS")
         .ok()

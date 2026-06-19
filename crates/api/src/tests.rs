@@ -7,9 +7,9 @@ use axum::{
 use capsulet_core::{
     ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
     CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun,
-    JobRunId, JobRunLog, JobRunStatus, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId,
-    WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun,
-    WorkflowStepRunId,
+    JobRunId, JobRunLog, JobRunTransition, WorkflowDefinition, WorkflowId, WorkflowRun,
+    WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
+    WorkflowStepRun, WorkflowStepRunId,
 };
 use capsulet_storage::ObjectStore;
 use http_body_util::BodyExt;
@@ -462,7 +462,9 @@ impl ApiStore for FakeStore {
                 .iter_mut()
                 .find(|job_run| job_run.id() == step_run.job_run_id())
             {
-                *job_run = job_run.clone().with_status(JobRunStatus::Cancelled);
+                job_run
+                    .apply(JobRunTransition::Cancel)
+                    .map_err(|error| error.to_string())?;
             }
         }
         Ok(Some(run.clone()))
@@ -547,7 +549,8 @@ impl ApiStore for FakeStore {
             return Ok(None);
         };
         if !run.status().is_terminal() {
-            *run = run.clone().with_status(JobRunStatus::Cancelled);
+            run.apply(JobRunTransition::Cancel)
+                .map_err(|error| error.to_string())?;
         }
         Ok(Some(run.clone()))
     }

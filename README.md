@@ -106,7 +106,7 @@ migrations/     PostgreSQL schema history
 
 ## Development and verification
 
-Rust requires version 1.87 or newer. The dashboard requires Node.js 20 or newer.
+Rust is pinned to version 1.96.0. The dashboard requires Node.js 20 or newer.
 
 ```sh
 cargo fmt --all -- --check

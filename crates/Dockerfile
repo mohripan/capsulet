@@ -1,4 +1,4 @@
-FROM rust:1.87-bookworm AS build
+FROM rust:1.96-bookworm AS build
 
 ARG PACKAGE
 ARG BIN

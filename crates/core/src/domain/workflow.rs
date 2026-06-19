@@ -1,8 +1,9 @@
 use std::fmt::{self, Display};
+use std::str::FromStr;
 
 use super::{
-    AutomationId, ExecutionPoolName, JobDefinitionId, JobRunId, WorkflowId, WorkflowRunId,
-    WorkflowStepId, WorkflowStepRunId,
+    AutomationId, ExecutionPoolName, JobDefinitionId, JobRunId, ParseDomainValueError, WorkflowId,
+    WorkflowRunId, WorkflowStepId, WorkflowStepRunId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +20,19 @@ impl Display for WorkflowStatus {
             Self::Enabled => "enabled",
             Self::Disabled => "disabled",
         })
+    }
+}
+
+impl FromStr for WorkflowStatus {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "draft" => Ok(Self::Draft),
+            "enabled" => Ok(Self::Enabled),
+            "disabled" => Ok(Self::Disabled),
+            value => Err(ParseDomainValueError::new("workflow status", value)),
+        }
     }
 }
 
@@ -57,6 +71,23 @@ impl Display for WorkflowRunStatus {
     }
 }
 
+impl FromStr for WorkflowRunStatus {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "queued" => Ok(Self::Queued),
+            "running" => Ok(Self::Running),
+            "removed" => Ok(Self::Removed),
+            "succeeded" => Ok(Self::Succeeded),
+            "failed" => Ok(Self::Failed),
+            "cancelled" => Ok(Self::Cancelled),
+            "timed_out" => Ok(Self::TimedOut),
+            value => Err(ParseDomainValueError::new("workflow run status", value)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutomationStatus {
     Enabled,
@@ -72,6 +103,18 @@ impl Display for AutomationStatus {
     }
 }
 
+impl FromStr for AutomationStatus {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "enabled" => Ok(Self::Enabled),
+            "disabled" => Ok(Self::Disabled),
+            value => Err(ParseDomainValueError::new("automation status", value)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutomationTriggerKind {
     Manual,
@@ -84,6 +127,18 @@ impl Display for AutomationTriggerKind {
             Self::Manual => "manual",
             Self::Interval => "interval",
         })
+    }
+}
+
+impl FromStr for AutomationTriggerKind {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "manual" => Ok(Self::Manual),
+            "interval" => Ok(Self::Interval),
+            value => Err(ParseDomainValueError::new("automation trigger kind", value)),
+        }
     }
 }
 

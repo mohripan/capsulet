@@ -1,10 +1,13 @@
+use std::num::NonZeroU32;
+use std::time::Duration;
+
 use super::JobDefinitionId;
 
 /// Minimal fixed-delay retry policy for a job definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
-    max_attempts: u32,
-    delay_seconds: u64,
+    max_attempts: NonZeroU32,
+    delay: Duration,
 }
 
 impl RetryPolicy {
@@ -14,40 +17,31 @@ impl RetryPolicy {
     ///
     /// Returns an error when max attempts is zero.
     pub const fn new(max_attempts: u32, delay_seconds: u64) -> Result<Self, &'static str> {
-        if max_attempts == 0 {
+        let Some(max_attempts) = NonZeroU32::new(max_attempts) else {
             return Err("retry max attempts must be greater than zero");
-        }
-
+        };
         Ok(Self {
             max_attempts,
-            delay_seconds,
+            delay: Duration::from_secs(delay_seconds),
         })
     }
 
     #[must_use]
     pub const fn no_retry() -> Self {
         Self {
-            max_attempts: 1,
-            delay_seconds: 0,
+            max_attempts: NonZeroU32::MIN,
+            delay: Duration::ZERO,
         }
     }
 
     #[must_use]
     pub const fn max_attempts(self) -> u32 {
-        self.max_attempts
+        self.max_attempts.get()
     }
 
     #[must_use]
     pub const fn delay_seconds(self) -> u64 {
-        self.delay_seconds
-    }
-
-    #[cfg(test)]
-    const fn unchecked(max_attempts: u32, delay_seconds: u64) -> Self {
-        Self {
-            max_attempts,
-            delay_seconds,
-        }
+        self.delay.as_secs()
     }
 }
 
@@ -99,10 +93,6 @@ impl JobDefinition {
         if input_schema.trim().is_empty() {
             return Err("job definition input schema cannot be empty".to_string());
         }
-        if retry_policy.max_attempts() == 0 {
-            return Err("job definition retry max attempts must be greater than zero".to_string());
-        }
-
         Ok(Self {
             id,
             name,
@@ -328,16 +318,15 @@ mod tests {
 
     #[test]
     fn rejects_zero_retry_attempts() {
-        let definition = JobDefinition::new(
-            JobDefinitionId::new("job_1").expect("valid id"),
-            "Example",
-            "python:3.12-slim",
-            vec!["python".to_string(), "/workspace/main.py".to_string()],
-            "bundles/job_1.tar.gz",
-            "{}",
-            RetryPolicy::unchecked(0, 0),
-        );
+        let policy = RetryPolicy::new(0, 0);
 
-        assert!(definition.is_err());
+        assert!(policy.is_err());
+    }
+
+    #[test]
+    fn retry_policy_preserves_attempts_and_delay() {
+        let policy = RetryPolicy::new(3, 15).expect("valid retry policy");
+
+        assert_eq!((policy.max_attempts(), policy.delay_seconds()), (3, 15));
     }
 }

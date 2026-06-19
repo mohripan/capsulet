@@ -126,7 +126,7 @@ mod tests {
     fn execution_pool_requires_positive_concurrency() {
         let pool = ExecutionPool::new(
             ExecutionPoolName::new("mini").expect("valid pool name"),
-            Duration::from_secs(120),
+            Duration::from_mins(2),
             0,
             ResourceRequirements::new(100, 128),
         );
@@ -138,7 +138,7 @@ mod tests {
     fn execution_pool_accepts_valid_defaults() {
         let pool = ExecutionPool::new(
             ExecutionPoolName::new("large").expect("valid pool name"),
-            Duration::from_secs(3600),
+            Duration::from_hours(1),
             10,
             ResourceRequirements::new(2000, 4096),
         )

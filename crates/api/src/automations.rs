@@ -319,13 +319,11 @@ where
 }
 
 fn parse_automation_status(status: &str) -> Result<AutomationStatus, ApiError> {
-    match status {
-        "enabled" => Ok(AutomationStatus::Enabled),
-        "disabled" => Ok(AutomationStatus::Disabled),
-        value => Err(ApiError::Validation(format!(
-            "unsupported automation status: {value}"
-        ))),
-    }
+    status
+        .parse()
+        .map_err(|error: capsulet_core::ParseDomainValueError| {
+            ApiError::Validation(error.to_string())
+        })
 }
 
 struct AutomationBuild {
@@ -585,15 +583,10 @@ fn condition_expr_from_json(value: &Value) -> Result<ConditionExpr, ApiError> {
 }
 
 fn parse_trigger_kind(kind: &str) -> Result<TriggerKind, ApiError> {
-    match kind {
-        "manual" => Ok(TriggerKind::Manual),
-        "schedule" => Ok(TriggerKind::Schedule),
-        "sql" => Ok(TriggerKind::Sql),
-        "custom" => Ok(TriggerKind::Custom),
-        value => Err(ApiError::Validation(format!(
-            "unsupported automation trigger kind: {value}"
-        ))),
-    }
+    kind.parse()
+        .map_err(|error: capsulet_core::ParseDomainValueError| {
+            ApiError::Validation(error.to_string())
+        })
 }
 
 async fn trigger_graph_for_response<S, O>(

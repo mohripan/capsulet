@@ -5,6 +5,7 @@ use std::{
 
 use capsulet_core::{
     ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog,
+    JobRunStatus, JobRunTransition,
 };
 use capsulet_runner::{
     CancellationCheck, ExecutionPoolConfig, ExecutionPoolsConfig, PoolResources, RunExecution,
@@ -36,7 +37,7 @@ impl WorkerStore for FakeStore {
     ) -> Result<Option<JobRun>, Self::Error> {
         let mut run = self.queued.lock().map_err(|error| error.to_string())?.pop();
         if let Some(run) = &mut run {
-            run.transition_to(capsulet_core::JobRunStatus::Leased)
+            run.apply(JobRunTransition::Lease)
                 .map_err(|error| error.to_string())?;
         }
         Ok(run)
@@ -114,7 +115,20 @@ impl WorkerStore for FakeStore {
         {
             return Ok(None);
         }
-        run = run.with_status(status);
+        if status == JobRunStatus::RetryScheduled {
+            run.apply(JobRunTransition::Fail)
+                .and_then(|()| run.apply(JobRunTransition::ScheduleRetry))
+                .map_err(|error| error.to_string())?;
+        } else {
+            let transition = match status {
+                JobRunStatus::Succeeded => JobRunTransition::Succeed,
+                JobRunStatus::Failed => JobRunTransition::Fail,
+                JobRunStatus::Cancelled => JobRunTransition::Cancel,
+                JobRunStatus::TimedOut => JobRunTransition::TimeOut,
+                status => return Err(format!("unsupported fake completion status {status}")),
+            };
+            run.apply(transition).map_err(|error| error.to_string())?;
+        }
         self.save_run(&run).await?;
         Ok(Some(run))
     }

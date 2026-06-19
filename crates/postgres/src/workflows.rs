@@ -5,7 +5,7 @@ use sqlx::Row;
 
 use crate::{
     PostgresStore, PostgresStoreError,
-    rows::{parse_workflow_status, row_to_workflow_step},
+    rows::{parse_domain_value, row_to_workflow_step},
 };
 impl PostgresStore {
     ///
@@ -180,7 +180,7 @@ impl PostgresStore {
             workflow_id.clone(),
             row.try_get::<String, _>("name")?,
             row.try_get::<String, _>("description")?,
-            parse_workflow_status(row.try_get::<String, _>("status")?.as_str())?,
+            parse_domain_value(row.try_get::<String, _>("status")?.as_str())?,
             step_rows
                 .iter()
                 .map(row_to_workflow_step)

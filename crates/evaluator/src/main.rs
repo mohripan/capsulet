@@ -8,6 +8,6 @@ fn main() {
     );
     println!("{}", descriptor.banner());
     loop {
-        thread::sleep(Duration::from_secs(60));
+        thread::sleep(Duration::from_mins(1));
     }
 }

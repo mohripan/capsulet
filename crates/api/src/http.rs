@@ -519,15 +519,15 @@ fn normalized_datetime(value: &str) -> String {
 
 fn matches_date_range(created_at: &str, start_at: Option<&str>, end_at: Option<&str>) -> bool {
     let created = normalized_datetime(created_at);
-    if let Some(start) = start_at.filter(|value| !value.trim().is_empty()) {
-        if created < normalized_datetime(start) {
-            return false;
-        }
+    if let Some(start) = start_at.filter(|value| !value.trim().is_empty())
+        && created < normalized_datetime(start)
+    {
+        return false;
     }
-    if let Some(end) = end_at.filter(|value| !value.trim().is_empty()) {
-        if created > normalized_datetime(end) {
-            return false;
-        }
+    if let Some(end) = end_at.filter(|value| !value.trim().is_empty())
+        && created > normalized_datetime(end)
+    {
+        return false;
     }
     true
 }
