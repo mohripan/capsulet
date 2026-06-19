@@ -70,7 +70,7 @@ The response contains the workflow run and preserved successful step runs. Activ
 
 ## Kubernetes with Helm
 
-The chart installs the API, worker, scheduler, dashboard, migration job, RBAC, services, configuration, and optional bundled PostgreSQL and MinIO.
+The chart installs the API, worker, scheduler, evaluator placeholder, dashboard, migration job, RBAC, services, configuration, and optional bundled PostgreSQL and MinIO.
 
 ```sh
 helm lint charts/capsulet
@@ -96,6 +96,7 @@ crates/
   postgres/     SQLx persistence and migrations
   runner/       stub, process, and Kubernetes runners
   scheduler/    automation triggering and DAG reconciliation
+  evaluator/    placeholder for future asynchronous trigger evaluation
   worker/       leasing, heartbeat, execution, logs, and artifacts
   storage/      filesystem and S3-compatible object storage
   cli/          command-line client
@@ -120,7 +121,7 @@ npm run build
 npm run test:e2e
 ```
 
-Database integration tests run when `DATABASE_URL` is set. Full local and Kubernetes validation steps are documented in [development](docs/development.md).
+Database integration tests run when `CAPSULET_TEST_DATABASE_URL` is set. Full local and Kubernetes validation steps are documented in [development](docs/development.md).
 
 ## Documentation
 

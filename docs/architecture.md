@@ -1,76 +1,80 @@
-# Architecture
+# Architecture Overview
 
-Capsulet is a Kubernetes-native automation platform for authoring reusable Python jobs, composing them into simple workflows, triggering them manually or on an interval, and inspecting durable execution state, logs, and artifacts.
+Capsulet is an early-alpha automation platform that stores durable control-plane state in PostgreSQL and executes jobs through a pluggable runner. The Kubernetes runner creates isolated Kubernetes Jobs; local process and deterministic stub runners support development and tests.
+
+The detailed system design and implementation boundaries are in the repository-level [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Components
 
-- API: accepts job definition, workflow, automation, and run submissions; exposes run status, logs, cancellation, and artifact download endpoints.
-- Worker: leases queued runs, recovers expired leases, executes one or more worker ticks, and persists final run state.
-- Scheduler: creates due interval automation runs and advances workflow runs from one step to the next as underlying job runs finish.
-- Runner: owns execution backend behavior. The current production-shaped runner creates Kubernetes Jobs; the stub runner is used for local tests and smoke checks.
-- PostgreSQL: stores control-plane metadata, including job definitions, workflows, automations, workflow runs, job runs, attempts, inline log previews, and artifact metadata.
-- Object storage: stores script bundles, large logs, and artifact bytes through the shared `capsulet-storage` boundary.
-- CLI: talks to the API for submit, status, logs, cancellation, and artifact commands.
-- Dashboard: browser UI for job definition authoring, workflow authoring, automation triggers, live run listing, submission, run detail, cancellation, logs, and artifacts. Settings and security surfaces are still placeholders.
+- **API:** Axum HTTP control plane for job definitions, workflow DAGs, automations and trigger metadata, job/workflow runs, health, logs, cancellation, and artifacts.
+- **Scheduler:** PostgreSQL polling loop that fires due legacy interval automations and advances every ready node in workflow DAGs.
+- **Worker:** promotes retries, recovers expired leases, leases queued jobs, heartbeats active work, invokes a runner, and persists outcomes.
+- **Runner library:** stub, trusted local-process, and Kubernetes Job execution backends.
+- **PostgreSQL adapter:** SQLx persistence for definitions, runs, attempts, leases/heartbeats, workflow dependency edges, automation metadata, logs, and artifact metadata.
+- **Object storage adapter:** filesystem or S3-compatible storage for Python scripts, complete large logs, and artifact bytes.
+- **Dashboard:** Next.js UI that reaches the API through a same-origin server proxy.
+- **CLI:** HTTP client for submission and job-run operations.
+- **Evaluator:** deployable placeholder; asynchronous condition/trigger evaluation is not wired yet.
 
-## Runtime Flow
+## Dependency view
 
-1. A user creates a reusable job definition from the dashboard or API. For Python jobs, the API stores the script as `bundles/job-definitions/<job-definition-id>/main.py`.
-2. A user can submit that job definition directly, or compose it into a linear workflow.
-3. A user creates an automation for the workflow. Manual automations run when triggered; interval automations create runs when the scheduler observes that `next_fire_at` is due.
-4. PostgreSQL stores the queued workflow run and its step-run state.
-5. The scheduler starts the next workflow step by creating a normal queued job run for the step's job definition and execution pool.
-6. The worker recovers expired leases, leases queued job runs, and records execution attempts.
-7. If the run uses a script bundle, the worker reads the bundle from object storage and rewrites the command to execute the script content.
-8. The runner executes the job. In Kubernetes mode, it creates a Kubernetes Job using the selected execution pool resources, node selector, tolerations, timeout, and cleanup TTL.
-9. The worker stores a bounded inline log preview. Logs larger than 64 KiB are also uploaded to object storage as `logs/<run-id>/stdout.log`.
-10. Files published under `/capsulet/artifacts` are uploaded to object storage as run artifacts.
-11. The worker marks the job run `succeeded`, `failed`, `timed_out`, `cancelled`, or `retry_scheduled`.
-12. The scheduler advances or finishes the workflow run based on the terminal state of each step's job run.
+```mermaid
+flowchart LR
+    ui[Dashboard] --> api[API]
+    cli[CLI] --> api
+    api --> db[(PostgreSQL)]
+    api --> store[(Object storage)]
+    scheduler[Scheduler] --> db
+    worker[Worker] --> db
+    worker --> store
+    worker --> runner[Runner]
+    runner --> kube[Kubernetes API]
+    kube --> pods[Job pods]
+```
 
-## Dashboard Flow
+PostgreSQL is the source of truth for metadata and state transitions. It is also the durable work queue. Object storage is not authoritative for run state; it contains bytes referenced by PostgreSQL metadata.
 
-The dashboard uses a same-origin Next.js proxy route at `/api/capsulet/...`. Browser code calls that route, and the proxy forwards requests to the upstream Capsulet API configured by `CAPSULET_DASHBOARD_API_URL`.
+## Job lifecycle
 
-This keeps local browser use simple and avoids CORS requirements for the current unauthenticated alpha dashboard.
+1. The API validates a job definition, input contract, and execution pool, then inserts a `queued` run.
+2. A worker promotes due retries, recovers expired leases, and leases the oldest queued run with row locking.
+3. The worker creates an attempt and heartbeats the run while its runner is active.
+4. The runner returns a terminal outcome, logs, and collected artifacts.
+5. The worker stores an inline log preview, offloads complete large logs and artifacts to object storage, and commits a guarded final state.
+6. Failed or timed-out runs may enter `retry_scheduled`; cancellation is terminal.
 
-## Storage Boundaries
+Lease recovery provides at-least-once execution. The worker does not yet reattach to a Kubernetes Job left behind by a crashed worker, so a recovered run can create replacement work.
 
-PostgreSQL is the source of truth for metadata and state transitions. It does not store script bundle bytes, large log bytes, or artifact bytes.
+## Workflow lifecycle
 
-Object storage keys are scoped by their owning resource:
+Workflows are DAGs. Dependency edges can express fan-out and fan-in; the API rejects cycles and invalid edges. Omitting the dependency field creates a position-ordered compatibility chain, while an explicit empty list creates independent roots.
 
-- `bundles/job-definitions/<job-definition-id>/main.py`
-- `bundles/<run-id>/main.py`
-- `logs/<run-id>/stdout.log`
-- `artifacts/<run-id>/<name>`
+An automation or manual action creates a workflow run. On each tick, the scheduler queues every step whose predecessors have succeeded. It reconciles step outcomes into the workflow result. Resume keeps successful checkpoints and retries only the unfinished part of the graph.
 
-Artifact metadata in PostgreSQL includes the run ID, optional attempt ID, artifact ID, display name, object key, content type, size, checksum when available, kind, and creation time. The API always resolves artifacts by run ID plus artifact ID so one run cannot fetch another run's artifacts through the normal endpoint.
+## Automations
 
-## Execution Pools
+The authoring model supports named `manual`, `schedule`, `sql`, and `custom` trigger definitions, custom-trigger plugin metadata, and validated boolean condition expressions. Runtime support is currently limited to direct manual automation triggering and legacy fixed-interval scheduling. The evaluator service, SQL/custom trigger execution, and durable event processing are future work.
 
-Execution pools are static configuration in the current implementation. The API exposes configured pool names to the dashboard, Capsulet chooses the execution pool for a run, and Kubernetes chooses the specific node inside that pool.
+## Storage keys
 
-Each pool can define:
+- job-definition scripts: `bundles/job-definitions/<job-definition-id>/main.py`
+- submitted run scripts: `bundles/<run-id>/main.py`
+- complete large logs: `logs/<run-id>/stdout.log`
+- artifacts: `artifacts/<run-id>/<name>`
 
-- description
-- node selector
-- tolerations
-- resource requests and limits
-- timeout seconds
-- maximum concurrent jobs
-- Kubernetes Job TTL after finish
+Logs up to 64 KiB are stored inline. Larger logs keep a bounded inline preview and an object-backed `stdout.log` artifact.
 
-Pool-level concurrency limits are represented in values today, but enforcement remains future work.
+## Deployment
 
-## Current Limitations
+Docker Compose supplies PostgreSQL, MinIO, API, scheduler, a stub-runner worker, dashboard, and Mailpit for local evaluation. The Helm chart deploys the platform services, migration/bucket initialization jobs, RBAC, health probes, static execution pools, and optional bundled PostgreSQL/MinIO. External PostgreSQL and S3-compatible storage are the production-shaped dependency mode.
 
-- No API authentication or user model.
-- Workflow authoring is intentionally linear: steps execute in position order, with no branches or condition tree yet.
-- Automation triggers are manual and fixed interval only.
-- Dashboard authoring covers create/list flows; edit/delete controls remain limited.
-- No retention cleanup for object storage.
-- No multi-file script bundles.
-- No streaming logs.
-- No Kubernetes Job reattachment after worker crash; expired running rows can be recovered and retried by the worker.
-- No bundled PostgreSQL or MinIO chart dependency yet; local dependencies are started with Docker Compose or provided externally to the chart.
+API, scheduler, and worker expose `/livez`, `/readyz`, and `/healthz` (compatibility alias). Readiness depends on PostgreSQL connectivity.
+
+## Current limitations
+
+- No authentication or authorization.
+- No schedule/SQL/custom trigger execution through the evaluator.
+- No execution-pool concurrency enforcement.
+- No retention cleanup, metrics, audit log, streaming logs, or multi-file bundles.
+- No Kubernetes Job reattachment after worker failure.
+- Kubernetes Jobs provide isolation but are not a complete hostile-code sandbox.

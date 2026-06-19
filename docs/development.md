@@ -36,9 +36,9 @@ Current crates:
 - `capsulet-storage`: filesystem and S3-compatible object storage adapter
 - `capsulet-api`: HTTP control plane
 - `capsulet-worker`: job leasing and runner coordination
-- `capsulet-scheduler`: future schedule and delay scanner
-- `capsulet-evaluator`: future automation condition evaluator
-- `capsulet-runner`: execution backend boundary with stub and Kubernetes Job runners
+- `capsulet-scheduler`: interval automation polling and workflow-DAG reconciliation
+- `capsulet-evaluator`: deployable placeholder for future asynchronous trigger evaluation
+- `capsulet-runner`: execution boundary with stub, trusted local-process, and Kubernetes Job runners
 - `capsulet-cli`: operator and developer CLI for the HTTP API
 
 ## Local Docker Compose Stack
@@ -57,6 +57,8 @@ This starts:
 - Capsulet API on `localhost:8080`
 - Capsulet dashboard on `localhost:3000`
 - Capsulet worker in continuous stub-runner mode
+- Capsulet scheduler in continuous polling mode
+- Mailpit SMTP/Web UI for the send-email example
 
 Open the live dashboard:
 
@@ -168,7 +170,7 @@ cargo run -p capsulet-cli -- --api-url http://127.0.0.1:8080 runs --limit 25
 
 ## Worker
 
-The worker can execute one queued run per process invocation through a stub runner, or run continuously through the Kubernetes Job runner.
+The worker can execute a single tick or poll continuously with the stub, local-process, or Kubernetes Job runner. `CAPSULET_WORKER_LOOP=true` enables polling; `CAPSULET_WORKER_POLL_SECONDS` controls the idle delay.
 
 Run a success tick:
 

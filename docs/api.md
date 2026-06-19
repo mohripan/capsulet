@@ -57,6 +57,35 @@ docker exec -i capsulet-postgres psql -U capsulet -d capsulet -c "INSERT INTO jo
 
 ## Endpoints
 
+The router currently exposes:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/livez`, `/readyz`, `/healthz` | Process and database health |
+| `GET`, `POST` | `/v1/job-definitions` | List or create definitions |
+| `GET`, `PUT`, `DELETE` | `/v1/job-definitions/{id}` | Read, replace, or delete a definition |
+| `GET` | `/v1/execution-pools`, `/v1/host-groups` | Read static execution configuration |
+| `GET`, `POST` | `/v1/workflows` | List or create workflow DAGs |
+| `GET`, `PUT` | `/v1/workflows/{id}` | Read or replace a workflow DAG |
+| `GET`, `POST` | `/v1/automations` | List or create automations |
+| `GET`, `PUT`, `DELETE` | `/v1/automations/{id}` | Read, replace, or delete an automation |
+| `POST` | `/v1/automations/{id}/enable`, `/disable` | Change automation state |
+| `GET` | `/v1/automations/{id}/triggers` | List an automation's trigger graph |
+| `POST` | `/v1/automations/{id}/trigger` | Start its workflow manually |
+| `GET`, `POST` | `/v1/trigger-plugins` | List or create plugin metadata |
+| `GET` | `/v1/trigger-plugins/{id}` | Read plugin metadata |
+| `GET` | `/v1/workflow-runs` | List workflow runs and step runs |
+| `GET` | `/v1/workflow-runs/{id}/logs` | Aggregate step-run logs |
+| `POST` | `/v1/workflow-runs/{id}/remove` | Remove a queued run from normal listings |
+| `POST` | `/v1/workflow-runs/{id}/cancel` | Cancel a running workflow and its jobs |
+| `POST` | `/v1/workflow-runs/{id}/resume` | Resume from successful checkpoints |
+| `GET`, `POST` | `/v1/jobs/runs` | List or create job runs |
+| `GET` | `/v1/jobs/runs/{id}` | Read a job run |
+| `POST` | `/v1/jobs/runs/{id}/cancel` | Cancel a job run |
+| `GET` | `/v1/jobs/runs/{id}/logs` | Read inline/object-log status |
+| `GET` | `/v1/jobs/runs/{id}/artifacts` | List artifacts |
+| `GET` | `/v1/jobs/runs/{id}/artifacts/{artifact_id}` | Download an artifact |
+
 Liveness, readiness, and the backward-compatible health alias:
 
 ```sh
@@ -197,11 +226,35 @@ curl -X POST http://127.0.0.1:8080/v1/automations \
   -d '{"name":"Hourly email","workflow_id":"workflow_123","trigger_kind":"interval","interval_seconds":3600}'
 ```
 
+The compatibility fields above drive the currently implemented manual and fixed-interval runtime. The richer authoring model accepts a `triggers` array with named `manual`, `schedule`, `sql`, or `custom` definitions and a structured `condition`. The API validates and persists those definitions, but schedule/SQL/custom execution through the evaluator is not wired yet.
+
 List and fetch automations:
 
 ```sh
 curl http://127.0.0.1:8080/v1/automations
 curl http://127.0.0.1:8080/v1/automations/automation_123
+```
+
+Replace, enable, disable, delete, or inspect triggers:
+
+```sh
+curl -X PUT http://127.0.0.1:8080/v1/automations/automation_123 \
+  -H "content-type: application/json" \
+  -d '{"name":"Updated automation","workflow_id":"workflow_123","trigger_kind":"manual"}'
+curl -X POST http://127.0.0.1:8080/v1/automations/automation_123/enable
+curl -X POST http://127.0.0.1:8080/v1/automations/automation_123/disable
+curl http://127.0.0.1:8080/v1/automations/automation_123/triggers
+curl -X DELETE http://127.0.0.1:8080/v1/automations/automation_123
+```
+
+Custom-trigger plugins are metadata and validation contracts in the current release; Capsulet does not execute their images yet:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/trigger-plugins \
+  -H "content-type: application/json" \
+  -d '{"id":"plugin_example","name":"Example","runtime_image":"example/plugin:1","command":["/plugin"]}'
+curl http://127.0.0.1:8080/v1/trigger-plugins
+curl http://127.0.0.1:8080/v1/trigger-plugins/plugin_example
 ```
 
 Trigger one automation manually:
@@ -217,6 +270,14 @@ curl http://127.0.0.1:8080/v1/workflow-runs
 ```
 
 Each workflow run includes `step_runs`. A step run exposes its `position`, `status`, `workflow_step_id`, and underlying `job_run_id`; use that job run ID with the existing logs and artifacts endpoints.
+
+Inspect aggregate logs, cancel, or remove an eligible queued workflow run:
+
+```sh
+curl http://127.0.0.1:8080/v1/workflow-runs/workflow_run_123/logs
+curl -X POST http://127.0.0.1:8080/v1/workflow-runs/workflow_run_123/cancel
+curl -X POST http://127.0.0.1:8080/v1/workflow-runs/workflow_run_123/remove
+```
 
 Resume a failed or timed-out workflow from successful step checkpoints:
 
@@ -318,7 +379,10 @@ Known API error codes:
 - `unknown_job_definition`
 - `unknown_execution_pool`
 - `workflow_not_found`
+- `workflow_run_not_found`
+- `invalid_workflow_run_transition`
 - `automation_not_found`
+- `trigger_plugin_not_found`
 - `job_run_not_found`
 - `job_run_logs_not_found`
 - `job_artifact_not_found`

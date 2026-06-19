@@ -1,5 +1,7 @@
 # Capsulet MVP Implementation Plan
 
+> Historical implementation plan. Its linear workflow model has been superseded by the implemented workflow DAG engine. See [Architecture Overview](../architecture.md) for current behavior.
+
 ## Goal
 
 Build Capsulet to the point where a user can create their own job definitions, create workflows, create automations, trigger them manually or on an interval, and inspect the resulting work end to end through the dashboard.

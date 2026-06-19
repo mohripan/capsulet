@@ -1,5 +1,7 @@
 # Workflow DAG Graph Plan
 
+> Implemented design record. Persisted dependency edges, cycle validation, parallel ready-node scheduling, graph visualization, and checkpoint-based resume are now part of the current system. See [Architecture Overview](../architecture.md).
+
 ## Goal
 
 Introduce graph data structures and algorithms into Capsulet by evolving workflow definitions from a strictly linear ordered list into a directed acyclic graph.

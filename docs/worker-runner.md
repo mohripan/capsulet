@@ -4,10 +4,11 @@ The worker leases queued runs, executes them through a runner boundary, persists
 
 The worker promotes ready retries, recovers expired leases, leases one queued run, records an execution attempt by moving the run to `running`, executes through a runner boundary, and then stores a guarded final state.
 
-Current runner implementation:
+Current runner implementations:
 
 - `StubRunner::success()`: always marks the run as `succeeded`
 - `StubRunner::failure()`: always marks the run as `failed`
+- `ProcessRunner`: executes the configured command as a trusted local child process for development
 - `KubernetesRunner`: creates a Kubernetes Job, waits for terminal status, supports cancellation, classifies timeouts, captures pod logs, and collects files published under `/capsulet/artifacts`
 
 The runner boundary returns a `RunReport` with an outcome, logs, and collected artifacts. Outcomes are `succeeded`, `failed`, `timed_out`, or `cancelled`. Small logs are stored inline for the existing logs API. Logs larger than 64 KiB are also uploaded to object storage as `stdout.log`, with PostgreSQL storing the artifact metadata and object key.
@@ -87,7 +88,7 @@ For artifact-producing jobs, write files to:
 /capsulet/artifacts
 ```
 
-The Kubernetes runner wraps the job command, preserves the original exit status, and emits completed artifact files back to the worker for upload. Artifact names are normalized to their base file names; nested paths are not preserved in Sprint 005.
+The Kubernetes runner wraps the job command, preserves the original exit status, and emits completed artifact files back to the worker for upload. Artifact names are normalized to their base file names; nested paths are not preserved.
 
 ## Object Storage
 
@@ -120,7 +121,7 @@ Troubleshooting checks:
 - S3 credentials are read from `CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID` and `CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY`, or from the Helm credentials secret.
 - If artifact list succeeds but download fails, the metadata row exists but the referenced object key could not be read from storage.
 
-Sprint 005 intentionally defers retention cleanup, dashboard artifact browsing, multi-file bundles, and streaming object-backed logs.
+Retention cleanup, multi-file bundles, and streaming object-backed logs remain future work. The dashboard can list and download artifacts through the API.
 
 ## Cancellation, Timeout, and Retry
 
@@ -145,6 +146,16 @@ The current lease metadata is:
 
 - `lease_owner`
 - `lease_expires_at`
+- `heartbeat_at`
 - `status = leased`
 
-At the beginning of each tick, the worker requeues expired `leased` and `running` runs. This recovers rows left behind by worker crashes or rollouts. Reattaching to already-created running Kubernetes Jobs remains a later reconciliation task, so recovery may create a replacement Job after the lease expires.
+While a runner is active, the worker refreshes `heartbeat_at` and extends `lease_expires_at`. The heartbeat interval is derived from the configured lease duration and must be shorter than the lease.
+
+At the beginning of each tick, the worker requeues expired `leased` and `running` runs. This recovers rows left behind by worker crashes or rollouts. Reattaching to already-created running Kubernetes Jobs remains a later reconciliation task, so recovery may create a replacement Job after the lease expires. This is an at-least-once execution model.
+
+## Health Endpoints
+
+The worker starts a health listener at `CAPSULET_WORKER_HEALTH_ADDR` (default `0.0.0.0:8081`):
+
+- `/livez` returns success while the health process is serving.
+- `/readyz` and `/healthz` return success only when PostgreSQL responds to a ping.

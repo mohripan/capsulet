@@ -14,6 +14,7 @@ Current docs:
 - [Development](development.md)
 - [Installation](installation.md)
 - [Architecture](architecture.md)
+- [Detailed repository architecture](../ARCHITECTURE.md)
 - [API](api.md)
 - [Helm values](helm-values.md)
 - [Persistence](persistence.md)

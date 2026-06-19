@@ -64,9 +64,20 @@ worker:
     logLimitBytes: 65536
     loop: true
     pollSeconds: 5
+    leaseSeconds: 60
 ```
 
 An empty `executionNamespace` means the Helm release namespace.
+
+The worker heartbeats active runs and extends their lease. `leaseSeconds` must leave enough time for at least one heartbeat between lease acquisition and expiry.
+
+The scheduler has its own polling controls:
+
+```yaml
+scheduler:
+  loop: true
+  pollSeconds: 5
+```
 
 ## PostgreSQL
 
@@ -210,6 +221,8 @@ Capsulet API, worker, scheduler, evaluator, and dashboard defaults include:
 - dropped Linux capabilities
 
 Bundled PostgreSQL and MinIO also run as non-root with dropped capabilities, but they keep `readOnlyRootFilesystem: false` because stateful database/object-storage images need writable runtime paths. Bundled dependencies are for local alpha evaluation; production-shaped installs should use external PostgreSQL and external S3-compatible storage.
+
+The evaluator Deployment is currently a placeholder process. Trigger definitions and conditions can be authored through the API, but asynchronous schedule/SQL/custom evaluation is not yet connected to it.
 
 ## Execution Pools
 

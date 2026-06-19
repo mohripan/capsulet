@@ -1,5 +1,7 @@
 # Authoring and Workflow MVP
 
+> Historical design baseline. The linear workflow MVP described here has shipped and workflows now support persisted DAG dependencies. See [Architecture Overview](../architecture.md) for current behavior.
+
 ## Goal
 
 Capsulet should let a user create reusable work, compose it into a workflow, bind that workflow to an automation, trigger it manually, and inspect the resulting execution end to end.

@@ -1,1024 +1,297 @@
 # Capsulet Architecture
 
-This document describes the planned architecture for Capsulet: a Kubernetes-native automation platform, job queue, and sandboxed script execution system distributed as a Helm chart.
+This document describes the architecture implemented in this repository. Capsulet is an early-alpha, Kubernetes-native automation platform for defining Python jobs, composing them into workflow DAGs, triggering workflow runs, and retaining execution state, logs, and artifacts.
 
-Capsulet is currently in the planning stage. This architecture is the target shape for the first serious implementation, with later production-grade extensions called out where useful.
+For a shorter operator-facing overview, see [docs/architecture.md](docs/architecture.md). Architecture decisions are recorded under [docs/adr](docs/adr).
 
-## Architecture Goals
+## Scope and maturity
 
-- Install Capsulet as a complete Kubernetes application through Helm.
-- Treat automations as the user-facing object for trigger-driven job creation.
-- Run user jobs as isolated Kubernetes Jobs.
-- Route jobs to named execution pools such as `mini`, `large`, or `gpu`.
-- Persist job state, attempts, logs, artifacts, and audit events.
-- Keep the system understandable enough to build incrementally.
-- Use Kubernetes-native scheduling primitives instead of inventing a node scheduler.
+The current system provides a working PostgreSQL-backed control plane, a dashboard and CLI, filesystem or S3-compatible object storage, and stub, local-process, and Kubernetes Job execution backends. It is suitable for development and alpha evaluation.
 
-## System Context
+The following are not implemented production guarantees: API authentication or authorization, webhook ingestion, runtime execution of SQL/custom triggers, evaluator-driven condition processing, event streaming, retention cleanup, pool concurrency enforcement, metrics, network policies, and Kubernetes Job reattachment after a worker restart.
+
+## System context
 
 ```mermaid
 flowchart LR
-    user[User]
-    admin[Cluster Admin]
-    external[External Systems]
-
+    user[User or operator]
+    dashboard[Next.js dashboard]
     cli[Capsulet CLI]
-    dashboard[Capsulet Dashboard]
     api[Capsulet API]
-    scheduler[Capsulet Scheduler]
-    worker[Capsulet Worker]
-
-    postgres[(PostgreSQL)]
-    objectstore[(MinIO or S3)]
+    scheduler[Capsulet scheduler]
+    worker[Capsulet worker]
+    db[(PostgreSQL)]
+    objects[(Filesystem or S3-compatible storage)]
     kube[Kubernetes API]
-    jobpod[Script Job Pods]
+    job[Job pod]
 
-    user --> cli
     user --> dashboard
-    external --> api
+    user --> cli
+    dashboard -->|same-origin proxy| api
     cli --> api
-    dashboard --> api
-    admin --> kube
-
-    api --> postgres
-    scheduler --> postgres
-    worker --> postgres
-    worker --> objectstore
+    api --> db
+    api --> objects
+    scheduler --> db
+    worker --> db
+    worker --> objects
     worker --> kube
-    kube --> jobpod
-    jobpod --> objectstore
+    kube --> job
 ```
 
-Capsulet owns automation evaluation, durable run state, retries, job attempts, logs, artifacts, and user-facing APIs. Kubernetes owns actual pod placement, resource enforcement, pod lifecycle, and node selection.
+PostgreSQL is the source of truth for definitions and execution state. Object storage owns script bytes, full large logs, and artifact bytes. Kubernetes owns pod placement and resource enforcement when the worker uses the Kubernetes runner.
 
-## Deployed Components
+## Runtime components
 
-### `capsulet-api`
+### API (`capsulet-api`)
 
-The API is the main control plane entry point.
+The Axum API is the synchronous control-plane boundary. It:
 
-Responsibilities:
+- runs embedded SQLx migrations on startup, unless migration behavior is configured separately;
+- creates, lists, reads, updates, and deletes job definitions;
+- creates and reads workflow definitions, including dependency edges;
+- manages automations, trigger definitions, and custom-trigger plugin metadata;
+- creates manual job and workflow runs;
+- exposes run filtering, logs, cancellation, workflow resume/removal, and artifact download;
+- validates job input contracts, workflow graphs, trigger configuration, and condition trees;
+- exposes `/livez`, `/readyz`, and the compatibility alias `/healthz`.
 
-- create and manage automations
-- create and manage job definitions
-- submit manual jobs
-- receive webhook trigger events
-- expose job status, attempts, logs, and artifacts
-- validate user input
-- enforce API authentication and authorization in later phases
-- write durable records to PostgreSQL
+The API uses `capsulet-postgres` directly as its persistence adapter and `capsulet-storage` for bundle and artifact objects. There is currently no authentication middleware.
 
-### `capsulet-scheduler`
+### Scheduler (`capsulet-scheduler`)
 
-The scheduler evaluates time-based and delayed work.
+The scheduler is a PostgreSQL polling loop. Each tick:
 
-Responsibilities:
+1. creates workflow runs for due enabled legacy interval automations;
+2. reconciles non-terminal workflow runs;
+3. queues every DAG step whose prerequisites have succeeded;
+4. marks workflow runs succeeded, failed, timed out, or cancelled when their graph reaches a terminal outcome.
 
-- evaluate scheduled triggers
-- evaluate delayed triggers
-- create pending automation events
-- ask the evaluator to evaluate automation conditions
-- handle retry scheduling
-- avoid duplicate scheduled runs through durable locks
+It exposes health endpoints on a separate listener (default `0.0.0.0:8082`). `/livez` checks the process; `/readyz` and `/healthz` ping PostgreSQL.
 
-The scheduler should not directly run user code. It creates durable work for workers to execute.
+### Worker (`capsulet-worker`)
 
-### `capsulet-evaluator`
+The worker is the job-run executor. Before leasing work it promotes ready retries and recovers expired leases. It then leases the oldest queued run with `FOR UPDATE SKIP LOCKED`, creates an attempt, executes through a runner, persists logs and artifacts, and commits a guarded terminal or retry state.
 
-The evaluator is the automation decision service. It receives trigger events, evaluates automation condition trees, and creates durable job or workflow runs when conditions are satisfied.
+For long-running work, a heartbeat task refreshes `heartbeat_at` and extends `lease_expires_at`. The worker health listener defaults to `0.0.0.0:8081`; readiness depends on PostgreSQL.
 
-Responsibilities:
+### Runner library (`capsulet-runner`)
 
-- evaluate automation condition trees
-- enforce trigger event idempotency
-- create job or workflow runs when automations fire
-- record automation fire events for auditability
-- keep automation evaluation separate from HTTP request handling and scheduled trigger scanning
+The `Runner` port accepts a `RunExecution` and returns a `RunReport`. Three implementations exist:
 
-In early development, this can start as a module used by the API and scheduler. The target architecture is a separate service so automation evaluation can scale and fail independently.
+- `StubRunner` returns deterministic success or failure for tests and Compose smoke flows.
+- `ProcessRunner` executes a local process and is intended for trusted development use.
+- `KubernetesRunner` builds a Kubernetes Job, applies execution-pool scheduling and resource settings, watches completion/cancellation/timeout, captures pod logs, and collects files from `/capsulet/artifacts`.
 
-### `capsulet-worker`
+The `capsulet-runner` binary is only a component placeholder; execution is coordinated by the worker library.
 
-The worker executes durable job runs by creating Kubernetes Jobs.
+### Dashboard (`dashboard`)
 
-Responsibilities:
+The Next.js dashboard provides authoring and operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, and artifacts. Browser requests go through `/api/capsulet/...`; the server-side proxy forwards them to `CAPSULET_DASHBOARD_API_URL`. This avoids a browser CORS dependency in the current deployment.
 
-- lease queued job runs
-- resolve the execution pool
-- render Kubernetes Job specs
-- create Kubernetes Jobs through the Kubernetes API
-- watch pod and job status
-- collect logs
-- upload artifacts to object storage
-- update job run and attempt state
-- recover work after worker restarts
+Security and settings pages are present as alpha placeholders.
 
-### `capsulet-dashboard`
+### CLI (`capsulet-cli`)
 
-The dashboard is the browser UI.
+The CLI is an HTTP client for job submission, script submission, run listing/detail/status, logs, cancellation, and artifact list/download. It does not access PostgreSQL or object storage directly.
 
-Responsibilities:
+### Evaluator (`capsulet-evaluator`)
 
-- automation builder
-- trigger condition builder
-- execution pool selector
-- job and workflow run list
-- job detail view
-- log and artifact views
-- basic operational visibility
+An evaluator crate and deployable component exist, but the binary currently only starts and idles. Condition-expression types, trigger definitions, and plugin metadata are implemented in the domain/API; asynchronous trigger evaluation is not wired into this service yet.
 
-### `capsulet-cli`
+## Workspace boundaries
 
-The CLI is the local operator and developer interface.
+```mermaid
+flowchart TD
+    core[capsulet-core<br/>domain types, invariants, ports]
+    postgres[capsulet-postgres<br/>SQLx adapter and migrations]
+    storage[capsulet-storage<br/>filesystem and S3 adapter]
+    runner[capsulet-runner<br/>execution adapter]
+    api[capsulet-api]
+    scheduler[capsulet-scheduler]
+    worker[capsulet-worker]
+    cli[capsulet-cli]
+    evaluator[capsulet-evaluator]
 
-Responsibilities:
+    postgres --> core
+    storage --> core
+    runner --> core
+    api --> core
+    api --> postgres
+    api --> storage
+    scheduler --> core
+    scheduler --> postgres
+    worker --> core
+    worker --> postgres
+    worker --> storage
+    worker --> runner
+    cli --> core
+    evaluator --> core
+```
 
-- submit jobs
-- create or import automations
-- inspect status
-- stream or fetch logs
-- cancel runs
-- inspect configured execution pools
+`capsulet-core` is dependency-light and owns typed IDs, validated value objects, aggregate state, state transitions, workflow graph validation, trigger conditions, and repository/object-storage ports. Infrastructure crates translate at their boundaries rather than exposing SQL rows or Kubernetes types to the domain.
 
-### PostgreSQL
-
-PostgreSQL is the durable metadata store.
-
-Stores:
-
-- automations
-- triggers
-- trigger events
-- job definitions
-- workflow definitions
-- job runs
-- attempts
-- leases
-- retry schedules
-- artifact metadata
-- audit events
-
-### Object Storage
-
-Object storage holds larger data that does not belong directly in PostgreSQL.
-
-Stores:
-
-- artifacts
-- large logs
-- script bundles
-- input payloads
-- output payloads
-
-The local Helm install can bundle MinIO. Production installs should support external S3-compatible storage.
-
-Script bundles and log chunks should be stored in object storage, not PostgreSQL. PostgreSQL should store metadata, indexes, status, and storage references.
-
-## Logical Data Model
+## Domain and persistence model
 
 ```mermaid
 erDiagram
-    AUTOMATION ||--o{ TRIGGER : contains
-    AUTOMATION ||--o{ AUTOMATION_EVENT : receives
-    AUTOMATION ||--o{ JOB_RUN : creates
-    JOB_DEFINITION ||--o{ JOB_RUN : instantiated_as
-    WORKFLOW_DEFINITION ||--o{ WORKFLOW_RUN : instantiated_as
-    WORKFLOW_RUN ||--o{ JOB_RUN : contains
-    JOB_RUN ||--o{ JOB_ATTEMPT : has
-    JOB_ATTEMPT ||--o{ ARTIFACT : produces
-    JOB_ATTEMPT ||--o{ LOG_CHUNK : writes
-    EXECUTION_POOL ||--o{ JOB_RUN : routes
-
-    JOB_DEFINITION {
-        uuid id
-        string name
-        string runtime
-        json input_schema
-    }
-
-    WORKFLOW_DEFINITION {
-        uuid id
-        string name
-        json graph
-    }
-
-    WORKFLOW_RUN {
-        uuid id
-        uuid workflow_definition_id
-        string status
-        datetime created_at
-    }
-
-    AUTOMATION {
-        uuid id
-        string name
-        boolean enabled
-        string target_kind
-        uuid target_id
-        string default_pool
-        json condition_tree
-    }
-
-    TRIGGER {
-        uuid id
-        uuid automation_id
-        string name
-        string type
-        json config
-    }
-
-    AUTOMATION_EVENT {
-        uuid id
-        uuid automation_id
-        uuid trigger_id
-        string dedupe_key
-        json payload
-        datetime received_at
-    }
-
-    JOB_RUN {
-        uuid id
-        uuid job_definition_id
-        string status
-        string execution_pool
-        int attempt_count
-        datetime created_at
-    }
-
-    JOB_ATTEMPT {
-        uuid id
-        uuid job_run_id
-        string status
-        string kubernetes_job_name
-        datetime started_at
-        datetime finished_at
-    }
-
-    EXECUTION_POOL {
-        string name
-        json scheduling_config
-        int max_concurrent_jobs
-    }
-
-    ARTIFACT {
-        uuid id
-        uuid job_attempt_id
-        string object_key
-        string content_type
-    }
-
-    LOG_CHUNK {
-        uuid id
-        uuid job_attempt_id
-        int sequence
-        string storage_ref
-    }
+    JOB_DEFINITIONS ||--o{ JOB_RUNS : instantiates
+    JOB_RUNS ||--o{ JOB_ATTEMPTS : attempts
+    JOB_RUNS ||--o| JOB_RUN_LOGS : has
+    JOB_RUNS ||--o{ JOB_ARTIFACTS : produces
+    WORKFLOW_DEFINITIONS ||--o{ WORKFLOW_STEPS : contains
+    WORKFLOW_STEPS ||--o{ WORKFLOW_STEP_DEPENDENCIES : source
+    WORKFLOW_STEPS ||--o{ WORKFLOW_STEP_DEPENDENCIES : target
+    WORKFLOW_DEFINITIONS ||--o{ AUTOMATIONS : targets
+    AUTOMATIONS ||--o{ AUTOMATION_TRIGGERS : contains
+    CUSTOM_TRIGGER_PLUGINS ||--o{ AUTOMATION_TRIGGERS : configures
+    WORKFLOW_DEFINITIONS ||--o{ WORKFLOW_RUNS : instantiates
+    AUTOMATIONS ||--o{ WORKFLOW_RUNS : creates
+    WORKFLOW_RUNS ||--o{ WORKFLOW_STEP_RUNS : contains
+    WORKFLOW_STEPS ||--o{ WORKFLOW_STEP_RUNS : instantiates
+    JOB_RUNS ||--o| WORKFLOW_STEP_RUNS : executes
 ```
 
-Execution pools may start as static Helm configuration rather than database rows. The logical model still treats them as addressable routing targets so the rest of the system has a stable concept.
+The schema is defined by append-only migrations under `migrations/`. Definitions are durable resources; runs are snapshots/references to those resources. Foreign keys and explicit service transactions preserve ownership relationships.
 
-## Core Concepts
+Execution pools and host groups are configuration-derived views, not database-managed resources. Pool configuration is supplied by environment/Helm configuration and resolved by the worker at execution time.
 
-### Automation
-
-An automation is a named rule that decides when to create a job or workflow run.
-
-An automation contains:
-
-- name
-- enabled or disabled state
-- target job or workflow
-- default execution pool
-- trigger definitions
-- boolean condition tree
-- optional input mapping
-
-Example:
-
-```yaml
-name: train-model-after-data-refresh
-enabled: true
-target:
-  kind: workflow
-  name: train-model
-execution:
-  pool: large
-triggers:
-  data_ready:
-    type: dependency
-  approved:
-    type: webhook
-  manual_override:
-    type: manual
-condition:
-  or:
-    - and:
-        - trigger: data_ready
-        - trigger: approved
-    - trigger: manual_override
-```
-
-### Trigger
-
-A trigger is one possible signal that can contribute to an automation firing.
-
-Planned trigger types:
-
-- `manual`
-- `schedule`
-- `delay`
-- `webhook`
-- `dependency`
-- later `event`
-- later `custom`
-
-### Condition Tree
-
-Trigger logic should be stored as a structured expression tree, not raw text.
-
-Example:
-
-```yaml
-condition:
-  or:
-    - and:
-        - trigger: data_ready
-        - trigger: approved
-    - trigger: manual_override
-```
-
-The UI can render this as grouped conditions with open and close brackets. The backend should validate a structured tree so it can reject invalid expressions before saving the automation.
-
-### Execution Pool
-
-An execution pool is a named compute target such as `mini`, `large`, or `gpu`.
-
-Pools map to Kubernetes scheduling controls:
-
-- `nodeSelector`
-- affinity
-- tolerations
-- resource requests and limits
-- default timeout
-- concurrency limit
-- optional namespace
-
-Capsulet chooses the pool. Kubernetes chooses the actual node inside that pool.
-
-## Component Architecture
-
-```mermaid
-flowchart TB
-    subgraph client[Clients]
-        cli[CLI]
-        ui[Dashboard]
-        webhook[Webhook Sender]
-    end
-
-    subgraph control[Capsulet Control Plane]
-        api[API]
-        scheduler[Scheduler]
-        evaluator[Evaluator]
-        run_queue[Durable Run Queue]
-        pool_resolver[Execution Pool Resolver]
-    end
-
-    subgraph data[Data Stores]
-        pg[(PostgreSQL)]
-        s3[(MinIO or S3)]
-    end
-
-    subgraph execution[Execution Plane]
-        worker1[Worker]
-        worker2[Worker]
-        kube[Kubernetes API]
-        mini[Mini Node Pool]
-        large[Large Node Pool]
-    end
-
-    cli --> api
-    ui --> api
-    webhook --> api
-
-    api --> evaluator
-    scheduler --> evaluator
-    evaluator --> pg
-    evaluator --> run_queue
-    run_queue --> pg
-
-    worker1 --> run_queue
-    worker2 --> run_queue
-    worker1 --> pool_resolver
-    worker2 --> pool_resolver
-    pool_resolver --> pg
-
-    worker1 --> kube
-    worker2 --> kube
-    kube --> mini
-    kube --> large
-
-    worker1 --> s3
-    worker2 --> s3
-    api --> pg
-    api --> s3
-```
-
-In the first implementation, `Evaluator`, `Durable Run Queue`, and `Execution Pool Resolver` can be modules inside the API, scheduler, worker, or shared core crate. The target production architecture promotes the evaluator into its own service.
-
-## Helm Deployment View
-
-```mermaid
-flowchart TB
-    subgraph ns[capsulet namespace]
-        api_dep[Deployment: capsulet-api]
-        worker_dep[Deployment: capsulet-worker]
-        scheduler_dep[Deployment: capsulet-scheduler]
-        evaluator_dep[Deployment: capsulet-evaluator]
-        dashboard_dep[Deployment: capsulet-dashboard]
-        api_svc[Service: capsulet-api]
-        dashboard_svc[Service: capsulet-dashboard]
-        cm[ConfigMaps]
-        secrets[Secrets]
-        rb[RBAC]
-        sa[ServiceAccounts]
-    end
-
-    subgraph optional[Optional Chart Dependencies]
-        pg[(PostgreSQL)]
-        minio[(MinIO)]
-    end
-
-    subgraph external[External Production Dependencies]
-        extpg[(External PostgreSQL)]
-        exts3[(External S3)]
-    end
-
-    subgraph cluster[Kubernetes Cluster]
-        mini_nodes[Nodes labeled capsulet.dev/pool=mini]
-        large_nodes[Nodes labeled capsulet.dev/pool=large]
-        jobs[Kubernetes Jobs created by workers]
-    end
-
-    dashboard_svc --> dashboard_dep
-    api_svc --> api_dep
-    api_dep --> pg
-    api_dep --> extpg
-    scheduler_dep --> evaluator_dep
-    api_dep --> evaluator_dep
-    evaluator_dep --> pg
-    evaluator_dep --> extpg
-    worker_dep --> pg
-    worker_dep --> extpg
-    worker_dep --> minio
-    worker_dep --> exts3
-    worker_dep --> jobs
-    jobs --> mini_nodes
-    jobs --> large_nodes
-    rb --> worker_dep
-    sa --> worker_dep
-    cm --> api_dep
-    secrets --> api_dep
-```
-
-The Helm chart should support bundled PostgreSQL and MinIO for local evaluation, while also supporting external dependencies for production-shaped installs.
-
-## Sequence: Manual Job Submission
+## Job execution flow
 
 ```mermaid
 sequenceDiagram
-    actor User
-    participant CLI as Capsulet CLI
-    participant API as capsulet-api
+    actor Client
+    participant API
     participant DB as PostgreSQL
-    participant Worker as capsulet-worker
-    participant Kube as Kubernetes API
-    participant Pod as Script Pod
-    participant S3 as Object Storage
-
-    User->>CLI: capsulet submit job --pool mini
-    CLI->>API: POST /jobs
-    API->>DB: Validate and create job_run queued
-    API-->>CLI: job_run_id
-    Worker->>DB: Lease queued job_run
-    Worker->>DB: Create job_attempt running
-    Worker->>Kube: Create Kubernetes Job with mini pool constraints
-    Kube->>Pod: Start script container
-    Worker->>Kube: Watch Job and Pod status
-    Worker->>Kube: Read logs
-    Worker->>S3: Upload artifacts and large logs
-    Worker->>DB: Mark attempt and run succeeded or failed
-    CLI->>API: GET /jobs/{id}
-    API->>DB: Read final state
-    API-->>CLI: Status, logs, artifact links
-```
-
-## Sequence: Scheduled Automation
-
-```mermaid
-sequenceDiagram
-    participant Scheduler as capsulet-scheduler
-    participant DB as PostgreSQL
-    participant Eval as Trigger Evaluator
-    participant Queue as Durable Run Queue
-    participant Worker as capsulet-worker
+    participant Worker
+    participant Runner
+    participant Store as Object storage
     participant Kube as Kubernetes API
 
-    Scheduler->>DB: Find enabled schedule triggers due now
-    Scheduler->>DB: Create automation_event with dedupe key
-    Scheduler->>Eval: Evaluate automation condition tree
-    Eval->>DB: Read automation triggers and recent events
-    Eval-->>Scheduler: Condition satisfied
-    Scheduler->>Queue: Create job_run queued with automation defaults
-    Queue->>DB: Persist job_run and initial state
-    Worker->>DB: Lease job_run
-    Worker->>Kube: Create Kubernetes Job in selected execution pool
-    Worker->>DB: Persist final attempt and run state
-```
-
-The scheduler must use dedupe keys and transactional writes so the same cron tick does not create duplicate runs after restarts.
-
-## Sequence: Webhook Automation
-
-```mermaid
-sequenceDiagram
-    participant External as External System
-    participant API as capsulet-api
-    participant DB as PostgreSQL
-    participant Eval as Trigger Evaluator
-    participant Queue as Durable Run Queue
-    participant Worker as capsulet-worker
-
-    External->>API: POST /hooks/images/resize
-    API->>API: Authenticate webhook
-    API->>DB: Store automation_event and payload
-    API->>Eval: Evaluate condition tree
-    Eval->>DB: Read required trigger state
-    alt condition satisfied
-        Eval->>Queue: Create job_run queued
-        Queue->>DB: Persist run
-        API-->>External: 202 Accepted
-        Worker->>DB: Lease and execute run
-    else condition not satisfied
-        API-->>External: 202 Accepted, event stored
+    Client->>API: POST /v1/jobs/runs
+    API->>DB: validate definition/pool and insert queued run
+    Worker->>DB: promote retries and recover expired leases
+    Worker->>DB: lease queued run and create attempt
+    loop while execution is active
+        Worker->>DB: heartbeat lease
     end
+    Worker->>Store: materialize script bundle if required
+    Worker->>Runner: execute RunExecution
+    Runner->>Kube: create/watch/delete Job (Kubernetes mode)
+    Runner-->>Worker: outcome, logs, artifacts
+    Worker->>Store: upload large log and artifact bytes
+    Worker->>DB: save metadata and guarded final state
+    Client->>API: read status/logs/artifacts
 ```
 
-Webhook triggers need idempotency, authentication, rate limiting, and audit events before they should be considered production-ready.
+Single-file Python definitions store `main.py` in object storage. At execution time the worker materializes the script and adjusts the command. Inline logs are bounded to 64 KiB; a larger complete log is uploaded as `logs/<run-id>/stdout.log`. Artifact bytes use `artifacts/<run-id>/<name>` and metadata remains in PostgreSQL.
 
-## Sequence: Dependency Trigger
-
-```mermaid
-sequenceDiagram
-    participant Worker as capsulet-worker
-    participant DB as PostgreSQL
-    participant Eval as Trigger Evaluator
-    participant Queue as Durable Run Queue
-
-    Worker->>DB: Mark upstream job_run succeeded
-    Worker->>DB: Create dependency automation_event
-    Worker->>Eval: Evaluate automations depending on upstream job
-    Eval->>DB: Read condition tree and related events
-    alt dependency condition satisfied
-        Eval->>Queue: Create downstream job_run queued
-        Queue->>DB: Persist downstream run
-    else dependency condition not satisfied
-        Eval->>DB: Keep event for future condition evaluation
-    end
-```
-
-Dependency triggers are useful for workflows, but they must be idempotent. Retried attempts should not accidentally create duplicate downstream runs.
-
-## Sequence: Execution Pool Routing
-
-```mermaid
-sequenceDiagram
-    participant Worker as capsulet-worker
-    participant DB as PostgreSQL
-    participant Config as Pool Config
-    participant Kube as Kubernetes API
-    participant Scheduler as Kubernetes Scheduler
-    participant Node as Selected Node
-
-    Worker->>DB: Lease job_run with execution_pool=large
-    Worker->>Config: Resolve pool large
-    Config-->>Worker: nodeSelector, tolerations, resources, timeout
-    Worker->>Kube: Create Kubernetes Job with pool constraints
-    Kube->>Scheduler: Schedule pod
-    Scheduler->>Node: Place pod on matching node
-    Node-->>Kube: Pod running
-    Kube-->>Worker: Job status updates
-```
-
-Capsulet should not round-robin directly across Kubernetes nodes. Kubernetes already has a scheduler for that. Capsulet should route to pools and let Kubernetes choose the specific node.
-
-## Job State Machine
+### Job-run states
 
 ```mermaid
 stateDiagram-v2
     [*] --> queued
-    queued --> leased: worker leases run
-    leased --> running: Kubernetes Job created
-    running --> succeeded: pod exits 0
-    running --> failed: pod exits non-zero
-    running --> timed_out: active deadline exceeded
-    queued --> cancelled: user cancels before lease
-    leased --> cancelled: user cancels before start
-    running --> cancelling: user cancels running job
-    cancelling --> cancelled: Kubernetes Job deleted
-    failed --> retry_scheduled: retry policy allows retry
-    timed_out --> retry_scheduled: retry policy allows retry
-    retry_scheduled --> queued: retry time reached
+    queued --> leased: worker lease
+    leased --> running: attempt starts
+    leased --> queued: expired lease recovery
+    running --> queued: expired lease recovery
+    running --> succeeded
+    running --> failed
+    running --> timed_out
+    running --> cancelled
+    failed --> retry_scheduled: retry remains
+    timed_out --> retry_scheduled: retry remains
+    retry_scheduled --> queued: retry_ready_at reached
+    queued --> cancelled
+    leased --> cancelled
     succeeded --> [*]
     failed --> [*]
     timed_out --> [*]
     cancelled --> [*]
 ```
 
-The state machine should be enforced by explicit transition rules. Workers must use compare-and-set style updates or transactional guards so two workers cannot own the same run.
+Transitions are represented by `JobRunTransition` and validated in the domain. Store updates use status/lease guards so a stale worker result cannot overwrite cancellation or another owner's state.
 
-## Automation Evaluation Model
+## Workflow DAG execution
 
-Automation evaluation should be event-driven and durable.
+A workflow contains steps plus directed dependency edges. API validation rejects duplicate edges, self-edges, references to unknown steps, and cycles.
 
-```mermaid
-flowchart TD
-    event[Trigger event arrives]
-    store[Store automation_event]
-    load[Load automation condition tree]
-    evaluate[Evaluate condition tree]
-    satisfied{Satisfied?}
-    create[Create job_run or workflow_run]
-    wait[Keep event for future evaluation]
-    queue[Queued for workers]
-
-    event --> store
-    store --> load
-    load --> evaluate
-    evaluate --> satisfied
-    satisfied -->|yes| create
-    create --> queue
-    satisfied -->|no| wait
-```
-
-Rules:
-
-- every trigger event should have a dedupe key
-- evaluation should be repeatable after process restart
-- condition trees should be validated before saving
-- automation firing should create at most one run for a logical event set
-- disabled automations should not create new runs
-- every fired automation should produce an audit event
-
-## Execution Pool Configuration
-
-Example Helm values:
-
-```yaml
-executionPools:
-  defaultPool: mini
-  pools:
-    mini:
-      nodeSelector:
-        capsulet.dev/pool: mini
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-      timeoutSeconds: 120
-      maxConcurrentJobs: 50
-
-    large:
-      nodeSelector:
-        capsulet.dev/pool: large
-      tolerations:
-        - key: capsulet.dev/pool
-          operator: Equal
-          value: large
-          effect: NoSchedule
-      resources:
-        requests:
-          cpu: "2"
-          memory: 4Gi
-        limits:
-          cpu: "8"
-          memory: 16Gi
-      timeoutSeconds: 3600
-      maxConcurrentJobs: 10
-```
-
-First implementation:
-
-- pools can start as static Helm configuration
-- job runs store the selected pool name
-- workers resolve pool configuration at execution time
-- pool configuration is mounted into workers as ConfigMap data
-
-Later implementation:
-
-- pools should become API-managed objects
-- Helm values should still support bootstrapping initial pools during install
-- runtime pool changes can be audited
-- pool health and capacity can be surfaced in the dashboard
-
-## Security Boundaries
-
-Capsulet runs user-provided code, so the execution boundary matters.
-
-Recommended baseline:
-
-- script jobs run in a dedicated namespace or pool-specific namespace
-- script jobs use a separate service account from platform components
-- script job service accounts have minimal or no Kubernetes permissions
-- containers run as non-root
-- privilege escalation is disabled
-- Linux capabilities are dropped
-- seccomp uses `RuntimeDefault`
-- resources and timeouts are required
-- network policy is available and should default toward restricted egress
-- secret access is explicit and auditable
-
-Trust boundaries:
+- If `dependencies` is omitted, the API creates a position-ordered chain for compatibility.
+- If `dependencies` is an empty array, every step is an independent root.
+- Otherwise, the submitted edges define the DAG and can express fan-out/fan-in.
 
 ```mermaid
 flowchart LR
-    subgraph trusted[Trusted Control Plane]
-        api[API]
-        scheduler[Scheduler]
-        worker[Worker]
-        db[(PostgreSQL)]
-    end
-
-    subgraph untrusted[Untrusted Execution]
-        job[Script Job Pod]
-    end
-
-    subgraph storage[Storage]
-        s3[(Object Storage)]
-    end
-
-    api --> db
-    scheduler --> db
-    worker --> db
-    worker --> job
-    job --> s3
-    worker --> s3
+    extractA[extract customers] --> merge[merge report]
+    extractB[extract orders] --> merge
+    merge --> publish[publish]
 ```
 
-Capsulet should document that Kubernetes Jobs are isolation, not a perfect sandbox. Serious untrusted execution should use dedicated namespaces, strict network policies, restricted runtime images, resource limits, and preferably dedicated clusters for high-risk workloads.
-
-## Observability
-
-Required signals:
-
-- API request counts, latency, and error rates
-- queue depth
-- run counts by state
-- attempt counts by state
-- worker lease counts
-- worker lease expiry counts
-- job duration by execution pool
-- Kubernetes Job creation failures
-- artifact upload failures
-- trigger events by type
-- automation fires by automation and trigger type
-- webhook authentication failures
-
-Logs should be structured and include stable IDs:
-
-- `automation_id`
-- `trigger_id`
-- `job_run_id`
-- `job_attempt_id`
-- `execution_pool`
-- `kubernetes_job_name`
-
-## Failure Handling
-
-Expected failure cases:
-
-- API restarts during submission
-- scheduler restarts during cron evaluation
-- worker crashes after leasing a run
-- Kubernetes Job is created but worker misses events
-- script pod is evicted
-- object storage upload fails
-- database migration fails
-- external webhook retries the same event
-
-Required design responses:
-
-- transactional state transitions
-- lease expiry and recovery
-- idempotency keys for trigger events
-- reconciliation for orphaned Kubernetes Jobs
-- retry policies for transient errors
-- clear terminal states for user-code failures
-- audit events for cancellation and administrative changes
-
-## Initial Implementation Slices
-
-The architecture should be built in slices rather than all at once.
-
-### Slice 1: Manual Job Runner
-
-- API creates a queued job run
-- worker leases it
-- worker creates a Kubernetes Job
-- script bundles, logs, and artifacts are stored in object storage
-- final state and storage references are recorded in PostgreSQL
-- CLI can submit and inspect the run
-
-### Slice 2: Helm Install
-
-- API, worker, scheduler, evaluator, and dashboard deployments
-- PostgreSQL and MinIO local dependencies
-- RBAC and service accounts
-- configurable images
-- basic security context
-
-### Slice 3: Execution Pools
-
-- static Helm values for pools
-- pool selected at submission time
-- worker applies pool scheduling constraints
-- pool-level resources and timeout
-- later API-managed pool lifecycle
-
-### Slice 4: Automations
-
-- automation model
-- manual trigger
-- scheduled trigger
-- simple condition tree
-- dashboard automation builder
-- YAML import and export
+The scheduler may queue multiple ready roots in one reconciliation. A node is ready only when all predecessors have successful step runs. A downstream failure stops that path and causes a terminal workflow result. Resume preserves successful checkpoints, removes unsuccessful step attempts, and queues only nodes whose prerequisites remain satisfied.
 
-### Slice 5: Advanced Triggers
+## Automations and triggers
 
-- workflow definitions
-- workflow lineage
-- webhook triggers
-- dependency triggers
-- HMAC-signed webhook authentication
-- idempotency
-- audit events
-- grouped boolean expressions
+An automation targets one workflow and stores enabled/disabled state, input JSON, legacy trigger settings, a set of named triggers, and a condition expression. Supported trigger-definition kinds are:
 
-## Architecture Decisions
+- `manual`
+- `schedule`
+- `sql`
+- `custom` (references custom-trigger plugin metadata)
 
-### Authoring Model
+The API validates trigger names, kind-specific configuration, plugin references, input/config contracts, and condition references. It also retains compatibility fields for `manual` and fixed `interval` automations.
 
-Automations and job definitions should support both UI authoring and YAML authoring.
+Current execution is narrower than authoring: `POST /v1/automations/{id}/trigger` starts a workflow run directly, and the scheduler fires due legacy interval automations. Schedule, SQL, custom plugin execution, durable trigger-event evaluation, and evaluator-service integration remain future work.
 
-The UI should be the primary beginner-friendly workflow. YAML should support import, export, review, version control, and GitOps-style usage. The API should treat both paths as ways to create the same durable domain objects.
+## Execution pools
 
-YAML resources should be versioned and kind-based:
+Execution pools are static YAML configuration. A pool can define:
 
-```yaml
-apiVersion: capsulet.dev/v1alpha1
-kind: JobDefinition
-metadata:
-  name: send-email
-spec:
-  runtime:
-    image: python:3.12-slim
-    command: ["python", "/workspace/main.py"]
-  bundle:
-    source: ./jobs/send-email
-  inputSchema:
-    type: object
-    required: ["to", "subject"]
-```
+- node selector and tolerations;
+- resource requests and limits;
+- timeout seconds;
+- Kubernetes Job TTL after completion;
+- a documented maximum-concurrency value.
 
-```yaml
-apiVersion: capsulet.dev/v1alpha1
-kind: Automation
-metadata:
-  name: nightly-report
-spec:
-  enabled: true
-  target:
-    kind: JobDefinition
-    name: generate-report
-  execution:
-    pool: mini
-  triggers:
-    nightly:
-      type: schedule
-      cron: "0 2 * * *"
-      timezone: UTC
-  condition:
-    trigger: nightly
-```
+The API exposes configured pool and host-group views. The worker resolves the selected pool and applies it to a Kubernetes Job. `maxConcurrentJobs` is not currently enforced.
 
-The schema should start at `v1alpha1` so the project can evolve field names before a stable release.
+## Deployment views
 
-YAML import and export should be handled by the API and CLI for now. The dashboard should focus on structured forms and visual builders rather than raw YAML editing in the first versions.
+### Docker Compose
 
-### Execution Pool Management
+`compose.yaml` starts PostgreSQL, MinIO and its bucket initializer, API, scheduler, worker, dashboard, and Mailpit. The Compose worker uses the stub runner, so it exercises control-plane behavior without launching user containers.
 
-Execution pools should support both Helm bootstrapping and API management.
+### Helm
 
-Initial releases can define pools statically through Helm values because that is simple and operationally clear. Later releases should add API-managed pools so operators can create, update, disable, and audit pools without a Helm upgrade.
+The chart can deploy API, scheduler, evaluator placeholder, worker, and dashboard. It also renders a migration Job, RBAC/service accounts, health probes, execution-pool configuration, and optional bundled PostgreSQL and MinIO for evaluation. External PostgreSQL and S3-compatible storage are supported and are the production-shaped dependency mode.
 
-API-managed execution pools should be added after the initial Helm-defined pool implementation is stable. The first pool implementation should prove scheduling, resource defaults, timeouts, and worker behavior before adding runtime mutation.
+The worker service account can create, watch, and delete Kubernetes Jobs and inspect pods/logs in the execution namespace. Job pods use their own configured service-account/security settings.
 
-### Script and Log Storage
+## Reliability and health
 
-Script bundles should be stored in object storage for all jobs.
+- PostgreSQL is the durable queue; workers coordinate with row locks and leases.
+- Workers periodically heartbeat active runs and extend leases.
+- Expired `leased` and `running` rows are requeued.
+- API, scheduler, and worker expose liveness/readiness endpoints; readiness checks PostgreSQL.
+- Compose and Helm configure restart policies/probes for long-running services.
+- Retry policy is fixed delay per job definition; cancellation is terminal.
 
-Log chunks should also be stored in object storage.
+Recovery is at-least-once. A worker crash after creating a Kubernetes Job can leave that Job running; after lease expiry another attempt may be created because reattachment/reconciliation is not implemented.
 
-PostgreSQL should store metadata and references:
+## Security boundaries
 
-- script bundle object keys
-- log object keys
-- artifact object keys
-- checksums
-- content type
-- size
-- retention metadata
-- job and attempt status
+User-authored commands are untrusted relative to the control plane. The Kubernetes runner supplies process isolation, resource limits, security context, and scheduling constraints, but a Kubernetes Job is not a complete sandbox.
 
-This avoids turning PostgreSQL into a blob store and keeps the architecture consistent for small and large jobs.
+The chart defaults platform containers toward non-root execution, dropped capabilities, disabled privilege escalation, read-only root filesystems where practical, and `RuntimeDefault` seccomp. Operators remain responsible for trusted runtime images, service-account permissions, namespace isolation, secrets, network policy, and cluster-level controls.
 
-### Automation Evaluation
+The API and dashboard currently have no identity model. Do not expose an alpha installation to untrusted networks.
 
-Automation condition evaluation should move to a separate `capsulet-evaluator` service.
+## Known gaps and intended evolution
 
-Early versions may implement the evaluator as a shared module, but the target deployment should have a separate evaluator component. This keeps HTTP request handling, scheduled trigger scanning, and automation decision-making decoupled.
+- wire schedule/SQL/custom trigger execution and condition evaluation into the evaluator;
+- add authenticated users, API authorization, and authenticated webhook ingestion;
+- reconcile or reattach orphaned Kubernetes Jobs;
+- enforce execution-pool concurrency and capacity;
+- add retention/garbage collection for metadata and objects;
+- add metrics, audit events, network-policy templates, and streaming logs;
+- support multi-file/versioned bundles and stronger untrusted-code isolation.
 
-The evaluator should communicate through an event channel instead of PostgreSQL polling as the target design. Kafka is the preferred default event channel for production-shaped deployments because it gives durable topics, consumer groups, replay, ordering within partitions, and a familiar operational model for event-driven systems.
-
-PostgreSQL remains the durable source of truth for Capsulet domain state. Kafka carries trigger events, automation evaluation requests, run-created events, and lifecycle notifications. Consumers must still write idempotently to PostgreSQL so replayed events do not create duplicate job runs.
-
-For local evaluation, the Helm chart can eventually offer a bundled single-node Kafka-compatible profile. Early development may still use an in-process channel or database-backed fallback until the evaluator and event contracts stabilize.
-
-### Webhook Authentication
-
-The minimum useful webhook authentication model should be HMAC-signed shared secrets.
-
-Baseline webhook requirements:
-
-- each webhook trigger has its own secret
-- senders include a timestamp header
-- senders include a signature header
-- Capsulet verifies the HMAC over the timestamp and request body
-- Capsulet rejects stale timestamps to reduce replay risk
-- Capsulet stores a dedupe key for idempotency
-
-Plain bearer tokens are simpler, but HMAC signatures are a better default because they protect request integrity as well as possession of the secret.
-
-### Workflow and Dependency Ordering
-
-Workflow definitions should come before dependency triggers.
-
-Dependency triggers need a clear lineage model: which job or workflow produced an event, which run consumed it, and which downstream run was created. Implementing workflow definitions first gives dependency triggers a stable graph and run history to attach to.
-
-Workflow lineage should be exposed as a graph in the first workflow release. The API can also expose a parent-child list for simpler clients, but the domain model should preserve graph edges from the beginning.
-
-### Dashboard Default
-
-The dashboard should be enabled by default in the Helm chart, but optional.
-
-Default install should include enough dashboard functionality to evaluate the product:
-
-- job list
-- job detail
-- logs and artifacts
-- automation list
-- simple automation builder
-- execution pool visibility
-
-Production users should be able to disable it:
-
-```sh
-helm upgrade capsulet capsulet/capsulet \
-  --namespace capsulet \
-  --set dashboard.enabled=false
-```
-
-### Retention Defaults
-
-Retention should follow conservative self-hosted defaults: useful for evaluation, bounded enough to avoid unintentional storage growth, and configurable through Helm and API settings.
-
-Recommended defaults:
-
-- successful job logs: 14 days
-- failed job logs: 30 days
-- script bundles: 30 days after the last associated run is deleted or expired
-- artifacts: 30 days
-- job and attempt metadata: 90 days
-- audit events: 180 days
-- manual retention override: supported per job definition in later releases
-
-Retention cleanup should delete object storage data and then remove or mark PostgreSQL metadata. Cleanup should be idempotent so interrupted cleanup runs can resume safely.
-
-Retention overrides should start at the job definition level. That is the cleanest default because retention usually depends on the kind of work and data produced, not the trigger that started it. Automation-level retention overrides can be added later if real use cases need the same job definition to retain outputs differently depending on how it was triggered.
-
-## Remaining Open Architecture Questions
-
-No major architecture questions are currently open. Future implementation work should create focused design notes for event schemas, YAML validation, database migrations, and Helm values before coding those areas.
+These are future capabilities, not assumptions that current operators should rely on.

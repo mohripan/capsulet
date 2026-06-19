@@ -71,7 +71,7 @@ The worker recovers expired non-terminal leases before leasing new work. Start a
 cargo run -p capsulet-worker
 ```
 
-If the run was already executing in Kubernetes, Sprint 005 does not reattach to the existing Kubernetes Job. Recovery may create replacement work after the lease expires.
+While execution is healthy, the worker updates `heartbeat_at` and extends the lease. Check worker logs and PostgreSQL readiness if heartbeats stop. If the run was already executing in Kubernetes, the current worker does not reattach to the existing Kubernetes Job; recovery may create replacement work after the lease expires.
 
 ## Kubernetes Jobs Do Not Start
 
