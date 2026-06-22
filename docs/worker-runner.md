@@ -121,7 +121,7 @@ Troubleshooting checks:
 - S3 credentials are read from `CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID` and `CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY`, or from the Helm credentials secret.
 - If artifact list succeeds but download fails, the metadata row exists but the referenced object key could not be read from storage.
 
-Retention cleanup, multi-file bundles, and streaming object-backed logs remain future work. The dashboard can list and download artifacts through the API.
+The evaluator removes expired terminal-run object bytes before deleting artifact metadata and inline logs. Cleanup is idempotent and configurable independently for run data, trigger events, and audit events. Multi-file source bundles and streaming object-backed logs remain future work; the dashboard lists and downloads completed artifacts.
 
 ## Cancellation, Timeout, and Retry
 
@@ -151,7 +151,7 @@ The current lease metadata is:
 
 While a runner is active, the worker refreshes `heartbeat_at` and extends `lease_expires_at`. The heartbeat interval is derived from the configured lease duration and must be shorter than the lease.
 
-At the beginning of each tick, the worker requeues expired `leased` and `running` runs. This recovers rows left behind by worker crashes or rollouts. Reattaching to already-created running Kubernetes Jobs remains a later reconciliation task, so recovery may create a replacement Job after the lease expires. This is an at-least-once execution model.
+At the beginning of each tick, the worker requeues expired `leased` runs. For an expired running Kubernetes attempt, a replacement worker atomically adopts the lease and reattaches to the deterministic run/attempt Job after validating its ownership labels. No new attempt or replacement Job is created. Non-reattachable runners requeue the run and retain at-least-once behavior.
 
 ## Health Endpoints
 

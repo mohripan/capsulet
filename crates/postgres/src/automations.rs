@@ -23,7 +23,7 @@ impl PostgresStore {
             )
             VALUES (
                 $1, $2, $3, $4, $5::jsonb, $6, $7, $8,
-                CASE WHEN $7 = 'interval' THEN now() ELSE NULL END,
+                CASE WHEN $7 = 'interval' AND $8 IS NOT NULL THEN now() ELSE NULL END,
                 now()
             )
             ON CONFLICT (id) DO UPDATE SET
@@ -34,7 +34,11 @@ impl PostgresStore {
                 status = EXCLUDED.status,
                 trigger_kind = EXCLUDED.trigger_kind,
                 interval_seconds = EXCLUDED.interval_seconds,
-                next_fire_at = COALESCE(automations.next_fire_at, EXCLUDED.next_fire_at),
+                next_fire_at = CASE
+                    WHEN EXCLUDED.interval_seconds IS NOT NULL
+                        THEN COALESCE(automations.next_fire_at, EXCLUDED.next_fire_at)
+                    ELSE NULL
+                END,
                 updated_at = now()
             ",
         )
@@ -115,6 +119,7 @@ impl PostgresStore {
             SET status = $2,
                 next_fire_at = CASE
                     WHEN $2 = 'enabled' AND trigger_kind = 'interval'
+                        AND interval_seconds IS NOT NULL
                         THEN COALESCE(next_fire_at, now())
                     ELSE NULL
                 END,

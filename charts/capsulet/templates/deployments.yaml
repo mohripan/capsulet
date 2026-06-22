@@ -58,6 +58,13 @@ spec:
                   name: {{ $root.Values.api.auth.existingSecret | quote }}
                   key: {{ $root.Values.api.auth.secretKey | quote }}
             {{- end }}
+            {{- if $root.Values.api.webhooks.existingSecret }}
+            - name: CAPSULET_WEBHOOK_SECRETS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.api.webhooks.existingSecret | quote }}
+                  key: {{ $root.Values.api.webhooks.secretKey | quote }}
+            {{- end }}
             {{- end }}
             {{- if eq $name "scheduler" }}
             - name: CAPSULET_SCHEDULER_LOOP
@@ -84,9 +91,32 @@ spec:
               value: "0.0.0.0:8081"
             - name: CAPSULET_EXECUTION_POOLS_FILE
               value: /etc/capsulet/execution-pools.yaml
+            - name: CAPSULET_EXECUTION_SERVICE_ACCOUNT
+              value: {{ default (printf "%s-execution" (include "capsulet.fullname" $root)) $root.Values.executionIsolation.serviceAccountName | quote }}
+            {{- if $root.Values.executionIsolation.runtimeClassName }}
+            - name: CAPSULET_EXECUTION_RUNTIME_CLASS
+              value: {{ $root.Values.executionIsolation.runtimeClassName | quote }}
+            {{- end }}
             {{- if $root.Values.worker.runner.stubArtifactText }}
             - name: CAPSULET_STUB_ARTIFACT_TEXT
               value: {{ $root.Values.worker.runner.stubArtifactText | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if eq $name "evaluator" }}
+            - name: CAPSULET_EXECUTION_NAMESPACE
+              value: {{ default $root.Release.Namespace $root.Values.worker.runner.executionNamespace | quote }}
+            - name: CAPSULET_EXECUTION_SERVICE_ACCOUNT
+              value: {{ default (printf "%s-execution" (include "capsulet.fullname" $root)) $root.Values.executionIsolation.serviceAccountName | quote }}
+            {{- if $root.Values.executionIsolation.runtimeClassName }}
+            - name: CAPSULET_EXECUTION_RUNTIME_CLASS
+              value: {{ $root.Values.executionIsolation.runtimeClassName | quote }}
+            {{- end }}
+            {{- if $root.Values.evaluator.sqlConnections.existingSecret }}
+            - name: CAPSULET_SQL_CONNECTIONS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.evaluator.sqlConnections.existingSecret | quote }}
+                  key: {{ $root.Values.evaluator.sqlConnections.secretKey | quote }}
             {{- end }}
             {{- end }}
             {{- if eq (include "capsulet.objectStorageMode" $root) "s3" }}
@@ -113,6 +143,18 @@ spec:
               value: {{ $root.Values.evaluator.pollSeconds | quote }}
             - name: CAPSULET_EVALUATOR_HEALTH_ADDR
               value: "0.0.0.0:8083"
+            - name: CAPSULET_RETENTION_DAYS
+              value: {{ $root.Values.evaluator.retentionDays | quote }}
+            - name: CAPSULET_AUDIT_RETENTION_DAYS
+              value: {{ $root.Values.evaluator.auditRetentionDays | quote }}
+            - name: CAPSULET_RETENTION_INTERVAL_SECONDS
+              value: {{ $root.Values.evaluator.retentionIntervalSeconds | quote }}
+            - name: CAPSULET_EXECUTION_SERVICE_ACCOUNT
+              value: {{ default (printf "%s-execution" (include "capsulet.fullname" $root)) $root.Values.executionIsolation.serviceAccountName | quote }}
+            {{- if $root.Values.executionIsolation.runtimeClassName }}
+            - name: CAPSULET_EXECUTION_RUNTIME_CLASS
+              value: {{ $root.Values.executionIsolation.runtimeClassName | quote }}
+            {{- end }}
             {{- end }}
             {{- if eq (include "capsulet.objectStorageMode" $root) "filesystem" }}
             - name: object-storage

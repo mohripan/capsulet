@@ -37,7 +37,7 @@ Current crates:
 - `capsulet-api`: HTTP control plane
 - `capsulet-worker`: job leasing and runner coordination
 - `capsulet-scheduler`: interval automation polling and workflow-DAG reconciliation
-- `capsulet-evaluator`: deployable placeholder for future asynchronous trigger evaluation
+- `capsulet-evaluator`: durable cron, SQL, webhook, and custom-trigger evaluation plus retention cleanup
 - `capsulet-runner`: execution boundary with stub, trusted local-process, and Kubernetes Job runners
 - `capsulet-cli`: operator and developer CLI for the HTTP API
 
@@ -58,6 +58,7 @@ This starts:
 - Capsulet dashboard on `localhost:3000`
 - Capsulet worker in continuous stub-runner mode
 - Capsulet scheduler in continuous polling mode
+- Capsulet evaluator in continuous polling mode
 - Mailpit SMTP/Web UI for the send-email example
 
 Open the live dashboard:
@@ -65,6 +66,8 @@ Open the live dashboard:
 ```text
 http://127.0.0.1:3000/runs
 ```
+
+Sign in with the Compose development token `capsulet-local-admin-token-change-me`. All `/v1` API calls require `Authorization: Bearer <token>` unless authentication is explicitly disabled for an isolated test.
 
 The Compose worker uses `CAPSULET_RUNNER_MODE=stub` so the full API/dashboard/job/artifact flow can be checked without a Kubernetes cluster. Use the Helm/minikube path for Kubernetes Job execution.
 
@@ -132,6 +135,7 @@ $env:CAPSULET_EXECUTION_POOLS = "mini,large"
 $env:CAPSULET_SEED_EXAMPLES = "true"
 $env:CAPSULET_OBJECT_STORAGE_MODE = "filesystem"
 $env:CAPSULET_OBJECT_STORAGE_PATH = ".capsulet-objects"
+$env:CAPSULET_API_TOKENS = '{"local-admin":{"token":"replace-me","role":"admin"}}'
 cargo run -p capsulet-api
 ```
 
@@ -154,6 +158,7 @@ The CLI talks to the HTTP API. Start the API first, then run:
 
 ```powershell
 $env:CAPSULET_API_URL = "http://127.0.0.1:8080"
+$env:CAPSULET_API_TOKEN = "replace-me"
 cargo run -p capsulet-cli -- submit job_hello_python --pool mini
 cargo run -p capsulet-cli -- runs
 cargo run -p capsulet-cli -- run get run_123
@@ -219,7 +224,7 @@ $env:CAPSULET_DASHBOARD_API_URL = "http://127.0.0.1:8080"
 npm run dev
 ```
 
-The `/runs` and `/runs/{id}` pages use the live API. Other product-shaped pages still use mock data. See `dashboard/README.md`.
+The dashboard uses the live API for authored jobs, workflows, automations, runs, artifacts, identity, and audit events. See `dashboard/README.md`.
 
 ## Helm Chart
 

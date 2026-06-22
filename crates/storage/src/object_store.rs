@@ -18,6 +18,7 @@ pub trait ObjectStore: Clone + Send + Sync + 'static {
     async fn put(&self, key: &str, bytes: Vec<u8>) -> Result<(), Self::Error>;
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Self::Error>;
     async fn exists(&self, key: &str) -> Result<bool, Self::Error>;
+    async fn delete(&self, key: &str) -> Result<(), Self::Error>;
 }
 
 /// Filesystem-backed object store for local development and tests.
@@ -71,6 +72,15 @@ impl ObjectStore for FilesystemObjectStore {
         match fs::metadata(path).await {
             Ok(_) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), Self::Error> {
+        let path = self.path_for_key(key)?;
+        match fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         }
     }
@@ -151,6 +161,14 @@ impl ObjectStore for S3ObjectStore {
             Err(error) => Err(ObjectStoreError::ObjectStore(Box::new(error))),
         }
     }
+
+    async fn delete(&self, key: &str) -> Result<(), Self::Error> {
+        validate_key(key)?;
+        match self.inner.delete(&ObjectPath::from(key)).await {
+            Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(()),
+            Err(error) => Err(ObjectStoreError::ObjectStore(Box::new(error))),
+        }
+    }
 }
 
 /// Runtime object storage adapter selected from configuration.
@@ -213,6 +231,13 @@ impl ObjectStore for ConfiguredObjectStore {
         match self {
             Self::Filesystem(store) => store.exists(key).await,
             Self::S3(store) => store.exists(key).await,
+        }
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), Self::Error> {
+        match self {
+            Self::Filesystem(store) => store.delete(key).await,
+            Self::S3(store) => store.delete(key).await,
         }
     }
 }
@@ -300,6 +325,20 @@ mod tests {
                 .await
                 .expect("get object"),
             Some(b"hello".to_vec())
+        );
+        store
+            .delete("artifacts/run_1/report.txt")
+            .await
+            .expect("delete object");
+        store
+            .delete("artifacts/run_1/report.txt")
+            .await
+            .expect("delete remains idempotent");
+        assert!(
+            !store
+                .exists("artifacts/run_1/report.txt")
+                .await
+                .expect("exists")
         );
     }
 

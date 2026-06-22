@@ -1,10 +1,11 @@
 use std::{
     collections::HashMap,
+    fmt::Write as _,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use capsulet_postgres::{PostgresStore, TriggerEvent};
+use capsulet_postgres::{PostgresStore, ScheduleTrigger, TriggerEvent};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -24,6 +25,11 @@ impl std::fmt::Debug for SqlConnections {
 }
 
 impl SqlConnections {
+    /// Builds named read-only `PostgreSQL` pools from a `JSON` object of `DSNs`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EvaluatorError`] when JSON or a connection is invalid.
     pub async fn from_json(value: &str) -> Result<Self, EvaluatorError> {
         let urls: HashMap<String, String> = serde_json::from_str(value)?;
         let mut pools = HashMap::with_capacity(urls.len());
@@ -43,82 +49,109 @@ pub(crate) async fn produce_due_events(
     store: &PostgresStore,
     connections: &SqlConnections,
 ) -> Result<u64, EvaluatorError> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| EvaluatorError::Clock(error.to_string()))?
-        .as_secs() as i64;
+    let now = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| EvaluatorError::Clock(error.to_string()))?
+            .as_secs(),
+    )
+    .map_err(|_| EvaluatorError::Clock("epoch seconds exceed i64".to_string()))?;
     let mut produced = 0;
     for trigger in store.list_sql_triggers().await? {
-        let config: Value = serde_json::from_str(&trigger.config_json)?;
-        let connection = config
-            .get("connection_name")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                EvaluatorError::InvalidDefinition(
-                    "sql trigger requires connection_name".to_string(),
-                )
-            })?;
-        let query = config.get("query").and_then(Value::as_str).ok_or_else(|| {
-            EvaluatorError::InvalidDefinition("sql trigger requires query".to_string())
-        })?;
-        validate_read_query(query)?;
-        let poll_seconds = config
-            .get("poll_seconds")
-            .and_then(Value::as_i64)
-            .unwrap_or(60)
-            .max(1);
-        let Some(pool) = connections.0.get(connection) else {
-            return Err(EvaluatorError::InvalidDefinition(format!(
-                "unknown SQL connection: {connection}"
-            )));
-        };
-        let mut transaction = pool
-            .begin()
-            .await
-            .map_err(capsulet_postgres::PostgresStoreError::from)?;
-        sqlx::query("SET TRANSACTION READ ONLY")
-            .execute(&mut *transaction)
-            .await
-            .map_err(capsulet_postgres::PostgresStoreError::from)?;
-        sqlx::query("SET LOCAL statement_timeout = '5s'")
-            .execute(&mut *transaction)
-            .await
-            .map_err(capsulet_postgres::PostgresStoreError::from)?;
-        let matched = sqlx::query_scalar::<_, bool>(query)
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(capsulet_postgres::PostgresStoreError::from)?;
-        transaction
-            .rollback()
-            .await
-            .map_err(capsulet_postgres::PostgresStoreError::from)?;
-        if !matched {
-            continue;
+        match produce_one(store, connections, &trigger, now).await {
+            Ok(inserted) => {
+                produced += u64::from(inserted);
+                store
+                    .record_trigger_runtime_success(&trigger.automation_id, &trigger.trigger_name)
+                    .await?;
+            }
+            Err(error) => {
+                store
+                    .record_trigger_runtime_failure(
+                        &trigger.automation_id,
+                        &trigger.trigger_name,
+                        &error.to_string(),
+                    )
+                    .await?;
+            }
         }
-        let bucket = now - now.rem_euclid(poll_seconds);
-        let delivery = format!("sql-{bucket}");
-        let digest = Sha256::digest(format!(
-            "{}\0{}\0{delivery}",
-            trigger.automation_id, trigger.trigger_name
-        ));
-        let id = format!(
-            "evt_{}",
-            digest[..12]
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        );
-        let event = TriggerEvent {
-            id,
-            automation_id: trigger.automation_id,
-            trigger_name: trigger.trigger_name,
-            correlation_key: delivery.clone(),
-            payload_json: serde_json::json!({"matched": true, "observed_at": now}).to_string(),
-            occurred_at: now.to_string(),
-        };
-        produced += u64::from(store.enqueue_trigger_event(&event, &delivery).await?);
     }
     Ok(produced)
+}
+
+async fn produce_one(
+    store: &PostgresStore,
+    connections: &SqlConnections,
+    trigger: &ScheduleTrigger,
+    now: i64,
+) -> Result<bool, EvaluatorError> {
+    let config: Value = serde_json::from_str(&trigger.config_json)?;
+    let connection = config
+        .get("connection_name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            EvaluatorError::InvalidDefinition("sql trigger requires connection_name".to_string())
+        })?;
+    let query = config.get("query").and_then(Value::as_str).ok_or_else(|| {
+        EvaluatorError::InvalidDefinition("sql trigger requires query".to_string())
+    })?;
+    validate_read_query(query)?;
+    let poll_seconds = config
+        .get("poll_seconds")
+        .and_then(Value::as_i64)
+        .unwrap_or(60)
+        .max(1);
+    let Some(pool) = connections.0.get(connection) else {
+        return Err(EvaluatorError::InvalidDefinition(format!(
+            "unknown SQL connection: {connection}"
+        )));
+    };
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(capsulet_postgres::PostgresStoreError::from)?;
+    sqlx::query("SET TRANSACTION READ ONLY")
+        .execute(&mut *transaction)
+        .await
+        .map_err(capsulet_postgres::PostgresStoreError::from)?;
+    sqlx::query("SET LOCAL statement_timeout = '5s'")
+        .execute(&mut *transaction)
+        .await
+        .map_err(capsulet_postgres::PostgresStoreError::from)?;
+    let matched = sqlx::query_scalar::<_, bool>(query)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(capsulet_postgres::PostgresStoreError::from)?;
+    transaction
+        .rollback()
+        .await
+        .map_err(capsulet_postgres::PostgresStoreError::from)?;
+    if !matched {
+        return Ok(false);
+    }
+    let bucket = now - now.rem_euclid(poll_seconds);
+    let delivery = format!("sql-{bucket}");
+    let digest = Sha256::digest(format!(
+        "{}\0{}\0{delivery}",
+        trigger.automation_id, trigger.trigger_name
+    ));
+    let mut suffix = String::with_capacity(24);
+    for byte in &digest[..12] {
+        write!(suffix, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    let id = format!("evt_{suffix}");
+    let event = TriggerEvent {
+        id,
+        automation_id: trigger.automation_id.clone(),
+        trigger_name: trigger.trigger_name.clone(),
+        correlation_key: bucket.to_string(),
+        payload_json: serde_json::json!({"matched": true, "observed_at": now}).to_string(),
+        occurred_at: now.to_string(),
+    };
+    store
+        .enqueue_trigger_event(&event, &delivery)
+        .await
+        .map_err(Into::into)
 }
 
 fn validate_read_query(query: &str) -> Result<(), EvaluatorError> {

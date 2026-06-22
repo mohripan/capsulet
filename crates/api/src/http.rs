@@ -24,14 +24,15 @@ use crate::{
     auth::{Principal, Role},
     error::ApiError,
     models::{
-        ArtifactResponse, CreateJobDefinitionRequest, CreateRunRequest, CreateWorkflowRequest,
-        ExecutionPoolResponse, HealthResponse, HostGroupResponse, JobDefinitionResponse,
-        JobDefinitionSourceResponse, JobRunLogsResponse, JobRunResponse, ListArtifactsResponse,
-        ListExecutionPoolsResponse, ListHostGroupsResponse, ListJobDefinitionsQuery,
-        ListJobDefinitionsResponse, ListRunsQuery, ListRunsResponse, ListWorkflowRunsQuery,
-        ListWorkflowRunsResponse, ListWorkflowsResponse, TopologyEdgeResponse,
-        TopologyNodeResponse, TopologyResponse, WorkflowEditabilityResponse, WorkflowResponse,
-        WorkflowRunLogEntryResponse, WorkflowRunLogsResponse, WorkflowRunResponse,
+        ArtifactResponse, AuditEventResponse, CreateJobDefinitionRequest, CreateRunRequest,
+        CreateWorkflowRequest, ExecutionPoolResponse, HealthResponse, HostGroupResponse,
+        JobDefinitionResponse, JobDefinitionSourceResponse, JobRunLogsResponse, JobRunResponse,
+        ListArtifactsResponse, ListAuditEventsResponse, ListExecutionPoolsResponse,
+        ListHostGroupsResponse, ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListRunsQuery,
+        ListRunsResponse, ListWorkflowRunsQuery, ListWorkflowRunsResponse, ListWorkflowsResponse,
+        TopologyEdgeResponse, TopologyNodeResponse, TopologyResponse, WorkflowEditabilityResponse,
+        WorkflowResponse, WorkflowRunLogEntryResponse, WorkflowRunLogsResponse,
+        WorkflowRunResponse,
     },
     state::AppState,
     store::ApiStore,
@@ -58,6 +59,7 @@ where
             get(get_job_definition_source),
         )
         .route("/v1/execution-pools", get(list_execution_pools))
+        .route("/v1/audit-events", get(list_audit_events))
         .route("/v1/host-groups", get(list_host_groups))
         .route("/v1/topology", get(get_topology))
         .route("/v1/workflows", post(create_workflow).get(list_workflows))
@@ -119,12 +121,24 @@ where
         .route("/healthz", get(healthz::<S, O>))
         .route("/livez", get(livez))
         .route("/readyz", get(readyz::<S, O>))
+        .route("/metrics", get(metrics::<S, O>))
         .route(
             "/v1/webhooks/{automation_id}/{trigger_name}",
             post(crate::webhooks::ingest::<S, O>).layer(DefaultBodyLimit::max(1_048_576)),
         )
         .merge(protected)
         .with_state(state)
+}
+
+async fn metrics<S, O>(State(state): State<AppState<S, O>>) -> Response
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    match state.store.prometheus_metrics().await {
+        Ok(body) => ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body).into_response(),
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    }
 }
 
 async fn current_principal(Extension(principal): Extension<Principal>) -> Json<Value> {
@@ -161,11 +175,48 @@ where
     if principal.role < required {
         return Err(ApiError::Forbidden(required.as_str()));
     }
-    request.extensions_mut().insert(principal);
-    Ok(next.run(request).await)
+    let method = request.method().clone();
+    let path = request.uri().path().to_string();
+    let request_id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let user_agent = request
+        .headers()
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    request.extensions_mut().insert(principal.clone());
+    let response = next.run(request).await;
+    if method != Method::GET
+        && method != Method::HEAD
+        && method != Method::OPTIONS
+        && let Err(error) = state
+            .store
+            .record_audit_event(
+                &principal.name,
+                principal.role.as_str(),
+                method.as_str(),
+                &path,
+                response.status().as_u16(),
+                request_id.as_deref(),
+                user_agent.as_deref(),
+            )
+            .await
+    {
+        eprintln!(
+            "failed to persist audit event: principal={} method={} path={} error={error}",
+            principal.name, method, path
+        );
+    }
+    Ok(response)
 }
 
 fn required_role(method: &Method, path: &str) -> Role {
+    if path == "/v1/audit-events" {
+        return Role::Admin;
+    }
     if method == Method::GET || method == Method::HEAD {
         return Role::Viewer;
     }
@@ -178,6 +229,35 @@ fn required_role(method: &Method, path: &str) -> Role {
         return Role::Operator;
     }
     Role::Admin
+}
+
+async fn list_audit_events<S, O>(
+    State(state): State<AppState<S, O>>,
+) -> Result<Json<ListAuditEventsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let events = state
+        .store
+        .list_audit_events(100)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ListAuditEventsResponse {
+        audit_events: events
+            .into_iter()
+            .map(|event| AuditEventResponse {
+                id: event.id,
+                principal: event.principal,
+                role: event.role,
+                method: event.method,
+                path: event.path,
+                status_code: event.status_code,
+                request_id: event.request_id,
+                created_at: event.created_at,
+            })
+            .collect(),
+    }))
 }
 
 async fn livez() -> Json<HealthResponse> {

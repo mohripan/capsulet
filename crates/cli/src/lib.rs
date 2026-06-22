@@ -1,7 +1,10 @@
 use std::{fmt::Write as _, path::PathBuf, process::ExitCode};
 
 use clap::{Parser, Subcommand};
-use reqwest::{StatusCode, Url};
+use reqwest::{
+    StatusCode, Url,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
+};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
@@ -22,6 +25,14 @@ struct Cli {
         help = "Base URL for the Capsulet API"
     )]
     api_url: Url,
+    #[arg(
+        long,
+        env = "CAPSULET_API_TOKEN",
+        global = true,
+        hide_env_values = true,
+        help = "Bearer token for the Capsulet API"
+    )]
+    api_token: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -124,7 +135,7 @@ pub async fn run() -> ExitCode {
 }
 
 async fn execute(cli: Cli) -> Result<String, CliError> {
-    let api = ApiClient::new(cli.api_url);
+    let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
 
     match cli.command {
         Command::Submit {
@@ -198,11 +209,19 @@ struct ApiClient {
 }
 
 impl ApiClient {
-    fn new(base_url: Url) -> Self {
-        Self {
-            base_url,
-            client: reqwest::Client::new(),
+    fn new(base_url: Url, token: Option<&str>) -> Result<Self, CliError> {
+        let mut headers = HeaderMap::new();
+        if let Some(token) = token.filter(|token| !token.is_empty()) {
+            let value = HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|_| CliError::InvalidApiToken)?;
+            headers.insert(AUTHORIZATION, value);
         }
+        Ok(Self {
+            base_url,
+            client: reqwest::Client::builder()
+                .default_headers(headers)
+                .build()?,
+        })
     }
 
     async fn create_run(&self, request: &CreateRunRequest) -> Result<JobRunResponse, CliError> {
@@ -447,6 +466,8 @@ struct ApiErrorResponse {
 enum CliError {
     #[error("invalid API base URL: {0}")]
     InvalidBaseUrl(String),
+    #[error("API token contains invalid header characters")]
+    InvalidApiToken,
     #[error("request failed: {0}")]
     Request(#[from] reqwest::Error),
     #[error("failed to decode API response: {0}")]

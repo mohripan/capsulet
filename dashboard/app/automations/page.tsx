@@ -77,18 +77,21 @@ const workflowRunStates = ["queued", "running", "removed", "succeeded", "failed"
 
 const scheduleContract: ParameterContract = {
   fields: [
-    { name: "start_at", label: "Start at", type: "datetime", required: true },
-    { name: "interval_seconds", label: "Repeat every", type: "number", required: true, default: 3600 },
-    { name: "window_seconds", label: "Valid window seconds", type: "number", required: true, default: 300 }
+    { name: "cron", label: "Cron expression", type: "string", required: true, default: "0 0 * * * * *", placeholder: "0 */5 * * * * *" },
+    { name: "timezone", label: "Timezone", type: "string", required: true, default: "UTC", placeholder: "Asia/Jakarta" }
   ]
 };
 
 const sqlContract: ParameterContract = {
   fields: [
-    { name: "connection_string", label: "Connection string", type: "password", required: true, placeholder: "postgres://user:pass@host:5432/db" },
-    { name: "query", label: "Query", type: "textarea", required: true, placeholder: "select count(*) as value from inventory where quantity < 10" },
-    { name: "true_when", label: "True when", type: "string", required: true, placeholder: "value > 0" }
+    { name: "connection_name", label: "Connection", type: "string", required: true, placeholder: "inventory_readonly" },
+    { name: "query", label: "Boolean query", type: "textarea", required: true, placeholder: "select exists(select 1 from inventory where quantity < 10)" },
+    { name: "poll_seconds", label: "Poll every (seconds)", type: "number", required: true, default: 60 }
   ]
+};
+
+const webhookContract: ParameterContract = {
+  fields: []
 };
 
 function defaultTrigger(): DraftTrigger {
@@ -96,11 +99,7 @@ function defaultTrigger(): DraftTrigger {
     name: "schedule_ready",
     kind: "schedule",
     pluginId: "",
-    values: {
-      start_at: new Date(Date.now() + 60_000).toISOString().slice(0, 16),
-      interval_seconds: 3600,
-      window_seconds: 300
-    }
+    values: defaultValues(scheduleContract)
   };
 }
 
@@ -111,6 +110,7 @@ function fieldLabel(field: ContractField) {
 function contractForTrigger(trigger: DraftTrigger, plugins: TriggerPlugin[]) {
   if (trigger.kind === "schedule") return scheduleContract;
   if (trigger.kind === "sql") return sqlContract;
+  if (trigger.kind === "webhook") return webhookContract;
   if (trigger.kind === "custom") {
     return (plugins.find((plugin) => plugin.id === trigger.pluginId)?.config_schema || {}) as ParameterContract;
   }
@@ -321,7 +321,6 @@ export default function AutomationsPage() {
         workflow_id: workflowId,
         status: automationStatus,
         trigger_kind: triggers.some((trigger) => trigger.kind === "schedule") ? "schedule" : "manual",
-        interval_seconds: Number(triggers.find((trigger) => trigger.kind === "schedule")?.values.interval_seconds) || undefined,
         job_input: automationJobInput,
         triggers: triggers.map((trigger) => ({
           name: trigger.name,
@@ -753,10 +752,14 @@ export default function AutomationsPage() {
                           <label><span>Name</span><input value={triggerItem.name} onChange={(event) => updateTrigger(index, { name: event.target.value })} /></label>
                           <label><span>Kind</span><select value={triggerItem.kind} onChange={(event) => {
                             const kind = event.target.value as TriggerKind;
-                            updateTrigger(index, { kind, values: defaultValues(kind === "schedule" ? scheduleContract : kind === "sql" ? sqlContract : {}) });
-                          }}><option value="manual">manual</option><option value="schedule">schedule</option><option value="sql">sql</option><option value="custom">custom plugin</option></select></label>
+                            const nextContract = kind === "schedule" ? scheduleContract : kind === "sql" ? sqlContract : kind === "webhook" ? webhookContract : {};
+                            updateTrigger(index, { kind, values: defaultValues(nextContract) });
+                          }}><option value="manual">manual</option><option value="schedule">cron schedule</option><option value="sql">SQL condition</option><option value="webhook">signed webhook</option><option value="custom">custom plugin</option></select></label>
                           {triggerItem.kind === "custom" ? <label><span>Plugin</span><select value={triggerItem.pluginId} onChange={(event) => updateTrigger(index, { pluginId: event.target.value, values: defaultValues((triggerPlugins.find((plugin) => plugin.id === event.target.value)?.config_schema || {}) as ParameterContract) })}><option value="">Choose plugin</option>{triggerPlugins.map((plugin) => <option value={plugin.id} key={plugin.id}>{plugin.name}</option>)}</select></label> : null}
                           <ContractFields contract={contract} values={triggerItem.values} onChange={(values) => setTriggers((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, values } : item))} onFieldChange={(field, value) => updateTriggerValue(index, field, value)} />
+                          {triggerItem.kind === "webhook" ? <div className="conditionHelp"><PlugZap size={18} /><span>Send signed JSON to /v1/webhooks/{editingAutomation?.id || "{automation_id}"}/{triggerItem.name || "{trigger_name}"}. Operators configure its HMAC secret.</span></div> : null}
+                          {triggerItem.kind === "sql" ? <div className="conditionHelp"><Braces size={18} /><span>Connections are operator-managed. The query runs read-only with a five-second timeout and must return one boolean.</span></div> : null}
+                          {triggerItem.kind === "custom" ? <div className="conditionHelp"><PlugZap size={18} /><span>The isolated plugin must print a final JSON line with matched and an optional object payload.</span></div> : null}
                         </div>
                       </section>
                     );

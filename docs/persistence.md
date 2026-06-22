@@ -8,7 +8,7 @@ Append-only SQLx migrations under `migrations/` define:
 
 - `job_definitions`, `job_runs`, `job_attempts`, `job_run_logs`, and `job_artifacts`;
 - `workflow_definitions`, `workflow_steps`, `workflow_step_dependencies`, `workflow_runs`, and `workflow_step_runs`;
-- `automations`, `automation_triggers`, and `custom_trigger_plugins`.
+- `automations`, `automation_triggers`, `custom_trigger_plugins`, durable trigger events/evaluations, audit events, and retention-cleanup markers.
 
 Run rows also carry cancellation/retry fields, lease owner/expiry, and heartbeat timestamps. Workflow-run removal is represented explicitly so operational history can be hidden without silently deleting unrelated definitions.
 
@@ -35,7 +35,7 @@ Before leasing new work, workers:
 - promote due `retry_scheduled` rows to `queued`;
 - recover expired `leased` or `running` rows to `queued`.
 
-Final updates are guarded by status and lease ownership. This prevents stale completions from overwriting cancellation or a replacement attempt. Recovery is at-least-once because Kubernetes Job reattachment is not implemented.
+Final updates are guarded by status and lease ownership. This prevents stale completions from overwriting cancellation or a replacement attempt. Kubernetes runs use deterministic run/attempt Job names: a replacement worker adopts the expired running lease and reattaches to the existing Job without creating another attempt.
 
 The scheduler also uses PostgreSQL transactions to create due interval workflow runs and reconcile DAG nodes. Dependency edges are persisted separately from step position.
 

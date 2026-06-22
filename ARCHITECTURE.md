@@ -1,14 +1,14 @@
 # Capsulet Architecture
 
-This document describes the architecture implemented in this repository. Capsulet is an early-alpha, Kubernetes-native automation platform for defining Python jobs, composing them into workflow DAGs, triggering workflow runs, and retaining execution state, logs, and artifacts.
+This document describes the architecture implemented in this repository. Capsulet is a Kubernetes-native automation platform for defining Python jobs, composing them into workflow DAGs, triggering workflow runs, and retaining execution state, logs, and artifacts.
 
 For a shorter operator-facing overview, see [docs/architecture.md](docs/architecture.md). Architecture decisions are recorded under [docs/adr](docs/adr).
 
 ## Scope and maturity
 
-The current system provides a working PostgreSQL-backed control plane, a dashboard and CLI, filesystem or S3-compatible object storage, and stub, local-process, and Kubernetes Job execution backends. It is suitable for development and alpha evaluation.
+The current system provides an authenticated PostgreSQL-backed control plane, a dashboard and CLI, filesystem or S3-compatible object storage, and stub, local-process, and Kubernetes Job execution backends.
 
-The following are not implemented production guarantees: API authentication or authorization, webhook ingestion, runtime execution of SQL/custom triggers, evaluator-driven condition processing, event streaming, retention cleanup, pool concurrency enforcement, metrics, network policies, and Kubernetes Job reattachment after a worker restart.
+PostgreSQL is the implemented durable event and coordination channel. Kafka remains an optional future scaling path. Hostile multi-tenant workloads should configure a sandboxed Kubernetes RuntimeClass such as gVisor or Kata in addition to the enforced pod security and default-deny network policy.
 
 ## System context
 
@@ -53,9 +53,9 @@ The Axum API is the synchronous control-plane boundary. It:
 - creates manual job and workflow runs;
 - exposes run filtering, logs, cancellation, workflow resume/removal, and artifact download;
 - validates job input contracts, workflow graphs, trigger configuration, and condition trees;
-- exposes `/livez`, `/readyz`, and the compatibility alias `/healthz`.
+- exposes `/livez`, `/readyz`, `/metrics`, and the compatibility alias `/healthz`.
 
-The API uses `capsulet-postgres` directly as its persistence adapter and `capsulet-storage` for bundle and artifact objects. There is currently no authentication middleware.
+The API uses `capsulet-postgres` directly as its persistence adapter and `capsulet-storage` for bundle and artifact objects. Bearer authentication is fail-closed by default, viewer/operator/admin roles authorize routes, and mutation audits are durable.
 
 ### Scheduler (`capsulet-scheduler`)
 
@@ -86,9 +86,7 @@ The `capsulet-runner` binary is only a component placeholder; execution is coord
 
 ### Dashboard (`dashboard`)
 
-The Next.js dashboard provides authoring and operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, and artifacts. Browser requests go through `/api/capsulet/...`; the server-side proxy forwards them to `CAPSULET_DASHBOARD_API_URL`. This avoids a browser CORS dependency in the current deployment.
-
-Security and settings pages are present as alpha placeholders.
+The Next.js dashboard provides authenticated authoring and operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, artifacts, identity, and audit events. Browser requests go through `/api/capsulet/...`; the server-side proxy reads an HttpOnly credential cookie and forwards its bearer token to `CAPSULET_DASHBOARD_API_URL`.
 
 ### CLI (`capsulet-cli`)
 
@@ -96,7 +94,7 @@ The CLI is an HTTP client for job submission, script submission, run listing/det
 
 ### Evaluator (`capsulet-evaluator`)
 
-An evaluator crate and deployable component exist, but the binary currently only starts and idles. Condition-expression types, trigger definitions, and plugin metadata are implemented in the domain/API; asynchronous trigger evaluation is not wired into this service yet.
+The evaluator continuously produces timezone-aware cron, read-only SQL, and isolated custom-plugin events, consumes signed-webhook events, evaluates durable correlation groups, and creates workflow runs exactly once. Leases, retry/dead-letter state, per-trigger runtime errors, health/metrics, and retention cleanup support multiple evaluator replicas.
 
 ## Workspace boundaries
 
@@ -241,7 +239,7 @@ An automation targets one workflow and stores enabled/disabled state, input JSON
 
 The API validates trigger names, kind-specific configuration, plugin references, input/config contracts, and condition references. It also retains compatibility fields for `manual` and fixed `interval` automations.
 
-Current execution is narrower than authoring: `POST /v1/automations/{id}/trigger` starts a workflow run directly, and the scheduler fires due legacy interval automations. Schedule, SQL, custom plugin execution, durable trigger-event evaluation, and evaluator-service integration remain future work.
+`POST /v1/automations/{id}/trigger` starts manual workflow runs directly. The evaluator produces cron, SQL, and custom-plugin events and consumes signed webhooks; durable correlation groups are evaluated into workflow runs exactly once. The scheduler retains legacy interval compatibility and advances workflow DAGs.
 
 ## Execution pools
 
@@ -263,7 +261,7 @@ The API exposes configured pool and host-group views. The worker resolves the se
 
 ### Helm
 
-The chart can deploy API, scheduler, evaluator placeholder, worker, and dashboard. It also renders a migration Job, RBAC/service accounts, health probes, execution-pool configuration, and optional bundled PostgreSQL and MinIO for evaluation. External PostgreSQL and S3-compatible storage are supported and are the production-shaped dependency mode.
+The chart deploys API, scheduler, evaluator, worker, and dashboard. It also renders migration and bucket Jobs, separated RBAC/service accounts, health and metrics services, execution-pool configuration, default-deny execution networking, and optional bundled PostgreSQL and MinIO. External PostgreSQL and S3-compatible storage are supported and are the production-shaped dependency mode.
 
 The worker service account can create, watch, and delete Kubernetes Jobs and inspect pods/logs in the execution namespace. Job pods use their own configured service-account/security settings.
 
@@ -276,24 +274,21 @@ The worker service account can create, watch, and delete Kubernetes Jobs and ins
 - Compose and Helm configure restart policies/probes for long-running services.
 - Retry policy is fixed delay per job definition; cancellation is terminal.
 
-Recovery is at-least-once. A worker crash after creating a Kubernetes Job can leave that Job running; after lease expiry another attempt may be created because reattachment/reconciliation is not implemented.
+Recovery is at-least-once. Kubernetes Job names and labels encode the run and attempt; after lease expiry a replacement worker adopts the same attempt, validates the existing Job identity, and resumes watching it.
 
 ## Security boundaries
 
 User-authored commands are untrusted relative to the control plane. The Kubernetes runner supplies process isolation, resource limits, security context, and scheduling constraints, but a Kubernetes Job is not a complete sandbox.
 
-The chart defaults platform containers toward non-root execution, dropped capabilities, disabled privilege escalation, read-only root filesystems where practical, and `RuntimeDefault` seccomp. Operators remain responsible for trusted runtime images, service-account permissions, namespace isolation, secrets, network policy, and cluster-level controls.
+The chart defaults platform and execution containers toward non-root execution, dropped capabilities, disabled privilege escalation, read-only root filesystems, and `RuntimeDefault` seccomp. Execution Jobs also disable service-account token mounting, use a separate permissionless ServiceAccount, receive bounded writable volumes, and are selected by a default-deny egress policy. A sandboxed RuntimeClass can be configured per pool or globally.
 
-The API and dashboard currently have no identity model. Do not expose an alpha installation to untrusted networks.
+The API requires configured bearer credentials unless authentication is explicitly disabled. The dashboard stores the credential in a same-origin HttpOnly cookie. Operators remain responsible for secret rotation, TLS ingress, trusted image policy, and cluster-level controls.
 
 ## Known gaps and intended evolution
 
-- wire schedule/SQL/custom trigger execution and condition evaluation into the evaluator;
-- add authenticated users, API authorization, and authenticated webhook ingestion;
-- reconcile or reattach orphaned Kubernetes Jobs;
-- enforce execution-pool concurrency and capacity;
-- add retention/garbage collection for metadata and objects;
-- add metrics, audit events, network-policy templates, and streaming logs;
-- support multi-file/versioned bundles and stronger untrusted-code isolation.
+- add an optional event-stream transport for deployments that outgrow PostgreSQL polling;
+- add distributed tracing, request histograms, and packaged SLO dashboards;
+- add image signature/admission policy integration;
+- support multi-file and versioned bundles.
 
-These are future capabilities, not assumptions that current operators should rely on.
+These are extension paths beyond the implemented production baseline.

@@ -253,6 +253,8 @@ fn pools() -> ExecutionPoolsConfig {
         timeout_seconds: 60,
         max_concurrent_jobs: 1,
         ttl_seconds_after_finished: None,
+        runtime_class_name: None,
+        service_account_name: None,
     };
     ExecutionPoolsConfig {
         default_pool: "mini".to_string(),

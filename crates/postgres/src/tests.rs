@@ -2,9 +2,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use capsulet_core::{
     ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationSettings, AutomationStatus,
-    AutomationTriggerKind, ExecutionPoolName, JobArtifact, JobDefinition, JobRun, JobRunId,
-    JobRunLog, JobRunLogRepository, JobRunRepository, JobRunTransition, WorkflowDefinition,
-    WorkflowId, WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
+    AutomationTrigger, AutomationTriggerKind, CustomTriggerPlugin, ExecutionPoolName, JobArtifact,
+    JobDefinition, JobRun, JobRunId, JobRunLog, JobRunLogRepository, JobRunRepository,
+    JobRunTransition, TriggerKind, TriggerName, WorkflowDefinition, WorkflowId, WorkflowStatus,
+    WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 
 use capsulet_core::JobRunStatus;
@@ -115,10 +116,11 @@ async fn migrates_and_persists_job_runs_when_database_is_available() {
         .await
         .expect("upsert job definition");
 
+    let pool_name = unique_id("persistence_pool");
     let run = JobRun::new(
         JobRunId::new(unique_id("run_persistence_test")).expect("valid run id"),
         definition.id().clone(),
-        ExecutionPoolName::new("mini").expect("valid pool"),
+        ExecutionPoolName::new(pool_name.clone()).expect("valid pool"),
     );
     store.save(&run).await.expect("save run");
 
@@ -132,7 +134,7 @@ async fn migrates_and_persists_job_runs_when_database_is_available() {
     assert_eq!(persisted.status(), run.status());
 
     let leased = store
-        .lease_next_queued_run("worker-test", 60)
+        .lease_next_queued_run_with_pool_limits("worker-test", 60, &[(pool_name, 1)])
         .await
         .expect("lease next run")
         .expect("queued run available");
@@ -156,20 +158,21 @@ async fn lease_query_does_not_hand_out_same_run_twice_when_database_is_available
         .await
         .expect("upsert job definition");
 
+    let pool_name = unique_id("lease_pool");
     let run = JobRun::new(
         JobRunId::new(unique_id("run_lease_test")).expect("valid run id"),
         definition.id().clone(),
-        ExecutionPoolName::new("mini").expect("valid pool"),
+        ExecutionPoolName::new(pool_name.clone()).expect("valid pool"),
     );
     store.save(&run).await.expect("save run");
 
     let first = store
-        .lease_next_queued_run("worker-a", 60)
+        .lease_next_queued_run_with_pool_limits("worker-a", 60, &[(pool_name.clone(), 1)])
         .await
         .expect("lease first")
         .expect("run available");
     let second = store
-        .lease_next_queued_run("worker-b", 60)
+        .lease_next_queued_run_with_pool_limits("worker-b", 60, &[(pool_name, 1)])
         .await
         .expect("lease second");
 
@@ -340,6 +343,86 @@ async fn saves_and_finds_interval_automation_when_database_is_available() {
         .expect("automation exists");
 
     assert_eq!(persisted.interval_seconds(), Some(30));
+}
+
+#[tokio::test]
+async fn custom_trigger_claim_is_exclusive_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+    let workflow = WorkflowDefinition::new(
+        WorkflowId::new(unique_id("workflow_custom_trigger")).expect("workflow id"),
+        "Custom trigger workflow",
+        "",
+        WorkflowStatus::Enabled,
+        Vec::new(),
+    );
+    store.upsert_workflow(&workflow).await.expect("workflow");
+    let automation = Automation::new(
+        AutomationId::new(unique_id("automation_custom_trigger")).expect("automation id"),
+        "Custom trigger automation",
+        "",
+        workflow.id().clone(),
+        "{}",
+        AutomationSettings::new(
+            AutomationStatus::Enabled,
+            AutomationTriggerKind::Manual,
+            None,
+        ),
+    );
+    store
+        .upsert_automation(&automation)
+        .await
+        .expect("automation");
+    let plugin_id = unique_id("plugin_custom_trigger");
+    store
+        .upsert_custom_trigger_plugin(&CustomTriggerPlugin::new(
+            plugin_id.clone(),
+            "Plugin",
+            "",
+            "example.invalid/plugin@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            vec!["/plugin".to_string()],
+            "{}",
+        ))
+        .await
+        .expect("plugin");
+    store
+        .replace_automation_triggers(
+            automation.id(),
+            &[AutomationTrigger::new(
+                automation.id().clone(),
+                TriggerName::new("ready").expect("trigger name"),
+                TriggerKind::Custom,
+                "{\"poll_seconds\":60}",
+                Some(plugin_id),
+                true,
+            )],
+            "{\"trigger\":\"ready\"}",
+        )
+        .await
+        .expect("trigger");
+
+    let claimed = store
+        .claim_custom_trigger("evaluator-a", 60)
+        .await
+        .expect("claim")
+        .expect("due custom trigger");
+    assert_eq!(claimed.trigger_name, "ready");
+    assert!(
+        store
+            .claim_custom_trigger("evaluator-b", 60)
+            .await
+            .expect("second claim")
+            .is_none()
+    );
+    store
+        .complete_custom_trigger("evaluator-a", &claimed, 60, None, "delivery")
+        .await
+        .expect("complete");
 }
 
 #[tokio::test]

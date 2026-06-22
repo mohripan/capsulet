@@ -1,0 +1,23 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "capsulet.fullname" . }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "capsulet.selectorLabels" . | nindent 6 }}
+      capsulet.dev/metrics: "true"
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+    - port: metrics
+      path: /metrics
+      interval: 30s
+{{- end }}

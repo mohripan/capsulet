@@ -6,13 +6,32 @@ use capsulet_core::{
     JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
     JobRunRepository, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
-use capsulet_postgres::{PostgresStore, PostgresStoreError, TriggerEvent};
+use capsulet_postgres::{AuditEvent, PostgresStore, PostgresStoreError, TriggerEvent};
 /// Storage operations required by the HTTP API.
 #[async_trait]
 pub trait ApiStore: Clone + Send + Sync + 'static {
     type Error: Display + Send + Sync + 'static;
 
     async fn ping(&self) -> Result<(), Self::Error>;
+    async fn prometheus_metrics(&self) -> Result<String, Self::Error> {
+        Ok(String::new())
+    }
+    async fn list_audit_events(&self, _limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
+        Ok(Vec::new())
+    }
+    #[allow(clippy::too_many_arguments)]
+    async fn record_audit_event(
+        &self,
+        _principal: &str,
+        _role: &str,
+        _method: &str,
+        _path: &str,
+        _status_code: u16,
+        _request_id: Option<&str>,
+        _user_agent: Option<&str>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
     async fn enqueue_trigger_event(
         &self,
         event: &TriggerEvent,
@@ -117,6 +136,37 @@ impl ApiStore for PostgresStore {
 
     async fn ping(&self) -> Result<(), Self::Error> {
         self.ping().await
+    }
+
+    async fn prometheus_metrics(&self) -> Result<String, Self::Error> {
+        PostgresStore::prometheus_metrics(self).await
+    }
+
+    async fn list_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
+        PostgresStore::list_audit_events(self, limit).await
+    }
+
+    async fn record_audit_event(
+        &self,
+        principal: &str,
+        role: &str,
+        method: &str,
+        path: &str,
+        status_code: u16,
+        request_id: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> Result<(), Self::Error> {
+        PostgresStore::record_audit_event(
+            self,
+            principal,
+            role,
+            method,
+            path,
+            status_code,
+            request_id,
+            user_agent,
+        )
+        .await
     }
 
     async fn enqueue_trigger_event(

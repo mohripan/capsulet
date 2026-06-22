@@ -195,6 +195,7 @@ pub enum WorkerTickOutcome {
 ///
 /// Returns [`WorkerError`] when persistence, state transition, or execution
 /// fails.
+#[allow(clippy::too_many_lines)]
 pub async fn execute_one_queued_run<S, R, O>(
     store: &S,
     runner: &R,

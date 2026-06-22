@@ -1,5 +1,6 @@
 pub mod runtime;
 
+mod custom_trigger;
 mod schedule;
 mod service;
 mod sql_trigger;

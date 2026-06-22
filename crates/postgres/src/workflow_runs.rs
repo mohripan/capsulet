@@ -346,6 +346,7 @@ impl PostgresStore {
             FROM automations
             WHERE status = 'enabled'
               AND trigger_kind = 'interval'
+              AND interval_seconds IS NOT NULL
               AND next_fire_at IS NOT NULL
               AND next_fire_at <= now()
             ORDER BY next_fire_at ASC

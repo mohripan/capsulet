@@ -49,18 +49,20 @@ test("creates and reloads a two-cell Python notebook workflow", async ({ page })
   await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
 });
 
-test("locks notebooks used by queued workflow runs", async ({ page, request }) => {
+test("locks notebooks used by queued workflow runs", async ({ page }) => {
   const suffix = Date.now();
   const jobId = `job-lock-e2e-${suffix}`;
   const workflowId = `workflow-lock-e2e-${suffix}`;
-  const job = await request.post("/api/capsulet/v1/job-definitions", { data: { id: jobId, name: "Slow lock job", python_script: "import time\ntime.sleep(30)" } });
+  const api = "http://127.0.0.1:8080/v1";
+  const headers = { Authorization: `Bearer ${process.env.CAPSULET_E2E_TOKEN ?? "capsulet-local-admin-token-change-me"}` };
+  const job = await page.request.post(`${api}/job-definitions`, { headers, data: { id: jobId, name: "Slow lock job", python_script: "import time\ntime.sleep(30)" } });
   expect(job.status()).toBe(201);
-  const workflow = await request.post("/api/capsulet/v1/workflows", { data: { id: workflowId, name: "Locked notebook E2E", steps: [{ id: `${workflowId}-step`, name: "Slow step", job_definition_id: jobId, execution_pool: "mini" }] } });
+  const workflow = await page.request.post(`${api}/workflows`, { headers, data: { id: workflowId, name: "Locked notebook E2E", steps: [{ id: `${workflowId}-step`, name: "Slow step", job_definition_id: jobId, execution_pool: "mini" }] } });
   expect(workflow.status()).toBe(201);
-  const automation = await request.post("/api/capsulet/v1/automations", { data: { name: `Lock automation ${suffix}`, workflow_id: workflowId } });
+  const automation = await page.request.post(`${api}/automations`, { headers, data: { name: `Lock automation ${suffix}`, workflow_id: workflowId } });
   expect(automation.status()).toBe(201);
   const automationBody = await automation.json();
-  const triggered = await request.post(`/api/capsulet/v1/automations/${automationBody.id}/trigger`);
+  const triggered = await page.request.post(`${api}/automations/${automationBody.id}/trigger`, { headers });
   expect(triggered.status()).toBe(201);
 
   await page.goto(`/workflows/new?workflow=${workflowId}`);

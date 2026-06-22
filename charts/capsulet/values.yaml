@@ -148,6 +148,9 @@ api:
     disabled: false
     existingSecret: capsulet-api-auth
     secretKey: tokens
+  webhooks:
+    existingSecret: ""
+    secretKey: webhook-secrets
   image:
     repositorySuffix: api
   service:
@@ -204,6 +207,12 @@ evaluator:
   image:
     repositorySuffix: evaluator
   pollSeconds: 2
+  retentionDays: 30
+  auditRetentionDays: 365
+  retentionIntervalSeconds: 3600
+  sqlConnections:
+    existingSecret: ""
+    secretKey: connections
   resources:
     requests:
       cpu: 50m
@@ -273,6 +282,10 @@ executionNetworkPolicy:
   enabled: true
   allowDns: true
   additionalEgress: []
+
+executionIsolation:
+  serviceAccountName: ""
+  runtimeClassName: ""
 
 networkPolicies:
   enabled: false

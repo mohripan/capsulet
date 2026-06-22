@@ -1,0 +1,25 @@
+{{- $root := . -}}
+{{- $components := dict "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator -}}
+{{- range $name, $component := $components }}
+{{- if $component.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "capsulet.fullname" $root }}-{{ $name }}-metrics
+  labels:
+    {{- include "capsulet.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+    capsulet.dev/metrics: "true"
+spec:
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: {{ ternary 8081 (ternary 8082 8083 (eq $name "scheduler")) (eq $name "worker") }}
+      targetPort: health
+      protocol: TCP
+  selector:
+    {{- include "capsulet.selectorLabels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+---
+{{- end }}
+{{- end }}

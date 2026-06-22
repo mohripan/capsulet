@@ -9,6 +9,18 @@ export type RunStatus =
   | "timed_out"
   | "retry_scheduled";
 
+export type Principal = { name: string; role: "viewer" | "operator" | "admin" };
+export type AuditEvent = {
+  id: number;
+  principal: string;
+  role: string;
+  method: string;
+  path: string;
+  status_code: number;
+  request_id?: string;
+  created_at: string;
+};
+
 export type JobRun = {
   id: string;
   job_definition_id: string;
@@ -311,6 +323,14 @@ export function getErrorMessage(error: unknown) {
 export async function listRuns(query: number | TableQuery = 50) {
   const params = typeof query === "number" ? { limit: query } : query;
   return apiFetch<{ runs: JobRun[] }>(`/v1/jobs/runs${queryString(params)}`);
+}
+
+export async function getCurrentPrincipal() {
+  return apiFetch<Principal>("/v1/auth/me");
+}
+
+export async function listAuditEvents() {
+  return apiFetch<{ audit_events: AuditEvent[] }>("/v1/audit-events");
 }
 
 export async function listJobDefinitions(limit = 100) {

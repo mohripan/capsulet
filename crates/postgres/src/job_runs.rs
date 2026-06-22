@@ -65,6 +65,11 @@ impl PostgresStore {
     }
 
     /// Leases work only when its execution pool has available capacity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when limits are invalid, persistence fails,
+    /// or stored state cannot be reconstructed.
     pub async fn lease_next_queued_run_with_pool_limits(
         &self,
         worker_id: &str,
@@ -80,6 +85,12 @@ impl PostgresStore {
         .await
     }
 
+    /// Leases capacity-limited work and optionally adopts an expired running attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when limits are invalid, persistence fails,
+    /// or stored state cannot be reconstructed.
     pub async fn lease_next_queued_run_with_pool_limits_and_reattach(
         &self,
         worker_id: &str,
@@ -330,6 +341,11 @@ impl PostgresStore {
         self.recover_expired_leases_for_runner(false).await
     }
 
+    /// Recovers expired leases while optionally preserving reattachable running attempts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the update fails.
     pub async fn recover_expired_leases_for_runner(
         &self,
         preserve_running: bool,

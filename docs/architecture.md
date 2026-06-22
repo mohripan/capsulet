@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Capsulet is an early-alpha automation platform that stores durable control-plane state in PostgreSQL and executes jobs through a pluggable runner. The Kubernetes runner creates isolated Kubernetes Jobs; local process and deterministic stub runners support development and tests.
+Capsulet stores durable control-plane state in PostgreSQL and executes jobs through a pluggable runner. The Kubernetes runner creates isolated Kubernetes Jobs; local process and deterministic stub runners support development and tests.
 
 The detailed system design and implementation boundaries are in the repository-level [ARCHITECTURE.md](../ARCHITECTURE.md).
 
@@ -14,7 +14,7 @@ The detailed system design and implementation boundaries are in the repository-l
 - **Object storage adapter:** filesystem or S3-compatible storage for Python scripts, complete large logs, and artifact bytes.
 - **Dashboard:** Next.js UI that reaches the API through a same-origin server proxy.
 - **CLI:** HTTP client for submission and job-run operations.
-- **Evaluator:** deployable placeholder; asynchronous condition/trigger evaluation is not wired yet.
+- **Evaluator:** durable cron, SQL, webhook, and isolated custom-plugin trigger production and condition evaluation.
 
 ## Dependency view
 
@@ -43,7 +43,7 @@ PostgreSQL is the source of truth for metadata and state transitions. It is also
 5. The worker stores an inline log preview, offloads complete large logs and artifacts to object storage, and commits a guarded final state.
 6. Failed or timed-out runs may enter `retry_scheduled`; cancellation is terminal.
 
-Lease recovery provides at-least-once execution. The worker does not yet reattach to a Kubernetes Job left behind by a crashed worker, so a recovered run can create replacement work.
+Lease recovery provides at-least-once execution. Deterministic attempt-scoped Kubernetes Job identity lets a replacement worker validate and reattach to existing work without incrementing the attempt.
 
 ## Workflow lifecycle
 
@@ -53,7 +53,7 @@ An automation or manual action creates a workflow run. On each tick, the schedul
 
 ## Automations
 
-The authoring model supports named `manual`, `schedule`, `sql`, and `custom` trigger definitions, custom-trigger plugin metadata, and validated boolean condition expressions. Runtime support is currently limited to direct manual automation triggering and legacy fixed-interval scheduling. The evaluator service, SQL/custom trigger execution, and durable event processing are future work.
+The authoring model supports named `manual`, `schedule`, `sql`, `webhook`, and `custom` trigger definitions, custom-trigger plugin metadata, and validated boolean condition expressions. Trigger events, leases, correlation, retries, and exactly-once workflow-run creation are durable in PostgreSQL.
 
 ## Storage keys
 
@@ -66,15 +66,10 @@ Logs up to 64 KiB are stored inline. Larger logs keep a bounded inline preview a
 
 ## Deployment
 
-Docker Compose supplies PostgreSQL, MinIO, API, scheduler, a stub-runner worker, dashboard, and Mailpit for local evaluation. The Helm chart deploys the platform services, migration/bucket initialization jobs, RBAC, health probes, static execution pools, and optional bundled PostgreSQL/MinIO. External PostgreSQL and S3-compatible storage are the production-shaped dependency mode.
+Docker Compose supplies PostgreSQL, MinIO, API, scheduler, evaluator, a stub-runner worker, dashboard, and Mailpit for local evaluation. The Helm chart deploys the platform services, migration/bucket initialization jobs, separated service accounts, health/metrics, static execution pools, default-deny execution networking, and optional bundled PostgreSQL/MinIO. External PostgreSQL and S3-compatible storage are the production-shaped dependency mode.
 
-API, scheduler, and worker expose `/livez`, `/readyz`, and `/healthz` (compatibility alias). Readiness depends on PostgreSQL connectivity.
+API, scheduler, evaluator, and worker expose `/livez`, `/readyz`, and `/metrics`. Readiness depends on PostgreSQL connectivity.
 
-## Current limitations
+## Security boundary
 
-- No authentication or authorization.
-- No schedule/SQL/custom trigger execution through the evaluator.
-- No execution-pool concurrency enforcement.
-- No retention cleanup, metrics, audit log, streaming logs, or multi-file bundles.
-- No Kubernetes Job reattachment after worker failure.
-- Kubernetes Jobs provide isolation but are not a complete hostile-code sandbox.
+Execution pods run non-root with a read-only root filesystem, dropped capabilities, RuntimeDefault seccomp, no service-account token, bounded writable volumes, and default-deny egress. A separate unprivileged execution ServiceAccount and optional RuntimeClass are supported. Operators running hostile multi-tenant code should configure gVisor, Kata, or another sandboxed runtime; ordinary Linux containers are not a virtual-machine boundary.

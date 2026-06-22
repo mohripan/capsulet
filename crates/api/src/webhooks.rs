@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Write as _,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -35,6 +36,11 @@ impl std::fmt::Debug for WebhookSecrets {
 }
 
 impl WebhookSecrets {
+    /// Parses HMAC secrets keyed by `automation/trigger`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid JSON, malformed keys, or weak secrets.
     pub fn from_json(value: &str) -> Result<Self, String> {
         let values: HashMap<String, String> = serde_json::from_str(value)
             .map_err(|error| format!("invalid CAPSULET_WEBHOOK_SECRETS: {error}"))?;
@@ -56,6 +62,8 @@ impl WebhookSecrets {
     fn get(&self, automation_id: &str, trigger_name: &str) -> Option<&[u8]> {
         self.0
             .get(&format!("{automation_id}/{trigger_name}"))
+            .or_else(|| self.0.get(&format!("{automation_id}/*")))
+            .or_else(|| self.0.get("*/*"))
             .map(AsRef::as_ref)
     }
 }
@@ -77,10 +85,13 @@ where
     let timestamp = header(&headers, "x-capsulet-timestamp")?
         .parse::<i64>()
         .map_err(|_| ApiError::Unauthorized)?;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| ApiError::Store(error.to_string()))?
-        .as_secs() as i64;
+    let now = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| ApiError::Store(error.to_string()))?
+            .as_secs(),
+    )
+    .map_err(|_| ApiError::Store("epoch seconds exceed i64".to_string()))?;
     if now.abs_diff(timestamp) > REPLAY_WINDOW_SECONDS as u64 {
         return Err(ApiError::Unauthorized);
     }
@@ -191,5 +202,51 @@ fn decode_hex(value: &str) -> Option<Vec<u8>> {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    use super::{WebhookSecrets, hex, verify_signature};
+
+    #[test]
+    fn verifies_timestamp_bound_hmac_and_rejects_tampering() {
+        let secret = b"a-production-grade-webhook-secret";
+        let timestamp = 1_782_134_400;
+        let body = br#"{"ready":true}"#;
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret).expect("HMAC key");
+        mac.update(timestamp.to_string().as_bytes());
+        mac.update(b".");
+        mac.update(body);
+        let signature = format!("sha256={}", hex(&mac.finalize().into_bytes()));
+
+        assert!(verify_signature(secret, timestamp, body, &signature).is_ok());
+        assert!(verify_signature(secret, timestamp, br#"{"ready":false}"#, &signature).is_err());
+        assert!(verify_signature(secret, timestamp + 1, body, &signature).is_err());
+    }
+
+    #[test]
+    fn rejects_short_webhook_secrets() {
+        assert!(WebhookSecrets::from_json(r#"{"automation/ready":"short"}"#).is_err());
+        assert!(
+            WebhookSecrets::from_json(
+                r#"{"automation/ready":"a-production-grade-webhook-secret"}"#
+            )
+            .is_ok()
+        );
+        let wildcard =
+            WebhookSecrets::from_json(r#"{"*/*":"a-production-grade-shared-webhook-secret"}"#)
+                .expect("wildcard secret");
+        assert_eq!(
+            wildcard.get("automation", "ready"),
+            Some(b"a-production-grade-shared-webhook-secret".as_slice())
+        );
+    }
 }

@@ -11,7 +11,23 @@ use capsulet_postgres::{PostgresStore, ScheduleTrigger};
 pub(crate) async fn produce_due_events(store: &PostgresStore) -> Result<u64, EvaluatorError> {
     let mut fired = 0;
     for trigger in store.list_schedule_triggers().await? {
-        fired += u64::from(produce_one(store, &trigger).await?);
+        match produce_one(store, &trigger).await {
+            Ok(produced) => {
+                fired += u64::from(produced);
+                store
+                    .record_trigger_runtime_success(&trigger.automation_id, &trigger.trigger_name)
+                    .await?;
+            }
+            Err(error) => {
+                store
+                    .record_trigger_runtime_failure(
+                        &trigger.automation_id,
+                        &trigger.trigger_name,
+                        &error.to_string(),
+                    )
+                    .await?;
+            }
+        }
     }
     Ok(fired)
 }

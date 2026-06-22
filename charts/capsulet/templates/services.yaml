@@ -6,6 +6,7 @@ metadata:
   labels:
     {{- include "capsulet.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
+    capsulet.dev/metrics: "true"
 spec:
   type: {{ .Values.api.service.type }}
   ports:

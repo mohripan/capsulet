@@ -73,6 +73,14 @@ impl ObjectStore for FakeObjectStore {
             .iter()
             .any(|(stored_key, _)| stored_key == key))
     }
+
+    async fn delete(&self, key: &str) -> Result<(), Self::Error> {
+        self.objects
+            .lock()
+            .map_err(|error| error.to_string())?
+            .retain(|(stored_key, _)| stored_key != key);
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -1111,6 +1119,74 @@ async fn creates_automation_with_trigger_condition_graph() {
         body["condition"]["all"][1]["any"][0]["trigger"],
         "orders_changed"
     );
+}
+
+#[tokio::test]
+async fn creates_cron_automation_without_legacy_interval_seconds() {
+    let response =
+        test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_pipeline"))
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/automations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "id": "automation_cron",
+                            "name": "Cron automation",
+                            "workflow_id": "wf_pipeline",
+                            "trigger_kind": "schedule",
+                            "triggers": [{
+                                "name": "nightly",
+                                "kind": "schedule",
+                                "config": { "cron": "0 0 * * * *", "timezone": "UTC" }
+                            }],
+                            "condition": { "trigger": "nightly" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    let body = response_json(response).await;
+    assert_eq!(body["interval_seconds"], Value::Null);
+    assert_eq!(body["triggers"][0]["config"]["timezone"], "UTC");
+}
+
+#[tokio::test]
+async fn creates_sql_automation_without_legacy_interval_seconds() {
+    let response =
+        test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_pipeline"))
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/automations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "id": "automation_sql",
+                            "name": "SQL automation",
+                            "workflow_id": "wf_pipeline",
+                            "trigger_kind": "sql",
+                            "triggers": [{
+                                "name": "ready",
+                                "kind": "sql",
+                                "config": { "connection_name": "control", "query": "SELECT true" }
+                            }],
+                            "condition": { "trigger": "ready" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    assert_eq!(response_json(response).await["triggers"][0]["kind"], "sql");
 }
 
 #[tokio::test]

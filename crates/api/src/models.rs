@@ -257,6 +257,23 @@ pub(crate) struct WorkflowResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct AuditEventResponse {
+    pub(crate) id: i64,
+    pub(crate) principal: String,
+    pub(crate) role: String,
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) status_code: i32,
+    pub(crate) request_id: Option<String>,
+    pub(crate) created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListAuditEventsResponse {
+    pub(crate) audit_events: Vec<AuditEventResponse>,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct WorkflowDependencyResponse {
     pub(crate) from_step_id: String,
     pub(crate) to_step_id: String,

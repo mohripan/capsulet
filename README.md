@@ -1,6 +1,6 @@
 # Capsulet
 
-Capsulet is a Kubernetes-native automation control plane for durable, script-centric workflows. It combines reusable job definitions, dependency-graph workflows, manual and interval automations, isolated execution, logs, artifacts, retry policies, and operational health checks behind one API, CLI, and dashboard.
+Capsulet is a Kubernetes-native automation control plane for durable, script-centric workflows. It combines reusable job definitions, dependency-graph workflows, authenticated automation triggers, isolated execution, logs, artifacts, retry policies, and operational health checks behind one API, CLI, and dashboard.
 
 ![Capsulet workflow dashboard](docs/images/capsulet-dashboard.png)
 
@@ -8,14 +8,17 @@ Capsulet is a Kubernetes-native automation control plane for durable, script-cen
 
 - reusable Python job definitions with JSON input schemas and retry policies
 - validated workflow DAGs with parallel roots, fan-out, and fan-in dependencies
-- manual and interval automations
+- manual, timezone-aware cron, read-only SQL, signed webhook, and isolated custom-plugin triggers
+- bearer authentication with viewer/operator/admin authorization and durable mutation auditing
 - durable PostgreSQL job, attempt, workflow-step, log, and artifact metadata
 - local process, stub, and Kubernetes Job runners
 - S3-compatible or filesystem artifact storage
-- cancellation, timeouts, delayed retry, and stale-lease recovery
+- enforced execution-pool concurrency, cancellation, timeouts, delayed retry, and stale-lease recovery
 - owner-bound worker heartbeats that prevent stale workers from finalizing reassigned work
 - workflow resume from successful step checkpoints after failure or timeout
-- API, worker, scheduler, and dashboard health probes
+- Kubernetes Job reattachment after worker failure
+- API, worker, scheduler, and evaluator health and Prometheus metrics endpoints
+- configurable artifact, log, trigger-event, and audit retention cleanup
 - Docker Compose for local use and a Helm chart for Kubernetes
 
 ## How execution stays durable
@@ -42,14 +45,15 @@ docker compose ps
 
 Open the dashboard at <http://127.0.0.1:3000> and the API at <http://127.0.0.1:8080>.
 
-The local stack includes PostgreSQL, MinIO, Mailpit, API, worker, scheduler, and dashboard. Compose waits on dependency health and restarts long-running services after failure.
+The local stack includes PostgreSQL, MinIO, Mailpit, API, worker, scheduler, evaluator, and dashboard. Compose waits on dependency health and restarts long-running services after failure. Sign in with the development token `capsulet-local-admin-token-change-me`; replace it before exposing the stack.
 
 Useful checks:
 
 ```sh
 curl http://127.0.0.1:8080/livez
 curl http://127.0.0.1:8080/readyz
-docker compose logs -f api worker scheduler
+curl http://127.0.0.1:8080/metrics
+docker compose logs -f api worker scheduler evaluator
 ```
 
 Stop the stack without deleting persisted volumes:
@@ -63,20 +67,24 @@ docker compose down
 Resume a failed or timed-out workflow run:
 
 ```sh
-curl -X POST http://127.0.0.1:8080/v1/workflow-runs/<run-id>/resume
+curl -H 'Authorization: Bearer <token>' -X POST http://127.0.0.1:8080/v1/workflow-runs/<run-id>/resume
 ```
 
 The response contains the workflow run and preserved successful step runs. Active, queued, cancelled, removed, and successful runs are rejected to avoid ambiguous recovery.
 
 ## Kubernetes with Helm
 
-The chart installs the API, worker, scheduler, evaluator placeholder, dashboard, migration job, RBAC, services, configuration, and optional bundled PostgreSQL and MinIO.
+The chart installs the API, worker, scheduler, evaluator, dashboard, migration job, separated control-plane/execution service accounts, default-deny execution network policy, services, configuration, and optional bundled PostgreSQL and MinIO.
 
 ```sh
 helm lint charts/capsulet
+kubectl create namespace capsulet
+kubectl create secret generic capsulet-api-auth \
+  --namespace capsulet \
+  --from-literal='tokens=[{"name":"cluster-admin","role":"admin","token":"replace-with-at-least-32-random-characters"}]'
 helm install capsulet charts/capsulet \
   --namespace capsulet \
-  --create-namespace
+  --set api.auth.existingSecret=capsulet-api-auth
 
 kubectl wait --for=condition=available deployment \
   --all --namespace capsulet --timeout=5m
@@ -96,7 +104,7 @@ crates/
   postgres/     SQLx persistence and migrations
   runner/       stub, process, and Kubernetes runners
   scheduler/    automation triggering and DAG reconciliation
-  evaluator/    placeholder for future asynchronous trigger evaluation
+  evaluator/    durable trigger evaluation and retention cleanup
   worker/       leasing, heartbeat, execution, logs, and artifacts
   storage/      filesystem and S3-compatible object storage
   cli/          command-line client

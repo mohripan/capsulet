@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write as _,
+};
 
 use capsulet_core::{AutomationId, AutomationStatus, ConditionExpr, TriggerName};
 use capsulet_postgres::{PostgresStore, PostgresStoreError, TriggerEvent};
@@ -37,9 +40,19 @@ impl Evaluator {
     }
 
     /// Evaluates at most one durable trigger correlation group.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EvaluatorError`] when production, leasing, evaluation, or completion fails.
     pub async fn tick(&self) -> Result<bool, EvaluatorError> {
         crate::schedule::produce_due_events(&self.store).await?;
         crate::sql_trigger::produce_due_events(&self.store, &self.sql_connections).await?;
+        crate::custom_trigger::produce_due_event(
+            &self.store,
+            &self.owner,
+            self.lease_seconds.max(600),
+        )
+        .await?;
         let events = self
             .store
             .lease_trigger_group(&self.owner, self.lease_seconds)
@@ -145,15 +158,15 @@ fn condition_from_json(value: &Value) -> Result<ConditionExpr, EvaluatorError> {
 
 fn deterministic_run_id(automation_id: &str, correlation_key: &str) -> String {
     let digest = Sha256::digest(format!("{automation_id}\0{correlation_key}").as_bytes());
-    let suffix = digest[..12]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+    let mut suffix = String::with_capacity(24);
+    for byte in &digest[..12] {
+        write!(suffix, "{byte:02x}").expect("writing to a String cannot fail");
+    }
     format!("trigger_{suffix}")
 }
 
 fn retry_delay_seconds(events: &[TriggerEvent]) -> i64 {
-    let exponent = events.len().min(6) as u32;
+    let exponent = u32::try_from(events.len().min(6)).expect("value is capped at six");
     2_i64.pow(exponent).min(60)
 }
 
@@ -177,6 +190,8 @@ pub enum EvaluatorError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use serde_json::json;
 
     use super::{condition_from_json, deterministic_run_id};
@@ -187,7 +202,7 @@ mod tests {
             "any": [{"all": [{"trigger":"ready"}, {"trigger":"approved"}]}, {"trigger":"manual"}]
         }))
         .expect("condition");
-        assert!(!condition.evaluate(&Default::default()));
+        assert!(!condition.evaluate(&HashSet::default()));
     }
 
     #[test]

@@ -392,6 +392,10 @@ pub struct ExecutionPoolConfig {
     pub max_concurrent_jobs: u32,
     #[serde(default)]
     pub ttl_seconds_after_finished: Option<i32>,
+    #[serde(default)]
+    pub runtime_class_name: Option<String>,
+    #[serde(default)]
+    pub service_account_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -639,6 +643,7 @@ async fn cleanup_cancelled_job(jobs: &Api<Job>, pods: &Api<Pod>, job_name: &str)
 
 /// Renders the Kubernetes Job for an execution.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
     let job_name = kubernetes_job_name(execution.run.id(), execution.run.attempt_count());
     let run_key = run_label_value(execution.run.id());
@@ -733,6 +738,8 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
                         ..Container::default()
                     }],
                     automount_service_account_token: Some(false),
+                    runtime_class_name: execution.pool.runtime_class_name.clone(),
+                    service_account_name: execution.pool.service_account_name.clone(),
                     enable_service_links: Some(false),
                     host_ipc: Some(false),
                     host_network: Some(false),

@@ -63,12 +63,20 @@ fn pool() -> ExecutionPoolConfig {
         timeout_seconds: 120,
         max_concurrent_jobs: 50,
         ttl_seconds_after_finished: Some(300),
+        runtime_class_name: Some("gvisor".to_string()),
+        service_account_name: Some("capsulet-execution".to_string()),
     }
 }
 
 #[test]
 fn renders_job_metadata_and_container() {
     let job = build_job(&execution(pool()), "capsulet-exec");
+    let pod_spec = job.spec.as_ref().unwrap().template.spec.as_ref().unwrap();
+    assert_eq!(pod_spec.runtime_class_name.as_deref(), Some("gvisor"));
+    assert_eq!(
+        pod_spec.service_account_name.as_deref(),
+        Some("capsulet-execution")
+    );
 
     assert_eq!(
         job.metadata.name.as_deref(),

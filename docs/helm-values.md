@@ -222,7 +222,18 @@ Capsulet API, worker, scheduler, evaluator, and dashboard defaults include:
 
 Bundled PostgreSQL and MinIO also run as non-root with dropped capabilities, but they keep `readOnlyRootFilesystem: false` because stateful database/object-storage images need writable runtime paths. Bundled dependencies are for local alpha evaluation; production-shaped installs should use external PostgreSQL and external S3-compatible storage.
 
-The evaluator Deployment is currently a placeholder process. Trigger definitions and conditions can be authored through the API, but asynchronous schedule/SQL/custom evaluation is not yet connected to it.
+The evaluator leases durable trigger events, evaluates nested conditions exactly once, executes timezone-aware cron, named read-only SQL, signed webhook, and isolated custom-plugin triggers, and runs retention cleanup. Configure SQL connections and webhook secrets outside chart values as secrets in production.
+
+Named SQL connections are supplied as a JSON object in a Secret, for example `{"inventory":"postgres://readonly:..."}`:
+
+```yaml
+evaluator:
+  sqlConnections:
+    existingSecret: capsulet-sql-connections
+    secretKey: connections
+```
+
+Custom-trigger Jobs use `worker.runner.executionNamespace` and the same `executionIsolation` service account and RuntimeClass as ordinary execution Jobs.
 
 ## Execution Pools
 
@@ -248,11 +259,11 @@ executionPools:
 
 Capsulet chooses the execution pool. Kubernetes chooses the specific node.
 
-`maxConcurrentJobs` is represented in values for future scheduler/concurrency work. It is not enforced yet.
+`maxConcurrentJobs` is enforced atomically by PostgreSQL leasing, including with multiple worker replicas.
 
 ## Network Policies And ServiceMonitor
 
-These values are present but not implemented by templates yet:
+Control-plane network policies and Prometheus Operator discovery are optional:
 
 ```yaml
 networkPolicies:
@@ -262,7 +273,7 @@ serviceMonitor:
   enabled: false
 ```
 
-Metrics and network policy presets remain future work.
+`executionNetworkPolicy.enabled` defaults to true and isolates execution Jobs with default-deny ingress/egress plus optional DNS and explicit egress rules. `executionIsolation` selects the permissionless execution service account and an optional sandbox RuntimeClass. Enabling `serviceMonitor` renders discovery for API, worker, scheduler, and evaluator metrics Services.
 
 ## Validation
 

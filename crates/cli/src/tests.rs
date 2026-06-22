@@ -172,8 +172,11 @@ fn formats_artifacts_table() {
 
 #[test]
 fn builds_api_urls_from_base_url_with_path() {
-    let client =
-        ApiClient::new(Url::parse("http://localhost:8080/api-prefix").expect("valid base URL"));
+    let client = ApiClient::new(
+        Url::parse("http://localhost:8080/api-prefix").expect("valid base URL"),
+        None,
+    )
+    .expect("API client");
 
     let url = client.url(&["v1", "jobs", "runs", "run 1"]).expect("url");
 

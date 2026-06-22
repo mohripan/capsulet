@@ -1,6 +1,6 @@
 use std::{env, fs, time::Duration};
 
-use axum::{Router, extract::State, http::StatusCode, routing::get};
+use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_postgres::PostgresStore;
 use capsulet_runner::{ExecutionPoolsConfig, KubernetesRunner, ProcessRunner, StubRunner};
@@ -122,6 +122,7 @@ async fn start_health_server(
         .route("/livez", get(|| async { StatusCode::OK }))
         .route("/healthz", get(ready))
         .route("/readyz", get(ready))
+        .route("/metrics", get(metrics))
         .with_state(store);
     let listener = tokio::net::TcpListener::bind(address).await?;
     tokio::spawn(async move {
@@ -136,6 +137,13 @@ async fn ready(State(store): State<PostgresStore>) -> StatusCode {
     match store.ping().await {
         Ok(()) => StatusCode::OK,
         Err(_) => StatusCode::SERVICE_UNAVAILABLE,
+    }
+}
+
+async fn metrics(State(store): State<PostgresStore>) -> axum::response::Response {
+    match store.prometheus_metrics().await {
+        Ok(body) => ([("content-type", "text/plain; version=0.0.4")], body).into_response(),
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
 }
 
@@ -221,7 +229,16 @@ fn load_execution_pools() -> Result<ExecutionPoolsConfig, Box<dyn std::error::Er
         DEFAULT_EXECUTION_POOLS_YAML.to_string()
     };
 
-    Ok(ExecutionPoolsConfig::from_yaml(&yaml)?)
+    let mut pools = ExecutionPoolsConfig::from_yaml(&yaml)?;
+    for pool in pools.pools.values_mut() {
+        if pool.runtime_class_name.is_none() {
+            pool.runtime_class_name = env::var("CAPSULET_EXECUTION_RUNTIME_CLASS").ok();
+        }
+        if pool.service_account_name.is_none() {
+            pool.service_account_name = env::var("CAPSULET_EXECUTION_SERVICE_ACCOUNT").ok();
+        }
+    }
+    Ok(pools)
 }
 
 fn load_object_store() -> Result<ConfiguredObjectStore, Box<dyn std::error::Error>> {

@@ -4,17 +4,22 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use thiserror::Error;
 
 mod artifacts;
+mod audit;
 mod automations;
 mod job_definitions;
 mod job_runs;
+mod metrics;
 mod repositories;
+mod retention;
 mod rows;
 mod trigger_events;
 mod workflow_runs;
 mod workflows;
 
 pub use artifacts::UpstreamArtifact;
-pub use trigger_events::{ScheduleTrigger, TriggerEvent};
+pub use audit::AuditEvent;
+pub use retention::RetentionCandidate;
+pub use trigger_events::{CustomRuntimeTrigger, ScheduleTrigger, TriggerEvent};
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
 

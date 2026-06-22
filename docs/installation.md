@@ -34,13 +34,17 @@ Install Capsulet:
 ```powershell
 kubectl create namespace capsulet
 kubectl label node minikube capsulet.dev/pool=mini --overwrite
+kubectl create secret generic capsulet-api-auth `
+  --namespace capsulet `
+  --from-literal='tokens=[{"name":"cluster-admin","role":"admin","token":"replace-with-at-least-32-random-characters"}]'
 
 helm upgrade --install capsulet charts/capsulet `
   --namespace capsulet `
   --set image.registry= `
   --set image.repository=capsulet `
   --set image.tag=dev `
-  --set image.pullPolicy=Never
+  --set image.pullPolicy=Never `
+  --set api.auth.existingSecret=capsulet-api-auth
 ```
 
 Wait for the install:
@@ -64,8 +68,10 @@ kubectl port-forward svc/capsulet-dashboard 3000:80 -n capsulet
 Open:
 
 ```text
-http://127.0.0.1:3000/runs
+http://127.0.0.1:3000/login
 ```
+
+Sign in with the exact token stored in `capsulet-api-auth`. Authentication fails closed when neither a token Secret nor the explicit development-only `api.auth.disabled=true` setting is present.
 
 Access the API:
 

@@ -2,7 +2,7 @@
 
 use std::{env, time::Duration};
 
-use axum::{Router, extract::State, http::StatusCode, routing::get};
+use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_postgres::PostgresStore;
 
@@ -64,6 +64,7 @@ async fn start_health_server(
         .route("/livez", get(|| async { StatusCode::OK }))
         .route("/healthz", get(ready))
         .route("/readyz", get(ready))
+        .route("/metrics", get(metrics))
         .with_state(store);
     let listener = tokio::net::TcpListener::bind(address).await?;
     tokio::spawn(async move {
@@ -78,6 +79,13 @@ async fn ready(State(store): State<PostgresStore>) -> StatusCode {
     match store.ping().await {
         Ok(()) => StatusCode::OK,
         Err(_) => StatusCode::SERVICE_UNAVAILABLE,
+    }
+}
+
+async fn metrics(State(store): State<PostgresStore>) -> axum::response::Response {
+    match store.prometheus_metrics().await {
+        Ok(body) => ([("content-type", "text/plain; version=0.0.4")], body).into_response(),
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
 }
 

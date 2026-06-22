@@ -204,6 +204,14 @@
             "secretKey": { "type": "string", "minLength": 1 }
           },
           "required": ["disabled", "existingSecret", "secretKey"]
+        },
+        "webhooks": {
+          "type": "object",
+          "properties": {
+            "existingSecret": { "type": "string" },
+            "secretKey": { "type": "string", "minLength": 1 }
+          },
+          "required": ["existingSecret", "secretKey"]
         }
       }
     },
@@ -236,7 +244,25 @@
     "evaluator": {
       "type": "object",
       "properties": {
-        "pollSeconds": { "type": "integer", "minimum": 1 }
+        "pollSeconds": { "type": "integer", "minimum": 1 },
+        "retentionDays": { "type": "integer", "minimum": 1 },
+        "auditRetentionDays": { "type": "integer", "minimum": 1 },
+        "retentionIntervalSeconds": { "type": "integer", "minimum": 60 },
+        "sqlConnections": {
+          "type": "object",
+          "properties": {
+            "existingSecret": { "type": "string" },
+            "secretKey": { "type": "string", "minLength": 1 }
+          },
+          "required": ["existingSecret", "secretKey"]
+        }
+      }
+    },
+    "executionIsolation": {
+      "type": "object",
+      "properties": {
+        "serviceAccountName": { "type": "string" },
+        "runtimeClassName": { "type": "string" }
       }
     },
     "dashboard": {

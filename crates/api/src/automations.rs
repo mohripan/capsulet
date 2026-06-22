@@ -224,7 +224,7 @@ where
         .unwrap_or("manual");
     let trigger_kind = match requested_trigger_kind {
         "manual" => AutomationTriggerKind::Manual,
-        "interval" | "schedule" => AutomationTriggerKind::Interval,
+        "interval" | "schedule" | "sql" | "webhook" | "custom" => AutomationTriggerKind::Interval,
         value => {
             return Err(ApiError::Validation(format!(
                 "unsupported automation trigger kind: {value}"
@@ -241,7 +241,10 @@ where
             .get("interval_seconds")
             .and_then(Value::as_i64)
     });
-    if trigger_kind == AutomationTriggerKind::Interval && inferred_interval_seconds.is_none() {
+    if trigger_kind == AutomationTriggerKind::Interval
+        && request.triggers.is_none()
+        && inferred_interval_seconds.is_none()
+    {
         return Err(ApiError::Validation(
             "interval automations require interval_seconds".to_string(),
         ));
