@@ -75,6 +75,7 @@ The router currently exposes:
 | `GET`, `POST` | `/v1/trigger-plugins` | List or create plugin metadata |
 | `GET` | `/v1/trigger-plugins/{id}` | Read plugin metadata |
 | `GET` | `/v1/workflow-runs` | List workflow runs and step runs |
+| `GET` | `/v1/workflow-runs/{id}` | Read one workflow run and its step runs |
 | `GET` | `/v1/workflow-runs/{id}/logs` | Aggregate step-run logs |
 | `POST` | `/v1/workflow-runs/{id}/remove` | Remove a queued run from normal listings |
 | `POST` | `/v1/workflow-runs/{id}/cancel` | Cancel a running workflow and its jobs |
@@ -267,6 +268,7 @@ List workflow runs:
 
 ```sh
 curl http://127.0.0.1:8080/v1/workflow-runs
+curl http://127.0.0.1:8080/v1/workflow-runs/workflow_run_123
 ```
 
 Each workflow run includes `step_runs`. A step run exposes its `position`, `status`, `workflow_step_id`, and underlying `job_run_id`; use that job run ID with the existing logs and artifacts endpoints.

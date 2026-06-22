@@ -9,8 +9,12 @@ mod job_definitions;
 mod job_runs;
 mod repositories;
 mod rows;
+mod trigger_events;
 mod workflow_runs;
 mod workflows;
+
+pub use artifacts::UpstreamArtifact;
+pub use trigger_events::{ScheduleTrigger, TriggerEvent};
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
 

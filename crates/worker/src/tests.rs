@@ -22,6 +22,7 @@ struct FakeStore {
     definitions: Arc<Mutex<Vec<JobDefinition>>>,
     logs: Arc<Mutex<Vec<JobRunLog>>>,
     artifacts: Arc<Mutex<Vec<JobArtifact>>>,
+    upstream_artifacts: Arc<Mutex<Vec<(String, JobArtifact)>>>,
     cancelled: Arc<Mutex<Vec<capsulet_core::JobRunId>>>,
     heartbeat_count: Arc<Mutex<u32>>,
 }
@@ -34,6 +35,8 @@ impl WorkerStore for FakeStore {
         &self,
         _worker_id: &str,
         _lease_seconds: i64,
+        _pool_limits: &[(String, u32)],
+        _reattach_running: bool,
     ) -> Result<Option<JobRun>, Self::Error> {
         let mut run = self.queued.lock().map_err(|error| error.to_string())?.pop();
         if let Some(run) = &mut run {
@@ -137,8 +140,19 @@ impl WorkerStore for FakeStore {
         Ok(0)
     }
 
-    async fn recover_expired_leases(&self) -> Result<u64, Self::Error> {
+    async fn recover_expired_leases(&self, _preserve_running: bool) -> Result<u64, Self::Error> {
         Ok(0)
+    }
+
+    async fn list_upstream_artifacts(
+        &self,
+        _id: &capsulet_core::JobRunId,
+    ) -> Result<Vec<(String, JobArtifact)>, Self::Error> {
+        Ok(self
+            .upstream_artifacts
+            .lock()
+            .map_err(|error| error.to_string())?
+            .clone())
     }
 
     async fn heartbeat_run(
@@ -172,6 +186,7 @@ impl FakeStore {
             definitions: Arc::new(Mutex::new(vec![JobDefinition::hello_python()])),
             logs: Arc::default(),
             artifacts: Arc::default(),
+            upstream_artifacts: Arc::default(),
             cancelled: Arc::default(),
             heartbeat_count: Arc::default(),
         }
@@ -454,7 +469,7 @@ async fn stores_runner_artifacts() {
 #[tokio::test]
 async fn offloads_large_logs_as_artifact() {
     let store = FakeStore::with_run(run());
-    let logs = "x".repeat(super::INLINE_LOG_LIMIT_BYTES + 1);
+    let logs = "x".repeat(crate::worker::INLINE_LOG_LIMIT_BYTES + 1);
 
     let outcome = execute_one_queued_run(
         &store,

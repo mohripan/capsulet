@@ -81,6 +81,7 @@ services:
       CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
       CAPSULET_API_ADDR: 0.0.0.0:8080
       CAPSULET_SEED_EXAMPLES: "true"
+      CAPSULET_API_TOKENS: '[{"name":"local-admin","role":"admin","token":"capsulet-local-admin-token-change-me"}]'
       CAPSULET_EXECUTION_POOLS: mini,large
       CAPSULET_OBJECT_STORAGE_MODE: s3
       CAPSULET_OBJECT_STORAGE_BUCKET: capsulet-artifacts
@@ -176,8 +177,22 @@ services:
         PACKAGE: capsulet-evaluator
         BIN: capsulet-evaluator
     container_name: capsulet-evaluator
-    profiles:
-      - all
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
+      CAPSULET_EVALUATOR_ID: evaluator-compose
+      CAPSULET_EVALUATOR_POLL_SECONDS: "2"
+      CAPSULET_EVALUATOR_HEALTH_ADDR: 0.0.0.0:8083
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   dashboard:
     build:

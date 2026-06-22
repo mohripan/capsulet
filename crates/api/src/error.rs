@@ -10,14 +10,22 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub(crate) enum ApiError {
+    #[error("authentication required")]
+    Unauthorized,
+    #[error("insufficient permission; required role: {0}")]
+    Forbidden(&'static str),
     #[error("validation error: {0}")]
     Validation(String),
     #[error("unknown job definition: {0}")]
     UnknownJobDefinition(String),
+    #[error("job definition source not found: {0}")]
+    JobDefinitionSourceNotFound(String),
     #[error("unknown execution pool: {0}")]
     UnknownExecutionPool(String),
     #[error("workflow not found: {0}")]
     WorkflowNotFound(String),
+    #[error("workflow cannot be modified while queued or running executions reference it: {0}")]
+    WorkflowLocked(String),
     #[error("workflow run not found: {0}")]
     WorkflowRunNotFound(String),
     #[error("invalid workflow run transition: {0}")]
@@ -55,11 +63,15 @@ impl ApiError {
 
     const fn status_code(&self) -> StatusCode {
         match self {
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::Validation(_) | Self::InvalidWorkflowRunTransition(_) => StatusCode::BAD_REQUEST,
+            Self::WorkflowLocked(_) => StatusCode::CONFLICT,
             Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            Self::WorkflowNotFound(_)
+            Self::JobDefinitionSourceNotFound(_)
+            | Self::WorkflowNotFound(_)
             | Self::WorkflowRunNotFound(_)
             | Self::AutomationNotFound(_)
             | Self::TriggerPluginNotFound(_)
@@ -73,10 +85,14 @@ impl ApiError {
 
     const fn code(&self) -> &'static str {
         match self {
+            Self::Unauthorized => "authentication_required",
+            Self::Forbidden(_) => "permission_denied",
             Self::Validation(_) => "validation_error",
             Self::UnknownJobDefinition(_) => "unknown_job_definition",
+            Self::JobDefinitionSourceNotFound(_) => "job_definition_source_not_found",
             Self::UnknownExecutionPool(_) => "unknown_execution_pool",
             Self::WorkflowNotFound(_) => "workflow_not_found",
+            Self::WorkflowLocked(_) => "workflow_locked",
             Self::WorkflowRunNotFound(_) => "workflow_run_not_found",
             Self::InvalidWorkflowRunTransition(_) => "invalid_workflow_run_transition",
             Self::AutomationNotFound(_) => "automation_not_found",

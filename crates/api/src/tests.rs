@@ -11,16 +11,18 @@ use capsulet_core::{
     WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
     WorkflowStepRun, WorkflowStepRunId,
 };
+use capsulet_postgres::TriggerEvent;
 use capsulet_storage::ObjectStore;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-use super::{ApiStore, AppState, router};
+use super::{ApiStore, AppState, AuthConfig, router};
 
 #[derive(Debug, Clone, Default)]
 struct FakeStore {
     known_definitions: Arc<Mutex<Vec<String>>>,
+    job_definitions: Arc<Mutex<Vec<JobDefinition>>>,
     runs: Arc<Mutex<Vec<JobRun>>>,
     logs: Arc<Mutex<Vec<JobRunLog>>>,
     artifacts: Arc<Mutex<Vec<JobArtifact>>>,
@@ -81,6 +83,14 @@ impl ApiStore for FakeStore {
         Ok(())
     }
 
+    async fn enqueue_trigger_event(
+        &self,
+        _event: &TriggerEvent,
+        _idempotency_key: &str,
+    ) -> Result<bool, Self::Error> {
+        Ok(true)
+    }
+
     async fn job_definition_exists(&self, id: &JobDefinitionId) -> Result<bool, Self::Error> {
         Ok(self
             .known_definitions
@@ -99,6 +109,13 @@ impl ApiStore for FakeStore {
     }
 
     async fn upsert_job_definition(&self, definition: &JobDefinition) -> Result<(), Self::Error> {
+        let mut records = self
+            .job_definitions
+            .lock()
+            .map_err(|error| error.to_string())?;
+        records.retain(|known| known.id() != definition.id());
+        records.push(definition.clone());
+        drop(records);
         let mut definitions = self
             .known_definitions
             .lock()
@@ -143,6 +160,16 @@ impl ApiStore for FakeStore {
         &self,
         id: &JobDefinitionId,
     ) -> Result<Option<JobDefinition>, Self::Error> {
+        if let Some(definition) = self
+            .job_definitions
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|definition| definition.id() == id)
+            .cloned()
+        {
+            return Ok(Some(definition));
+        }
         Ok(self
             .known_definitions
             .lock()
@@ -175,6 +202,37 @@ impl ApiStore for FakeStore {
         let initial_len = definitions.len();
         definitions.retain(|known| known != id.as_str());
         Ok(definitions.len() != initial_len)
+    }
+
+    async fn job_definition_has_active_workflow_runs(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<bool, Self::Error> {
+        let workflow_ids: Vec<_> = self
+            .workflows
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|workflow| {
+                workflow
+                    .steps()
+                    .iter()
+                    .any(|step| step.job_definition_id() == id)
+            })
+            .map(|workflow| workflow.id().clone())
+            .collect();
+        Ok(self
+            .workflow_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .any(|run| {
+                workflow_ids.contains(run.workflow_id())
+                    && matches!(
+                        run.status(),
+                        WorkflowRunStatus::Queued | WorkflowRunStatus::Running
+                    )
+            }))
     }
 
     async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error> {
@@ -214,6 +272,21 @@ impl ApiStore for FakeStore {
         automations.retain(|existing| existing.id() != automation.id());
         automations.push(automation.clone());
         Ok(())
+    }
+
+    async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
+        Ok(self
+            .workflow_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .any(|run| {
+                run.workflow_id() == id
+                    && matches!(
+                        run.status(),
+                        WorkflowRunStatus::Queued | WorkflowRunStatus::Running
+                    )
+            }))
     }
 
     async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error> {
@@ -670,6 +743,25 @@ fn test_app(store: FakeStore) -> axum::Router {
     ))
 }
 
+fn authenticated_app(store: FakeStore) -> axum::Router {
+    let auth = AuthConfig::from_json(
+        r#"[
+            {"name":"reader","role":"viewer","token":"viewer-token-0123456789-abcdefgh"},
+            {"name":"runner","role":"operator","token":"operator-token-0123456789-abcdef"},
+            {"name":"owner","role":"admin","token":"admin-token-0123456789-abcdefghijkl"}
+        ]"#,
+    )
+    .expect("auth config");
+    router(
+        AppState::new(
+            store,
+            FakeObjectStore::default(),
+            ["mini".to_string(), "large".to_string()],
+        )
+        .with_auth(auth),
+    )
+}
+
 async fn response_json(response: axum::response::Response) -> Value {
     let bytes = response
         .into_body()
@@ -678,6 +770,86 @@ async fn response_json(response: axum::response::Response) -> Value {
         .expect("collect response")
         .to_bytes();
     serde_json::from_slice(&bytes).expect("json response")
+}
+
+#[tokio::test]
+async fn protected_routes_require_a_valid_bearer_token() {
+    let app = authenticated_app(FakeStore::default());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs/runs")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), 401);
+    assert_eq!(
+        response_json(response).await["code"],
+        "authentication_required"
+    );
+}
+
+#[tokio::test]
+async fn viewer_cannot_submit_work_but_operator_can() {
+    let app = authenticated_app(FakeStore::with_definition("auth_job"));
+    let request_body = json!({
+        "job_definition_id": "auth_job",
+        "execution_pool": "mini"
+    })
+    .to_string();
+    let viewer_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/jobs/runs")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer viewer-token-0123456789-abcdefgh")
+                .body(Body::from(request_body.clone()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(viewer_response.status(), 403);
+
+    let operator_response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/jobs/runs")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer operator-token-0123456789-abcdef")
+                .body(Body::from(request_body))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(operator_response.status(), 201);
+}
+
+#[tokio::test]
+async fn current_principal_reports_authenticated_identity() {
+    let response = authenticated_app(FakeStore::default())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth/me")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response_json(response).await,
+        json!({"name":"owner","role":"admin"})
+    );
 }
 
 #[tokio::test]
@@ -1195,6 +1367,7 @@ async fn creates_and_reads_reusable_python_job_definition() {
     );
 
     let fetch_response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/v1/job-definitions/job_daily_report")
@@ -1207,6 +1380,97 @@ async fn creates_and_reads_reusable_python_job_definition() {
     assert_eq!(
         response_json(fetch_response).await["id"],
         "job_daily_report"
+    );
+
+    let source_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/job-definitions/job_daily_report/source")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let source_status = source_response.status();
+    let source_body = response_json(source_response).await;
+    assert_eq!(source_status, axum::http::StatusCode::OK, "{source_body}");
+    assert_eq!(source_body["python_script"], "print('daily report')");
+}
+
+fn store_with_queued_workflow_run() -> FakeStore {
+    FakeStore::with_definition("job_hello_python")
+        .with_workflow("wf_locked")
+        .with_workflow_run(WorkflowRun::new(
+            WorkflowRunId::new("workflow_run_locked").expect("workflow run id"),
+            WorkflowId::new("wf_locked").expect("workflow id"),
+            None,
+            "{}",
+            WorkflowRunStatus::Queued,
+            0,
+            "2026-06-21 12:00:00+00",
+        ))
+}
+
+#[tokio::test]
+async fn editability_reports_workflow_locked_by_queued_run() {
+    let response = test_app(store_with_queued_workflow_run())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/workflows/wf_locked/editability")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response_json(response).await["editable"], false);
+}
+
+#[tokio::test]
+async fn update_workflow_rejects_definition_used_by_queued_run() {
+    let response = test_app(store_with_queued_workflow_run())
+        .oneshot(Request::builder().method(Method::PUT).uri("/v1/workflows/wf_locked").header("content-type", "application/json").body(Body::from(json!({"name":"Changed","steps":[{"name":"Run job","job_definition_id":"job_hello_python","execution_pool":"mini"}]}).to_string())).expect("request"))
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn update_job_definition_rejects_definition_used_by_queued_workflow_run() {
+    let response = test_app(store_with_queued_workflow_run())
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/job-definitions/job_hello_python")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"name":"Changed","python_script":"print('changed')"}).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn topology_returns_workflow_and_pool_route() {
+    let response =
+        test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_topology"))
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/topology")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+    let body = response_json(response).await;
+    assert!(
+        body["edges"]
+            .as_array()
+            .expect("topology edges")
+            .iter()
+            .any(|edge| edge["from"] == "workflow:wf_topology" && edge["to"] == "pool:mini")
     );
 }
 

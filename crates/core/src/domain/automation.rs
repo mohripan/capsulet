@@ -40,6 +40,7 @@ pub enum TriggerKind {
     Manual,
     Schedule,
     Sql,
+    Webhook,
     Custom,
 }
 
@@ -49,6 +50,7 @@ impl Display for TriggerKind {
             Self::Manual => "manual",
             Self::Schedule => "schedule",
             Self::Sql => "sql",
+            Self::Webhook => "webhook",
             Self::Custom => "custom",
         })
     }
@@ -73,6 +75,7 @@ impl FromStr for TriggerKind {
             "manual" => Ok(Self::Manual),
             "schedule" => Ok(Self::Schedule),
             "sql" => Ok(Self::Sql),
+            "webhook" => Ok(Self::Webhook),
             "custom" => Ok(Self::Custom),
             value => Err(ParseDomainValueError::new("trigger kind", value)),
         }

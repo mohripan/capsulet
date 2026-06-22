@@ -24,8 +24,10 @@
 
 html,
 body {
+  max-width: 100%;
   min-height: 100%;
   margin: 0;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -45,6 +47,150 @@ a {
 
 button {
   cursor: pointer;
+}
+
+.loginShell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    linear-gradient(rgba(7, 17, 31, 0.78), rgba(7, 17, 31, 0.96)),
+    repeating-linear-gradient(90deg, transparent 0 72px, rgba(36, 150, 237, 0.08) 73px),
+    repeating-linear-gradient(0deg, transparent 0 72px, rgba(32, 214, 210, 0.06) 73px),
+    var(--bg);
+}
+
+.loginCard {
+  width: min(100%, 460px);
+  padding: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(15, 32, 52, 0.98), rgba(8, 21, 36, 0.98));
+  box-shadow: var(--shadow);
+}
+
+.loginBrand,
+.loginBrand > div {
+  display: flex;
+}
+
+.loginBrand {
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.loginBrand > div {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.loginBrand span,
+.loginIntro p,
+.loginFootnote {
+  color: var(--muted);
+}
+
+.loginIntro {
+  padding: 28px 0 22px;
+}
+
+.loginEyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--cyan);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.loginIntro h1 {
+  margin: 13px 0 10px;
+  font-size: clamp(1.65rem, 5vw, 2.2rem);
+  line-height: 1.12;
+}
+
+.loginIntro p,
+.loginFootnote,
+.loginError {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.loginForm {
+  display: grid;
+  gap: 10px;
+}
+
+.loginForm label {
+  color: var(--soft);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.loginForm input {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  outline: none;
+  background: rgba(4, 13, 24, 0.72);
+  color: var(--text);
+}
+
+.loginForm input:focus-visible {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(32, 214, 210, 0.16);
+}
+
+.loginError {
+  color: var(--red);
+  font-size: 0.84rem;
+}
+
+.loginButton {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  color: #03111d;
+  font-weight: 800;
+}
+
+.loginButton:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.loginButton:focus-visible {
+  outline: 3px solid rgba(32, 214, 210, 0.32);
+  outline-offset: 3px;
+}
+
+.loginFootnote {
+  padding-top: 20px;
+  font-size: 0.76rem;
+}
+
+.spin {
+  animation: login-spin 0.85s linear infinite;
+}
+
+@keyframes login-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
 }
 
 .shell {
@@ -172,6 +318,7 @@ button {
 
 .workspace {
   min-width: 0;
+  overflow-x: clip;
   padding: 22px;
 }
 
@@ -845,7 +992,10 @@ button {
 
 .logRunList,
 .liveTerminal,
-.logStepBlock pre {
+.logStepBlock pre,
+.dagStepEditor,
+.dagCanvas,
+.navList {
   scrollbar-color: rgba(143, 168, 195, 0.5) rgba(7, 17, 31, 0.72);
   scrollbar-width: thin;
 }
@@ -864,7 +1014,10 @@ button {
 .logBlock::-webkit-scrollbar,
 .logRunList::-webkit-scrollbar,
 .liveTerminal::-webkit-scrollbar,
-.logStepBlock pre::-webkit-scrollbar {
+.logStepBlock pre::-webkit-scrollbar,
+.dagStepEditor::-webkit-scrollbar,
+.dagCanvas::-webkit-scrollbar,
+.navList::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
@@ -878,7 +1031,10 @@ button {
 .logBlock::-webkit-scrollbar-track,
 .logRunList::-webkit-scrollbar-track,
 .liveTerminal::-webkit-scrollbar-track,
-.logStepBlock pre::-webkit-scrollbar-track {
+.logStepBlock pre::-webkit-scrollbar-track,
+.dagStepEditor::-webkit-scrollbar-track,
+.dagCanvas::-webkit-scrollbar-track,
+.navList::-webkit-scrollbar-track {
   background: rgba(7, 17, 31, 0.72);
   border-radius: 999px;
 }
@@ -892,7 +1048,10 @@ button {
 .logBlock::-webkit-scrollbar-thumb,
 .logRunList::-webkit-scrollbar-thumb,
 .liveTerminal::-webkit-scrollbar-thumb,
-.logStepBlock pre::-webkit-scrollbar-thumb {
+.logStepBlock pre::-webkit-scrollbar-thumb,
+.dagStepEditor::-webkit-scrollbar-thumb,
+.dagCanvas::-webkit-scrollbar-thumb,
+.navList::-webkit-scrollbar-thumb {
   border: 2px solid rgba(7, 17, 31, 0.72);
   border-radius: 999px;
   background: rgba(143, 168, 195, 0.52);
@@ -907,7 +1066,10 @@ button {
 .logBlock::-webkit-scrollbar-thumb:hover,
 .logRunList::-webkit-scrollbar-thumb:hover,
 .liveTerminal::-webkit-scrollbar-thumb:hover,
-.logStepBlock pre::-webkit-scrollbar-thumb:hover {
+.logStepBlock pre::-webkit-scrollbar-thumb:hover,
+.dagStepEditor::-webkit-scrollbar-thumb:hover,
+.dagCanvas::-webkit-scrollbar-thumb:hover,
+.navList::-webkit-scrollbar-thumb:hover {
   background: rgba(184, 201, 220, 0.68);
 }
 
@@ -920,7 +1082,10 @@ button {
 .logBlock::-webkit-scrollbar-corner,
 .logRunList::-webkit-scrollbar-corner,
 .liveTerminal::-webkit-scrollbar-corner,
-.logStepBlock pre::-webkit-scrollbar-corner {
+.logStepBlock pre::-webkit-scrollbar-corner,
+.dagStepEditor::-webkit-scrollbar-corner,
+.dagCanvas::-webkit-scrollbar-corner,
+.navList::-webkit-scrollbar-corner {
   background: rgba(7, 17, 31, 0.72);
 }
 
@@ -3085,5 +3250,478 @@ select {
   .nodeMap,
   .tileGrid {
     grid-template-columns: 1fr;
+  }
+}
+/* Workflow notebook: code cells compile directly into jobs and DAG edges. */
+.notebookPanel {
+  min-width: 0;
+}
+
+.notebookPanelFull {
+  width: min(1180px, 100%);
+  margin-inline: auto;
+}
+
+.notebookBack {
+  margin-bottom: 12px;
+}
+
+.notebookBack .textButton,
+.notebookSuccess a {
+  color: var(--cyan);
+}
+
+.notebookSuccess {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workflowOverviewLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.workflowCatalogPanel,
+.workflowTopologyPanel {
+  min-width: 0;
+}
+
+.workflowRefresh {
+  width: 100%;
+  margin-bottom: 12px;
+  justify-content: center;
+}
+
+.workflowCatalog {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workflowCatalogItem {
+  min-width: 0;
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--muted);
+  text-align: left;
+}
+
+.workflowCatalogItem:hover,
+.workflowCatalogItem.active {
+  border-color: rgba(32, 214, 210, 0.55);
+  background: color-mix(in srgb, var(--cyan) 7%, var(--bg-2));
+}
+
+.workflowCatalogItem.active {
+  box-shadow: inset 3px 0 var(--cyan);
+}
+
+.workflowCatalogTitle,
+.workflowCatalogMeta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workflowCatalogTitle strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.workflowCatalogTitle small {
+  flex: 0 0 auto;
+  align-self: start;
+}
+
+.workflowPagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workflowPagination .secondaryButton {
+  min-width: 96px;
+}
+
+.notebookFieldset {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.notebookFieldset:disabled {
+  opacity: 0.58;
+}
+
+.workflowLockNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  border-radius: 10px;
+  background: rgba(251, 191, 36, 0.08);
+  color: #fde68a;
+}
+
+.workflowLockNotice div,
+.workflowLockNotice span {
+  display: grid;
+  gap: 3px;
+}
+
+.workflowLockNotice span {
+  color: var(--soft);
+  font-size: 13px;
+}
+
+.overviewTopologyFlow {
+  display: grid;
+  gap: 10px;
+}
+
+.overviewTopologyStage {
+  position: relative;
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+}
+
+.overviewTopologyStage span,
+.overviewTopologyStage small {
+  color: var(--cyan);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.overviewTopologyStage strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overviewTopologyStage svg {
+  position: absolute;
+  bottom: -14px;
+  left: 42px;
+  z-index: 1;
+  color: var(--cyan);
+}
+
+.workflowCatalogItem > span:last-child {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workflowCatalogTitle small,
+.workflowCatalogMeta {
+  color: var(--cyan);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.workflowTopologyHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.workflowTopologyHeader > div > span {
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workflowTopologyHeader h2 {
+  margin: 6px 0;
+}
+
+.workflowTopologyHeader p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.workflowTopologyHeader dl {
+  display: flex;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.workflowTopologyActions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.disabledButton {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.workflowTopologyHeader dl div {
+  min-width: 82px;
+  padding: 12px;
+  border-left: 1px solid var(--line);
+}
+
+.workflowTopologyHeader dl div:first-child {
+  border-left: 0;
+}
+
+.workflowTopologyHeader dt {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.workflowTopologyHeader dd {
+  margin: 5px 0 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.workflowTopologyCanvas {
+  min-height: 430px;
+}
+
+.workflowStepLedger {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.workflowStepLedger div {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+}
+
+.workflowStepLedger span,
+.workflowStepLedger small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workflowStepLedger strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notebookMeta,
+.cellSettings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.notebookMeta label:last-child {
+  grid-column: 1 / -1;
+}
+
+.notebookRail {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.notebookRail::before {
+  content: "";
+  position: absolute;
+  inset: 24px auto 24px 25px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--cyan), color-mix(in srgb, var(--cyan) 18%, transparent));
+}
+
+.notebookCell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--panel);
+  box-shadow: 0 10px 26px rgb(3 9 20 / 9%);
+}
+
+.cellGutter {
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 8px;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--cyan) 7%, var(--panel));
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.cellGutter span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 2px solid var(--cyan);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.cellBody {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.cellHeader {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.cellHeader label {
+  flex: 1;
+}
+
+.cellSettings {
+  grid-template-columns: 1.3fr 0.8fr 1fr;
+}
+
+.cellDependencies {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 30px;
+}
+
+.cellDependencies > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cellDependencies label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.cellDependencies input {
+  width: 15px;
+  height: 15px;
+}
+
+.notebookActions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 1100px) {
+  .workflowCatalog { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .workflowCatalog { grid-template-columns: minmax(0, 1fr); }
+  .notebookMeta,
+  .cellSettings {
+    grid-template-columns: 1fr;
+  }
+
+  .notebookMeta label:last-child {
+    grid-column: auto;
+  }
+
+  .notebookCell {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .notebookRail::before {
+    left: 18px;
+  }
+
+  .cellGutter {
+    padding-inline: 4px;
+  }
+
+  .cellGutter span {
+    width: 24px;
+    height: 24px;
+  }
+
+  .notebookActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workflowTopologyHeader {
+    flex-direction: column;
+  }
+
+  .workflowTopologyHeader dl {
+    width: 100%;
+  }
+
+  .workflowTopologyHeader dl div {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .workflowTopologyActions {
+    justify-items: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notebookCell {
+    scroll-behavior: auto;
   }
 }

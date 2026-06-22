@@ -27,6 +27,10 @@ async function proxy(request: NextRequest, context: { params: { path: string[] }
   if (accept) {
     headers.set("accept", accept);
   }
+  const token = request.cookies.get("capsulet_session")?.value || process.env.CAPSULET_DASHBOARD_API_TOKEN;
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
 
   const response = await fetch(targetUrl(request, context.params.path), {
     method: request.method,

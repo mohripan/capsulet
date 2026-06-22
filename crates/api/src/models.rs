@@ -44,6 +44,38 @@ pub struct CreateWorkflowRequest {
     pub dependencies: Option<Vec<CreateWorkflowDependencyRequest>>,
 }
 
+#[derive(Debug, Serialize)]
+pub(crate) struct JobDefinitionSourceResponse {
+    pub(crate) python_script: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkflowEditabilityResponse {
+    pub(crate) editable: bool,
+    pub(crate) reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TopologyResponse {
+    pub(crate) nodes: Vec<TopologyNodeResponse>,
+    pub(crate) edges: Vec<TopologyEdgeResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TopologyNodeResponse {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) kind: String,
+    pub(crate) status: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TopologyEdgeResponse {
+    pub(crate) from: String,
+    pub(crate) to: String,
+    pub(crate) label: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateWorkflowStepRequest {
     pub id: Option<String>,

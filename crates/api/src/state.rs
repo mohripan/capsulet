@@ -1,5 +1,6 @@
 use std::{fmt, sync::Arc};
 
+use crate::{AuthConfig, WebhookSecrets};
 use capsulet_postgres::PostgresStore;
 /// Shared API state.
 #[derive(Clone)]
@@ -7,6 +8,8 @@ pub struct AppState<S, O> {
     pub(crate) store: S,
     pub(crate) object_store: O,
     pub(crate) execution_pools: Arc<Vec<String>>,
+    pub(crate) auth: AuthConfig,
+    pub(crate) webhook_secrets: WebhookSecrets,
 }
 
 impl<S, O> AppState<S, O> {
@@ -27,7 +30,21 @@ impl<S, O> AppState<S, O> {
                     .filter(|pool| !pool.is_empty())
                     .collect(),
             ),
+            auth: AuthConfig::disabled(),
+            webhook_secrets: WebhookSecrets::default(),
         }
+    }
+
+    #[must_use]
+    pub fn with_webhook_secrets(mut self, webhook_secrets: WebhookSecrets) -> Self {
+        self.webhook_secrets = webhook_secrets;
+        self
+    }
+
+    #[must_use]
+    pub fn with_auth(mut self, auth: AuthConfig) -> Self {
+        self.auth = auth;
+        self
     }
 
     pub(crate) fn knows_pool(&self, pool: &str) -> bool {
@@ -45,6 +62,8 @@ where
             .field("store", &self.store)
             .field("object_store", &self.object_store)
             .field("execution_pools", &self.execution_pools)
+            .field("auth", &self.auth)
+            .field("webhook_secrets", &self.webhook_secrets)
             .finish()
     }
 }

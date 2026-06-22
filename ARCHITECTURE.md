@@ -228,6 +228,8 @@ flowchart LR
 
 The scheduler may queue multiple ready roots in one reconciliation. A node is ready only when all predecessors have successful step runs. A downstream failure stops that path and causes a terminal workflow result. Resume preserves successful checkpoints, removes unsuccessful step attempts, and queues only nodes whose prerequisites remain satisfied.
 
+Before a dependent job starts, the worker loads artifacts from each successful direct prerequisite and stages them under `/capsulet/inputs/<producer-step-id>/<artifact-name>`. Artifact names that are unique across those prerequisites are also available at `/capsulet/inputs/<artifact-name>`. This gives notebook cells and Python SDK tasks a deterministic file handoff without coupling user code to object-storage credentials.
+
 ## Automations and triggers
 
 An automation targets one workflow and stores enabled/disabled state, input JSON, legacy trigger settings, a set of named triggers, and a condition expression. Supported trigger-definition kinds are:

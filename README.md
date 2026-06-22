@@ -101,11 +101,16 @@ crates/
   storage/      filesystem and S3-compatible object storage
   cli/          command-line client
 dashboard/      Next.js dashboard
+sdk/python/     decorator-based Python workflow SDK
 charts/capsulet Helm chart
 migrations/     PostgreSQL schema history
 ```
 
 ## Development and verification
+
+### Python workflow authoring
+
+Workflows can be authored as decorated Python functions or as Python cells in the dashboard notebook. The [CSV artifact pipeline](examples/workflows/csv_pipeline.py) creates a CSV in one task, passes it to a dependent task, and downloads the transformed artifact. See the [example instructions](examples/workflows/README.md) for the end-to-end commands.
 
 Rust is pinned to version 1.96.0. The dashboard requires Node.js 20 or newer.
 

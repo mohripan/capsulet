@@ -14,6 +14,7 @@ import {
   GitBranch,
   Home,
   ListTree,
+  LogOut,
   Plus,
   RefreshCw,
   Route,
@@ -104,6 +105,11 @@ export function DashboardShell({
             <button className="iconButton" title="Notifications">
               <Bell size={18} aria-hidden="true" />
             </button>
+            <form action="/api/auth/logout" method="post">
+              <button className="iconButton" title="Sign out" type="submit">
+                <LogOut size={18} aria-hidden="true" />
+              </button>
+            </form>
             {actionLabel && actionHref ? (
               <Link className="primaryAction" href={actionHref}>
                 <Plus size={18} aria-hidden="true" />

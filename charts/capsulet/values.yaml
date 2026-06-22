@@ -144,6 +144,10 @@ migrations:
 api:
   enabled: true
   replicaCount: 1
+  auth:
+    disabled: false
+    existingSecret: capsulet-api-auth
+    secretKey: tokens
   image:
     repositorySuffix: api
   service:
@@ -199,6 +203,7 @@ evaluator:
   replicaCount: 1
   image:
     repositorySuffix: evaluator
+  pollSeconds: 2
   resources:
     requests:
       cpu: 50m
@@ -243,6 +248,7 @@ executionPools:
       timeoutSeconds: 120
       maxConcurrentJobs: 50
       ttlSecondsAfterFinished: 300
+
     large:
       description: Compute-heavy jobs such as model inference and batch processing
       nodeSelector:
@@ -262,6 +268,11 @@ executionPools:
       timeoutSeconds: 3600
       maxConcurrentJobs: 10
       ttlSecondsAfterFinished: 300
+
+executionNetworkPolicy:
+  enabled: true
+  allowDns: true
+  additionalEgress: []
 
 networkPolicies:
   enabled: false

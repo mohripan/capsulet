@@ -11,6 +11,48 @@ use crate::{
     rows::{generated_store_id, row_to_workflow_run, row_to_workflow_step_run},
 };
 impl PostgresStore {
+    /// Returns whether a workflow has an execution that can still consume its definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the lookup fails.
+    pub async fn workflow_has_active_runs(
+        &self,
+        workflow_id: &WorkflowId,
+    ) -> Result<bool, PostgresStoreError> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM workflow_runs WHERE workflow_id = $1 AND status IN ('queued', 'running'))",
+        )
+        .bind(workflow_id.as_str())
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
+    /// Returns whether a job definition belongs to a workflow with an active execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the lookup fails.
+    pub async fn job_definition_has_active_workflow_runs(
+        &self,
+        job_definition_id: &capsulet_core::JobDefinitionId,
+    ) -> Result<bool, PostgresStoreError> {
+        Ok(sqlx::query_scalar(
+            r"
+            SELECT EXISTS(
+                SELECT 1
+                FROM workflow_steps ws
+                JOIN workflow_runs wr ON wr.workflow_id = ws.workflow_id
+                WHERE ws.job_definition_id = $1
+                  AND wr.status IN ('queued', 'running')
+            )
+            ",
+        )
+        .bind(job_definition_id.as_str())
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
     ///
     /// # Errors
     ///

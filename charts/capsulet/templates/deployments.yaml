@@ -40,13 +40,25 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "capsulet.fullname" $root }}-config
-          {{- if or (eq $name "api") (eq $name "worker") (eq $name "scheduler") }}
+          {{- if or (eq $name "api") (eq $name "worker") (eq $name "scheduler") (eq $name "evaluator") }}
           env:
             - name: CAPSULET_DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "capsulet.databaseSecretName" $root }}
                   key: {{ include "capsulet.databaseSecretKey" $root }}
+            {{- if eq $name "api" }}
+            {{- if $root.Values.api.auth.disabled }}
+            - name: CAPSULET_AUTH_DISABLED
+              value: "true"
+            {{- else }}
+            - name: CAPSULET_API_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.api.auth.existingSecret | quote }}
+                  key: {{ $root.Values.api.auth.secretKey | quote }}
+            {{- end }}
+            {{- end }}
             {{- if eq $name "scheduler" }}
             - name: CAPSULET_SCHEDULER_LOOP
               value: {{ $root.Values.scheduler.loop | quote }}
@@ -96,6 +108,12 @@ spec:
             - name: dashboard-cache
               mountPath: /app/.next/cache
             {{- end }}
+            {{- if eq $name "evaluator" }}
+            - name: CAPSULET_EVALUATOR_POLL_SECONDS
+              value: {{ $root.Values.evaluator.pollSeconds | quote }}
+            - name: CAPSULET_EVALUATOR_HEALTH_ADDR
+              value: "0.0.0.0:8083"
+            {{- end }}
             {{- if eq (include "capsulet.objectStorageMode" $root) "filesystem" }}
             - name: object-storage
               mountPath: {{ $root.Values.config.objectStorage.path | quote }}
@@ -130,10 +148,10 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
           {{- end }}
-          {{- if or (eq $name "worker") (eq $name "scheduler") }}
+          {{- if or (eq $name "worker") (eq $name "scheduler") (eq $name "evaluator") }}
           ports:
             - name: health
-              containerPort: {{ ternary 8081 8082 (eq $name "worker") }}
+              containerPort: {{ ternary 8081 (ternary 8082 8083 (eq $name "scheduler")) (eq $name "worker") }}
               protocol: TCP
           startupProbe:
             httpGet:

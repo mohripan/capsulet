@@ -1,9 +1,13 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    collections::BTreeSet,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use axum::{
-    Json, Router,
-    extract::{Path, Query, State},
-    http::{StatusCode, header},
+    Extension, Json, Router,
+    extract::{DefaultBodyLimit, Path, Query, Request, State},
+    http::{Method, StatusCode, header},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -17,15 +21,17 @@ use capsulet_storage::{ObjectStore, run_object_key};
 use serde_json::Value;
 
 use crate::{
+    auth::{Principal, Role},
     error::ApiError,
     models::{
         ArtifactResponse, CreateJobDefinitionRequest, CreateRunRequest, CreateWorkflowRequest,
         ExecutionPoolResponse, HealthResponse, HostGroupResponse, JobDefinitionResponse,
-        JobRunLogsResponse, JobRunResponse, ListArtifactsResponse, ListExecutionPoolsResponse,
-        ListHostGroupsResponse, ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListRunsQuery,
-        ListRunsResponse, ListWorkflowRunsQuery, ListWorkflowRunsResponse, ListWorkflowsResponse,
-        WorkflowResponse, WorkflowRunLogEntryResponse, WorkflowRunLogsResponse,
-        WorkflowRunResponse,
+        JobDefinitionSourceResponse, JobRunLogsResponse, JobRunResponse, ListArtifactsResponse,
+        ListExecutionPoolsResponse, ListHostGroupsResponse, ListJobDefinitionsQuery,
+        ListJobDefinitionsResponse, ListRunsQuery, ListRunsResponse, ListWorkflowRunsQuery,
+        ListWorkflowRunsResponse, ListWorkflowsResponse, TopologyEdgeResponse,
+        TopologyNodeResponse, TopologyResponse, WorkflowEditabilityResponse, WorkflowResponse,
+        WorkflowRunLogEntryResponse, WorkflowRunLogsResponse, WorkflowRunResponse,
     },
     state::AppState,
     store::ApiStore,
@@ -35,10 +41,8 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
-    Router::new()
-        .route("/healthz", get(healthz::<S, O>))
-        .route("/livez", get(livez))
-        .route("/readyz", get(readyz::<S, O>))
+    let protected = Router::new()
+        .route("/v1/auth/me", get(current_principal))
         .route(
             "/v1/job-definitions",
             post(create_job_definition).get(list_job_definitions),
@@ -49,10 +53,19 @@ where
                 .put(update_job_definition)
                 .delete(delete_job_definition),
         )
+        .route(
+            "/v1/job-definitions/{id}/source",
+            get(get_job_definition_source),
+        )
         .route("/v1/execution-pools", get(list_execution_pools))
         .route("/v1/host-groups", get(list_host_groups))
+        .route("/v1/topology", get(get_topology))
         .route("/v1/workflows", post(create_workflow).get(list_workflows))
         .route("/v1/workflows/{id}", get(get_workflow).put(update_workflow))
+        .route(
+            "/v1/workflows/{id}/editability",
+            get(get_workflow_editability),
+        )
         .route(
             "/v1/automations",
             post(crate::automations::create_automation).get(crate::automations::list_automations),
@@ -86,6 +99,7 @@ where
             get(crate::automations::get_trigger_plugin),
         )
         .route("/v1/workflow-runs", get(list_workflow_runs))
+        .route("/v1/workflow-runs/{id}", get(get_workflow_run))
         .route("/v1/workflow-runs/{id}/logs", get(get_workflow_run_logs))
         .route("/v1/workflow-runs/{id}/remove", post(remove_workflow_run))
         .route("/v1/workflow-runs/{id}/cancel", post(cancel_workflow_run))
@@ -99,7 +113,71 @@ where
             "/v1/jobs/runs/{id}/artifacts/{artifact_id}",
             get(download_artifact),
         )
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    Router::new()
+        .route("/healthz", get(healthz::<S, O>))
+        .route("/livez", get(livez))
+        .route("/readyz", get(readyz::<S, O>))
+        .route(
+            "/v1/webhooks/{automation_id}/{trigger_name}",
+            post(crate::webhooks::ingest::<S, O>).layer(DefaultBodyLimit::max(1_048_576)),
+        )
+        .merge(protected)
         .with_state(state)
+}
+
+async fn current_principal(Extension(principal): Extension<Principal>) -> Json<Value> {
+    Json(serde_json::json!({
+        "name": principal.name,
+        "role": principal.role.as_str(),
+    }))
+}
+
+async fn require_auth<S, O>(
+    State(state): State<AppState<S, O>>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let token = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default();
+    if state.auth.enabled() && token.is_empty() {
+        return Err(ApiError::Unauthorized);
+    }
+    let principal = state
+        .auth
+        .authenticate(token)
+        .ok_or(ApiError::Unauthorized)?;
+    let required = required_role(request.method(), request.uri().path());
+    if principal.role < required {
+        return Err(ApiError::Forbidden(required.as_str()));
+    }
+    request.extensions_mut().insert(principal);
+    Ok(next.run(request).await)
+}
+
+fn required_role(method: &Method, path: &str) -> Role {
+    if method == Method::GET || method == Method::HEAD {
+        return Role::Viewer;
+    }
+    if path == "/v1/jobs/runs"
+        || path.ends_with("/trigger")
+        || path.ends_with("/cancel")
+        || path.ends_with("/resume")
+        || path.ends_with("/remove")
+    {
+        return Role::Operator;
+    }
+    Role::Admin
 }
 
 async fn livez() -> Json<HealthResponse> {
@@ -219,6 +297,15 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
+    let definition_id = JobDefinitionId::new(id.clone()).map_err(ApiError::validation)?;
+    if state
+        .store
+        .job_definition_has_active_workflow_runs(&definition_id)
+        .await
+        .map_err(ApiError::store)?
+    {
+        return Err(ApiError::WorkflowLocked(id));
+    }
     request.id = Some(id);
     let definition = build_python_job_definition(&state, request).await?;
     state
@@ -272,6 +359,34 @@ where
     };
 
     Ok(Json(JobDefinitionResponse::from(&definition)))
+}
+
+async fn get_job_definition_source<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<JobDefinitionSourceResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = JobDefinitionId::new(id).map_err(ApiError::validation)?;
+    let Some(definition) = state
+        .store
+        .find_job_definition(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::UnknownJobDefinition(id.as_str().to_string()));
+    };
+    let source = state
+        .object_store
+        .get(definition.bundle_object_key())
+        .await
+        .map_err(ApiError::object_store)?
+        .ok_or_else(|| ApiError::JobDefinitionSourceNotFound(id.as_str().to_string()))?;
+    let python_script = String::from_utf8(source)
+        .map_err(|_| ApiError::Validation("job definition source is not UTF-8".to_string()))?;
+    Ok(Json(JobDefinitionSourceResponse { python_script }))
 }
 
 async fn delete_job_definition<S, O>(
@@ -379,6 +494,15 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
+    let workflow_id = WorkflowId::new(id.clone()).map_err(ApiError::validation)?;
+    if state
+        .store
+        .workflow_has_active_runs(&workflow_id)
+        .await
+        .map_err(ApiError::store)?
+    {
+        return Err(ApiError::WorkflowLocked(id));
+    }
     request.id = Some(id);
     let workflow = build_workflow(&state, request).await?;
     state
@@ -425,6 +549,96 @@ where
     };
 
     Ok(Json(WorkflowResponse::from(&workflow)))
+}
+
+async fn get_workflow_editability<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<WorkflowEditabilityResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = WorkflowId::new(id).map_err(ApiError::validation)?;
+    if state
+        .store
+        .find_workflow(&id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::WorkflowNotFound(id.as_str().to_string()));
+    }
+    let locked = state
+        .store
+        .workflow_has_active_runs(&id)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(WorkflowEditabilityResponse {
+        editable: !locked,
+        reason: locked.then(|| "Queued or running executions are using this workflow.".to_string()),
+    }))
+}
+
+async fn get_topology<S, O>(
+    State(state): State<AppState<S, O>>,
+) -> Result<Json<TopologyResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let workflows = state
+        .store
+        .list_workflows(100)
+        .await
+        .map_err(ApiError::store)?;
+    let automations = state
+        .store
+        .list_automations(100)
+        .await
+        .map_err(ApiError::store)?;
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    for pool in state.execution_pools.iter() {
+        nodes.push(TopologyNodeResponse {
+            id: format!("pool:{pool}"),
+            label: pool.clone(),
+            kind: "pool".to_string(),
+            status: "available".to_string(),
+        });
+    }
+    for workflow in &workflows {
+        nodes.push(TopologyNodeResponse {
+            id: format!("workflow:{}", workflow.id()),
+            label: workflow.name().to_string(),
+            kind: "workflow".to_string(),
+            status: workflow.status().to_string(),
+        });
+        let pools: BTreeSet<_> = workflow
+            .steps()
+            .iter()
+            .map(|step| step.execution_pool().as_str())
+            .collect();
+        edges.extend(pools.into_iter().map(|pool| TopologyEdgeResponse {
+            from: format!("workflow:{}", workflow.id()),
+            to: format!("pool:{pool}"),
+            label: "executes on".to_string(),
+        }));
+    }
+    for automation in &automations {
+        nodes.push(TopologyNodeResponse {
+            id: format!("automation:{}", automation.id()),
+            label: automation.name().to_string(),
+            kind: "automation".to_string(),
+            status: automation.status().to_string(),
+        });
+        edges.push(TopologyEdgeResponse {
+            from: format!("automation:{}", automation.id()),
+            to: format!("workflow:{}", automation.workflow_id()),
+            label: "triggers".to_string(),
+        });
+    }
+    Ok(Json(TopologyResponse { nodes, edges }))
 }
 
 async fn build_workflow<S, O>(
@@ -711,6 +925,31 @@ where
         workflow_runs.push(WorkflowRunResponse::new(&run, &step_runs));
     }
     Ok(Json(ListWorkflowRunsResponse { workflow_runs }))
+}
+
+async fn get_workflow_run<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Json<WorkflowRunResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    let Some(run) = state
+        .store
+        .find_workflow_run(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::WorkflowRunNotFound(id.as_str().to_string()));
+    };
+    let step_runs = state
+        .store
+        .list_workflow_step_runs(&id)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(WorkflowRunResponse::new(&run, &step_runs)))
 }
 
 async fn get_workflow_run_logs<S, O>(

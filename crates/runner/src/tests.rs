@@ -2,8 +2,8 @@ use base64::Engine as _;
 use capsulet_core::{ExecutionPoolName, JobDefinition, JobRun, JobRunId};
 
 use super::{
-    ExecutionPoolConfig, ExecutionPoolsConfig, PoolResources, PoolToleration, RUN_LABEL,
-    RunExecution, build_job, kubernetes_job_name, run_label_value, truncate_utf8,
+    ExecutionPoolConfig, ExecutionPoolsConfig, InputArtifact, PoolResources, PoolToleration,
+    RUN_LABEL, RunExecution, build_job, kubernetes_job_name, run_label_value, truncate_utf8,
 };
 
 fn execution(pool: ExecutionPoolConfig) -> RunExecution {
@@ -15,7 +15,29 @@ fn execution(pool: ExecutionPoolConfig) -> RunExecution {
         ),
         definition: JobDefinition::hello_python(),
         pool,
+        input_artifacts: Vec::new(),
     }
+}
+
+#[test]
+fn renders_input_artifacts_in_kubernetes_wrapper() {
+    let mut execution = execution(pool());
+    execution.input_artifacts.push(InputArtifact {
+        producer_step_id: "generate-csv".to_string(),
+        name: "customers.csv".to_string(),
+        bytes: b"name,total\nAda,3\n".to_vec(),
+    });
+
+    let job = build_job(&execution, "capsulet-exec");
+    let pod_spec = job.spec.expect("job spec").template.spec.expect("pod spec");
+    let command = &pod_spec.containers[0].command.as_ref().expect("command")[2];
+
+    assert!(
+        command.contains("/capsulet/inputs/generate-csv/customers.csv"),
+        "{command}"
+    );
+    assert!(command.contains("/capsulet/inputs/customers.csv"));
+    assert!(command.contains("bmFtZSx0b3RhbApBZGEsMwo="));
 }
 
 fn pool() -> ExecutionPoolConfig {
@@ -50,7 +72,7 @@ fn renders_job_metadata_and_container() {
 
     assert_eq!(
         job.metadata.name.as_deref(),
-        Some("capsulet-run-hello-python")
+        Some("capsulet-run-hello-python-a0")
     );
     assert_eq!(job.metadata.namespace.as_deref(), Some("capsulet-exec"));
     assert_eq!(
@@ -63,6 +85,16 @@ fn renders_job_metadata_and_container() {
 
     let pod_spec = job.spec.expect("job spec").template.spec.expect("pod spec");
     assert_eq!(pod_spec.restart_policy.as_deref(), Some("Never"));
+    assert_eq!(pod_spec.automount_service_account_token, Some(false));
+    assert_eq!(pod_spec.host_network, Some(false));
+    assert_eq!(
+        pod_spec
+            .security_context
+            .as_ref()
+            .expect("pod security")
+            .run_as_non_root,
+        Some(true)
+    );
     assert_eq!(
         pod_spec.node_selector.expect("node selector")["capsulet.dev/pool"],
         "mini"
@@ -79,6 +111,12 @@ fn renders_job_metadata_and_container() {
     assert_eq!(container.image.as_deref(), Some("python:3.12-slim"));
     assert_eq!(container.command.as_ref().expect("command")[0], "/bin/sh");
     assert!(container.command.as_ref().expect("command")[2].contains("hello from capsulet"));
+    let security = container
+        .security_context
+        .as_ref()
+        .expect("container security");
+    assert_eq!(security.read_only_root_filesystem, Some(true));
+    assert_eq!(security.allow_privilege_escalation, Some(false));
     let resources = container.resources.as_ref().expect("resources");
     assert_eq!(
         resources.requests.as_ref().expect("requests")["cpu"].0,
@@ -147,9 +185,9 @@ pools:
 
 #[test]
 fn sanitizes_job_name() {
-    let name = kubernetes_job_name(&JobRunId::new("Run_With Spaces").expect("valid id"));
+    let name = kubernetes_job_name(&JobRunId::new("Run_With Spaces").expect("valid id"), 0);
 
-    assert_eq!(name, "capsulet-run-with-spaces");
+    assert_eq!(name, "capsulet-run-with-spaces-a0");
 }
 
 #[test]

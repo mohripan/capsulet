@@ -6,13 +6,18 @@ use capsulet_core::{
     JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
     JobRunRepository, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
-use capsulet_postgres::{PostgresStore, PostgresStoreError};
+use capsulet_postgres::{PostgresStore, PostgresStoreError, TriggerEvent};
 /// Storage operations required by the HTTP API.
 #[async_trait]
 pub trait ApiStore: Clone + Send + Sync + 'static {
     type Error: Display + Send + Sync + 'static;
 
     async fn ping(&self) -> Result<(), Self::Error>;
+    async fn enqueue_trigger_event(
+        &self,
+        event: &TriggerEvent,
+        idempotency_key: &str,
+    ) -> Result<bool, Self::Error>;
 
     async fn job_definition_exists(&self, id: &JobDefinitionId) -> Result<bool, Self::Error>;
     async fn upsert_job_definition(&self, definition: &JobDefinition) -> Result<(), Self::Error>;
@@ -21,6 +26,10 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         id: &JobDefinitionId,
     ) -> Result<Option<JobDefinition>, Self::Error>;
+    async fn job_definition_has_active_workflow_runs(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<bool, Self::Error>;
     async fn delete_job_definition(&self, id: &JobDefinitionId) -> Result<bool, Self::Error>;
     async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error>;
     async fn list_workflows(&self, limit: i64) -> Result<Vec<WorkflowDefinition>, Self::Error>;
@@ -28,6 +37,7 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         id: &WorkflowId,
     ) -> Result<Option<WorkflowDefinition>, Self::Error>;
+    async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error>;
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error>;
     async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error>;
     async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error>;
@@ -109,6 +119,14 @@ impl ApiStore for PostgresStore {
         self.ping().await
     }
 
+    async fn enqueue_trigger_event(
+        &self,
+        event: &TriggerEvent,
+        idempotency_key: &str,
+    ) -> Result<bool, Self::Error> {
+        self.enqueue_trigger_event(event, idempotency_key).await
+    }
+
     async fn job_definition_exists(&self, id: &JobDefinitionId) -> Result<bool, Self::Error> {
         self.job_definition_exists(id).await
     }
@@ -132,6 +150,13 @@ impl ApiStore for PostgresStore {
         self.find_job_definition(id).await
     }
 
+    async fn job_definition_has_active_workflow_runs(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<bool, Self::Error> {
+        self.job_definition_has_active_workflow_runs(id).await
+    }
+
     async fn delete_job_definition(&self, id: &JobDefinitionId) -> Result<bool, Self::Error> {
         self.delete_job_definition(id).await
     }
@@ -149,6 +174,10 @@ impl ApiStore for PostgresStore {
         id: &WorkflowId,
     ) -> Result<Option<WorkflowDefinition>, Self::Error> {
         self.find_workflow(id).await
+    }
+
+    async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
+        self.workflow_has_active_runs(id).await
     }
 
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {

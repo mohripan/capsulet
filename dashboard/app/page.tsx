@@ -24,10 +24,12 @@ import {
   Automation,
   ExecutionPool,
   JobRun,
+  Topology,
   Workflow as ApiWorkflow,
   WorkflowRun,
   WorkflowRunLogsResponse,
   getWorkflowRunLogs,
+  getTopology,
   getErrorMessage,
   listAutomations,
   listExecutionPools,
@@ -72,6 +74,7 @@ export default function OverviewPage() {
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [workflows, setWorkflows] = useState<ApiWorkflow[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
+  const [topology, setTopology] = useState<Topology | null>(null);
   const [overviewStartAt, setOverviewStartAt] = useState(defaultOverviewRange.start);
   const [overviewEndAt, setOverviewEndAt] = useState(defaultOverviewRange.end);
   const [selectedLogRunId, setSelectedLogRunId] = useState("");
@@ -82,12 +85,13 @@ export default function OverviewPage() {
   const refresh = useCallback(async function refresh() {
     setIsLoading(true);
     setErrors([]);
-    const [automationResult, poolResult, runResult, workflowResult, workflowRunResult] = await Promise.allSettled([
+    const [automationResult, poolResult, runResult, workflowResult, workflowRunResult, topologyResult] = await Promise.allSettled([
       listAutomations(),
       listExecutionPools(),
       listRuns({ limit: 50, start_at: overviewStartAt, end_at: overviewEndAt }),
       listWorkflows(),
-      listWorkflowRuns({ limit: 100, start_at: overviewStartAt, end_at: overviewEndAt })
+      listWorkflowRuns({ limit: 100, start_at: overviewStartAt, end_at: overviewEndAt }),
+      getTopology()
     ]);
 
     const nextErrors: string[] = [];
@@ -121,6 +125,12 @@ export default function OverviewPage() {
       setWorkflowRuns([]);
       nextErrors.push(`Workflow runs: ${getErrorMessage(workflowRunResult.reason)}`);
     }
+    if (topologyResult.status === "fulfilled") {
+      setTopology(topologyResult.value);
+    } else {
+      setTopology(null);
+      nextErrors.push(`Topology: ${getErrorMessage(topologyResult.reason)}`);
+    }
 
     setErrors(nextErrors);
     setIsLoading(false);
@@ -147,6 +157,13 @@ export default function OverviewPage() {
   const workflowById = useMemo(() => new Map(workflows.map((workflow) => [workflow.id, workflow])), [workflows]);
   const selectedAutomation = automations[0];
   const selectedWorkflow = selectedAutomation ? workflowById.get(selectedAutomation.workflow_id) : undefined;
+  const topologyPath = useMemo(() => {
+    if (!topology || !selectedAutomation) return [];
+    const automationId = `automation:${selectedAutomation.id}`;
+    const workflowEdge = topology.edges.find((edge) => edge.from === automationId);
+    const poolEdge = workflowEdge ? topology.edges.find((edge) => edge.from === workflowEdge.to && edge.to.startsWith("pool:")) : undefined;
+    return [automationId, workflowEdge?.to, poolEdge?.to].filter((id): id is string => Boolean(id)).map((id) => topology.nodes.find((node) => node.id === id)).filter((node): node is NonNullable<typeof node> => Boolean(node));
+  }, [selectedAutomation, topology]);
   const overviewLogRuns = useMemo(() => workflowRuns.slice(0, 5), [workflowRuns]);
   const selectedLogRun = overviewLogRuns.find((run) => run.id === selectedLogRunId) ?? overviewLogRuns[0];
   const overviewLogText = useMemo(() => {
@@ -328,8 +345,8 @@ export default function OverviewPage() {
         </section>
 
         <section className="panel span4">
-          <PanelTitle icon={Network} title="Topology" action="No endpoint" />
-          <div className="emptyState">No topology endpoint exists for the overview.</div>
+          <PanelTitle icon={Network} title="Topology" action={topology ? `${topology.nodes.length} nodes` : "Live API"} />
+          {!topologyPath.length ? <div className="emptyState">No automation route is available.</div> : <div className="overviewTopologyFlow">{topologyPath.map((node, index) => <div className="overviewTopologyStage" key={node.id}><span>{node.kind}</span><strong title={node.label}>{node.label}</strong><small>{node.status}</small>{index < topologyPath.length - 1 ? <GitBranch size={16} aria-hidden="true" /> : null}</div>)}</div>}
         </section>
 
         <section className="panel span4">

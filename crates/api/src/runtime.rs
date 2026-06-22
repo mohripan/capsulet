@@ -4,7 +4,7 @@ use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_postgres::PostgresStore;
 use capsulet_storage::ConfiguredObjectStore;
 
-use crate::{AppState, router};
+use crate::{AppState, AuthConfig, WebhookSecrets, router};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_EXECUTION_POOLS: &str = "mini,large";
@@ -47,17 +47,37 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let object_store = load_object_store()?;
+    let auth = load_auth_config()?;
+    let webhook_secrets = env::var("CAPSULET_WEBHOOK_SECRETS")
+        .ok()
+        .map(|value| WebhookSecrets::from_json(&value))
+        .transpose()?
+        .unwrap_or_default();
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("capsulet-api listening on http://{addr}");
 
     axum::serve(
         listener,
-        router(AppState::new(store, object_store, execution_pools)),
+        router(
+            AppState::new(store, object_store, execution_pools)
+                .with_auth(auth)
+                .with_webhook_secrets(webhook_secrets),
+        ),
     )
     .await?;
 
     Ok(())
+}
+
+fn load_auth_config() -> Result<AuthConfig, Box<dyn std::error::Error>> {
+    if env_bool("CAPSULET_AUTH_DISABLED") {
+        eprintln!("WARNING: API authentication is explicitly disabled");
+        return Ok(AuthConfig::disabled());
+    }
+    let value = env::var("CAPSULET_API_TOKENS")
+        .map_err(|_| "set CAPSULET_API_TOKENS or explicitly set CAPSULET_AUTH_DISABLED=true")?;
+    Ok(AuthConfig::from_json(&value)?)
 }
 
 fn load_object_store() -> Result<ConfiguredObjectStore, Box<dyn std::error::Error>> {

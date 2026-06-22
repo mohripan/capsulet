@@ -6,8 +6,11 @@ use capsulet_core::{JobDefinition, JobRun, JobRunId};
 use k8s_openapi::{
     api::{
         batch::v1::{Job, JobSpec},
-        core::v1::EnvVar,
-        core::v1::{Container, Pod, PodSpec, PodTemplateSpec, ResourceRequirements, Toleration},
+        core::v1::{
+            Capabilities, Container, EmptyDirVolumeSource, EnvVar, Pod, PodSecurityContext,
+            PodSpec, PodTemplateSpec, ResourceRequirements, SeccompProfile, SecurityContext,
+            Toleration, Volume, VolumeMount,
+        },
     },
     apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::ObjectMeta},
 };
@@ -24,11 +27,13 @@ use tokio::{
 
 const APP_LABEL: &str = "capsulet.dev/managed-by";
 const RUN_LABEL: &str = "capsulet.dev/job-run-key";
+const ATTEMPT_LABEL: &str = "capsulet.dev/attempt";
 const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 300;
 const DEFAULT_JOB_TIMEOUT_SECONDS_I64: i64 = 300;
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const ARTIFACT_MARKER: &str = "CAPSULET_ARTIFACT";
 const ARTIFACT_DIR: &str = "/capsulet/artifacts";
+const INPUT_DIR: &str = "/capsulet/inputs";
 
 /// Execution result returned by a runner backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,18 +110,32 @@ pub struct CollectedArtifact {
     pub bytes: Vec<u8>,
 }
 
+/// Artifact produced by a successful prerequisite and staged for this run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputArtifact {
+    pub producer_step_id: String,
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
 /// Complete execution input for a leased job run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunExecution {
     pub run: JobRun,
     pub definition: JobDefinition,
     pub pool: ExecutionPoolConfig,
+    pub input_artifacts: Vec<InputArtifact>,
 }
 
 /// Boundary for executing a leased job run.
 #[async_trait]
 pub trait Runner: Clone + Send + Sync + 'static {
     type Error: std::fmt::Display + Send + Sync + 'static;
+
+    #[must_use]
+    fn supports_reattachment(&self) -> bool {
+        false
+    }
 
     /// Executes a leased job run.
     ///
@@ -190,6 +209,7 @@ impl Runner for ProcessRunner {
         }
 
         reset_artifact_dir()?;
+        materialize_local_inputs(&execution.input_artifacts)?;
         let Some((program, args)) = execution.definition.command().split_first() else {
             return Err(ProcessRunnerError::EmptyCommand);
         };
@@ -450,6 +470,10 @@ impl KubernetesRunner {
 impl Runner for KubernetesRunner {
     type Error = KubernetesRunnerError;
 
+    fn supports_reattachment(&self) -> bool {
+        true
+    }
+
     async fn execute<C>(
         &self,
         execution: &RunExecution,
@@ -469,7 +493,10 @@ impl Runner for KubernetesRunner {
 
         match jobs.create(&PostParams::default(), &job).await {
             Ok(_) => {}
-            Err(kube::Error::Api(error)) if error.code == 409 => {}
+            Err(kube::Error::Api(error)) if error.code == 409 => {
+                let existing = jobs.get(&job_name).await?;
+                validate_job_identity(&existing, execution)?;
+            }
             Err(error) => return Err(error.into()),
         }
 
@@ -512,9 +539,11 @@ impl KubernetesRunner {
         execution: &RunExecution,
     ) -> Result<Option<String>, KubernetesRunnerError> {
         let pods: Api<Pod> = Api::namespaced(self.client.clone(), &self.namespace);
-        let run_key = run_label_value(execution.run.id());
+        let job_name = kubernetes_job_name(execution.run.id(), execution.run.attempt_count());
         let list = pods
-            .list(&ListParams::default().labels(&format!("{RUN_LABEL}={run_key}")))
+            .list(
+                &ListParams::default().labels(&format!("batch.kubernetes.io/job-name={job_name}")),
+            )
             .await?;
         let Some(pod) = list.items.first() else {
             return Ok(None);
@@ -549,7 +578,7 @@ async fn wait_for_job(
             .await
             .map_err(|error| KubernetesRunnerError::CancellationCheck(error.to_string()))?
         {
-            cleanup_cancelled_job(jobs, pods, job_name, execution.run.id()).await;
+            cleanup_cancelled_job(jobs, pods, job_name).await;
             return Ok(RunOutcome::Cancelled);
         }
 
@@ -586,21 +615,15 @@ async fn wait_for_job(
     }
 }
 
-async fn cleanup_cancelled_job(
-    jobs: &Api<Job>,
-    pods: &Api<Pod>,
-    job_name: &str,
-    run_id: &JobRunId,
-) {
+async fn cleanup_cancelled_job(jobs: &Api<Job>, pods: &Api<Pod>, job_name: &str) {
     let delete_params = DeleteParams {
         grace_period_seconds: Some(30),
         ..DeleteParams::default()
     };
     let _ = jobs.delete(job_name, &delete_params).await;
 
-    let run_key = run_label_value(run_id);
     let Ok(list) = pods
-        .list(&ListParams::default().labels(&format!("{RUN_LABEL}={run_key}")))
+        .list(&ListParams::default().labels(&format!("batch.kubernetes.io/job-name={job_name}")))
         .await
     else {
         return;
@@ -617,11 +640,15 @@ async fn cleanup_cancelled_job(
 /// Renders the Kubernetes Job for an execution.
 #[must_use]
 pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
-    let job_name = kubernetes_job_name(execution.run.id());
+    let job_name = kubernetes_job_name(execution.run.id(), execution.run.attempt_count());
     let run_key = run_label_value(execution.run.id());
     let mut labels = BTreeMap::new();
     labels.insert(APP_LABEL.to_string(), "capsulet".to_string());
     labels.insert(RUN_LABEL.to_string(), run_key);
+    labels.insert(
+        ATTEMPT_LABEL.to_string(),
+        execution.run.attempt_count().to_string(),
+    );
 
     Job {
         metadata: ObjectMeta {
@@ -664,15 +691,84 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
                     containers: vec![Container {
                         name: "main".to_string(),
                         image: Some(execution.definition.runtime_image().to_string()),
-                        command: Some(wrapped_command(execution.definition.command())),
+                        command: Some(wrapped_command(
+                            execution.definition.command(),
+                            &execution.input_artifacts,
+                        )),
                         env: Some(vec![EnvVar {
                             name: "CAPSULET_INPUT_JSON".to_string(),
                             value: Some(execution.run.input_json().to_string()),
                             ..EnvVar::default()
                         }]),
                         resources: Some(execution.pool.resources.to_kubernetes()),
+                        security_context: Some(SecurityContext {
+                            allow_privilege_escalation: Some(false),
+                            capabilities: Some(Capabilities {
+                                drop: Some(vec!["ALL".to_string()]),
+                                ..Capabilities::default()
+                            }),
+                            privileged: Some(false),
+                            read_only_root_filesystem: Some(true),
+                            run_as_group: Some(10_001),
+                            run_as_non_root: Some(true),
+                            run_as_user: Some(10_001),
+                            seccomp_profile: Some(SeccompProfile {
+                                type_: "RuntimeDefault".to_string(),
+                                ..SeccompProfile::default()
+                            }),
+                            ..SecurityContext::default()
+                        }),
+                        volume_mounts: Some(vec![
+                            VolumeMount {
+                                name: "capsulet-data".to_string(),
+                                mount_path: "/capsulet".to_string(),
+                                ..VolumeMount::default()
+                            },
+                            VolumeMount {
+                                name: "tmp".to_string(),
+                                mount_path: "/tmp".to_string(),
+                                ..VolumeMount::default()
+                            },
+                        ]),
                         ..Container::default()
                     }],
+                    automount_service_account_token: Some(false),
+                    enable_service_links: Some(false),
+                    host_ipc: Some(false),
+                    host_network: Some(false),
+                    host_pid: Some(false),
+                    security_context: Some(PodSecurityContext {
+                        fs_group: Some(10_001),
+                        run_as_group: Some(10_001),
+                        run_as_non_root: Some(true),
+                        run_as_user: Some(10_001),
+                        seccomp_profile: Some(SeccompProfile {
+                            type_: "RuntimeDefault".to_string(),
+                            ..SeccompProfile::default()
+                        }),
+                        ..PodSecurityContext::default()
+                    }),
+                    volumes: Some(vec![
+                        Volume {
+                            name: "capsulet-data".to_string(),
+                            empty_dir: Some(EmptyDirVolumeSource {
+                                size_limit: execution
+                                    .pool
+                                    .resources
+                                    .limits
+                                    .get("ephemeral-storage")
+                                    .cloned()
+                                    .map(Quantity),
+                                ..EmptyDirVolumeSource::default()
+                            }),
+                            ..Volume::default()
+                        },
+                        Volume {
+                            name: "tmp".to_string(),
+                            empty_dir: Some(EmptyDirVolumeSource::default()),
+                            ..Volume::default()
+                        },
+                    ]),
                     ..PodSpec::default()
                 }),
             },
@@ -682,23 +778,45 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
     }
 }
 
-fn wrapped_command(command: &[String]) -> Vec<String> {
+fn wrapped_command(command: &[String], input_artifacts: &[InputArtifact]) -> Vec<String> {
     vec![
         "/bin/sh".to_string(),
         "-c".to_string(),
-        wrapper_script(command),
+        wrapper_script(command, input_artifacts),
     ]
 }
 
-fn wrapper_script(command: &[String]) -> String {
+fn wrapper_script(command: &[String], input_artifacts: &[InputArtifact]) -> String {
     let command = command
         .iter()
         .map(|part| shell_quote(part))
         .collect::<Vec<_>>()
         .join(" ");
+    let inputs = input_artifacts
+        .iter()
+        .map(|artifact| {
+            let path = format!(
+                "{INPUT_DIR}/{}/{}",
+                artifact.producer_step_id, artifact.name
+            );
+            let parent = format!("{INPUT_DIR}/{}", artifact.producer_step_id);
+            let alias = format!("{INPUT_DIR}/{}", artifact.name);
+            let encoded = BASE64.encode(&artifact.bytes);
+            format!(
+                "mkdir -p {}\nprintf '%s' {} | base64 -d > {}\ncp {} {}",
+                shell_quote(&parent),
+                shell_quote(&encoded),
+                shell_quote(&path),
+                shell_quote(&path),
+                shell_quote(&alias),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     format!(
         r#"mkdir -p /capsulet
 printf '%s' "$CAPSULET_INPUT_JSON" > /capsulet/input.json
+{inputs}
 {command}
 status=$?
 if [ -d {ARTIFACT_DIR} ]; then
@@ -710,6 +828,28 @@ if [ -d {ARTIFACT_DIR} ]; then
 fi
 exit $status"#
     )
+}
+
+fn input_artifact_path(artifact: &InputArtifact) -> std::path::PathBuf {
+    Path::new(INPUT_DIR)
+        .join(&artifact.producer_step_id)
+        .join(&artifact.name)
+}
+
+fn materialize_local_inputs(artifacts: &[InputArtifact]) -> Result<(), std::io::Error> {
+    let root = Path::new(INPUT_DIR);
+    if root.exists() {
+        fs::remove_dir_all(root)?;
+    }
+    for artifact in artifacts {
+        let path = input_artifact_path(artifact);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, &artifact.bytes)?;
+        fs::write(root.join(&artifact.name), &artifact.bytes)?;
+    }
+    Ok(())
 }
 
 fn shell_quote(value: &str) -> String {
@@ -810,9 +950,23 @@ fn default_timeout_seconds() -> u64 {
     DEFAULT_JOB_TIMEOUT_SECONDS
 }
 
-fn kubernetes_job_name(run_id: &JobRunId) -> String {
-    let suffix = sanitize_kubernetes_segment(run_id.as_str(), 54);
-    format!("capsulet-{suffix}")
+fn kubernetes_job_name(run_id: &JobRunId, attempt: u32) -> String {
+    let suffix = sanitize_kubernetes_segment(run_id.as_str(), 45);
+    format!("capsulet-{suffix}-a{attempt}")
+}
+
+fn validate_job_identity(job: &Job, execution: &RunExecution) -> Result<(), KubernetesRunnerError> {
+    let labels = job
+        .metadata
+        .labels
+        .as_ref()
+        .ok_or(KubernetesRunnerError::JobIdentityConflict)?;
+    let run_key = run_label_value(execution.run.id());
+    let attempt = execution.run.attempt_count().to_string();
+    if labels.get(RUN_LABEL) != Some(&run_key) || labels.get(ATTEMPT_LABEL) != Some(&attempt) {
+        return Err(KubernetesRunnerError::JobIdentityConflict);
+    }
+    Ok(())
 }
 
 fn run_label_value(run_id: &JobRunId) -> String {
@@ -866,6 +1020,8 @@ pub enum KubernetesRunnerError {
     Kube(#[from] kube::Error),
     #[error("rendered Kubernetes Job is missing a name")]
     MissingJobName,
+    #[error("an existing Kubernetes Job has conflicting Capsulet run identity")]
+    JobIdentityConflict,
     #[error("cancellation check failed: {0}")]
     CancellationCheck(String),
 }

@@ -134,6 +134,23 @@ export type WorkflowDependency = {
   to_step_id: string;
 };
 
+export type WorkflowEditability = {
+  editable: boolean;
+  reason: string | null;
+};
+
+export type TopologyNode = {
+  id: string;
+  label: string;
+  kind: "automation" | "workflow" | "pool";
+  status: string;
+};
+
+export type Topology = {
+  nodes: TopologyNode[];
+  edges: Array<{ from: string; to: string; label: string }>;
+};
+
 export type CreateWorkflowRequest = {
   name: string;
   description?: string;
@@ -159,7 +176,7 @@ export type Automation = {
   job_input: Record<string, unknown>;
 };
 
-export type TriggerKind = "manual" | "schedule" | "sql" | "custom";
+export type TriggerKind = "manual" | "schedule" | "sql" | "webhook" | "custom";
 
 export type TriggerCondition =
   | { trigger: string }
@@ -307,6 +324,17 @@ export async function createJobDefinition(request: CreateJobDefinitionRequest) {
   });
 }
 
+export async function updateJobDefinition(id: string, request: CreateJobDefinitionRequest) {
+  return apiFetch<JobDefinition>(`/v1/job-definitions/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function getJobDefinitionSource(id: string) {
+  return apiFetch<{ python_script: string }>(`/v1/job-definitions/${encodeURIComponent(id)}/source`);
+}
+
 export async function listExecutionPools() {
   return apiFetch<{ execution_pools: ExecutionPool[] }>("/v1/execution-pools");
 }
@@ -319,9 +347,28 @@ export async function listWorkflows() {
   return apiFetch<{ workflows: Workflow[] }>("/v1/workflows");
 }
 
+export async function getWorkflow(id: string) {
+  return apiFetch<Workflow>(`/v1/workflows/${encodeURIComponent(id)}`);
+}
+
+export async function getWorkflowEditability(id: string) {
+  return apiFetch<WorkflowEditability>(`/v1/workflows/${encodeURIComponent(id)}/editability`);
+}
+
+export async function getTopology() {
+  return apiFetch<Topology>("/v1/topology");
+}
+
 export async function createWorkflow(request: CreateWorkflowRequest) {
   return apiFetch<Workflow>("/v1/workflows", {
     method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function updateWorkflow(id: string, request: CreateWorkflowRequest) {
+  return apiFetch<Workflow>(`/v1/workflows/${encodeURIComponent(id)}`, {
+    method: "PUT",
     body: JSON.stringify(request)
   });
 }

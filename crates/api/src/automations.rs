@@ -433,6 +433,23 @@ fn build_trigger(
 }
 
 fn validate_schedule_config(config: &Value) -> Result<(), ApiError> {
+    if config
+        .get("cron")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        let timezone_valid = config
+            .get("timezone")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty());
+        return if timezone_valid {
+            Ok(())
+        } else {
+            Err(ApiError::Validation(
+                "cron schedule triggers require timezone".to_string(),
+            ))
+        };
+    }
     let has_start_at = config
         .get("start_at")
         .and_then(Value::as_str)
@@ -458,22 +475,18 @@ fn validate_builtin_trigger_config(kind: TriggerKind, config: &Value) -> Result<
     match kind {
         TriggerKind::Schedule => validate_schedule_config(config),
         TriggerKind::Sql => validate_sql_config(config),
-        TriggerKind::Manual | TriggerKind::Custom => Ok(()),
+        TriggerKind::Manual | TriggerKind::Webhook | TriggerKind::Custom => Ok(()),
     }
 }
 
 fn validate_sql_config(config: &Value) -> Result<(), ApiError> {
-    let has_connection = ["connection_string", "connection_name"]
-        .iter()
-        .any(|field| {
-            config
-                .get(field)
-                .and_then(Value::as_str)
-                .is_some_and(|value| !value.trim().is_empty())
-        });
+    let has_connection = config
+        .get("connection_name")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty());
     if !has_connection {
         return Err(ApiError::Validation(
-            "sql triggers require connection_string".to_string(),
+            "sql triggers require connection_name".to_string(),
         ));
     }
     for field in ["query"] {

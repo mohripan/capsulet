@@ -60,19 +60,94 @@ impl PostgresStore {
         worker_id: &str,
         lease_seconds: i64,
     ) -> Result<Option<JobRun>, PostgresStoreError> {
+        self.lease_next_queued_run_with_limits(worker_id, lease_seconds, "{}", i32::MAX, false)
+            .await
+    }
+
+    /// Leases work only when its execution pool has available capacity.
+    pub async fn lease_next_queued_run_with_pool_limits(
+        &self,
+        worker_id: &str,
+        lease_seconds: i64,
+        pool_limits: &[(String, u32)],
+    ) -> Result<Option<JobRun>, PostgresStoreError> {
+        self.lease_next_queued_run_with_pool_limits_and_reattach(
+            worker_id,
+            lease_seconds,
+            pool_limits,
+            false,
+        )
+        .await
+    }
+
+    pub async fn lease_next_queued_run_with_pool_limits_and_reattach(
+        &self,
+        worker_id: &str,
+        lease_seconds: i64,
+        pool_limits: &[(String, u32)],
+        reattach_running: bool,
+    ) -> Result<Option<JobRun>, PostgresStoreError> {
+        let limits = pool_limits
+            .iter()
+            .map(|(name, limit)| {
+                i32::try_from(*limit)
+                    .map(|limit| (name.clone(), serde_json::Value::from(limit)))
+                    .map_err(|_| {
+                        PostgresStoreError::InvalidPersistedValue(format!(
+                            "pool limit is too large: {name}"
+                        ))
+                    })
+            })
+            .collect::<Result<serde_json::Map<_, _>, _>>()?;
+        self.lease_next_queued_run_with_limits(
+            worker_id,
+            lease_seconds,
+            &serde_json::Value::Object(limits).to_string(),
+            0,
+            reattach_running,
+        )
+        .await
+    }
+
+    async fn lease_next_queued_run_with_limits(
+        &self,
+        worker_id: &str,
+        lease_seconds: i64,
+        pool_limits_json: &str,
+        default_limit: i32,
+        reattach_running: bool,
+    ) -> Result<Option<JobRun>, PostgresStoreError> {
         let row = sqlx::query(
             r"
-            WITH candidate AS (
-                SELECT id
+            WITH candidates AS (
+                SELECT id, execution_pool,
+                       COALESCE(($3::jsonb ->> execution_pool)::integer, $4) AS pool_limit,
+                       created_at
                 FROM job_runs
-                WHERE status = 'queued'
-                ORDER BY created_at
+                WHERE (status = 'queued' OR ($5 AND status = 'running' AND lease_expires_at <= now()))
+                  AND COALESCE(($3::jsonb ->> execution_pool)::integer, $4) > 0
+                ORDER BY created_at, id
                 FOR UPDATE SKIP LOCKED
+                LIMIT 32
+            ), candidate AS (
+                SELECT candidate.id
+                FROM candidates candidate
+                WHERE pg_try_advisory_xact_lock(
+                    hashtextextended('capsulet-pool:' || candidate.execution_pool, 0)
+                )
+                  AND (
+                    SELECT count(*)
+                    FROM job_runs active
+                    WHERE active.execution_pool = candidate.execution_pool
+                      AND active.status IN ('leased', 'running')
+                      AND active.lease_expires_at > now()
+                  ) < candidate.pool_limit
+                ORDER BY candidate.created_at, candidate.id
                 LIMIT 1
             )
             UPDATE job_runs
             SET
-                status = 'leased',
+                status = CASE WHEN job_runs.status = 'running' THEN 'running' ELSE 'leased' END,
                 lease_owner = $1,
                 lease_expires_at = now() + ($2 * interval '1 second'),
                 heartbeat_at = now(),
@@ -90,6 +165,9 @@ impl PostgresStore {
         )
         .bind(worker_id)
         .bind(lease_seconds)
+        .bind(pool_limits_json)
+        .bind(default_limit)
+        .bind(reattach_running)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -249,6 +327,13 @@ impl PostgresStore {
     ///
     /// Returns [`PostgresStoreError`] when persistence fails.
     pub async fn recover_expired_leases(&self) -> Result<u64, PostgresStoreError> {
+        self.recover_expired_leases_for_runner(false).await
+    }
+
+    pub async fn recover_expired_leases_for_runner(
+        &self,
+        preserve_running: bool,
+    ) -> Result<u64, PostgresStoreError> {
         let result = sqlx::query(
             r"
             UPDATE job_runs
@@ -258,10 +343,11 @@ impl PostgresStore {
                 lease_expires_at = NULL,
                 heartbeat_at = NULL,
                 updated_at = now()
-            WHERE status IN ('leased', 'running')
+            WHERE (status = 'leased' OR (NOT $1 AND status = 'running'))
               AND lease_expires_at <= now()
             ",
         )
+        .bind(preserve_running)
         .execute(&self.pool)
         .await?;
 

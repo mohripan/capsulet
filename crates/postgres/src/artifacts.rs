@@ -1,6 +1,14 @@
 use capsulet_core::{ArtifactId, JobArtifact, JobAttemptId, JobRunId};
 
 use crate::{PostgresStore, PostgresStoreError, rows::row_to_job_artifact};
+
+/// Metadata for an artifact produced by a direct workflow prerequisite.
+#[derive(Debug, Clone)]
+pub struct UpstreamArtifact {
+    pub producer_step_id: String,
+    pub artifact: JobArtifact,
+}
+
 impl PostgresStore {
     ///
     /// # Errors
@@ -109,5 +117,52 @@ impl PostgresStore {
         .await?;
 
         row.as_ref().map(row_to_job_artifact).transpose()
+    }
+
+    /// Lists artifacts from successful direct prerequisites of a workflow job run.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or values are invalid.
+    pub async fn list_upstream_artifacts(
+        &self,
+        run_id: &JobRunId,
+    ) -> Result<Vec<UpstreamArtifact>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT dependency.from_step_id AS producer_step_id,
+                   artifact.id, artifact.job_run_id, artifact.job_attempt_id,
+                   artifact.name, artifact.object_key, artifact.content_type,
+                   artifact.size_bytes, artifact.checksum_sha256, artifact.kind
+            FROM workflow_step_runs current_step
+            JOIN workflow_runs workflow_run
+              ON workflow_run.id = current_step.workflow_run_id
+            JOIN workflow_step_dependencies dependency
+              ON dependency.workflow_id = workflow_run.workflow_id
+             AND dependency.to_step_id = current_step.workflow_step_id
+            JOIN workflow_step_runs upstream_step
+              ON upstream_step.workflow_run_id = current_step.workflow_run_id
+             AND upstream_step.workflow_step_id = dependency.from_step_id
+             AND upstream_step.status = 'succeeded'
+            JOIN job_artifacts artifact
+              ON artifact.job_run_id = upstream_step.job_run_id
+             AND artifact.kind = 'artifact'
+            WHERE current_step.job_run_id = $1
+            ORDER BY dependency.from_step_id, artifact.name
+            ",
+        )
+        .bind(run_id.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.iter()
+            .map(|row| {
+                use sqlx::Row as _;
+                Ok(UpstreamArtifact {
+                    producer_step_id: row.try_get("producer_step_id")?,
+                    artifact: row_to_job_artifact(row)?,
+                })
+            })
+            .collect()
     }
 }
