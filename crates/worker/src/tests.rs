@@ -273,6 +273,7 @@ fn pools() -> ExecutionPoolsConfig {
         ttl_seconds_after_finished: None,
         runtime_class_name: None,
         service_account_name: None,
+        ..ExecutionPoolConfig::default()
     };
     ExecutionPoolsConfig {
         default_pool: "mini".to_string(),
@@ -377,6 +378,7 @@ async fn stub_failure_runner_schedules_retry_when_attempts_remain() {
             "-c".to_string(),
             "print('hello from capsulet')".to_string(),
         ],
+        Vec::new(),
         "bundles/job_hello_python.tar.gz",
         "{}",
         capsulet_core::RetryPolicy::new(2, 1).expect("retry policy"),

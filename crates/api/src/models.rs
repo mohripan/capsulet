@@ -3,6 +3,7 @@ use capsulet_core::{
     JobRunStatus, WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepDependency,
     WorkflowStepRun,
 };
+use capsulet_postgres::ServiceAccountRecord;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -11,6 +12,63 @@ use crate::{error::ApiError, http::json_from_string};
 #[derive(Debug, Serialize)]
 pub(crate) struct HealthResponse {
     pub(crate) status: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct CreateServiceAccountRequest {
+    pub(crate) id: Option<String>,
+    pub(crate) name: String,
+    pub(crate) role: String,
+    #[serde(default)]
+    pub(crate) tenant_id: Option<String>,
+    #[serde(default)]
+    pub(crate) project_id: Option<String>,
+    #[serde(default)]
+    pub(crate) scopes: Vec<String>,
+    pub(crate) expires_at_unix: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ServiceAccountResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) tenant_id: String,
+    pub(crate) project_id: String,
+    pub(crate) role: String,
+    pub(crate) scopes: Vec<String>,
+    pub(crate) expires_at: Option<String>,
+    pub(crate) revoked_at: Option<String>,
+    pub(crate) last_used_at: Option<String>,
+    pub(crate) created_at: String,
+}
+
+impl From<&ServiceAccountRecord> for ServiceAccountResponse {
+    fn from(account: &ServiceAccountRecord) -> Self {
+        Self {
+            id: account.id.clone(),
+            name: account.name.clone(),
+            tenant_id: account.tenant_id.clone(),
+            project_id: account.project_id.clone(),
+            role: account.role.clone(),
+            scopes: account.scopes.clone(),
+            expires_at: account.expires_at.clone(),
+            revoked_at: account.revoked_at.clone(),
+            last_used_at: account.last_used_at.clone(),
+            created_at: account.created_at.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct CreateServiceAccountResponse {
+    #[serde(flatten)]
+    pub(crate) account: ServiceAccountResponse,
+    pub(crate) token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListServiceAccountsResponse {
+    pub(crate) service_accounts: Vec<ServiceAccountResponse>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +88,8 @@ pub struct CreateJobDefinitionRequest {
     pub runtime_image: Option<String>,
     pub python_script: String,
     #[serde(default)]
+    pub python_dependencies: Vec<String>,
+    #[serde(default)]
     pub input_schema: Option<Value>,
     pub retry_max_attempts: Option<u32>,
     pub retry_delay_seconds: Option<u64>,
@@ -48,6 +108,7 @@ pub struct CreateWorkflowRequest {
 #[derive(Debug, Serialize)]
 pub(crate) struct JobDefinitionSourceResponse {
     pub(crate) python_script: String,
+    pub(crate) python_dependencies: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -244,6 +305,7 @@ pub(crate) struct JobDefinitionResponse {
     pub(crate) name: String,
     pub(crate) runtime_image: String,
     pub(crate) command: Vec<String>,
+    pub(crate) python_dependencies: Vec<String>,
     pub(crate) bundle_object_key: String,
     pub(crate) input_schema: Value,
     pub(crate) retry_max_attempts: u32,
@@ -403,6 +465,7 @@ impl From<&JobDefinition> for JobDefinitionResponse {
             name: definition.name().to_string(),
             runtime_image: definition.runtime_image().to_string(),
             command: definition.command().to_vec(),
+            python_dependencies: definition.python_dependencies().to_vec(),
             bundle_object_key: definition.bundle_object_key().to_string(),
             input_schema: json_from_string(definition.input_schema()).unwrap_or_else(|_| json!({})),
             retry_max_attempts: definition.retry_max_attempts(),

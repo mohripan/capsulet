@@ -7,7 +7,8 @@ use std::{
 
 use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
-use capsulet_postgres::PostgresStore;
+use capsulet_observability as observability;
+use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 use capsulet_runner::{ExecutionPoolsConfig, KubernetesRunner, ProcessRunner, Runner, StubRunner};
 use capsulet_storage::ConfiguredObjectStore;
 use tokio::task::JoinSet;
@@ -64,12 +65,14 @@ pools:
 /// Returns an error when required environment variables are missing, database
 /// setup fails, object storage or execution pools cannot be configured, or a
 /// worker tick fails.
+#[allow(clippy::too_many_lines)]
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    observability::init("capsulet-worker")?;
     let descriptor = ComponentDescriptor::new(
         ComponentKind::Worker,
         "leases queued job runs and coordinates execution",
     );
-    println!("{}", descriptor.banner());
+    observability::tracing::info!(component = "worker", banner = %descriptor.banner());
 
     let database_url = env::var("CAPSULET_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
@@ -82,7 +85,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(DEFAULT_LEASE_SECONDS);
     let pools = load_execution_pools()?;
 
-    let store = PostgresStore::connect(&database_url).await?;
+    let store =
+        PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?).await?;
     store.migrate().await?;
     start_health_server(
         store.clone(),
@@ -196,13 +200,21 @@ fn start_kubernetes_reconciler(store: PostgresStore, runner: KubernetesRunner, w
             match store.active_leased_run_ids().await {
                 Ok(active_run_ids) => match runner.reconcile_orphaned_jobs(&active_run_ids).await {
                     Ok(deleted) if deleted > 0 => {
-                        println!("kubernetes reconciler deleted {deleted} orphaned job(s)");
+                        observability::tracing::info!(
+                            deleted,
+                            "kubernetes reconciler deleted orphaned jobs"
+                        );
                     }
                     Ok(_) => {}
-                    Err(error) => eprintln!("kubernetes reconciler failed: {error}"),
+                    Err(error) => {
+                        observability::tracing::warn!(%error, "kubernetes reconciler failed");
+                    }
                 },
                 Err(error) => {
-                    eprintln!("kubernetes reconciler could not list active runs: {error}")
+                    observability::tracing::warn!(
+                        %error,
+                        "kubernetes reconciler could not list active runs"
+                    );
                 }
             }
         }
@@ -222,7 +234,7 @@ async fn start_health_server(
     let listener = tokio::net::TcpListener::bind(address).await?;
     tokio::spawn(async move {
         if let Err(error) = axum::serve(listener, app).await {
-            eprintln!("worker health server stopped: {error}");
+            observability::tracing::warn!(%error, "worker health server stopped");
         }
     });
     Ok(())
@@ -237,7 +249,14 @@ async fn ready(State(store): State<PostgresStore>) -> StatusCode {
 
 async fn metrics(State(store): State<PostgresStore>) -> axum::response::Response {
     match store.prometheus_metrics().await {
-        Ok(body) => ([("content-type", "text/plain; version=0.0.4")], body).into_response(),
+        Ok(db_body) => {
+            let mut body = observability::render_metrics();
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            body.push_str(&db_body);
+            ([("content-type", "text/plain; version=0.0.4")], body).into_response()
+        }
         Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
 }
@@ -285,7 +304,9 @@ where
             () = &mut sleep => {}
             () = &mut shutdown => {
                 shutting_down = true;
-                println!("worker shutdown requested; no more runs will be claimed");
+                observability::tracing::info!(
+                    "worker shutdown requested; no more runs will be claimed"
+                );
             }
         }
     }
@@ -308,6 +329,7 @@ async fn drain_available_runs<R>(
 where
     R: Runner,
 {
+    let started = std::time::Instant::now();
     let mut tasks = JoinSet::new();
     let mut accepting = !*shutting_down;
 
@@ -340,7 +362,10 @@ where
             () = &mut *shutdown, if !*shutting_down => {
                 *shutting_down = true;
                 accepting = false;
-                println!("worker shutdown requested; waiting for {} in-flight run(s)", tasks.len());
+                observability::tracing::info!(
+                    in_flight_runs = tasks.len(),
+                    "worker shutdown requested; waiting for in-flight runs"
+                );
             }
             result = tasks.join_next() => {
                 let Some(result) = result else {
@@ -349,10 +374,23 @@ where
                 match result {
                     Ok(Ok(crate::WorkerTickOutcome::NoRunAvailable)) => {
                         accepting = false;
-                        println!("worker tick outcome: NoRunAvailable");
+                        observability::record_service_tick(
+                            "worker",
+                            "no_run_available",
+                            started.elapsed(),
+                        );
+                        observability::tracing::info!(
+                            outcome = "NoRunAvailable",
+                            "worker tick outcome"
+                        );
                     }
                     Ok(Ok(outcome)) => {
-                        println!("worker tick outcome: {outcome:?}");
+                        observability::record_service_tick(
+                            "worker",
+                            "run_processed",
+                            started.elapsed(),
+                        );
+                        observability::tracing::info!(?outcome, "worker tick outcome");
                     }
                     Ok(Err(error)) => {
                         return Err(Box::new(error));

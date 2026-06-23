@@ -12,7 +12,7 @@ use thiserror::Error;
 pub(crate) enum ApiError {
     #[error("authentication required")]
     Unauthorized,
-    #[error("insufficient permission; required role: {0}")]
+    #[error("insufficient permission; required scope: {0}")]
     Forbidden(&'static str),
     #[error("validation error: {0}")]
     Validation(String),

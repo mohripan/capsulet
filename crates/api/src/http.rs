@@ -1,14 +1,20 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    time::{SystemTime, UNIX_EPOCH},
+    convert::Infallible,
+    env,
+    sync::Arc,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
     Extension, Json, Router,
     extract::{DefaultBodyLimit, Path, Query, Request, State},
-    http::{Method, StatusCode, header},
+    http::{HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
 use capsulet_core::{
@@ -17,22 +23,34 @@ use capsulet_core::{
     WorkflowDependencyPolicy, WorkflowGraph, WorkflowId, WorkflowRun, WorkflowRunId,
     WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
+use capsulet_observability::{self as observability, tracing::Instrument};
+use capsulet_postgres::NewServiceAccount;
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde_json::Value;
+use tower::limit::ConcurrencyLimitLayer;
+use tower_governor::{
+    GovernorLayer, governor::GovernorConfigBuilder, key_extractor::GlobalKeyExtractor,
+};
+use tower_http::{
+    compression::CompressionLayer, cors::CorsLayer, limit::RequestBodyLimitLayer,
+    timeout::TimeoutLayer, trace::TraceLayer,
+};
+use uuid::Uuid;
 
 use crate::{
-    auth::{Principal, Role},
+    auth::{Principal, Role, token_digest},
     error::ApiError,
     models::{
         ArtifactResponse, AuditEventResponse, CreateJobDefinitionRequest, CreateRunRequest,
-        CreateWorkflowRequest, ExecutionPoolResponse, HealthResponse, HostGroupResponse,
-        JobDefinitionResponse, JobDefinitionSourceResponse, JobRunLogsResponse, JobRunResponse,
-        ListArtifactsResponse, ListAuditEventsResponse, ListExecutionPoolsResponse,
-        ListHostGroupsResponse, ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListRunsQuery,
-        ListRunsResponse, ListWorkflowRunsQuery, ListWorkflowRunsResponse, ListWorkflowsResponse,
-        TopologyEdgeResponse, TopologyNodeResponse, TopologyResponse, WorkflowEditabilityResponse,
-        WorkflowResponse, WorkflowRunLogEntryResponse, WorkflowRunLogsResponse,
-        WorkflowRunResponse,
+        CreateServiceAccountRequest, CreateServiceAccountResponse, CreateWorkflowRequest,
+        ExecutionPoolResponse, HealthResponse, HostGroupResponse, JobDefinitionResponse,
+        JobDefinitionSourceResponse, JobRunLogsResponse, JobRunResponse, ListArtifactsResponse,
+        ListAuditEventsResponse, ListExecutionPoolsResponse, ListHostGroupsResponse,
+        ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListRunsQuery, ListRunsResponse,
+        ListServiceAccountsResponse, ListWorkflowRunsQuery, ListWorkflowRunsResponse,
+        ListWorkflowsResponse, ServiceAccountResponse, TopologyEdgeResponse, TopologyNodeResponse,
+        TopologyResponse, WorkflowEditabilityResponse, WorkflowResponse,
+        WorkflowRunLogEntryResponse, WorkflowRunLogsResponse, WorkflowRunResponse,
     },
     state::AppState,
     store::ApiStore,
@@ -43,13 +61,45 @@ const MAX_WORKFLOW_DEPENDENCIES: usize = 1_024;
 const MAX_WORKFLOW_FAN_IN: usize = 64;
 const MAX_WORKFLOW_FAN_OUT: usize = 64;
 const MAX_WORKFLOW_DEPTH: usize = 64;
+const DEFAULT_REQUEST_TIMEOUT_SECONDS: u64 = 30;
+const DEFAULT_REQUEST_BODY_LIMIT_BYTES: usize = 4 * 1024 * 1024;
+const DEFAULT_CONCURRENCY_LIMIT: usize = 256;
+const DEFAULT_RATE_LIMIT_PER_SECOND: u64 = 50;
+const DEFAULT_RATE_LIMIT_BURST: u32 = 100;
+
+#[derive(Debug, Clone)]
+struct RequestId(String);
+
+#[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 pub fn router<S, O>(state: AppState<S, O>) -> Router
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let rate_limit = Arc::new(
+        GovernorConfigBuilder::default()
+            .key_extractor(GlobalKeyExtractor)
+            .per_second(env_u64(
+                "CAPSULET_API_RATE_LIMIT_PER_SECOND",
+                DEFAULT_RATE_LIMIT_PER_SECOND,
+            ))
+            .burst_size(env_u32(
+                "CAPSULET_API_RATE_LIMIT_BURST",
+                DEFAULT_RATE_LIMIT_BURST,
+            ))
+            .finish()
+            .expect("rate limit configuration is valid"),
+    );
     let protected = Router::new()
         .route("/v1/auth/me", get(current_principal))
+        .route(
+            "/v1/service-accounts",
+            post(create_service_account).get(list_service_accounts),
+        )
+        .route(
+            "/v1/service-accounts/{id}/revoke",
+            post(revoke_service_account),
+        )
         .route(
             "/v1/job-definitions",
             post(create_job_definition).get(list_job_definitions),
@@ -114,6 +164,10 @@ where
         .route("/v1/workflow-runs", get(list_workflow_runs))
         .route("/v1/workflow-runs/{id}", get(get_workflow_run))
         .route("/v1/workflow-runs/{id}/logs", get(get_workflow_run_logs))
+        .route(
+            "/v1/workflow-runs/{id}/logs/stream",
+            get(stream_workflow_run_logs),
+        )
         .route("/v1/workflow-runs/{id}/remove", post(remove_workflow_run))
         .route("/v1/workflow-runs/{id}/cancel", post(cancel_workflow_run))
         .route("/v1/workflow-runs/{id}/resume", post(resume_workflow_run))
@@ -121,6 +175,7 @@ where
         .route("/v1/jobs/runs/{id}", get(get_run))
         .route("/v1/jobs/runs/{id}/cancel", post(cancel_run))
         .route("/v1/jobs/runs/{id}/logs", get(get_run_logs))
+        .route("/v1/jobs/runs/{id}/logs/stream", get(stream_run_logs))
         .route("/v1/jobs/runs/{id}/artifacts", get(list_artifacts))
         .route(
             "/v1/jobs/runs/{id}/artifacts/{artifact_id}",
@@ -140,6 +195,26 @@ where
         )
         .merge(protected)
         .with_state(state)
+        .layer(middleware::from_fn(request_context))
+        .layer(TraceLayer::new_for_http())
+        .layer(CompressionLayer::new())
+        .layer(CorsLayer::permissive())
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(env_u64(
+                "CAPSULET_API_REQUEST_TIMEOUT_SECONDS",
+                DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            )),
+        ))
+        .layer(RequestBodyLimitLayer::new(env_usize(
+            "CAPSULET_API_REQUEST_BODY_LIMIT_BYTES",
+            DEFAULT_REQUEST_BODY_LIMIT_BYTES,
+        )))
+        .layer(ConcurrencyLimitLayer::new(env_usize(
+            "CAPSULET_API_CONCURRENCY_LIMIT",
+            DEFAULT_CONCURRENCY_LIMIT,
+        )))
+        .layer(GovernorLayer::new(rate_limit))
 }
 
 async fn metrics<S, O>(State(state): State<AppState<S, O>>) -> Response
@@ -148,9 +223,53 @@ where
     O: ObjectStore,
 {
     match state.store.prometheus_metrics().await {
-        Ok(body) => ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body).into_response(),
+        Ok(db_body) => {
+            let mut body = observability::render_metrics();
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            body.push_str(&db_body);
+            ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body).into_response()
+        }
         Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
+}
+
+async fn request_context(mut request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_string();
+    let request_id = observability::request_id(
+        request
+            .headers()
+            .get("x-request-id")
+            .and_then(|value| value.to_str().ok()),
+    );
+    request
+        .extensions_mut()
+        .insert(RequestId(request_id.clone()));
+    let span = observability::tracing::info_span!(
+        "http.request",
+        request.id = %request_id,
+        http.method = %method,
+        http.route = %path,
+    );
+    async move {
+        let started = Instant::now();
+        let mut response = next.run(request).await;
+        let status = response.status();
+        observability::record_http_request(
+            method.as_str(),
+            &path,
+            status.as_u16(),
+            started.elapsed(),
+        );
+        if let Ok(value) = HeaderValue::from_str(&request_id) {
+            response.headers_mut().insert("x-request-id", value);
+        }
+        response
+    }
+    .instrument(span)
+    .await
 }
 
 async fn openapi_spec() -> Response {
@@ -169,6 +288,9 @@ async fn current_principal(Extension(principal): Extension<Principal>) -> Json<V
     Json(serde_json::json!({
         "name": principal.name,
         "role": principal.role.as_str(),
+        "tenant_id": principal.tenant_id,
+        "project_id": principal.project_id,
+        "scopes": principal.scopes().iter().map(AsRef::as_ref).collect::<Vec<_>>(),
     }))
 }
 
@@ -188,29 +310,60 @@ where
         .and_then(|value| value.strip_prefix("Bearer "))
         .filter(|value| !value.is_empty())
         .unwrap_or_default();
-    if state.auth.enabled() && token.is_empty() {
-        return Err(ApiError::Unauthorized);
-    }
-    let principal = state
-        .auth
-        .authenticate(token)
-        .ok_or(ApiError::Unauthorized)?;
-    let required = required_role(request.method(), request.uri().path());
-    if principal.role < required {
-        return Err(ApiError::Forbidden(required.as_str()));
-    }
     let method = request.method().clone();
     let path = request.uri().path().to_string();
     let request_id = request
-        .headers()
-        .get("x-request-id")
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_owned);
+        .extensions()
+        .get::<RequestId>()
+        .map(|id| id.0.clone());
     let user_agent = request
         .headers()
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
+    if state.auth.enabled() && token.is_empty() {
+        audit_auth_failure(
+            &state,
+            "anonymous",
+            "unauthenticated",
+            &method,
+            &path,
+            StatusCode::UNAUTHORIZED,
+            request_id.as_deref(),
+            user_agent.as_deref(),
+        )
+        .await;
+        return Err(ApiError::Unauthorized);
+    }
+    let Some(principal) = authenticate_request_token(&state, token).await? else {
+        audit_auth_failure(
+            &state,
+            "anonymous",
+            "unauthenticated",
+            &method,
+            &path,
+            StatusCode::UNAUTHORIZED,
+            request_id.as_deref(),
+            user_agent.as_deref(),
+        )
+        .await;
+        return Err(ApiError::Unauthorized);
+    };
+    let required_scope = required_scope(request.method(), request.uri().path());
+    if !principal.has_scope(required_scope) {
+        audit_auth_failure(
+            &state,
+            &principal.name,
+            principal.role.as_str(),
+            &method,
+            &path,
+            StatusCode::FORBIDDEN,
+            request_id.as_deref(),
+            user_agent.as_deref(),
+        )
+        .await;
+        return Err(ApiError::Forbidden(required_scope));
+    }
     request.extensions_mut().insert(principal.clone());
     let response = next.run(request).await;
     if method != Method::GET
@@ -229,30 +382,160 @@ where
             )
             .await
     {
-        eprintln!(
-            "failed to persist audit event: principal={} method={} path={} error={error}",
-            principal.name, method, path
+        observability::tracing::warn!(
+            principal = %principal.name,
+            %method,
+            %path,
+            %error,
+            "failed to persist audit event"
         );
     }
     Ok(response)
 }
 
-fn required_role(method: &Method, path: &str) -> Role {
+async fn authenticate_request_token<S, O>(
+    state: &AppState<S, O>,
+    token: &str,
+) -> Result<Option<Principal>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    if let Some(principal) = state.auth.authenticate(token) {
+        return Ok(Some(principal));
+    }
+    let token_hash = token_digest(token);
+    let Some(account) = state
+        .store
+        .authenticate_service_account_hash(&token_hash)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Ok(None);
+    };
+    let Some(role) = Role::parse(&account.role) else {
+        return Ok(None);
+    };
+    Ok(Some(Principal::service_account(
+        account.name,
+        role,
+        account.tenant_id,
+        account.project_id,
+        account.scopes,
+    )))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn audit_auth_failure<S, O>(
+    state: &AppState<S, O>,
+    principal: &str,
+    role: &str,
+    method: &Method,
+    path: &str,
+    status: StatusCode,
+    request_id: Option<&str>,
+    user_agent: Option<&str>,
+) where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    if let Err(error) = state
+        .store
+        .record_audit_event(
+            principal,
+            role,
+            method.as_str(),
+            path,
+            status.as_u16(),
+            request_id,
+            user_agent,
+        )
+        .await
+    {
+        observability::tracing::warn!(
+            %method,
+            %path,
+            %error,
+            "failed to persist auth failure audit event"
+        );
+    }
+}
+
+fn required_scope(method: &Method, path: &str) -> &'static str {
+    if path == "/v1/auth/me" {
+        return "auth:read";
+    }
     if path == "/v1/audit-events" {
-        return Role::Admin;
+        return "audit:read";
+    }
+    if path.starts_with("/v1/service-accounts") {
+        return "auth:write";
     }
     if method == Method::GET || method == Method::HEAD {
-        return Role::Viewer;
+        if path.starts_with("/v1/jobs/") {
+            return "jobs:read";
+        }
+        if path.starts_with("/v1/workflows") || path.starts_with("/v1/workflow-runs") {
+            return "workflows:read";
+        }
+        if path.starts_with("/v1/automations") || path.starts_with("/v1/trigger-plugins") {
+            return "automations:read";
+        }
+        return "system:read";
     }
-    if path == "/v1/jobs/runs"
-        || path.ends_with("/trigger")
-        || path.ends_with("/cancel")
-        || path.ends_with("/resume")
-        || path.ends_with("/remove")
+    if path == "/v1/jobs/runs" {
+        return "jobs:run";
+    }
+    if path.starts_with("/v1/jobs/runs/") && path.ends_with("/cancel") {
+        return "jobs:cancel";
+    }
+    if path.starts_with("/v1/workflow-runs/")
+        && (path.ends_with("/cancel") || path.ends_with("/resume") || path.ends_with("/remove"))
     {
-        return Role::Operator;
+        return "workflows:operate";
     }
-    Role::Admin
+    if path.starts_with("/v1/automations/") && path.ends_with("/trigger") {
+        return "automations:operate";
+    }
+    if path.starts_with("/v1/automations/")
+        && (path.ends_with("/enable") || path.ends_with("/disable"))
+    {
+        return "automations:operate";
+    }
+    if path.starts_with("/v1/job-definitions") {
+        return "jobs:write";
+    }
+    if path.starts_with("/v1/workflows") {
+        return "workflows:write";
+    }
+    if path.starts_with("/v1/automations") || path.starts_with("/v1/trigger-plugins") {
+        return "automations:write";
+    }
+    "system:write"
+}
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+fn env_u32(name: &str, default: u32) -> u32 {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+fn env_usize(name: &str, default: usize) -> usize {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
 }
 
 async fn list_audit_events<S, O>(
@@ -282,6 +565,160 @@ where
             })
             .collect(),
     }))
+}
+
+async fn list_service_accounts<S, O>(
+    State(state): State<AppState<S, O>>,
+) -> Result<Json<ListServiceAccountsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let accounts = state
+        .store
+        .list_service_accounts(100)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ListServiceAccountsResponse {
+        service_accounts: accounts.iter().map(ServiceAccountResponse::from).collect(),
+    }))
+}
+
+async fn create_service_account<S, O>(
+    State(state): State<AppState<S, O>>,
+    Json(request): Json<CreateServiceAccountRequest>,
+) -> Result<(StatusCode, Json<CreateServiceAccountResponse>), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let name = non_empty_trimmed(&request.name, "service account name")?;
+    let role = Role::parse(request.role.trim())
+        .ok_or_else(|| ApiError::Validation("unknown service account role".to_string()))?;
+    let scopes = if request.scopes.is_empty() {
+        default_scope_strings(role)
+    } else {
+        validate_scope_strings(request.scopes)?
+    };
+    let id = request
+        .id
+        .unwrap_or_else(|| generated_id("service_account"));
+    let id = non_empty_trimmed(&id, "service account id")?;
+    let tenant_id = request.tenant_id.unwrap_or_else(|| "default".to_string());
+    let project_id = request.project_id.unwrap_or_else(|| "default".to_string());
+    let tenant_id = non_empty_trimmed(&tenant_id, "tenant id")?;
+    let project_id = non_empty_trimmed(&project_id, "project id")?;
+    let token = generate_service_account_token();
+    let account = NewServiceAccount {
+        id,
+        name,
+        tenant_id,
+        project_id,
+        role: role.as_str().to_string(),
+        scopes,
+        token_hash: token_digest(&token),
+        expires_at_unix: request.expires_at_unix,
+    };
+    let record = state
+        .store
+        .create_service_account(&account)
+        .await
+        .map_err(ApiError::store)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateServiceAccountResponse {
+            account: ServiceAccountResponse::from(&record),
+            token,
+        }),
+    ))
+}
+
+async fn revoke_service_account<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    if state
+        .store
+        .revoke_service_account(&id)
+        .await
+        .map_err(ApiError::store)?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::Validation(format!(
+            "unknown service account: {id}"
+        )))
+    }
+}
+
+fn non_empty_trimmed(value: &str, label: &str) -> Result<String, ApiError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(ApiError::Validation(format!("{label} cannot be empty")));
+    }
+    Ok(value.to_string())
+}
+
+fn validate_scope_strings(scopes: Vec<String>) -> Result<Vec<String>, ApiError> {
+    let mut validated = Vec::with_capacity(scopes.len());
+    for scope in scopes {
+        let scope = scope.trim();
+        if scope.is_empty()
+            || !scope.chars().all(|ch| {
+                ch.is_ascii_lowercase()
+                    || ch.is_ascii_digit()
+                    || matches!(ch, ':' | '-' | '*' | '_')
+            })
+        {
+            return Err(ApiError::Validation(format!("invalid scope: {scope}")));
+        }
+        validated.push(scope.to_string());
+    }
+    validated.sort();
+    validated.dedup();
+    Ok(validated)
+}
+
+fn default_scope_strings(role: Role) -> Vec<String> {
+    match role {
+        Role::Viewer => [
+            "auth:read",
+            "jobs:read",
+            "workflows:read",
+            "automations:read",
+            "system:read",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect(),
+        Role::Operator => [
+            "auth:read",
+            "jobs:read",
+            "jobs:run",
+            "jobs:cancel",
+            "workflows:read",
+            "workflows:operate",
+            "automations:read",
+            "automations:operate",
+            "system:read",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect(),
+        Role::Admin => vec!["*".to_string()],
+    }
+}
+
+fn generate_service_account_token() -> String {
+    format!(
+        "cst_{}_{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    )
 }
 
 async fn livez() -> Json<HealthResponse> {
@@ -490,7 +927,10 @@ where
         .ok_or_else(|| ApiError::JobDefinitionSourceNotFound(id.as_str().to_string()))?;
     let python_script = String::from_utf8(source)
         .map_err(|_| ApiError::Validation("job definition source is not UTF-8".to_string()))?;
-    Ok(Json(JobDefinitionSourceResponse { python_script }))
+    Ok(Json(JobDefinitionSourceResponse {
+        python_script,
+        python_dependencies: definition.python_dependencies().to_vec(),
+    }))
 }
 
 async fn delete_job_definition<S, O>(
@@ -567,6 +1007,7 @@ where
             "python".to_string(),
             "/capsulet/workspace/main.py".to_string(),
         ],
+        request.python_dependencies,
         object_key,
         &valid_json_object_string(
             &request
@@ -800,6 +1241,7 @@ where
     Ok(Json(TopologyResponse { nodes, edges }))
 }
 
+#[allow(clippy::too_many_lines)]
 async fn build_workflow<S, O>(
     state: &AppState<S, O>,
     request: CreateWorkflowRequest,
@@ -1217,9 +1659,72 @@ where
     O: ObjectStore,
 {
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
-    let Some(run) = state
+    Ok(Json(load_workflow_run_logs(&state, &id).await?))
+}
+
+async fn stream_workflow_run_logs<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    if state
         .store
         .find_workflow_run(&id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::WorkflowRunNotFound(id.as_str().to_string()));
+    }
+    let stream_state = state.clone();
+    let stream = async_stream::stream! {
+        loop {
+            match load_workflow_run_logs(&stream_state, &id).await {
+                Ok(snapshot) => {
+                    let terminal = snapshot.status == "succeeded"
+                        || snapshot.status == "failed"
+                        || snapshot.status == "cancelled"
+                        || snapshot.status == "timed_out";
+                    match serde_json::to_string(&snapshot) {
+                        Ok(data) => yield Ok::<_, Infallible>(Event::default().event("snapshot").data(data)),
+                        Err(error) => {
+                            observability::tracing::warn!(%error, workflow_run_id = %id.as_str(), "failed to serialize workflow log snapshot");
+                            break;
+                        }
+                    }
+                    if terminal {
+                        yield Ok(Event::default().event("done").data(snapshot.status));
+                        break;
+                    }
+                }
+                Err(error) => {
+                    yield Ok(Event::default().event("error").data(error.to_string()));
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    };
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
+}
+
+async fn load_workflow_run_logs<S, O>(
+    state: &AppState<S, O>,
+    id: &WorkflowRunId,
+) -> Result<WorkflowRunLogsResponse, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let Some(run) = state
+        .store
+        .find_workflow_run(id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -1228,7 +1733,7 @@ where
 
     let step_runs = state
         .store
-        .list_workflow_step_runs(&id)
+        .list_workflow_step_runs(id)
         .await
         .map_err(ApiError::store)?;
     let mut entries = Vec::with_capacity(step_runs.len());
@@ -1264,12 +1769,12 @@ where
         });
     }
 
-    Ok(Json(WorkflowRunLogsResponse {
+    Ok(WorkflowRunLogsResponse {
         workflow_run_id: run.id().as_str().to_string(),
         workflow_id: run.workflow_id().as_str().to_string(),
         status: run.status().to_string(),
         entries,
-    }))
+    })
 }
 
 async fn remove_workflow_run<S, O>(
@@ -1466,6 +1971,7 @@ where
             "python".to_string(),
             "/capsulet/workspace/main.py".to_string(),
         ],
+        Vec::new(),
         object_key.clone(),
         "{}",
         RetryPolicy::no_retry(),
@@ -1538,6 +2044,18 @@ where
     O: ObjectStore,
 {
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    Ok(Json(load_run_logs(&state, &id, true).await?))
+}
+
+async fn stream_run_logs<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = JobRunId::new(id).map_err(ApiError::validation)?;
     if state
         .store
         .find_run(&id)
@@ -1547,29 +2065,86 @@ where
     {
         return Err(ApiError::RunNotFound(id.as_str().to_string()));
     }
+    let stream_state = state.clone();
+    let stream = async_stream::stream! {
+        loop {
+            let run = match stream_state.store.find_run(&id).await {
+                Ok(Some(run)) => run,
+                Ok(None) => {
+                    yield Ok::<_, Infallible>(Event::default().event("error").data("run not found"));
+                    break;
+                }
+                Err(error) => {
+                    yield Ok(Event::default().event("error").data(error.to_string()));
+                    break;
+                }
+            };
+            match load_run_logs(&stream_state, &id, false).await {
+                Ok(snapshot) => match serde_json::to_string(&snapshot) {
+                    Ok(data) => yield Ok(Event::default().event("snapshot").data(data)),
+                    Err(error) => {
+                        observability::tracing::warn!(%error, job_run_id = %id.as_str(), "failed to serialize job log snapshot");
+                        break;
+                    }
+                },
+                Err(error) => {
+                    yield Ok(Event::default().event("error").data(error.to_string()));
+                    break;
+                }
+            }
+            if run.status().is_terminal() {
+                yield Ok(Event::default().event("done").data(run.status().to_string()));
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    };
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
+}
 
-    let Some(log) = state
+async fn load_run_logs<S, O>(
+    state: &AppState<S, O>,
+    id: &JobRunId,
+    require_log: bool,
+) -> Result<JobRunLogsResponse, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    if state
         .store
-        .find_run_log(&id)
+        .find_run(id)
         .await
         .map_err(ApiError::store)?
-    else {
+        .is_none()
+    {
+        return Err(ApiError::RunNotFound(id.as_str().to_string()));
+    }
+
+    let log = state
+        .store
+        .find_run_log(id)
+        .await
+        .map_err(ApiError::store)?;
+    if require_log && log.is_none() {
         return Err(ApiError::RunLogsNotFound(id.as_str().to_string()));
-    };
+    }
 
     let object_log_available = state
         .store
-        .list_artifacts(&id)
+        .list_artifacts(id)
         .await
         .map_err(ApiError::store)?
         .iter()
         .any(|artifact| artifact.kind() == ArtifactObjectKind::Log);
 
-    Ok(Json(JobRunLogsResponse {
-        run_id: log.run_id.as_str().to_string(),
-        logs: log.text,
+    Ok(JobRunLogsResponse {
+        run_id: id.as_str().to_string(),
+        logs: log.map_or_else(String::new, |log| log.text),
         object_log_available,
-    }))
+    })
 }
 
 async fn cancel_run<S, O>(

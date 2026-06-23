@@ -16,7 +16,9 @@ function targetUrl(request: NextRequest, path: string[]) {
   return `${base}/${routePath}${request.nextUrl.search}`;
 }
 
-async function proxy(request: NextRequest, context: { params: { path: string[] } }) {
+type RouteContext = { params: Promise<{ path: string[] }> };
+
+async function proxy(request: NextRequest, context: RouteContext) {
   const headers = new Headers();
   const contentType = request.headers.get("content-type");
   const accept = request.headers.get("accept");
@@ -27,37 +29,44 @@ async function proxy(request: NextRequest, context: { params: { path: string[] }
   if (accept) {
     headers.set("accept", accept);
   }
+  headers.set("accept-encoding", "identity");
   const token = request.cookies.get("capsulet_session")?.value || process.env.CAPSULET_DASHBOARD_API_TOKEN;
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(targetUrl(request, context.params.path), {
+  const { path } = await context.params;
+  const response = await fetch(targetUrl(request, path), {
     method: request.method,
     headers,
     body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
     cache: "no-store"
   });
 
+  const responseHeaders = new Headers(response.headers);
+  responseHeaders.delete("content-encoding");
+  responseHeaders.delete("content-length");
+  responseHeaders.delete("transfer-encoding");
+
   return new NextResponse(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers
+    headers: responseHeaders
   });
 }
 
-export async function GET(request: NextRequest, context: { params: { path: string[] } }) {
+export async function GET(request: NextRequest, context: RouteContext) {
   return proxy(request, context);
 }
 
-export async function POST(request: NextRequest, context: { params: { path: string[] } }) {
+export async function POST(request: NextRequest, context: RouteContext) {
   return proxy(request, context);
 }
 
-export async function PUT(request: NextRequest, context: { params: { path: string[] } }) {
+export async function PUT(request: NextRequest, context: RouteContext) {
   return proxy(request, context);
 }
 
-export async function DELETE(request: NextRequest, context: { params: { path: string[] } }) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   return proxy(request, context);
 }

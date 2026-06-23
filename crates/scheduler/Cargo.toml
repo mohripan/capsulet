@@ -15,6 +15,7 @@ path = "src/main.rs"
 axum.workspace = true
 capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }
+capsulet-observability = { version = "0.1.0", path = "../observability" }
 tokio.workspace = true
 
 [lints]

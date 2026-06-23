@@ -49,6 +49,7 @@ export default function LiveLogsClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [pollIntervalMs, setPollIntervalMs] = useState<number | null>(defaultPollMs);
   const [error, setError] = useState<string | null>(null);
+  const [streamActive, setStreamActive] = useState(false);
   const terminalRef = useRef<HTMLDivElement | null>(null);
 
   const refreshRuns = useCallback(async () => {
@@ -107,10 +108,52 @@ export default function LiveLogsClient() {
   useEffect(() => {
     if (pollIntervalMs === null) return;
     const timer = window.setInterval(() => {
-      void refresh({ showLoading: false, includeRuns: false });
+      if (selectedRunId) {
+        void refreshRuns().catch((err) => setError(getErrorMessage(err)));
+      } else {
+        void refresh({ showLoading: false, includeRuns: true });
+      }
     }, pollIntervalMs);
     return () => window.clearInterval(timer);
-  }, [pollIntervalMs, refresh]);
+  }, [pollIntervalMs, refresh, refreshRuns, selectedRunId]);
+
+  useEffect(() => {
+    if (!selectedRunId || pollIntervalMs === null) {
+      setStreamActive(false);
+      return;
+    }
+    let closed = false;
+    const source = new EventSource(`/api/capsulet/v1/workflow-runs/${encodeURIComponent(selectedRunId)}/logs/stream`);
+    source.addEventListener("open", () => {
+      if (!closed) setStreamActive(true);
+    });
+    source.addEventListener("snapshot", (event) => {
+      if (closed) return;
+      try {
+        setLogs(JSON.parse((event as MessageEvent<string>).data) as WorkflowRunLogsResponse);
+        setError(null);
+      } catch (err) {
+        setError(getErrorMessage(err));
+      }
+    });
+    source.addEventListener("done", () => {
+      if (closed) return;
+      setStreamActive(false);
+      source.close();
+      void refreshRuns().catch((err) => setError(getErrorMessage(err)));
+    });
+    source.addEventListener("error", () => {
+      if (closed) return;
+      setStreamActive(false);
+      source.close();
+      void refresh({ showLoading: false, includeRuns: false });
+    });
+    return () => {
+      closed = true;
+      setStreamActive(false);
+      source.close();
+    };
+  }, [pollIntervalMs, refresh, refreshRuns, selectedRunId]);
 
   useEffect(() => {
     terminalRef.current?.scrollTo({ top: terminalRef.current.scrollHeight });
@@ -205,7 +248,7 @@ export default function LiveLogsClient() {
 
         <section className="panel span8 liveLogsMain">
           <div className="logConsoleHeader">
-            <PanelTitle icon={TerminalSquare} title="Live Output" action={shouldPoll ? `${pollIntervalMs! / 1000}s polling` : "Manual"} />
+            <PanelTitle icon={TerminalSquare} title="Live Output" action={streamActive ? "Streaming" : shouldPoll ? `${pollIntervalMs! / 1000}s polling` : "Manual"} />
             <div className="logConsoleActions">
               <select
                 aria-label="Log refresh mode"

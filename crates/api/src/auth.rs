@@ -1,4 +1,8 @@
-use std::sync::Arc;
+use std::{
+    collections::BTreeSet,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header,
@@ -24,12 +28,64 @@ impl Role {
             Self::Admin => "admin",
         }
     }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "viewer" => Some(Self::Viewer),
+            "operator" => Some(Self::Operator),
+            "admin" => Some(Self::Admin),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Principal {
     pub name: Arc<str>,
     pub role: Role,
+    pub tenant_id: Arc<str>,
+    pub project_id: Arc<str>,
+    scopes: Arc<[Arc<str>]>,
+}
+
+impl Principal {
+    #[must_use]
+    pub fn scopes(&self) -> &[Arc<str>] {
+        &self.scopes
+    }
+
+    #[must_use]
+    pub fn has_scope(&self, required: &str) -> bool {
+        self.role == Role::Admin
+            || self.scopes.iter().any(|scope| {
+                scope.as_ref() == "*"
+                    || scope.as_ref() == required
+                    || required
+                        .strip_suffix(":read")
+                        .is_some_and(|prefix| scope.as_ref() == format!("{prefix}:*"))
+                    || required
+                        .split_once(':')
+                        .is_some_and(|(resource, _)| scope.as_ref() == format!("{resource}:*"))
+            })
+    }
+
+    #[must_use]
+    pub fn service_account(
+        name: impl Into<Arc<str>>,
+        role: Role,
+        tenant_id: impl Into<Arc<str>>,
+        project_id: impl Into<Arc<str>>,
+        scopes: impl IntoIterator<Item = String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            role,
+            tenant_id: tenant_id.into(),
+            project_id: project_id.into(),
+            scopes: scopes.into_iter().map(Arc::from).collect::<Vec<_>>().into(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -54,6 +110,10 @@ impl std::fmt::Debug for AuthConfig {
 struct Credential {
     name: Arc<str>,
     role: Role,
+    tenant_id: Arc<str>,
+    project_id: Arc<str>,
+    scopes: Arc<[Arc<str>]>,
+    expires_at_unix: Option<u64>,
     digest: [u8; 32],
 }
 
@@ -76,6 +136,13 @@ struct CredentialInput {
     name: String,
     role: String,
     token: String,
+    #[serde(default = "default_tenant_id")]
+    tenant_id: String,
+    #[serde(default = "default_project_id")]
+    project_id: String,
+    #[serde(default)]
+    scopes: Vec<String>,
+    expires_at_unix: Option<u64>,
 }
 
 impl AuthConfig {
@@ -116,16 +183,17 @@ impl AuthConfig {
                     "API credential {name} must use a token of at least 32 bytes"
                 ));
             }
-            let role = match input.role.as_str() {
-                "viewer" => Role::Viewer,
-                "operator" => Role::Operator,
-                "admin" => Role::Admin,
-                role => return Err(format!("unknown API role {role} for credential {name}")),
-            };
+            let role = Role::parse(input.role.as_str())
+                .ok_or_else(|| format!("unknown API role {} for credential {name}", input.role))?;
+            let scopes = parse_scopes(name, role, input.scopes)?;
             credentials.push(Credential {
                 name: Arc::from(name),
                 role,
-                digest: Sha256::digest(input.token.as_bytes()).into(),
+                tenant_id: Arc::from(input.tenant_id.trim().to_string()),
+                project_id: Arc::from(input.project_id.trim().to_string()),
+                scopes,
+                expires_at_unix: input.expires_at_unix,
+                digest: token_digest(&input.token),
             });
         }
 
@@ -176,6 +244,9 @@ impl AuthConfig {
             return Some(Principal {
                 name: Arc::from("authentication-disabled"),
                 role: Role::Admin,
+                tenant_id: Arc::from("default"),
+                project_id: Arc::from("default"),
+                scopes: Arc::from([Arc::from("*")]),
             });
         }
 
@@ -184,11 +255,17 @@ impl AuthConfig {
     }
 
     fn authenticate_service_token(&self, token: &str) -> Option<Principal> {
-        let candidate: [u8; 32] = Sha256::digest(token.as_bytes()).into();
+        let candidate = token_digest(token);
         self.credentials.iter().find_map(|credential| {
-            bool::from(credential.digest.ct_eq(&candidate)).then(|| Principal {
+            let not_expired = credential
+                .expires_at_unix
+                .is_none_or(|expires_at| now_unix_seconds() < expires_at);
+            (bool::from(credential.digest.ct_eq(&candidate)) && not_expired).then(|| Principal {
                 name: Arc::clone(&credential.name),
                 role: credential.role,
+                tenant_id: Arc::clone(&credential.tenant_id),
+                project_id: Arc::clone(&credential.project_id),
+                scopes: Arc::clone(&credential.scopes),
             })
         })
     }
@@ -213,7 +290,7 @@ impl AuthConfig {
                 |key| match decode::<OidcClaims>(token, &key.decoding_key, &validation) {
                     Ok(data) => principal_from_claims(&data.claims, &oidc.audience),
                     Err(error) => {
-                        eprintln!("OIDC token rejected: {error}");
+                        capsulet_observability::tracing::warn!(%error, "OIDC token rejected");
                         None
                     }
                 },
@@ -246,7 +323,81 @@ fn principal_from_claims(claims: &OidcClaims, audience: &str) -> Option<Principa
     Some(Principal {
         name: Arc::from(name),
         role,
+        tenant_id: Arc::from("default"),
+        project_id: Arc::from("default"),
+        scopes: default_scopes_for_role(role),
     })
+}
+
+#[must_use]
+pub fn token_digest(token: &str) -> [u8; 32] {
+    Sha256::digest(token.as_bytes()).into()
+}
+
+fn default_tenant_id() -> String {
+    "default".to_string()
+}
+
+fn default_project_id() -> String {
+    "default".to_string()
+}
+
+fn parse_scopes(name: &str, role: Role, scopes: Vec<String>) -> Result<Arc<[Arc<str>]>, String> {
+    if scopes.is_empty() {
+        return Ok(default_scopes_for_role(role));
+    }
+    let mut unique = BTreeSet::new();
+    for scope in scopes {
+        let scope = scope.trim();
+        if scope.is_empty() {
+            return Err(format!("API credential {name} contains an empty scope"));
+        }
+        if !scope.chars().all(|ch| {
+            ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, ':' | '-' | '*' | '_')
+        }) {
+            return Err(format!(
+                "API credential {name} contains invalid scope {scope}"
+            ));
+        }
+        unique.insert(scope.to_string());
+    }
+    Ok(unique.into_iter().map(Arc::from).collect::<Vec<_>>().into())
+}
+
+fn default_scopes_for_role(role: Role) -> Arc<[Arc<str>]> {
+    let scopes: &[&str] = match role {
+        Role::Viewer => &[
+            "auth:read",
+            "jobs:read",
+            "workflows:read",
+            "automations:read",
+            "system:read",
+        ],
+        Role::Operator => &[
+            "auth:read",
+            "jobs:read",
+            "jobs:run",
+            "jobs:cancel",
+            "workflows:read",
+            "workflows:operate",
+            "automations:read",
+            "automations:operate",
+            "system:read",
+        ],
+        Role::Admin => &["*"],
+    };
+    scopes
+        .iter()
+        .copied()
+        .map(Arc::from)
+        .collect::<Vec<_>>()
+        .into()
+}
+
+fn now_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
 }
 
 fn oidc_role(claims: &OidcClaims, audience: &str) -> Option<Role> {
@@ -286,8 +437,33 @@ mod tests {
             .authenticate("0123456789abcdef0123456789abcdef")
             .expect("known token");
         assert_eq!(principal.role, Role::Operator);
+        assert!(principal.has_scope("jobs:run"));
         assert!(config.authenticate("wrong").is_none());
         assert!(!format!("{config:?}").contains("0123456789abcdef"));
+    }
+
+    #[test]
+    fn honors_explicit_scopes_and_expiry() {
+        let config = AuthConfig::from_json(
+            r#"[{"name":"ci","role":"operator","token":"0123456789abcdef0123456789abcdef","scopes":["jobs:run"],"expires_at_unix":4102444800}]"#,
+        )
+        .expect("valid scoped credential");
+
+        let principal = config
+            .authenticate("0123456789abcdef0123456789abcdef")
+            .expect("known token");
+        assert!(principal.has_scope("jobs:run"));
+        assert!(!principal.has_scope("workflows:operate"));
+
+        let expired = AuthConfig::from_json(
+            r#"[{"name":"old","role":"admin","token":"abcdef0123456789abcdef0123456789","expires_at_unix":1}]"#,
+        )
+        .expect("valid expired credential");
+        assert!(
+            expired
+                .authenticate("abcdef0123456789abcdef0123456789")
+                .is_none()
+        );
     }
 
     #[test]

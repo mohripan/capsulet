@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   if (request.cookies.has("capsulet_session") || process.env.CAPSULET_DASHBOARD_API_TOKEN) {
     return NextResponse.next();
   }

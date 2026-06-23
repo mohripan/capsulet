@@ -26,5 +26,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
       - name: Typecheck
         run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Start e2e stack
+        working-directory: .
+        run: docker compose -f compose.yaml -f compose.e2e.yaml up -d --build
+
+      - name: Run Playwright e2e
+        run: npm run test:e2e
+
+      - name: Stop e2e stack
+        if: always()
+        working-directory: .
+        run: docker compose -f compose.yaml -f compose.e2e.yaml down -v

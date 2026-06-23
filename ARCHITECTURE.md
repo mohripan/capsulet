@@ -251,7 +251,7 @@ Execution pools are static YAML configuration. A pool can define:
 - Kubernetes Job TTL after completion;
 - a documented maximum-concurrency value.
 
-The API exposes configured pool and host-group views. The worker resolves the selected pool and applies it to a Kubernetes Job. `maxConcurrentJobs` is not currently enforced.
+The API exposes configured pool and host-group views. The worker resolves the selected pool, applies it to a Kubernetes Job, and passes each pool's `maxConcurrentJobs` limit into the lease query so active leased work is capped per pool.
 
 ## Deployment views
 

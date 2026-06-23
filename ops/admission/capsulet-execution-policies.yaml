@@ -1,0 +1,59 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: capsulet-execution-pod-security
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: capsulet-execution-pod
+      expression: "has(object.metadata.labels) && 'capsulet.dev/job-run-id' in object.metadata.labels"
+  validations:
+    - expression: "object.spec.containers.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) || c.securityContext.privileged == false)"
+      message: "Capsulet execution pods must not run privileged containers."
+    - expression: "object.spec.containers.all(c, has(c.securityContext) && has(c.securityContext.allowPrivilegeEscalation) && c.securityContext.allowPrivilegeEscalation == false)"
+      message: "Capsulet execution pods must disable privilege escalation."
+    - expression: "has(object.spec.securityContext) && has(object.spec.securityContext.seccompProfile) && object.spec.securityContext.seccompProfile.type == 'RuntimeDefault'"
+      message: "Capsulet execution pods must use RuntimeDefault seccomp."
+    - expression: "object.spec.automountServiceAccountToken == false"
+      message: "Capsulet execution pods must not automount service account tokens."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: capsulet-execution-pod-security
+spec:
+  policyName: capsulet-execution-pod-security
+  validationActions: ["Deny"]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: capsulet-execution-digest-images
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: capsulet-execution-pod
+      expression: "has(object.metadata.labels) && 'capsulet.dev/job-run-id' in object.metadata.labels"
+  validations:
+    - expression: "object.spec.containers.all(c, c.image.contains('@sha256:'))"
+      message: "Capsulet execution containers must use digest-pinned images."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: capsulet-execution-digest-images
+spec:
+  policyName: capsulet-execution-digest-images
+  validationActions: ["Audit"]

@@ -214,14 +214,25 @@ impl Runner for ProcessRunner {
             return Ok(RunReport::cancelled(None));
         }
 
+        validate_execution_policy(execution).map_err(ProcessRunnerError::Policy)?;
         reset_artifact_dir()?;
         materialize_local_inputs(&execution.input_artifacts)?;
+        if !execution.definition.python_dependencies().is_empty() {
+            let install_output =
+                install_python_dependencies(execution.definition.python_dependencies()).await?;
+            if !install_output.status.success() {
+                return Ok(RunReport::failed(Some(combined_output_logs(
+                    &install_output,
+                ))));
+            }
+        }
         let Some((program, args)) = execution.definition.command().split_first() else {
             return Err(ProcessRunnerError::EmptyCommand);
         };
         let mut child = Command::new(local_program(program))
             .args(args)
             .env("CAPSULET_INPUT_JSON", execution.run.input_json())
+            .env("PYTHONPATH", process_python_path())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
@@ -256,6 +267,13 @@ impl Runner for ProcessRunner {
     }
 }
 
+fn process_python_path() -> String {
+    match std::env::var("PYTHONPATH") {
+        Ok(existing) if !existing.is_empty() => format!("/capsulet/python-site:{existing}"),
+        _ => "/capsulet/python-site".to_string(),
+    }
+}
+
 fn combined_output_logs(output: &std::process::Output) -> String {
     let mut logs = String::new();
     logs.push_str(&String::from_utf8_lossy(&output.stdout));
@@ -271,6 +289,25 @@ fn local_program(program: &str) -> &str {
     }
 }
 
+async fn install_python_dependencies(
+    dependencies: &[String],
+) -> Result<std::process::Output, std::io::Error> {
+    Command::new(local_program("python"))
+        .arg("-m")
+        .arg("pip")
+        .arg("install")
+        .arg("--disable-pip-version-check")
+        .arg("--no-input")
+        .arg("--break-system-packages")
+        .arg("--target")
+        .arg("/capsulet/python-site")
+        .args(dependencies)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+}
+
 #[derive(Debug, Error)]
 pub enum ProcessRunnerError {
     #[error("process command cannot be empty")]
@@ -279,6 +316,8 @@ pub enum ProcessRunnerError {
     Io(#[from] std::io::Error),
     #[error("cancellation check failed: {0}")]
     CancellationCheck(String),
+    #[error("execution policy rejected run: {0}")]
+    Policy(String),
 }
 
 impl StubRunner {
@@ -402,6 +441,37 @@ pub struct ExecutionPoolConfig {
     pub runtime_class_name: Option<String>,
     #[serde(default)]
     pub service_account_name: Option<String>,
+    #[serde(default)]
+    pub allowed_images: Vec<String>,
+    #[serde(default)]
+    pub require_digest_images: bool,
+    #[serde(default)]
+    pub max_python_dependencies: Option<usize>,
+    #[serde(default)]
+    pub max_python_dependency_length: Option<usize>,
+    #[serde(default)]
+    pub blocked_python_dependencies: Vec<String>,
+}
+
+impl Default for ExecutionPoolConfig {
+    fn default() -> Self {
+        Self {
+            description: String::new(),
+            node_selector: BTreeMap::new(),
+            tolerations: Vec::new(),
+            resources: PoolResources::default(),
+            timeout_seconds: default_timeout_seconds(),
+            max_concurrent_jobs: 0,
+            ttl_seconds_after_finished: None,
+            runtime_class_name: None,
+            service_account_name: None,
+            allowed_images: Vec::new(),
+            require_digest_images: false,
+            max_python_dependencies: None,
+            max_python_dependency_length: None,
+            blocked_python_dependencies: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -442,6 +512,71 @@ impl ExecutionPoolsConfig {
     pub fn find(&self, name: &str) -> Option<&ExecutionPoolConfig> {
         self.pools.get(name)
     }
+}
+
+fn validate_execution_policy(execution: &RunExecution) -> Result<(), String> {
+    let image = execution.definition.runtime_image();
+    if execution.pool.require_digest_images && !image.contains("@sha256:") {
+        return Err(format!("runtime image {image} must be pinned by digest"));
+    }
+    if !execution.pool.allowed_images.is_empty()
+        && !execution
+            .pool
+            .allowed_images
+            .iter()
+            .any(|allowed| image_matches_policy(image, allowed))
+    {
+        return Err(format!("runtime image {image} is not allowed in this pool"));
+    }
+    let dependencies = execution.definition.python_dependencies();
+    if let Some(max) = execution.pool.max_python_dependencies
+        && dependencies.len() > max
+    {
+        return Err(format!(
+            "python dependency count {} exceeds pool limit {max}",
+            dependencies.len()
+        ));
+    }
+    if let Some(max) = execution.pool.max_python_dependency_length
+        && let Some(dependency) = dependencies
+            .iter()
+            .find(|dependency| dependency.len() > max)
+    {
+        return Err(format!(
+            "python dependency {dependency} exceeds pool length limit {max}"
+        ));
+    }
+    for dependency in dependencies {
+        if execution
+            .pool
+            .blocked_python_dependencies
+            .iter()
+            .any(|blocked| dependency_name_matches(dependency, blocked))
+        {
+            return Err(format!("python dependency {dependency} is blocked"));
+        }
+    }
+    Ok(())
+}
+
+fn image_matches_policy(image: &str, allowed: &str) -> bool {
+    allowed
+        .strip_suffix('*')
+        .map_or_else(|| image == allowed, |prefix| image.starts_with(prefix))
+}
+
+fn dependency_name_matches(dependency: &str, blocked: &str) -> bool {
+    let blocked = blocked.trim().to_ascii_lowercase();
+    if blocked.is_empty() {
+        return false;
+    }
+    let name = dependency
+        .trim()
+        .split(['=', '<', '>', '!', '~', '[', ';', ' '])
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    name == blocked
 }
 
 /// Kubernetes-backed runner.
@@ -536,6 +671,7 @@ impl Runner for KubernetesRunner {
     {
         let jobs: Api<Job> = Api::namespaced(self.client.clone(), &self.namespace);
         let pods: Api<Pod> = Api::namespaced(self.client.clone(), &self.namespace);
+        validate_execution_policy(execution).map_err(KubernetesRunnerError::Policy)?;
         let job = build_job(execution, &self.namespace);
         let job_name = job
             .metadata
@@ -746,6 +882,7 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
                         image: Some(execution.definition.runtime_image().to_string()),
                         command: Some(wrapped_command(
                             execution.definition.command(),
+                            execution.definition.python_dependencies(),
                             &execution.input_artifacts,
                         )),
                         env: Some(vec![EnvVar {
@@ -833,20 +970,40 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
     }
 }
 
-fn wrapped_command(command: &[String], input_artifacts: &[InputArtifact]) -> Vec<String> {
+fn wrapped_command(
+    command: &[String],
+    python_dependencies: &[String],
+    input_artifacts: &[InputArtifact],
+) -> Vec<String> {
     vec![
         "/bin/sh".to_string(),
         "-c".to_string(),
-        wrapper_script(command, input_artifacts),
+        wrapper_script(command, python_dependencies, input_artifacts),
     ]
 }
 
-fn wrapper_script(command: &[String], input_artifacts: &[InputArtifact]) -> String {
+fn wrapper_script(
+    command: &[String],
+    python_dependencies: &[String],
+    input_artifacts: &[InputArtifact],
+) -> String {
     let command = command
         .iter()
         .map(|part| shell_quote(part))
         .collect::<Vec<_>>()
         .join(" ");
+    let dependency_install = if python_dependencies.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "mkdir -p /capsulet/python-site\npython -m pip install --disable-pip-version-check --no-input --break-system-packages --target /capsulet/python-site {}\nexport PYTHONPATH=\"/capsulet/python-site:${{PYTHONPATH:-}}\"",
+            python_dependencies
+                .iter()
+                .map(|dependency| shell_quote(dependency))
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+    };
     let inputs = input_artifacts
         .iter()
         .map(|artifact| {
@@ -872,6 +1029,7 @@ fn wrapper_script(command: &[String], input_artifacts: &[InputArtifact]) -> Stri
         r#"mkdir -p /capsulet
 printf '%s' "$CAPSULET_INPUT_JSON" > /capsulet/input.json
 {inputs}
+{dependency_install}
 {command}
 status=$?
 if [ -d {ARTIFACT_DIR} ]; then
@@ -1077,6 +1235,8 @@ pub enum KubernetesRunnerError {
     MissingJobName,
     #[error("an existing Kubernetes Job has conflicting Capsulet run identity")]
     JobIdentityConflict,
+    #[error("execution policy rejected run: {0}")]
+    Policy(String),
     #[error("cancellation check failed: {0}")]
     CancellationCheck(String),
 }

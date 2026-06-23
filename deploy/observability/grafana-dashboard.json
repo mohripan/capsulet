@@ -1,0 +1,58 @@
+{
+  "title": "Capsulet SLOs",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "API Request Rate",
+      "targets": [
+        {
+          "expr": "sum(rate(capsulet_http_requests_total[5m]))"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "API Error Rate",
+      "targets": [
+        {
+          "expr": "sum(rate(capsulet_http_request_errors_total[5m])) / clamp_min(sum(rate(capsulet_http_requests_total[5m])), 1)"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "API p95 Duration",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(capsulet_http_request_duration_seconds_bucket[5m])) by (le))"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Job Runs By Status",
+      "targets": [
+        {
+          "expr": "sum(capsulet_job_runs) by (status)"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Service Ticks",
+      "targets": [
+        {
+          "expr": "sum(rate(capsulet_service_ticks_total[5m])) by (component, outcome)"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+    }
+  ]
+}

@@ -36,6 +36,10 @@ containerSecurityContext:
 config:
   logLevel: info
   seedExamples: true
+  database:
+    maxConnections: 20
+    acquireTimeoutSeconds: 30
+    statementTimeoutSeconds: 30
   databaseUrlSecret:
     name: ""
     key: DATABASE_URL
@@ -89,6 +93,21 @@ postgresql:
     limits:
       cpu: 500m
       memory: 512Mi
+  backup:
+    enabled: false
+    schedule: "17 2 * * *"
+    retentionDays: 14
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
 
 minio:
   mode: bundled
@@ -143,7 +162,12 @@ migrations:
 
 api:
   enabled: true
-  replicaCount: 1
+  replicaCount: 2
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
   auth:
     disabled: false
     existingSecret: capsulet-api-auth
@@ -167,7 +191,12 @@ api:
 
 worker:
   enabled: true
-  replicaCount: 1
+  replicaCount: 2
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
   image:
     repositorySuffix: worker
   runner:
@@ -203,7 +232,12 @@ scheduler:
 
 evaluator:
   enabled: true
-  replicaCount: 1
+  replicaCount: 2
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
   image:
     repositorySuffix: evaluator
   pollSeconds: 2
@@ -223,7 +257,12 @@ evaluator:
 
 dashboard:
   enabled: true
-  replicaCount: 1
+  replicaCount: 2
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
   apiBaseUrl: ""
   image:
     repositorySuffix: dashboard
@@ -257,6 +296,12 @@ executionPools:
       timeoutSeconds: 120
       maxConcurrentJobs: 50
       ttlSecondsAfterFinished: 300
+      allowedImages:
+        - python:*
+      requireDigestImages: false
+      maxPythonDependencies: 32
+      maxPythonDependencyLength: 128
+      blockedPythonDependencies: []
 
     large:
       description: Compute-heavy jobs such as model inference and batch processing
@@ -277,6 +322,11 @@ executionPools:
       timeoutSeconds: 3600
       maxConcurrentJobs: 10
       ttlSecondsAfterFinished: 300
+      allowedImages: []
+      requireDigestImages: false
+      maxPythonDependencies: 32
+      maxPythonDependencyLength: 128
+      blockedPythonDependencies: []
 
 executionNetworkPolicy:
   enabled: true
@@ -292,3 +342,16 @@ networkPolicies:
 
 serviceMonitor:
   enabled: false
+
+highAvailability:
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  podAntiAffinity:
+    enabled: true
+    weight: 100
+  topologySpread:
+    enabled: true
+    maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway

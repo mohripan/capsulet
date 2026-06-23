@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 async-trait.workspace = true
+async-stream = "0.3"
 axum.workspace = true
 hmac.workspace = true
 jsonwebtoken.workspace = true
@@ -26,6 +27,11 @@ sha2.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tower-http = { version = "0.7.0", features = ["trace", "timeout", "compression-full", "limit", "cors"] }
+tower_governor = "0.8.0"
+tower = { workspace = true, features = ["limit"] }
+capsulet-observability = { version = "0.1.0", path = "../observability" }
+uuid = { version = "1.23.3", features = ["v4"] }
 
 [dev-dependencies]
 http-body-util.workspace = true

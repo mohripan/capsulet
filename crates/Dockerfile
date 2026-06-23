@@ -20,7 +20,7 @@ ARG BIN
 ENV CAPSULET_BIN="${BIN}"
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl python3 \
+    && apt-get install -y --no-install-recommends ca-certificates curl python3 python3-pip \
     && groupadd --gid 10001 capsulet \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin capsulet \
     && mkdir -p /capsulet/artifacts \

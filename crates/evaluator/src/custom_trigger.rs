@@ -112,6 +112,7 @@ async fn execute(trigger: &CustomRuntimeTrigger) -> Result<Value, EvaluatorError
         format!("custom trigger {}", trigger.trigger_name),
         trigger.runtime_image.clone(),
         trigger.command.clone(),
+        Vec::new(),
         format!("custom-triggers/{digest}"),
         "{}",
         RetryPolicy::no_retry(),
@@ -145,6 +146,7 @@ async fn execute(trigger: &CustomRuntimeTrigger) -> Result<Value, EvaluatorError
                     ttl_seconds_after_finished: Some(300),
                     runtime_class_name: env::var("CAPSULET_EXECUTION_RUNTIME_CLASS").ok(),
                     service_account_name: env::var("CAPSULET_EXECUTION_SERVICE_ACCOUNT").ok(),
+                    ..ExecutionPoolConfig::default()
                 },
                 input_artifacts: Vec::new(),
             },

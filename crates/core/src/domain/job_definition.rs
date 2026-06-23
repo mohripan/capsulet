@@ -52,6 +52,7 @@ pub struct JobDefinition {
     name: String,
     runtime_image: String,
     command: Vec<String>,
+    python_dependencies: Vec<String>,
     bundle_object_key: String,
     input_schema: String,
     retry_max_attempts: u32,
@@ -64,11 +65,13 @@ impl JobDefinition {
     /// # Errors
     ///
     /// Returns an error when required execution fields are empty.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: JobDefinitionId,
         name: impl Into<String>,
         runtime_image: impl Into<String>,
         command: Vec<String>,
+        python_dependencies: Vec<String>,
         bundle_object_key: impl Into<String>,
         input_schema: impl Into<String>,
         retry_policy: RetryPolicy,
@@ -87,6 +90,7 @@ impl JobDefinition {
         if command.is_empty() || command.iter().any(|part| part.trim().is_empty()) {
             return Err("job definition command cannot be empty".to_string());
         }
+        validate_python_dependencies(&python_dependencies)?;
         if bundle_object_key.trim().is_empty() {
             return Err("job definition bundle object key cannot be empty".to_string());
         }
@@ -98,6 +102,7 @@ impl JobDefinition {
             name,
             runtime_image,
             command,
+            python_dependencies,
             bundle_object_key,
             input_schema,
             retry_max_attempts: retry_policy.max_attempts(),
@@ -123,6 +128,11 @@ impl JobDefinition {
     #[must_use]
     pub fn command(&self) -> &[String] {
         &self.command
+    }
+
+    #[must_use]
+    pub fn python_dependencies(&self) -> &[String] {
+        &self.python_dependencies
     }
 
     #[must_use]
@@ -175,6 +185,7 @@ impl JobDefinition {
                 "-c".to_string(),
                 "print('hello from capsulet')".to_string(),
             ],
+            python_dependencies: Vec::new(),
             bundle_object_key: "bundles/job_hello_python.tar.gz".to_string(),
             input_schema: "{}".to_string(),
             retry_max_attempts: RetryPolicy::no_retry().max_attempts(),
@@ -198,6 +209,7 @@ impl JobDefinition {
                 "-c".to_string(),
                 "import time; print('sleeping from capsulet'); time.sleep(300)".to_string(),
             ],
+            python_dependencies: Vec::new(),
             bundle_object_key: "bundles/job_sleep_python.tar.gz".to_string(),
             input_schema: "{}".to_string(),
             retry_max_attempts: RetryPolicy::no_retry().max_attempts(),
@@ -221,6 +233,7 @@ impl JobDefinition {
                 "-c".to_string(),
                 "import sys; print('failing from capsulet'); sys.exit(1)".to_string(),
             ],
+            python_dependencies: Vec::new(),
             bundle_object_key: "bundles/job_fail_python.tar.gz".to_string(),
             input_schema: "{}".to_string(),
             retry_max_attempts: 2,
@@ -244,6 +257,7 @@ impl JobDefinition {
                 "-c".to_string(),
                 "import time; print('timing out from capsulet'); time.sleep(300)".to_string(),
             ],
+            python_dependencies: Vec::new(),
             bundle_object_key: "bundles/job_timeout_python.tar.gz".to_string(),
             input_schema: "{}".to_string(),
             retry_max_attempts: RetryPolicy::no_retry().max_attempts(),
@@ -273,12 +287,35 @@ impl JobDefinition {
                 )
                 .to_string(),
             ],
+            python_dependencies: Vec::new(),
             bundle_object_key: "bundles/job_artifact_python.tar.gz".to_string(),
             input_schema: "{}".to_string(),
             retry_max_attempts: RetryPolicy::no_retry().max_attempts(),
             retry_delay_seconds: RetryPolicy::no_retry().delay_seconds(),
         }
     }
+}
+
+fn validate_python_dependencies(dependencies: &[String]) -> Result<(), String> {
+    if dependencies.len() > 100 {
+        return Err("job definition supports at most 100 Python dependencies".to_string());
+    }
+    for dependency in dependencies {
+        let trimmed = dependency.trim();
+        if trimmed.is_empty() {
+            return Err("python dependency cannot be empty".to_string());
+        }
+        if trimmed.len() > 256 {
+            return Err("python dependency cannot exceed 256 characters".to_string());
+        }
+        if trimmed.contains('\n') || trimmed.contains('\r') || trimmed.contains('\0') {
+            return Err("python dependency must be a single-line package spec".to_string());
+        }
+        if trimmed.starts_with('-') {
+            return Err("python dependency options are not allowed".to_string());
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -292,6 +329,7 @@ mod tests {
             "Example",
             "python:3.12-slim",
             vec!["python".to_string(), "/workspace/main.py".to_string()],
+            vec!["requests==2.32.5".to_string()],
             "bundles/job_1.tar.gz",
             "{}",
             RetryPolicy::no_retry(),
@@ -302,11 +340,29 @@ mod tests {
     }
 
     #[test]
+    fn preserves_python_dependencies() {
+        let definition = JobDefinition::new(
+            JobDefinitionId::new("job_1").expect("valid id"),
+            "Example",
+            "python:3.12-slim",
+            vec!["python".to_string(), "/workspace/main.py".to_string()],
+            vec!["requests==2.32.5".to_string()],
+            "bundles/job_1.tar.gz",
+            "{}",
+            RetryPolicy::no_retry(),
+        )
+        .expect("valid definition");
+
+        assert_eq!(definition.python_dependencies(), ["requests==2.32.5"]);
+    }
+
+    #[test]
     fn rejects_empty_command() {
         let definition = JobDefinition::new(
             JobDefinitionId::new("job_1").expect("valid id"),
             "Example",
             "python:3.12-slim",
+            Vec::new(),
             Vec::new(),
             "bundles/job_1.tar.gz",
             "{}",
@@ -321,6 +377,22 @@ mod tests {
         let policy = RetryPolicy::new(0, 0);
 
         assert!(policy.is_err());
+    }
+
+    #[test]
+    fn rejects_dependency_options() {
+        let definition = JobDefinition::new(
+            JobDefinitionId::new("job_1").expect("valid id"),
+            "Example",
+            "python:3.12-slim",
+            vec!["python".to_string(), "/workspace/main.py".to_string()],
+            vec!["--extra-index-url=https://example.test/simple".to_string()],
+            "bundles/job_1.tar.gz",
+            "{}",
+            RetryPolicy::no_retry(),
+        );
+
+        assert!(definition.is_err());
     }
 
     #[test]

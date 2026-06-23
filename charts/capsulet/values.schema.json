@@ -45,7 +45,12 @@
               "resources": { "type": "object" },
               "timeoutSeconds": { "type": "integer", "minimum": 1 },
               "maxConcurrentJobs": { "type": "integer", "minimum": 1 },
-              "ttlSecondsAfterFinished": { "type": "integer", "minimum": 0 }
+              "ttlSecondsAfterFinished": { "type": "integer", "minimum": 0 },
+              "allowedImages": { "type": "array", "items": { "type": "string" } },
+              "requireDigestImages": { "type": "boolean" },
+              "maxPythonDependencies": { "type": "integer", "minimum": 0 },
+              "maxPythonDependencyLength": { "type": "integer", "minimum": 1 },
+              "blockedPythonDependencies": { "type": "array", "items": { "type": "string" } }
             },
             "required": ["resources", "timeoutSeconds", "maxConcurrentJobs"]
           }
@@ -109,6 +114,26 @@
         "securityContext": { "type": "object" },
         "containerSecurityContext": { "type": "object" },
         "resources": { "type": "object" }
+        ,
+        "backup": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "schedule": { "type": "string", "minLength": 1 },
+            "retentionDays": { "type": "integer", "minimum": 1 },
+            "persistence": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "size": { "type": "string", "minLength": 1 },
+                "storageClass": { "type": "string" }
+              },
+              "required": ["enabled", "size"]
+            },
+            "resources": { "type": "object" }
+          },
+          "required": ["enabled", "schedule", "retentionDays", "persistence"]
+        }
       },
       "required": ["mode", "image", "auth", "service", "persistence"]
     },

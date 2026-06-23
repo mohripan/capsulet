@@ -1,7 +1,8 @@
 use std::{env, net::SocketAddr};
 
 use capsulet_core::{ComponentDescriptor, ComponentKind};
-use capsulet_postgres::PostgresStore;
+use capsulet_observability as observability;
+use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 use capsulet_storage::ConfiguredObjectStore;
 
 use jsonwebtoken::jwk::JwkSet;
@@ -20,11 +21,12 @@ const DEFAULT_OBJECT_STORAGE_PATH: &str = ".capsulet-objects";
 /// setup fails, object storage cannot be configured, or the HTTP server exits
 /// with an error.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    observability::init("capsulet-api")?;
     let descriptor = ComponentDescriptor::new(
         ComponentKind::Api,
         "control plane api for automations, jobs, logs, and artifacts",
     );
-    println!("{}", descriptor.banner());
+    observability::tracing::info!(component = "api", banner = %descriptor.banner());
 
     let database_url = env::var("CAPSULET_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
@@ -37,14 +39,17 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .map(str::to_string)
         .collect::<Vec<_>>();
 
-    let store = PostgresStore::connect(&database_url).await?;
+    let store =
+        PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?).await?;
     store.migrate().await?;
     if env::var("CAPSULET_SEED_EXAMPLES").is_ok_and(|value| value == "true") {
         store.seed_example_job_definitions().await?;
-        println!("seeded example job definitions");
+        observability::tracing::info!("seeded example job definitions");
     }
     if env_bool("CAPSULET_MIGRATE_ONLY") {
-        println!("database migrations complete; exiting because CAPSULET_MIGRATE_ONLY is set");
+        observability::tracing::info!(
+            "database migrations complete; exiting because CAPSULET_MIGRATE_ONLY is set"
+        );
         return Ok(());
     }
 
@@ -57,7 +62,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_default();
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("capsulet-api listening on http://{addr}");
+    observability::tracing::info!(%addr, "capsulet-api listening");
 
     axum::serve(
         listener,
@@ -68,13 +73,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         ),
     )
     .await?;
+    observability::shutdown();
 
     Ok(())
 }
 
 async fn load_auth_config() -> Result<AuthConfig, Box<dyn std::error::Error>> {
     if env_bool("CAPSULET_AUTH_DISABLED") {
-        eprintln!("WARNING: API authentication is explicitly disabled");
+        observability::tracing::warn!("API authentication is explicitly disabled");
         return Ok(AuthConfig::disabled());
     }
     let value = env::var("CAPSULET_API_TOKENS")
@@ -87,7 +93,7 @@ async fn load_auth_config() -> Result<AuthConfig, Box<dyn std::error::Error>> {
     ) {
         let jwks = load_jwks_with_retry(&jwks_url).await?;
         config = config.with_oidc(issuer, audience, &jwks);
-        println!("loaded OIDC authentication metadata from {jwks_url}");
+        observability::tracing::info!(%jwks_url, "loaded OIDC authentication metadata");
     }
     Ok(config)
 }

@@ -22,6 +22,10 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      - name: Check OpenAPI contract
+        shell: pwsh
+        run: ./scripts/check-openapi.ps1
+
       - name: Lint
         run: cargo clippy --workspace --all-targets -- -D warnings
 

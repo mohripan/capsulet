@@ -2,3 +2,8 @@ services:
   postgres:
     ports: !override
       - "55432:5432"
+
+  api:
+    environment:
+      CAPSULET_API_RATE_LIMIT_PER_SECOND: "1000"
+      CAPSULET_API_RATE_LIMIT_BURST: "2000"

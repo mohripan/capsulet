@@ -1,0 +1,28 @@
+{{- $root := . -}}
+{{- $components := dict "api" .Values.api "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator "dashboard" .Values.dashboard -}}
+{{- range $name, $component := $components }}
+{{- if and $component.enabled (dig "autoscaling" "enabled" false $component) }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "capsulet.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "capsulet.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "capsulet.fullname" $root }}-{{ $name }}
+  minReplicas: {{ $component.autoscaling.minReplicas }}
+  maxReplicas: {{ $component.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $component.autoscaling.targetCPUUtilizationPercentage }}
+---
+{{- end }}
+{{- end }}

@@ -4,7 +4,8 @@ use std::{env, time::Duration};
 
 use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
-use capsulet_postgres::PostgresStore;
+use capsulet_observability as observability;
+use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 
 const DEFAULT_POLL_SECONDS: u64 = 5;
 const DEFAULT_HEALTH_ADDR: &str = "0.0.0.0:8082";
@@ -16,11 +17,12 @@ const DEFAULT_HEALTH_ADDR: &str = "0.0.0.0:8082";
 /// Returns an error when required environment variables are missing, database
 /// setup fails, or a scheduler tick cannot be persisted.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    observability::init("capsulet-scheduler")?;
     let descriptor = ComponentDescriptor::new(
         ComponentKind::Scheduler,
         "creates scheduled automation workflow runs and advances workflow steps",
     );
-    println!("{}", descriptor.banner());
+    observability::tracing::info!(component = "scheduler", banner = %descriptor.banner());
 
     let database_url = env::var("CAPSULET_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
@@ -33,7 +35,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(DEFAULT_POLL_SECONDS);
     let loop_enabled = env_bool("CAPSULET_SCHEDULER_LOOP");
 
-    let store = PostgresStore::connect(&database_url).await?;
+    let store =
+        PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?).await?;
     store.migrate().await?;
     start_health_server(
         store.clone(),
@@ -43,9 +46,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
 
     loop {
+        let started = std::time::Instant::now();
         let triggered = store.trigger_due_interval_automations().await?;
         let advanced = store.advance_workflow_runs().await?;
-        println!("scheduler tick: triggered={triggered} advanced={advanced}");
+        observability::record_service_tick("scheduler", "success", started.elapsed());
+        observability::tracing::info!(triggered, advanced, "scheduler tick");
 
         if !loop_enabled {
             break;
@@ -69,7 +74,7 @@ async fn start_health_server(
     let listener = tokio::net::TcpListener::bind(address).await?;
     tokio::spawn(async move {
         if let Err(error) = axum::serve(listener, app).await {
-            eprintln!("scheduler health server stopped: {error}");
+            observability::tracing::warn!(%error, "scheduler health server stopped");
         }
     });
     Ok(())
@@ -84,7 +89,14 @@ async fn ready(State(store): State<PostgresStore>) -> StatusCode {
 
 async fn metrics(State(store): State<PostgresStore>) -> axum::response::Response {
     match store.prometheus_metrics().await {
-        Ok(body) => ([("content-type", "text/plain; version=0.0.4")], body).into_response(),
+        Ok(db_body) => {
+            let mut body = observability::render_metrics();
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            body.push_str(&db_body);
+            ([("content-type", "text/plain; version=0.0.4")], body).into_response()
+        }
         Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
 }

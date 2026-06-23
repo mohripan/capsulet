@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: capsulet-slos
+  labels:
+    app.kubernetes.io/name: capsulet
+spec:
+  groups:
+    - name: capsulet-api
+      rules:
+        - alert: CapsuletApiHighErrorRate
+          expr: |
+            sum(rate(capsulet_http_request_errors_total[5m]))
+            /
+            clamp_min(sum(rate(capsulet_http_requests_total[5m])), 1)
+            > 0.01
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: Capsulet API 5xx rate is above 1%
+        - alert: CapsuletApiP95LatencyHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(capsulet_http_request_duration_seconds_bucket[5m])) by (le)
+            ) > 1
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: Capsulet API p95 latency is above 1s
+    - name: capsulet-workers
+      rules:
+        - alert: CapsuletNoWorkerProgress
+          expr: sum(rate(capsulet_service_ticks_total{component="worker",outcome="run_processed"}[15m])) == 0
+          for: 30m
+          labels:
+            severity: ticket
+          annotations:
+            summary: Capsulet workers have not processed runs recently
+        - alert: CapsuletTriggerEvaluationErrors
+          expr: sum(rate(capsulet_service_ticks_total{component="evaluator",outcome="error"}[10m])) > 0
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: Capsulet evaluator is reporting trigger evaluation errors

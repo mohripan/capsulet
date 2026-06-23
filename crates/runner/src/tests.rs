@@ -65,6 +65,7 @@ fn pool() -> ExecutionPoolConfig {
         ttl_seconds_after_finished: Some(300),
         runtime_class_name: Some("gvisor".to_string()),
         service_account_name: Some("capsulet-execution".to_string()),
+        ..ExecutionPoolConfig::default()
     }
 }
 

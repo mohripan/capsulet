@@ -9,7 +9,19 @@ export type RunStatus =
   | "timed_out"
   | "retry_scheduled";
 
-export type Principal = { name: string; role: "viewer" | "operator" | "admin" };
+export type Principal = { name: string; role: "viewer" | "operator" | "admin"; tenant_id: string; project_id: string; scopes: string[] };
+export type ServiceAccount = {
+  id: string;
+  name: string;
+  tenant_id: string;
+  project_id: string;
+  role: "viewer" | "operator" | "admin";
+  scopes: string[];
+  expires_at?: string | null;
+  revoked_at?: string | null;
+  last_used_at?: string | null;
+  created_at: string;
+};
 export type AuditEvent = {
   id: number;
   principal: string;
@@ -79,6 +91,7 @@ export type JobDefinition = {
   name: string;
   runtime_image: string;
   command: string[];
+  python_dependencies: string[];
   bundle_object_key: string;
   input_schema: ParameterContract;
   retry_max_attempts: number;
@@ -103,6 +116,7 @@ export type CreateJobDefinitionRequest = {
   name: string;
   runtime_image?: string;
   python_script: string;
+  python_dependencies?: string[];
   input_schema?: ParameterContract;
   retry_max_attempts?: number;
   retry_delay_seconds?: number;
@@ -338,6 +352,31 @@ export async function listAuditEvents() {
   return apiFetch<{ audit_events: AuditEvent[] }>("/v1/audit-events");
 }
 
+export async function listServiceAccounts() {
+  return apiFetch<{ service_accounts: ServiceAccount[] }>("/v1/service-accounts");
+}
+
+export async function createServiceAccount(request: {
+  name: string;
+  role: "viewer" | "operator" | "admin";
+  scopes?: string[];
+  tenant_id?: string;
+  project_id?: string;
+  expires_at_unix?: number;
+}) {
+  return apiFetch<ServiceAccount & { token: string }>("/v1/service-accounts", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function revokeServiceAccount(id: string) {
+  return apiFetch<void>(`/v1/service-accounts/${encodeURIComponent(id)}/revoke`, {
+    method: "POST",
+    body: "{}"
+  });
+}
+
 export async function listJobDefinitions(limit = 100) {
   return apiFetch<{ job_definitions: JobDefinition[] }>(`/v1/job-definitions?limit=${limit}`);
 }
@@ -363,7 +402,7 @@ export async function deleteJobDefinition(id: string) {
 }
 
 export async function getJobDefinitionSource(id: string) {
-  return apiFetch<{ python_script: string }>(`/v1/job-definitions/${encodeURIComponent(id)}/source`);
+  return apiFetch<{ python_script: string; python_dependencies: string[] }>(`/v1/job-definitions/${encodeURIComponent(id)}/source`);
 }
 
 export async function listExecutionPools() {

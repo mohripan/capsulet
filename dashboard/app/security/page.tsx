@@ -1,13 +1,28 @@
  "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { KeyRound, LockKeyhole, Network, ShieldCheck } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle } from "../components";
-import { AuditEvent, Principal, getCurrentPrincipal, getErrorMessage, listAuditEvents } from "../lib/api";
+import {
+  AuditEvent,
+  Principal,
+  ServiceAccount,
+  createServiceAccount,
+  getCurrentPrincipal,
+  getErrorMessage,
+  listAuditEvents,
+  listServiceAccounts,
+  revokeServiceAccount
+} from "../lib/api";
 
 export default function SecurityPage() {
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [serviceAccounts, setServiceAccounts] = useState<ServiceAccount[]>([]);
+  const [newToken, setNewToken] = useState("");
+  const [accountName, setAccountName] = useState("ci-runner");
+  const [accountRole, setAccountRole] = useState<"viewer" | "operator" | "admin">("operator");
+  const [accountScopes, setAccountScopes] = useState("jobs:run,jobs:read");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -15,12 +30,45 @@ export default function SecurityPage() {
       .then(async (identity) => {
         setPrincipal(identity);
         if (identity.role === "admin") {
-          const audit = await listAuditEvents();
+          const [audit, accounts] = await Promise.all([listAuditEvents(), listServiceAccounts()]);
           setAuditEvents(audit.audit_events.slice(0, 8));
+          setServiceAccounts(accounts.service_accounts);
         }
       })
       .catch((reason) => setError(getErrorMessage(reason)));
   }, []);
+
+  async function refreshServiceAccounts() {
+    const accounts = await listServiceAccounts();
+    setServiceAccounts(accounts.service_accounts);
+  }
+
+  async function submitServiceAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setNewToken("");
+    try {
+      const response = await createServiceAccount({
+        name: accountName,
+        role: accountRole,
+        scopes: accountScopes.split(",").map((scope) => scope.trim()).filter(Boolean)
+      });
+      setNewToken(response.token);
+      await refreshServiceAccounts();
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    }
+  }
+
+  async function revokeAccount(id: string) {
+    setError(null);
+    try {
+      await revokeServiceAccount(id);
+      await refreshServiceAccounts();
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    }
+  }
 
   return (
     <DashboardShell actionLabel="Policy">
@@ -65,16 +113,52 @@ export default function SecurityPage() {
           <div className="settingStack">
             <Setting label="Principal" value={principal?.name || "-"} />
             <Setting label="Role" value={principal?.role || "-"} />
+            <Setting label="Tenant" value={principal?.tenant_id || "-"} />
+            <Setting label="Project" value={principal?.project_id || "-"} />
             <Setting label="API policy" value="deny by default" />
           </div>
         </section>
 
         <section className="panel span6">
-          <PanelTitle icon={LockKeyhole} title="Service Accounts" action="Separated" />
-          <div className="settingStack">
-            <Setting label="capsulet-api" value="read/write metadata" />
-            <Setting label="capsulet-worker" value="create/watch jobs" />
-            <Setting label="capsulet-execution" value="no RBAC or API token" />
+          <PanelTitle icon={LockKeyhole} title="Service Accounts" action={`${serviceAccounts.length} configured`} />
+          {principal?.role === "admin" ? (
+            <form className="settingStack" onSubmit={submitServiceAccount}>
+              <label>
+                <span>Name</span>
+                <input value={accountName} onChange={(event) => setAccountName(event.target.value)} />
+              </label>
+              <label>
+                <span>Role</span>
+                <select value={accountRole} onChange={(event) => setAccountRole(event.target.value as typeof accountRole)}>
+                  <option value="viewer">viewer</option>
+                  <option value="operator">operator</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+              <label>
+                <span>Scopes</span>
+                <input value={accountScopes} onChange={(event) => setAccountScopes(event.target.value)} />
+              </label>
+              <button className="primaryButton" type="submit">Create service account</button>
+              {newToken ? <code className="tokenPreview">{newToken}</code> : null}
+            </form>
+          ) : (
+            <div className="emptyState">Admin role is required to manage service accounts.</div>
+          )}
+        </section>
+
+        <section className="panel span12">
+          <PanelTitle icon={LockKeyhole} title="Service Account Inventory" action={`${serviceAccounts.length} shown`} />
+          <div className="policyMatrix">
+            {serviceAccounts.length ? serviceAccounts.map((account) => (
+              <div className="policyRow" key={account.id}>
+                <span>{account.name}</span>
+                <span>{account.role} · {account.scopes.join(", ")}</span>
+                <button className="secondaryButton" type="button" onClick={() => revokeAccount(account.id)} disabled={Boolean(account.revoked_at)}>
+                  {account.revoked_at ? "Revoked" : "Revoke"}
+                </button>
+              </div>
+            )) : <div className="emptyState">No service accounts have been created yet.</div>}
           </div>
         </section>
 

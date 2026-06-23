@@ -6,7 +6,10 @@ use capsulet_core::{
     JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
     JobRunRepository, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
-use capsulet_postgres::{AuditEvent, PostgresStore, PostgresStoreError, TriggerEvent};
+use capsulet_postgres::{
+    AuditEvent, NewServiceAccount, PostgresStore, PostgresStoreError, ServiceAccountRecord,
+    TriggerEvent,
+};
 /// Storage operations required by the HTTP API.
 #[async_trait]
 pub trait ApiStore: Clone + Send + Sync + 'static {
@@ -18,6 +21,27 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     }
     async fn list_audit_events(&self, _limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
         Ok(Vec::new())
+    }
+    async fn authenticate_service_account_hash(
+        &self,
+        _token_hash: &[u8; 32],
+    ) -> Result<Option<ServiceAccountRecord>, Self::Error> {
+        Ok(None)
+    }
+    async fn create_service_account(
+        &self,
+        _account: &NewServiceAccount,
+    ) -> Result<ServiceAccountRecord, Self::Error> {
+        unreachable!("service account creation is unsupported by this store")
+    }
+    async fn list_service_accounts(
+        &self,
+        _limit: i64,
+    ) -> Result<Vec<ServiceAccountRecord>, Self::Error> {
+        Ok(Vec::new())
+    }
+    async fn revoke_service_account(&self, _id: &str) -> Result<bool, Self::Error> {
+        Ok(false)
     }
     #[allow(clippy::too_many_arguments)]
     async fn record_audit_event(
@@ -149,6 +173,31 @@ impl ApiStore for PostgresStore {
 
     async fn list_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
         PostgresStore::list_audit_events(self, limit).await
+    }
+
+    async fn authenticate_service_account_hash(
+        &self,
+        token_hash: &[u8; 32],
+    ) -> Result<Option<ServiceAccountRecord>, Self::Error> {
+        PostgresStore::authenticate_service_account_hash(self, token_hash).await
+    }
+
+    async fn create_service_account(
+        &self,
+        account: &NewServiceAccount,
+    ) -> Result<ServiceAccountRecord, Self::Error> {
+        PostgresStore::create_service_account(self, account).await
+    }
+
+    async fn list_service_accounts(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<ServiceAccountRecord>, Self::Error> {
+        PostgresStore::list_service_accounts(self, limit).await
+    }
+
+    async fn revoke_service_account(&self, id: &str) -> Result<bool, Self::Error> {
+        PostgresStore::revoke_service_account(self, id).await
     }
 
     async fn record_audit_event(

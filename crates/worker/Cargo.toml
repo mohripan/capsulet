@@ -21,6 +21,7 @@ capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-runner = { path = "../runner" }
 capsulet-storage = { path = "../storage" }
+capsulet-observability = { version = "0.1.0", path = "../observability" }
 serde_yaml = "0.9"
 thiserror.workspace = true
 tokio.workspace = true

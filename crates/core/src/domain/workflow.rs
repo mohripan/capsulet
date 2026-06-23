@@ -623,6 +623,12 @@ impl WorkflowStepRun {
         &self.workflow_step_id
     }
 
+    /// Returns the job run assigned to this step.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the step has not been assigned a job run yet. Use
+    /// [`Self::maybe_job_run_id`] when reading queued or skipped steps.
     #[must_use]
     pub const fn job_run_id(&self) -> &JobRunId {
         self.job_run_id

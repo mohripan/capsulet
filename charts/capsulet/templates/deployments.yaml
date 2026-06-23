@@ -10,7 +10,9 @@ metadata:
     {{- include "capsulet.labels" $root | nindent 4 }}
     app.kubernetes.io/component: {{ $name }}
 spec:
+  {{- if not (dig "autoscaling" "enabled" false $component) }}
   replicas: {{ $component.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "capsulet.selectorLabels" $root | nindent 6 }}
@@ -31,6 +33,30 @@ spec:
       serviceAccountName: {{ include "capsulet.serviceAccountName" $root }}
       securityContext:
         {{- toYaml $root.Values.securityContext | nindent 8 }}
+      {{- if or $root.Values.highAvailability.podAntiAffinity.enabled $root.Values.highAvailability.topologySpread.enabled }}
+      {{- if $root.Values.highAvailability.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: {{ $root.Values.highAvailability.podAntiAffinity.weight }}
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "capsulet.selectorLabels" $root | nindent 20 }}
+                    app.kubernetes.io/component: {{ $name }}
+                topologyKey: kubernetes.io/hostname
+      {{- end }}
+      {{- if $root.Values.highAvailability.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ $root.Values.highAvailability.topologySpread.maxSkew }}
+          topologyKey: {{ $root.Values.highAvailability.topologySpread.topologyKey | quote }}
+          whenUnsatisfiable: {{ $root.Values.highAvailability.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "capsulet.selectorLabels" $root | nindent 14 }}
+              app.kubernetes.io/component: {{ $name }}
+      {{- end }}
+      {{- end }}
       containers:
         - name: {{ $name }}
           image: {{ include "capsulet.componentImage" (list $root $component) }}
@@ -47,6 +73,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "capsulet.databaseSecretName" $root }}
                   key: {{ include "capsulet.databaseSecretKey" $root }}
+            - name: CAPSULET_DB_MAX_CONNECTIONS
+              value: {{ $root.Values.config.database.maxConnections | quote }}
+            - name: CAPSULET_DB_ACQUIRE_TIMEOUT_SECONDS
+              value: {{ $root.Values.config.database.acquireTimeoutSeconds | quote }}
+            - name: CAPSULET_DB_STATEMENT_TIMEOUT_SECONDS
+              value: {{ $root.Values.config.database.statementTimeoutSeconds | quote }}
             {{- if eq $name "api" }}
             {{- if $root.Values.api.auth.disabled }}
             - name: CAPSULET_AUTH_DISABLED
@@ -103,6 +135,16 @@ spec:
             {{- end }}
             {{- end }}
             {{- if eq $name "evaluator" }}
+            - name: CAPSULET_EVALUATOR_POLL_SECONDS
+              value: {{ $root.Values.evaluator.pollSeconds | quote }}
+            - name: CAPSULET_EVALUATOR_HEALTH_ADDR
+              value: "0.0.0.0:8083"
+            - name: CAPSULET_RETENTION_DAYS
+              value: {{ $root.Values.evaluator.retentionDays | quote }}
+            - name: CAPSULET_AUDIT_RETENTION_DAYS
+              value: {{ $root.Values.evaluator.auditRetentionDays | quote }}
+            - name: CAPSULET_RETENTION_INTERVAL_SECONDS
+              value: {{ $root.Values.evaluator.retentionIntervalSeconds | quote }}
             - name: CAPSULET_EXECUTION_NAMESPACE
               value: {{ default $root.Release.Namespace $root.Values.worker.runner.executionNamespace | quote }}
             - name: CAPSULET_EXECUTION_SERVICE_ACCOUNT
@@ -137,24 +179,6 @@ spec:
             {{- if eq $name "dashboard" }}
             - name: dashboard-cache
               mountPath: /app/.next/cache
-            {{- end }}
-            {{- if eq $name "evaluator" }}
-            - name: CAPSULET_EVALUATOR_POLL_SECONDS
-              value: {{ $root.Values.evaluator.pollSeconds | quote }}
-            - name: CAPSULET_EVALUATOR_HEALTH_ADDR
-              value: "0.0.0.0:8083"
-            - name: CAPSULET_RETENTION_DAYS
-              value: {{ $root.Values.evaluator.retentionDays | quote }}
-            - name: CAPSULET_AUDIT_RETENTION_DAYS
-              value: {{ $root.Values.evaluator.auditRetentionDays | quote }}
-            - name: CAPSULET_RETENTION_INTERVAL_SECONDS
-              value: {{ $root.Values.evaluator.retentionIntervalSeconds | quote }}
-            - name: CAPSULET_EXECUTION_SERVICE_ACCOUNT
-              value: {{ default (printf "%s-execution" (include "capsulet.fullname" $root)) $root.Values.executionIsolation.serviceAccountName | quote }}
-            {{- if $root.Values.executionIsolation.runtimeClassName }}
-            - name: CAPSULET_EXECUTION_RUNTIME_CLASS
-              value: {{ $root.Values.executionIsolation.runtimeClassName | quote }}
-            {{- end }}
             {{- end }}
             {{- if eq (include "capsulet.objectStorageMode" $root) "filesystem" }}
             - name: object-storage

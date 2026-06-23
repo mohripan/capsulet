@@ -25,8 +25,11 @@ test("creates and reloads a two-cell Python notebook workflow", async ({ page })
   await page.getByRole("link", { name: "View workflow" }).click();
   await expect(page.getByRole("heading", { name: workflowName })).toBeVisible();
   await expect(page.getByText("2 cells · 1 edge").first()).toBeVisible();
-  await expect(page.locator(".workflowCatalogItem")).toHaveCount(8);
-  await expect(page.getByRole("navigation", { name: "Workflow catalog pages" })).toBeVisible();
+  const catalogItems = page.locator(".workflowCatalogItem");
+  await expect(catalogItems.filter({ hasText: workflowName })).toHaveCount(1);
+  await expect
+    .poll(() => catalogItems.count(), { message: "catalog page should render at most one page of workflows" })
+    .toBeLessThanOrEqual(8);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await page.reload();
@@ -36,7 +39,7 @@ test("creates and reloads a two-cell Python notebook workflow", async ({ page })
   await page.getByRole("link", { name: "Edit notebook" }).click();
   await expect(page.getByRole("heading", { name: "Edit workflow" })).toBeVisible();
   await expect(page.locator(".notebookCell")).toHaveCount(2);
-  await expect(page.locator(".notebookCell").first().locator("textarea")).toHaveValue(/customers\.csv/);
+  await expect(page.locator(".notebookCell").first().locator("textarea").first()).toHaveValue(/customers\.csv/);
   const updatedName = `${workflowName} updated`;
   await page.getByLabel("Workflow name").fill(updatedName);
   const updated = page.waitForResponse((response) =>

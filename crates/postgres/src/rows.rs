@@ -48,6 +48,7 @@ pub(crate) fn row_to_job_definition(
     let name: String = row.try_get("name")?;
     let runtime_image: String = row.try_get("runtime_image")?;
     let command: Vec<String> = row.try_get("command")?;
+    let python_dependencies: Vec<String> = row.try_get("python_dependencies")?;
     let bundle_object_key: String = row.try_get("bundle_object_key")?;
     let input_schema: String = row.try_get("input_schema")?;
     let retry_max_attempts: i32 = row.try_get("retry_max_attempts")?;
@@ -58,6 +59,7 @@ pub(crate) fn row_to_job_definition(
         name,
         runtime_image,
         command,
+        python_dependencies,
         bundle_object_key,
         input_schema,
         RetryPolicy::new(

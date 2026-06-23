@@ -17,17 +17,19 @@ impl PostgresStore {
                 name,
                 runtime_image,
                 command,
+                python_dependencies,
                 bundle_object_key,
                 input_schema,
                 retry_max_attempts,
                 retry_delay_seconds,
                 updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, now())
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, now())
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 runtime_image = EXCLUDED.runtime_image,
                 command = EXCLUDED.command,
+                python_dependencies = EXCLUDED.python_dependencies,
                 bundle_object_key = EXCLUDED.bundle_object_key,
                 input_schema = EXCLUDED.input_schema,
                 retry_max_attempts = EXCLUDED.retry_max_attempts,
@@ -39,6 +41,7 @@ impl PostgresStore {
         .bind(definition.name())
         .bind(definition.runtime_image())
         .bind(definition.command())
+        .bind(definition.python_dependencies())
         .bind(definition.bundle_object_key())
         .bind(definition.input_schema())
         .bind(
@@ -90,6 +93,7 @@ impl PostgresStore {
                    name,
                    runtime_image,
                    command,
+                   python_dependencies,
                    bundle_object_key,
                    input_schema::text AS input_schema,
                    retry_max_attempts,
@@ -121,6 +125,7 @@ impl PostgresStore {
                    name,
                    runtime_image,
                    command,
+                   python_dependencies,
                    bundle_object_key,
                    input_schema::text AS input_schema,
                    retry_max_attempts,

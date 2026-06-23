@@ -2,7 +2,8 @@ use std::{env, net::SocketAddr, time::Duration};
 
 use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
-use capsulet_postgres::PostgresStore;
+use capsulet_observability as observability;
+use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 use capsulet_storage::{ConfiguredObjectStore, ObjectStore};
 
 use crate::{Evaluator, SqlConnections};
@@ -21,15 +22,17 @@ const DEFAULT_RETENTION_INTERVAL_SECONDS: u64 = 3600;
 ///
 /// Returns an error when configuration is invalid or a dependency cannot be initialized.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    observability::init("capsulet-evaluator")?;
     let descriptor = ComponentDescriptor::new(
         ComponentKind::Evaluator,
         "evaluates durable automation trigger conditions and creates workflow runs",
     );
-    println!("{}", descriptor.banner());
+    observability::tracing::info!(component = "evaluator", banner = %descriptor.banner());
     let database_url = env::var("CAPSULET_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
         .map_err(|_| "set CAPSULET_DATABASE_URL or DATABASE_URL")?;
-    let store = PostgresStore::connect(&database_url).await?;
+    let store =
+        PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?).await?;
     store.migrate().await?;
     let owner = env::var("CAPSULET_EVALUATOR_ID")
         .unwrap_or_else(|_| format!("evaluator-{}", std::process::id()));
@@ -65,8 +68,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     let store = metrics_store.clone();
                     async move {
                         match store.prometheus_metrics().await {
-                            Ok(body) => ([("content-type", "text/plain; version=0.0.4")], body)
-                                .into_response(),
+                            Ok(db_body) => {
+                                let mut body = observability::render_metrics();
+                                if !body.is_empty() && !body.ends_with('\n') {
+                                    body.push('\n');
+                                }
+                                body.push_str(&db_body);
+                                ([("content-type", "text/plain; version=0.0.4")], body)
+                                    .into_response()
+                            }
                             Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
                         }
                     }
@@ -75,10 +85,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         match tokio::net::TcpListener::bind(health_addr).await {
             Ok(listener) => {
                 if let Err(error) = axum::serve(listener, app).await {
-                    eprintln!("evaluator health server stopped: {error}");
+                    observability::tracing::warn!(%error, "evaluator health server stopped");
                 }
             }
-            Err(error) => eprintln!("evaluator health listener failed: {error}"),
+            Err(error) => observability::tracing::warn!(%error, "evaluator health listener failed"),
         }
     });
     let sql_connections = match env::var("CAPSULET_SQL_CONNECTIONS") {
@@ -107,18 +117,25 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await
             {
-                eprintln!("retention cleanup failed: {error}");
+                observability::tracing::warn!(%error, "retention cleanup failed");
             }
             tokio::time::sleep(Duration::from_secs(retention_interval.max(60))).await;
         }
     });
     let evaluator = Evaluator::new(store, owner).with_sql_connections(sql_connections);
     loop {
+        let started = std::time::Instant::now();
         match evaluator.tick().await {
-            Ok(true) => {}
-            Ok(false) => tokio::time::sleep(Duration::from_secs(poll_seconds)).await,
+            Ok(true) => {
+                observability::record_service_tick("evaluator", "work", started.elapsed());
+            }
+            Ok(false) => {
+                observability::record_service_tick("evaluator", "idle", started.elapsed());
+                tokio::time::sleep(Duration::from_secs(poll_seconds)).await;
+            }
             Err(error) => {
-                eprintln!("trigger evaluation failed: {error}");
+                observability::record_service_tick("evaluator", "error", started.elapsed());
+                observability::tracing::warn!(%error, "trigger evaluation failed");
                 tokio::time::sleep(Duration::from_secs(poll_seconds)).await;
             }
         }

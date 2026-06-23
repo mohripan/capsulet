@@ -1,0 +1,45 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-06-23T00:00:00Z",
+  "environment": {
+    "name": "local-kind",
+    "kubernetes_version": "1.30",
+    "nodes": [
+      { "role": "control-plane", "cpu": "4", "memory": "8Gi" }
+    ],
+    "database": "bundled-postgresql",
+    "object_storage": "bundled-minio"
+  },
+  "capsulet": {
+    "api_replicas": 2,
+    "worker_replicas": 2,
+    "scheduler_replicas": 1,
+    "evaluator_replicas": 2,
+    "execution_pools": {
+      "mini": {
+        "max_concurrent_jobs": 50,
+        "requests": { "cpu": "100m", "memory": "128Mi" },
+        "limits": { "cpu": "500m", "memory": "512Mi" }
+      }
+    }
+  },
+  "workload": {
+    "tool": "k6",
+    "script": "ops/load/capsulet-smoke.js",
+    "vus": 10,
+    "duration": "2m",
+    "submit_jobs": false
+  },
+  "slo": {
+    "api_availability": "99.9%",
+    "http_p95_ms": 750,
+    "http_p99_ms": 1500
+  },
+  "observed": {
+    "http_req_failed_rate": null,
+    "http_req_duration_p95_ms": null,
+    "http_req_duration_p99_ms": null,
+    "max_sustained_job_submits_per_minute": null,
+    "notes": "Copy this file and fill observed values after each certified capacity run."
+  }
+}

@@ -696,7 +696,7 @@ impl PostgresStore {
         .execute(&mut *tx)
         .await?;
 
-        let states = sqlx::query(
+        let rows = sqlx::query(
             r"
             SELECT workflow_step_id, status
             FROM workflow_step_runs
@@ -711,11 +711,11 @@ impl PostgresStore {
         let mut step_states = BTreeMap::new();
         let mut active = 0_usize;
         let mut failed = false;
-        for state in &states {
-            let step_id = WorkflowStepId::new(state.try_get::<String, _>("workflow_step_id")?)
+        for row in &rows {
+            let step_id = WorkflowStepId::new(row.try_get::<String, _>("workflow_step_id")?)
                 .map_err(PostgresStoreError::InvalidPersistedValue)?;
             started.insert(step_id.clone());
-            let status = state.try_get::<String, _>("status")?;
+            let status = row.try_get::<String, _>("status")?;
             let workflow_status =
                 status
                     .parse()
@@ -723,11 +723,14 @@ impl PostgresStore {
                         PostgresStoreError::InvalidPersistedValue(error.to_string())
                     })?;
             step_states.insert(step_id.clone(), workflow_status);
-            match status.as_str() {
-                "succeeded" => {}
-                "queued" | "running" => active += 1,
-                "failed" | "cancelled" | "timed_out" => failed = true,
-                _ => {}
+            match workflow_status {
+                WorkflowRunStatus::Queued | WorkflowRunStatus::Running => active += 1,
+                WorkflowRunStatus::Failed
+                | WorkflowRunStatus::Cancelled
+                | WorkflowRunStatus::TimedOut => failed = true,
+                WorkflowRunStatus::Succeeded
+                | WorkflowRunStatus::Removed
+                | WorkflowRunStatus::Skipped => {}
             }
         }
 

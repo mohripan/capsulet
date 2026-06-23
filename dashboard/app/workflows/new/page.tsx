@@ -28,17 +28,19 @@ type CellDraft = {
     name: string;
     code: string;
     runtimeImage: string;
+    pythonDependencies: string;
   };
   name: string;
   code: string;
   runtimeImage: string;
+  pythonDependencies: string;
   pool: string;
   outputs: string;
   dependsOn: string[];
 };
 
 const exampleCells: CellDraft[] = [
-  { key: "generate-csv", name: "Generate customers CSV", runtimeImage: "python:3.12-slim", pool: "", outputs: "customers.csv", dependsOn: [], code: `import csv
+  { key: "generate-csv", name: "Generate customers CSV", runtimeImage: "python:3.12-slim", pythonDependencies: "", pool: "", outputs: "customers.csv", dependsOn: [], code: `import csv
 from pathlib import Path
 
 output = Path("/capsulet/artifacts/customers.csv")
@@ -52,7 +54,7 @@ with output.open("w", newline="") as handle:
         {"customer": "Linus", "orders": 2, "revenue": 190},
     ])
 print(f"Wrote {output}")` },
-  { key: "summarize-csv", name: "Summarize customer revenue", runtimeImage: "python:3.12-slim", pool: "", outputs: "customer-summary.csv", dependsOn: ["generate-csv"], code: `import csv
+  { key: "summarize-csv", name: "Summarize customer revenue", runtimeImage: "python:3.12-slim", pythonDependencies: "", pool: "", outputs: "customer-summary.csv", dependsOn: ["generate-csv"], code: `import csv
 from pathlib import Path
 
 source = Path("/capsulet/inputs/customers.csv")
@@ -69,6 +71,10 @@ print(f"Wrote {output}")` }
 
 function slug(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "cell";
+}
+
+function dependencyLines(value: string) {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
 function WorkflowNotebookContent() {
@@ -115,11 +121,13 @@ function WorkflowNotebookContent() {
         originalDefinition: {
           name: step.name,
           code: sources[index].python_script,
-          runtimeImage: definitions.get(step.job_definition_id)?.runtime_image || "python:3.12-slim"
+          runtimeImage: definitions.get(step.job_definition_id)?.runtime_image || "python:3.12-slim",
+          pythonDependencies: sources[index].python_dependencies.join("\n")
         },
         name: step.name,
         code: sources[index].python_script,
         runtimeImage: definitions.get(step.job_definition_id)?.runtime_image || "python:3.12-slim",
+        pythonDependencies: sources[index].python_dependencies.join("\n"),
         pool: step.execution_pool || defaultPool,
         outputs: "",
         dependsOn: workflow.dependencies.filter((edge) => edge.to_step_id === step.id).map((edge) => edge.from_step_id)
@@ -149,11 +157,13 @@ function WorkflowNotebookContent() {
         originalDefinition: {
           name: definition.name,
           code: source.python_script,
-          runtimeImage: definition.runtime_image
+          runtimeImage: definition.runtime_image,
+          pythonDependencies: source.python_dependencies.join("\n")
         },
         name: definition.name,
         code: source.python_script,
-        runtimeImage: definition.runtime_image
+        runtimeImage: definition.runtime_image,
+        pythonDependencies: source.python_dependencies.join("\n")
       });
     } catch (err) {
       setError(getErrorMessage(err));
@@ -162,7 +172,7 @@ function WorkflowNotebookContent() {
 
   function addCell() {
     const key = `cell-${crypto.randomUUID()}`;
-    setCells((current) => [...current, { key, name: `Python cell ${current.length + 1}`, code: "from pathlib import Path\n\noutput = Path(\"/capsulet/artifacts/result.txt\")\noutput.write_text(\"hello from Capsulet\\n\")", runtimeImage: "python:3.12-slim", pool: current[0]?.pool || pools[0]?.name || "", outputs: "result.txt", dependsOn: current.length ? [current[current.length - 1].key] : [] }]);
+    setCells((current) => [...current, { key, name: `Python cell ${current.length + 1}`, code: "from pathlib import Path\n\noutput = Path(\"/capsulet/artifacts/result.txt\")\noutput.write_text(\"hello from Capsulet\\n\")", runtimeImage: "python:3.12-slim", pythonDependencies: "", pool: current[0]?.pool || pools[0]?.name || "", outputs: "result.txt", dependsOn: current.length ? [current[current.length - 1].key] : [] }]);
   }
 
   function removeCell(key: string) {
@@ -176,10 +186,11 @@ function WorkflowNotebookContent() {
     try {
       const jobDefinitionIds: string[] = [];
       for (const cell of cells) {
-        const request = { name: cell.name, runtime_image: cell.runtimeImage, python_script: cell.code, retry_max_attempts: 1, retry_delay_seconds: 0 };
+        const request = { name: cell.name, runtime_image: cell.runtimeImage, python_script: cell.code, python_dependencies: dependencyLines(cell.pythonDependencies), retry_max_attempts: 1, retry_delay_seconds: 0 };
         const unchangedReusableDefinition = cell.jobDefinitionId && cell.originalDefinition
           && cell.name === cell.originalDefinition.name
           && cell.runtimeImage === cell.originalDefinition.runtimeImage
+          && cell.pythonDependencies === cell.originalDefinition.pythonDependencies
           && cell.code === cell.originalDefinition.code;
         if (cell.jobDefinitionId && unchangedReusableDefinition) {
           jobDefinitionIds.push(cell.jobDefinitionId);
@@ -228,6 +239,7 @@ function WorkflowNotebookContent() {
             </label>
             <PythonEditor value={cell.code} onChange={(code) => updateCell(cell.key, { code })} rows={index === 0 ? 15 : 17} />
             <div className="cellSettings"><label><span>Runtime image</span><input value={cell.runtimeImage} onChange={(event) => updateCell(cell.key, { runtimeImage: event.target.value })} required /></label><label><span>Execution pool</span><select value={cell.pool} onChange={(event) => updateCell(cell.key, { pool: event.target.value })}>{pools.map((pool) => <option value={pool.name} key={pool.name}>{pool.name}</option>)}</select></label><label><span>Artifact files</span><input value={cell.outputs} onChange={(event) => updateCell(cell.key, { outputs: event.target.value })} placeholder="report.csv" /></label></div>
+            <label className="cellPackageEditor"><span>Python packages</span><textarea value={cell.pythonDependencies} onChange={(event) => updateCell(cell.key, { pythonDependencies: event.target.value })} rows={3} placeholder={"requests==2.32.5\npandas>=2.2,<3"} /></label>
             <div className="cellDependencies"><span>Runs after</span>{index === 0 ? <small>Starts immediately</small> : cells.slice(0, index).map((candidate) => <label key={candidate.key}><input type="checkbox" checked={cell.dependsOn.includes(candidate.key)} onChange={(event) => updateCell(cell.key, { dependsOn: event.target.checked ? [...cell.dependsOn, candidate.key] : cell.dependsOn.filter((key) => key !== candidate.key) })} />{candidate.name}</label>)}</div>
           </div></article>)}</div>
         <div className="notebookActions"><button type="button" className="secondaryButton" onClick={addCell}><Plus size={15} />Add Python cell</button><button className="primaryAction" disabled={submitting || cells.some((cell) => !cell.pool || !cell.code.trim())}>{editing ? <Save size={16} /> : <Send size={16} />}{submitting ? "Saving workflow" : editing ? "Save changes" : "Create workflow"}</button></div>

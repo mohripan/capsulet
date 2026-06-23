@@ -15,6 +15,8 @@ The runner boundary returns a `RunReport` with an outcome, logs, and collected a
 
 Single-file Python script submissions are stored as bundle objects. Before execution, the worker reads the bundle and rewrites the run command to execute the script content.
 
+Reusable Python job definitions can declare `python_dependencies`, a list of pip package requirement specs such as `requests==2.32.5`. The process and Kubernetes runners install those packages into `/capsulet/python-site` with `pip --target` before running the job command, then prepend that directory to `PYTHONPATH`. Dependency entries are single-line package specs; installer options such as `--extra-index-url` are intentionally rejected at validation time.
+
 ## Run Locally
 
 Start PostgreSQL:
@@ -81,6 +83,27 @@ The worker reads execution pools from one of these sources:
 - built-in `mini` and `large` defaults
 
 The Kubernetes runner applies the selected pool's resources, node selector, tolerations, timeout, and optional `ttlSecondsAfterFinished` cleanup setting to the created Job.
+
+Execution pools also support policy controls that are enforced before either
+the process runner or Kubernetes runner starts work:
+
+```yaml
+pools:
+  mini:
+    allowedImages:
+      - python:*
+    requireDigestImages: false
+    maxPythonDependencies: 32
+    maxPythonDependencyLength: 128
+    blockedPythonDependencies:
+      - torch
+      - tensorflow
+```
+
+`allowedImages` accepts exact image references or prefix patterns ending in
+`*`. Set `requireDigestImages: true` in production pools that must reject
+tag-only images. Dependency limits apply to `python_dependencies` before any
+`pip install` is attempted.
 
 For artifact-producing jobs, write files to:
 

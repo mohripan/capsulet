@@ -1,0 +1,81 @@
+{{- if and (eq .Values.postgresql.mode "bundled") .Values.postgresql.backup.enabled }}
+{{- if .Values.postgresql.backup.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "capsulet.postgresqlName" . }}-backup
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.postgresql.backup.persistence.storageClass }}
+  storageClassName: {{ .Values.postgresql.backup.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgresql.backup.persistence.size | quote }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "capsulet.postgresqlName" . }}-backup
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql-backup
+spec:
+  schedule: {{ .Values.postgresql.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "capsulet.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: postgresql-backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "capsulet.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.postgresql.securityContext | nindent 12 }}
+          containers:
+            - name: pg-dump
+              image: {{ printf "%s:%s" .Values.postgresql.image.repository .Values.postgresql.image.tag | quote }}
+              imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+              securityContext:
+                {{- toYaml .Values.postgresql.containerSecurityContext | nindent 16 }}
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "capsulet.databaseSecretName" . }}
+                      key: {{ include "capsulet.databaseSecretKey" . }}
+                - name: RETENTION_DAYS
+                  value: {{ .Values.postgresql.backup.retentionDays | quote }}
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  mkdir -p /backups
+                  target="/backups/capsulet-$(date -u +%Y%m%dT%H%M%SZ).dump"
+                  pg_dump --format=custom --no-owner --no-privileges "$DATABASE_URL" > "$target"
+                  find /backups -type f -name 'capsulet-*.dump' -mtime +"$RETENTION_DAYS" -delete
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+              resources:
+                {{- toYaml .Values.postgresql.backup.resources | nindent 16 }}
+          volumes:
+            - name: backups
+              {{- if .Values.postgresql.backup.persistence.enabled }}
+              persistentVolumeClaim:
+                claimName: {{ include "capsulet.postgresqlName" . }}-backup
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+{{- end }}

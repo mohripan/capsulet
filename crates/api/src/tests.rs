@@ -155,6 +155,7 @@ impl ApiStore for FakeStore {
                         "-c".to_string(),
                         "print('fake')".to_string(),
                     ],
+                    Vec::new(),
                     format!("bundles/{id}.py"),
                     "{}",
                     capsulet_core::RetryPolicy::no_retry(),
@@ -194,6 +195,7 @@ impl ApiStore for FakeStore {
                         "-c".to_string(),
                         "print('fake')".to_string(),
                     ],
+                    Vec::new(),
                     format!("bundles/{known}.py"),
                     "{}",
                     capsulet_core::RetryPolicy::no_retry(),
@@ -780,6 +782,7 @@ fn authenticated_app(store: FakeStore) -> axum::Router {
         r#"[
             {"name":"reader","role":"viewer","token":"viewer-token-0123456789-abcdefgh"},
             {"name":"runner","role":"operator","token":"operator-token-0123456789-abcdef"},
+            {"name":"ci-runner","role":"operator","token":"ci-runner-token-0123456789-abcdef","scopes":["jobs:run"]},
             {"name":"owner","role":"admin","token":"admin-token-0123456789-abcdefghijkl"}
         ]"#,
     )
@@ -880,8 +883,59 @@ async fn current_principal_reports_authenticated_identity() {
     assert_eq!(response.status(), 200);
     assert_eq!(
         response_json(response).await,
-        json!({"name":"owner","role":"admin"})
+        json!({"name":"owner","role":"admin","tenant_id":"default","project_id":"default","scopes":["*"]})
     );
+}
+
+#[tokio::test]
+async fn scoped_token_can_only_use_declared_permissions() {
+    let app = authenticated_app(FakeStore::with_definition("scoped_job"));
+    let run_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/jobs/runs")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer ci-runner-token-0123456789-abcdef")
+                .body(Body::from(
+                    json!({
+                        "job_definition_id": "scoped_job",
+                        "execution_pool": "mini"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(run_response.status(), 201);
+
+    let workflow_response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/workflows")
+                .header("content-type", "application/json")
+                .header(
+                    "authorization",
+                    "Bearer ci-runner-token-0123456789-abcdef",
+                )
+                .body(Body::from(
+                    json!({
+                        "id": "scoped_workflow",
+                        "name": "Scoped Workflow",
+                        "steps": [
+                            { "id": "only", "name": "Only", "job_definition_id": "scoped_job", "execution_pool": "mini" }
+                        ]
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(workflow_response.status(), 403);
 }
 
 #[tokio::test]

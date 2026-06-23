@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { FileCode2, Pencil, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
+import { FileCode2, Package, Pencil, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle, PythonEditor } from "../components";
 import {
   ContractField,
@@ -28,11 +28,16 @@ print("job definition executed", params)
 
 const pageSize = 6;
 
+function dependencyLines(value: string) {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
 export default function JobDefinitionsPage() {
   const [definitions, setDefinitions] = useState<JobDefinition[]>([]);
   const [definitionPage, setDefinitionPage] = useState(1);
   const [name, setName] = useState("Daily report");
   const [runtimeImage, setRuntimeImage] = useState("python:3.12-slim");
+  const [pythonDependencies, setPythonDependencies] = useState("");
   const [script, setScript] = useState(starterScript);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [contractFields, setContractFields] = useState<ContractField[]>([
@@ -75,6 +80,7 @@ export default function JobDefinitionsPage() {
     setEditingId(null);
     setName("Daily report");
     setRuntimeImage("python:3.12-slim");
+    setPythonDependencies("");
     setScript(starterScript);
     setContractFields([
       { name: "recipient", label: "Recipient", type: "string", required: true, default: "mohripan16@gmail.com" },
@@ -93,6 +99,7 @@ export default function JobDefinitionsPage() {
       const source = await getJobDefinitionSource(definition.id);
       setName(definition.name);
       setRuntimeImage(definition.runtime_image);
+      setPythonDependencies(definition.python_dependencies.join("\n"));
       setScript(source.python_script);
       setContractFields(definition.input_schema.fields ?? []);
       setEditingId(definition.id);
@@ -129,6 +136,7 @@ export default function JobDefinitionsPage() {
         name,
         runtime_image: runtimeImage,
         python_script: script,
+        python_dependencies: dependencyLines(pythonDependencies),
         input_schema: { fields: contractFields },
         retry_max_attempts: 1,
         retry_delay_seconds: 0
@@ -164,6 +172,10 @@ export default function JobDefinitionsPage() {
             <label>
               <span>Runtime image</span>
               <input value={runtimeImage} onChange={(event) => setRuntimeImage(event.target.value)} />
+            </label>
+            <label>
+              <span>Python packages</span>
+              <textarea value={pythonDependencies} onChange={(event) => setPythonDependencies(event.target.value)} rows={4} placeholder={"requests==2.32.5\npandas>=2.2,<3"} />
             </label>
             <label>
               <span>Python script</span>
@@ -237,6 +249,10 @@ export default function JobDefinitionsPage() {
                 </span>
                 <span className="tableCell" title={definition.bundle_object_key}>
                   {definition.bundle_object_key}
+                </span>
+                <span className="tableCell" title={definition.python_dependencies.join(", ") || "No packages"}>
+                  <Package size={14} aria-hidden="true" />
+                  {definition.python_dependencies.length} packages
                 </span>
                 <span className="tableCell">
                   {definition.input_schema.fields?.length ?? 0} params

@@ -3,7 +3,7 @@ members = [
     "crates/api",
     "crates/cli",
     "crates/core",
-    "crates/evaluator",
+    "crates/evaluator", "crates/observability",
     "crates/postgres",
     "crates/runner",
     "crates/scheduler",

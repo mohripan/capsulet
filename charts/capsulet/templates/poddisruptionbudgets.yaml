@@ -1,0 +1,22 @@
+{{- $root := . -}}
+{{- $components := dict "api" .Values.api "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator "dashboard" .Values.dashboard -}}
+{{- if .Values.highAvailability.podDisruptionBudget.enabled }}
+{{- range $name, $component := $components }}
+{{- if and $component.enabled (gt (int $component.replicaCount) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "capsulet.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "capsulet.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  minAvailable: {{ $root.Values.highAvailability.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "capsulet.selectorLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $name }}
+---
+{{- end }}
+{{- end }}
+{{- end }}

@@ -20,6 +20,44 @@ Roles are ordered:
 - `operator`: run/cancel/operate workflows and jobs
 - `admin`: create/update/delete definitions, automations, plugins, and security settings
 
+Service tokens can be narrowed with explicit scopes. When `scopes` is omitted,
+Capsulet grants the default scope set for the configured role to preserve
+backward compatibility. A scoped token can also carry `expires_at_unix`:
+
+```json
+[
+  {
+    "name": "ci-runner",
+    "role": "operator",
+    "token": "replace-with-32-plus-random-bytes",
+    "scopes": ["jobs:run", "jobs:read"],
+    "expires_at_unix": 4102444800
+  }
+]
+```
+
+For production, create database-backed service accounts from the Security page
+or API:
+
+- `GET /v1/service-accounts`
+- `POST /v1/service-accounts`
+- `POST /v1/service-accounts/{id}/revoke`
+
+The API returns the token only once at creation time. The database stores only a
+SHA-256 token hash, tracks `last_used_at`, supports `expires_at_unix`, and uses
+`revoked_at` for rotation. `CAPSULET_API_TOKENS` should remain a small bootstrap
+set, preferably limited to break-glass administrators.
+
+Supported scope families are:
+
+- `auth:read`
+- `jobs:read`, `jobs:run`, `jobs:cancel`, `jobs:write`
+- `workflows:read`, `workflows:operate`, `workflows:write`
+- `automations:read`, `automations:operate`, `automations:write`
+- `audit:read`
+- `system:read`, `system:write`
+- `resource:*` wildcard scopes, plus `*` for administrators
+
 Keycloak realm/client roles accepted by the API:
 
 - `capsulet-viewer` or `viewer`
@@ -74,3 +112,16 @@ Capsulet does not by itself protect against:
 - side channels between workloads on the same node
 
 Production deployments should pair Capsulet with Kubernetes Pod Security Admission, NetworkPolicy enforcement, image admission policy, secret rotation, and centralized audit logging.
+
+Example ValidatingAdmissionPolicy manifests live in `ops/admission/`. The digest
+image policy is shipped in audit mode by default because local development often
+uses tag-based images; production clusters should switch it to `Deny` after all
+execution images are digest pinned.
+
+## Tenancy
+
+The persistence schema includes `tenants`, `projects`, and `tenant_id` /
+`project_id` ownership columns on core resources. Existing installs migrate to
+the `default` tenant/project. Principals now carry tenant/project context. Full
+row-level filtering across every resource is the next data-access hardening pass;
+until then, use one tenant per cluster for strict isolation.

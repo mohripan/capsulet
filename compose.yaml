@@ -256,6 +256,51 @@ services:
       retries: 20
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    container_name: capsulet-prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+      scheduler:
+        condition: service_healthy
+      evaluator:
+        condition: service_healthy
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/observability/prometheus-compose.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/prometheus-rules-compose.yml:/etc/prometheus/rules/capsulet.yaml:ro
+      - capsulet-prometheus-data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.3.0
+    container_name: capsulet-grafana
+    depends_on:
+      prometheus:
+        condition: service_started
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./deploy/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/capsulet.yml:ro
+      - ./deploy/observability/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/capsulet.yml:ro
+      - ./deploy/observability/grafana-dashboard.json:/var/lib/grafana/dashboards/capsulet.json:ro
+      - capsulet-grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
 volumes:
   capsulet-postgres-data:
   capsulet-minio-data:
+  capsulet-prometheus-data:
+  capsulet-grafana-data:
