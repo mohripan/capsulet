@@ -1,6 +1,6 @@
 # Capsulet Dashboard
 
-This is a Next.js dashboard for Capsulet. The runs surface is connected to the live API for run listing, seeded job submission, Python script submission, run detail, cancellation, logs, artifact listing, and artifact download. Other product-shaped pages still use mock data.
+This is a Next.js dashboard for Capsulet. The dashboard is connected to the live API for authentication, job definitions, workflows, automations, run detail, cancellation, logs, artifact listing, artifact download, identity, and audit events.
 
 ## Requirements
 
@@ -27,7 +27,18 @@ Point the dashboard at a local API:
 
 ```powershell
 $env:CAPSULET_DASHBOARD_API_URL = "http://127.0.0.1:8080"
+$env:CAPSULET_TEMP_ADMIN_USERNAME = "admin"
+$env:CAPSULET_TEMP_ADMIN_PASSWORD = "admin"
+$env:CAPSULET_TEMP_ADMIN_API_TOKEN = "capsulet-local-admin-token-change-me"
 npm run dev
+```
+
+For Keycloak login, set:
+
+```powershell
+$env:CAPSULET_DASHBOARD_OIDC_PUBLIC_ISSUER = "http://localhost:18080/realms/capsulet"
+$env:CAPSULET_DASHBOARD_OIDC_INTERNAL_ISSUER = "http://localhost:18080/realms/capsulet"
+$env:CAPSULET_DASHBOARD_OIDC_CLIENT_ID = "capsulet-dashboard"
 ```
 
 Type-check the dashboard:

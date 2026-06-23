@@ -15,9 +15,11 @@ path = "src/main.rs"
 async-trait.workspace = true
 axum.workspace = true
 hmac.workspace = true
+jsonwebtoken.workspace = true
 capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-storage = { path = "../storage" }
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

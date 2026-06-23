@@ -62,11 +62,12 @@ The router currently exposes:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/livez`, `/readyz`, `/healthz` | Process and database health |
+| `GET` | `/openapi.json` | Machine-readable OpenAPI document |
 | `GET`, `POST` | `/v1/job-definitions` | List or create definitions |
 | `GET`, `PUT`, `DELETE` | `/v1/job-definitions/{id}` | Read, replace, or delete a definition |
 | `GET` | `/v1/execution-pools`, `/v1/host-groups` | Read static execution configuration |
 | `GET`, `POST` | `/v1/workflows` | List or create workflow DAGs |
-| `GET`, `PUT` | `/v1/workflows/{id}` | Read or replace a workflow DAG |
+| `GET`, `PUT`, `DELETE` | `/v1/workflows/{id}` | Read, replace, or delete a workflow DAG |
 | `GET`, `POST` | `/v1/automations` | List or create automations |
 | `GET`, `PUT`, `DELETE` | `/v1/automations/{id}` | Read, replace, or delete an automation |
 | `POST` | `/v1/automations/{id}/enable`, `/disable` | Change automation state |

@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "capsulet_session",
+      "value": "capsulet-local-admin-token-change-me",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1782221225.900202,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Strict"
+    }
+  ],
+  "origins": []
+}

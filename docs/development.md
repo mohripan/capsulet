@@ -54,6 +54,7 @@ This starts:
 - PostgreSQL on `localhost:5432`
 - MinIO on `localhost:9000`
 - MinIO console on `localhost:9001`
+- Keycloak on `localhost:18080` with realm `capsulet`
 - Capsulet API on `localhost:8080`
 - Capsulet dashboard on `localhost:3000`
 - Capsulet worker in continuous stub-runner mode
@@ -67,7 +68,14 @@ Open the live dashboard:
 http://127.0.0.1:3000/runs
 ```
 
-Sign in with the Compose development token `capsulet-local-admin-token-change-me`. All `/v1` API calls require `Authorization: Bearer <token>` unless authentication is explicitly disabled for an isolated test.
+Sign in to the dashboard with Keycloak or the temporary local admin:
+
+```text
+username: admin
+password: admin
+```
+
+All `/v1` API calls require `Authorization: Bearer <token>` unless authentication is explicitly disabled for an isolated test. CLI and smoke tests can use the Compose service token `capsulet-local-admin-token-change-me`.
 
 The Compose worker uses `CAPSULET_RUNNER_MODE=stub` so the full API/dashboard/job/artifact flow can be checked without a Kubernetes cluster. Use the Helm/minikube path for Kubernetes Job execution.
 
@@ -135,7 +143,7 @@ $env:CAPSULET_EXECUTION_POOLS = "mini,large"
 $env:CAPSULET_SEED_EXAMPLES = "true"
 $env:CAPSULET_OBJECT_STORAGE_MODE = "filesystem"
 $env:CAPSULET_OBJECT_STORAGE_PATH = ".capsulet-objects"
-$env:CAPSULET_API_TOKENS = '{"local-admin":{"token":"replace-me","role":"admin"}}'
+$env:CAPSULET_API_TOKENS = '[{"name":"local-admin","role":"admin","token":"replace-me-replace-me-replace-me-1234"}]'
 cargo run -p capsulet-api
 ```
 
@@ -151,6 +159,7 @@ Available job-run endpoints:
 - `GET /v1/jobs/runs/{id}/artifacts/{artifact_id}`
 
 See `docs/api.md` for request examples.
+The machine-readable OpenAPI document is available at `GET /openapi.json`.
 
 ## CLI
 
@@ -165,6 +174,7 @@ cargo run -p capsulet-cli -- run get run_123
 cargo run -p capsulet-cli -- status run_123
 cargo run -p capsulet-cli -- logs run_123
 cargo run -p capsulet-cli -- artifacts list run_123
+cargo run -p capsulet-cli -- completions powershell > capsulet.ps1
 ```
 
 You can also pass the API URL per command:

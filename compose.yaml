@@ -64,6 +64,22 @@ services:
       retries: 10
     restart: unless-stopped
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2
+    container_name: capsulet-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_URL: http://localhost:18080
+    ports:
+      - "18080:8080"
+    volumes:
+      - ./deploy/keycloak/capsulet-realm.json:/opt/keycloak/data/import/capsulet-realm.json:ro
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -77,11 +93,16 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      keycloak:
+        condition: service_started
     environment:
       CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
       CAPSULET_API_ADDR: 0.0.0.0:8080
       CAPSULET_SEED_EXAMPLES: "true"
       CAPSULET_API_TOKENS: '[{"name":"local-admin","role":"admin","token":"capsulet-local-admin-token-change-me"}]'
+      CAPSULET_OIDC_ISSUER: http://localhost:18080/realms/capsulet
+      CAPSULET_OIDC_AUDIENCE: capsulet-dashboard
+      CAPSULET_OIDC_JWKS_URL: http://keycloak:8080/realms/capsulet/protocol/openid-connect/certs
       CAPSULET_WEBHOOK_SECRETS: '{"*/*":"capsulet-local-webhook-secret-change-me"}'
       CAPSULET_EXECUTION_POOLS: mini,large
       CAPSULET_OBJECT_STORAGE_MODE: s3
@@ -215,8 +236,17 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      keycloak:
+        condition: service_started
     environment:
       CAPSULET_DASHBOARD_API_URL: http://api:8080
+      CAPSULET_DASHBOARD_PUBLIC_URL: http://127.0.0.1:3000
+      CAPSULET_DASHBOARD_OIDC_PUBLIC_ISSUER: http://localhost:18080/realms/capsulet
+      CAPSULET_DASHBOARD_OIDC_INTERNAL_ISSUER: http://keycloak:8080/realms/capsulet
+      CAPSULET_DASHBOARD_OIDC_CLIENT_ID: capsulet-dashboard
+      CAPSULET_TEMP_ADMIN_USERNAME: admin
+      CAPSULET_TEMP_ADMIN_PASSWORD: admin
+      CAPSULET_TEMP_ADMIN_API_TOKEN: capsulet-local-admin-token-change-me
     ports:
       - "3000:3000"
     healthcheck:

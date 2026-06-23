@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use jsonwebtoken::{
+    Algorithm, DecodingKey, Validation, decode, decode_header,
+    jwk::{AlgorithmParameters, JwkSet},
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -32,6 +36,7 @@ pub struct Principal {
 pub struct AuthConfig {
     enabled: bool,
     credentials: Arc<[Credential]>,
+    oidc: Option<Arc<OidcConfig>>,
 }
 
 impl std::fmt::Debug for AuthConfig {
@@ -40,6 +45,7 @@ impl std::fmt::Debug for AuthConfig {
             .debug_struct("AuthConfig")
             .field("enabled", &self.enabled)
             .field("credential_count", &self.credentials.len())
+            .field("oidc_enabled", &self.oidc.is_some())
             .finish()
     }
 }
@@ -49,6 +55,19 @@ struct Credential {
     name: Arc<str>,
     role: Role,
     digest: [u8; 32],
+}
+
+#[derive(Clone)]
+struct OidcConfig {
+    issuer: Arc<str>,
+    audience: Arc<str>,
+    keys: Arc<[OidcKey]>,
+}
+
+#[derive(Clone)]
+struct OidcKey {
+    kid: Option<Arc<str>>,
+    decoding_key: DecodingKey,
 }
 
 #[derive(Deserialize)]
@@ -65,6 +84,7 @@ impl AuthConfig {
         Self {
             enabled: false,
             credentials: Arc::from([]),
+            oidc: None,
         }
     }
 
@@ -112,7 +132,37 @@ impl AuthConfig {
         Ok(Self {
             enabled: true,
             credentials: credentials.into(),
+            oidc: None,
         })
+    }
+
+    #[must_use]
+    pub fn with_oidc(mut self, issuer: String, audience: String, jwks: &JwkSet) -> Self {
+        let keys = jwks
+            .keys
+            .iter()
+            .filter_map(|jwk| match &jwk.algorithm {
+                AlgorithmParameters::RSA(parameters) => {
+                    DecodingKey::from_rsa_components(&parameters.n, &parameters.e)
+                        .ok()
+                        .map(|decoding_key| OidcKey {
+                            kid: jwk.common.key_id.as_deref().map(Arc::from),
+                            decoding_key,
+                        })
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if keys.is_empty() {
+            return self;
+        }
+        self.enabled = true;
+        self.oidc = Some(Arc::new(OidcConfig {
+            issuer: Arc::from(issuer),
+            audience: Arc::from(audience),
+            keys: keys.into(),
+        }));
+        self
     }
 
     #[must_use]
@@ -129,6 +179,11 @@ impl AuthConfig {
             });
         }
 
+        self.authenticate_service_token(token)
+            .or_else(|| self.authenticate_oidc_token(token))
+    }
+
+    fn authenticate_service_token(&self, token: &str) -> Option<Principal> {
         let candidate: [u8; 32] = Sha256::digest(token.as_bytes()).into();
         self.credentials.iter().find_map(|credential| {
             bool::from(credential.digest.ct_eq(&candidate)).then(|| Principal {
@@ -137,6 +192,83 @@ impl AuthConfig {
             })
         })
     }
+
+    fn authenticate_oidc_token(&self, token: &str) -> Option<Principal> {
+        let oidc = self.oidc.as_ref()?;
+        let header = decode_header(token).ok()?;
+        let mut validation = Validation::new(Algorithm::RS256);
+        validation.set_issuer(&[oidc.issuer.as_ref()]);
+        validation.set_audience(&[oidc.audience.as_ref()]);
+        validation.validate_exp = true;
+
+        oidc.keys
+            .iter()
+            .filter(|key| {
+                header
+                    .kid
+                    .as_deref()
+                    .is_none_or(|kid| key.kid.as_deref() == Some(kid))
+            })
+            .find_map(
+                |key| match decode::<OidcClaims>(token, &key.decoding_key, &validation) {
+                    Ok(data) => principal_from_claims(&data.claims, &oidc.audience),
+                    Err(error) => {
+                        eprintln!("OIDC token rejected: {error}");
+                        None
+                    }
+                },
+            )
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct OidcClaims {
+    preferred_username: Option<String>,
+    email: Option<String>,
+    sub: Option<String>,
+    realm_access: Option<OidcRealmAccess>,
+    resource_access: Option<std::collections::HashMap<String, OidcRealmAccess>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct OidcRealmAccess {
+    roles: Vec<String>,
+}
+
+fn principal_from_claims(claims: &OidcClaims, audience: &str) -> Option<Principal> {
+    let role = oidc_role(claims, audience)?;
+    let name = claims
+        .preferred_username
+        .as_deref()
+        .or(claims.email.as_deref())
+        .or(claims.sub.as_deref())
+        .unwrap_or("oidc-user");
+    Some(Principal {
+        name: Arc::from(name),
+        role,
+    })
+}
+
+fn oidc_role(claims: &OidcClaims, audience: &str) -> Option<Role> {
+    let realm_roles = claims
+        .realm_access
+        .as_ref()
+        .into_iter()
+        .flat_map(|access| access.roles.iter());
+    let client_roles = claims
+        .resource_access
+        .as_ref()
+        .and_then(|resources| resources.get(audience))
+        .into_iter()
+        .flat_map(|access| access.roles.iter());
+    realm_roles
+        .chain(client_roles)
+        .fold(None, |current, role| match role.as_str() {
+            "capsulet-admin" | "admin" => Some(Role::Admin),
+            "capsulet-operator" | "operator" => current.max(Some(Role::Operator)),
+            "capsulet-viewer" | "viewer" => current.max(Some(Role::Viewer)),
+            _ => current,
+        })
 }
 
 #[cfg(test)]

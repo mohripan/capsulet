@@ -63,7 +63,12 @@ where
         .route("/v1/host-groups", get(list_host_groups))
         .route("/v1/topology", get(get_topology))
         .route("/v1/workflows", post(create_workflow).get(list_workflows))
-        .route("/v1/workflows/{id}", get(get_workflow).put(update_workflow))
+        .route(
+            "/v1/workflows/{id}",
+            get(get_workflow)
+                .put(update_workflow)
+                .delete(delete_workflow),
+        )
         .route(
             "/v1/workflows/{id}/editability",
             get(get_workflow_editability),
@@ -122,6 +127,7 @@ where
         .route("/livez", get(livez))
         .route("/readyz", get(readyz::<S, O>))
         .route("/metrics", get(metrics::<S, O>))
+        .route("/openapi.json", get(openapi_spec))
         .route(
             "/v1/webhooks/{automation_id}/{trigger_name}",
             post(crate::webhooks::ingest::<S, O>).layer(DefaultBodyLimit::max(1_048_576)),
@@ -139,6 +145,18 @@ where
         Ok(body) => ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body).into_response(),
         Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
+}
+
+async fn openapi_spec() -> Response {
+    (
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/vnd.oai.openapi+json; charset=utf-8",
+        )],
+        include_str!("../openapi.json"),
+    )
+        .into_response()
 }
 
 async fn current_principal(Extension(principal): Extension<Principal>) -> Json<Value> {
@@ -478,6 +496,14 @@ where
     O: ObjectStore,
 {
     let id = JobDefinitionId::new(id).map_err(ApiError::validation)?;
+    if state
+        .store
+        .job_definition_is_used_by_workflows(&id)
+        .await
+        .map_err(ApiError::store)?
+    {
+        return Err(ApiError::JobDefinitionInUse(id.as_str().to_string()));
+    }
     let deleted = state
         .store
         .delete_job_definition(&id)
@@ -629,6 +655,53 @@ where
     };
 
     Ok(Json(WorkflowResponse::from(&workflow)))
+}
+
+async fn delete_workflow<S, O>(
+    State(state): State<AppState<S, O>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let workflow_id = WorkflowId::new(id.clone()).map_err(ApiError::validation)?;
+    if state
+        .store
+        .find_workflow(&workflow_id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::WorkflowNotFound(id));
+    }
+    if state
+        .store
+        .workflow_has_active_runs(&workflow_id)
+        .await
+        .map_err(ApiError::store)?
+    {
+        return Err(ApiError::WorkflowLocked(workflow_id.as_str().to_string()));
+    }
+    if state
+        .store
+        .list_automations(500)
+        .await
+        .map_err(ApiError::store)?
+        .iter()
+        .any(|automation| automation.workflow_id() == &workflow_id)
+    {
+        return Err(ApiError::WorkflowLocked(workflow_id.as_str().to_string()));
+    }
+    let deleted = state
+        .store
+        .delete_workflow(&workflow_id)
+        .await
+        .map_err(ApiError::store)?;
+    if !deleted {
+        return Err(ApiError::WorkflowNotFound(workflow_id.as_str().to_string()));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn get_workflow_editability<S, O>(

@@ -1,0 +1,68 @@
+{
+  "realm": "capsulet",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      { "name": "capsulet-admin", "description": "Full Capsulet administration" },
+      { "name": "capsulet-operator", "description": "Operate workflow and job runs" },
+      { "name": "capsulet-viewer", "description": "Read-only Capsulet access" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "capsulet-dashboard",
+      "name": "Capsulet Dashboard",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/api/auth/oidc/callback",
+        "http://127.0.0.1:3000/api/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "protocolMappers": [
+        {
+          "name": "capsulet-dashboard-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "capsulet-dashboard",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@capsulet.local",
+      "emailVerified": true,
+      "firstName": "Temporary",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "capsulet-admin"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 use std::{fmt::Write as _, path::PathBuf, process::ExitCode};
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
 use reqwest::{
     StatusCode, Url,
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
@@ -91,6 +92,11 @@ enum Command {
     Artifacts(ArtifactsCommand),
     #[command(subcommand, about = "Inspect a job run")]
     Run(RunCommand),
+    #[command(about = "Generate shell completion scripts")]
+    Completions {
+        #[arg(value_enum, help = "Target shell")]
+        shell: Shell,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -135,14 +141,19 @@ pub async fn run() -> ExitCode {
 }
 
 async fn execute(cli: Cli) -> Result<String, CliError> {
-    let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
-
     match cli.command {
+        Command::Completions { shell } => {
+            let mut command = Cli::command();
+            let mut output = Vec::new();
+            generate(shell, &mut command, "capsulet", &mut output);
+            String::from_utf8(output).map_err(CliError::from)
+        }
         Command::Submit {
             job_definition_id,
             pool,
             run_id,
         } => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let request = CreateRunRequest {
                 job_definition_id,
                 execution_pool: pool,
@@ -153,6 +164,7 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
             Ok(format_run_detail(&run))
         }
         Command::SubmitScript { path, pool, run_id } => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let script = std::fs::read_to_string(&path)?;
             let request = CreateRunRequest {
                 job_definition_id: "script".to_string(),
@@ -164,22 +176,27 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
             Ok(format_run_detail(&run))
         }
         Command::Runs { limit } => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let runs = api.list_runs(limit).await?;
             Ok(format_runs_table(&runs.runs))
         }
         Command::Status { id } => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let run = api.get_run(&id).await?;
             Ok(format_run_status(&run))
         }
         Command::Logs { id } => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let logs = api.get_run_logs(&id).await?;
             Ok(logs.logs)
         }
         Command::Cancel { id } => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let run = api.cancel_run(&id).await?;
             Ok(format_run_status(&run))
         }
         Command::Artifacts(ArtifactsCommand::List { id }) => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let artifacts = api.list_artifacts(&id).await?;
             Ok(format_artifacts_table(&artifacts.artifacts))
         }
@@ -188,6 +205,7 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
             artifact_id,
             output,
         }) => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let bytes = api.download_artifact(&id, &artifact_id).await?;
             std::fs::write(&output, bytes)?;
             Ok(format!(
@@ -196,6 +214,7 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
             ))
         }
         Command::Run(RunCommand::Get { id }) => {
+            let api = ApiClient::new(cli.api_url, cli.api_token.as_deref())?;
             let run = api.get_run(&id).await?;
             Ok(format_run_detail(&run))
         }
@@ -474,6 +493,8 @@ enum CliError {
     Json(#[from] serde_json::Error),
     #[error("failed to write output file: {0}")]
     Io(#[from] std::io::Error),
+    #[error("failed to encode completion script: {0}")]
+    Utf8(#[from] std::string::FromUtf8Error),
     #[error("API returned {status}: {code}: {message}")]
     Api {
         status: StatusCode,

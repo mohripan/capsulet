@@ -20,6 +20,8 @@ pub(crate) enum ApiError {
     UnknownJobDefinition(String),
     #[error("job definition source not found: {0}")]
     JobDefinitionSourceNotFound(String),
+    #[error("job definition is still used by one or more workflows: {0}")]
+    JobDefinitionInUse(String),
     #[error("unknown execution pool: {0}")]
     UnknownExecutionPool(String),
     #[error("workflow not found: {0}")]
@@ -66,7 +68,7 @@ impl ApiError {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::Validation(_) | Self::InvalidWorkflowRunTransition(_) => StatusCode::BAD_REQUEST,
-            Self::WorkflowLocked(_) => StatusCode::CONFLICT,
+            Self::WorkflowLocked(_) | Self::JobDefinitionInUse(_) => StatusCode::CONFLICT,
             Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
@@ -90,6 +92,7 @@ impl ApiError {
             Self::Validation(_) => "validation_error",
             Self::UnknownJobDefinition(_) => "unknown_job_definition",
             Self::JobDefinitionSourceNotFound(_) => "job_definition_source_not_found",
+            Self::JobDefinitionInUse(_) => "job_definition_in_use",
             Self::UnknownExecutionPool(_) => "unknown_execution_pool",
             Self::WorkflowNotFound(_) => "workflow_not_found",
             Self::WorkflowLocked(_) => "workflow_locked",

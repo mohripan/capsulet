@@ -4,6 +4,8 @@ use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_postgres::PostgresStore;
 use capsulet_storage::ConfiguredObjectStore;
 
+use jsonwebtoken::jwk::JwkSet;
+
 use crate::{AppState, AuthConfig, WebhookSecrets, router};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:8080";
@@ -47,7 +49,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let object_store = load_object_store()?;
-    let auth = load_auth_config()?;
+    let auth = load_auth_config().await?;
     let webhook_secrets = env::var("CAPSULET_WEBHOOK_SECRETS")
         .ok()
         .map(|value| WebhookSecrets::from_json(&value))
@@ -70,14 +72,45 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn load_auth_config() -> Result<AuthConfig, Box<dyn std::error::Error>> {
+async fn load_auth_config() -> Result<AuthConfig, Box<dyn std::error::Error>> {
     if env_bool("CAPSULET_AUTH_DISABLED") {
         eprintln!("WARNING: API authentication is explicitly disabled");
         return Ok(AuthConfig::disabled());
     }
     let value = env::var("CAPSULET_API_TOKENS")
         .map_err(|_| "set CAPSULET_API_TOKENS or explicitly set CAPSULET_AUTH_DISABLED=true")?;
-    Ok(AuthConfig::from_json(&value)?)
+    let mut config = AuthConfig::from_json(&value)?;
+    if let (Ok(issuer), Ok(audience), Ok(jwks_url)) = (
+        env::var("CAPSULET_OIDC_ISSUER"),
+        env::var("CAPSULET_OIDC_AUDIENCE"),
+        env::var("CAPSULET_OIDC_JWKS_URL"),
+    ) {
+        let jwks = load_jwks_with_retry(&jwks_url).await?;
+        config = config.with_oidc(issuer, audience, &jwks);
+        println!("loaded OIDC authentication metadata from {jwks_url}");
+    }
+    Ok(config)
+}
+
+async fn load_jwks_with_retry(jwks_url: &str) -> Result<JwkSet, Box<dyn std::error::Error>> {
+    let mut last_error = None;
+    for _ in 0..30 {
+        match reqwest::get(jwks_url).await {
+            Ok(response) if response.status().is_success() => {
+                return Ok(response.json::<JwkSet>().await?);
+            }
+            Ok(response) => {
+                last_error = Some(format!("JWKS request returned {}", response.status()));
+            }
+            Err(error) => {
+                last_error = Some(error.to_string());
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    Err(last_error
+        .unwrap_or_else(|| "JWKS metadata was unavailable".to_string())
+        .into())
 }
 
 fn load_object_store() -> Result<ConfiguredObjectStore, Box<dyn std::error::Error>> {

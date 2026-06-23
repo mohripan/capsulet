@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { FileCode2, Plus, RefreshCw, Send, Trash2 } from "lucide-react";
+import { FileCode2, Pencil, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle, PythonEditor } from "../components";
 import {
   ContractField,
   JobDefinition,
   createJobDefinition,
+  deleteJobDefinition,
   getErrorMessage,
-  listJobDefinitions
+  getJobDefinitionSource,
+  listJobDefinitions,
+  updateJobDefinition
 } from "../lib/api";
 
 const starterScript = `from pathlib import Path
@@ -31,6 +34,7 @@ export default function JobDefinitionsPage() {
   const [name, setName] = useState("Daily report");
   const [runtimeImage, setRuntimeImage] = useState("python:3.12-slim");
   const [script, setScript] = useState(starterScript);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [contractFields, setContractFields] = useState<ContractField[]>([
     { name: "recipient", label: "Recipient", type: "string", required: true, default: "mohripan16@gmail.com" },
     { name: "subject", label: "Subject", type: "string", required: true, default: "Capsulet test" },
@@ -67,20 +71,71 @@ export default function JobDefinitionsPage() {
 
   const pagedDefinitions = definitions.slice((definitionPage - 1) * pageSize, definitionPage * pageSize);
 
+  function resetForm() {
+    setEditingId(null);
+    setName("Daily report");
+    setRuntimeImage("python:3.12-slim");
+    setScript(starterScript);
+    setContractFields([
+      { name: "recipient", label: "Recipient", type: "string", required: true, default: "mohripan16@gmail.com" },
+      { name: "subject", label: "Subject", type: "string", required: true, default: "Capsulet test" },
+      { name: "body", label: "Body", type: "textarea", required: true, default: "Hello from Capsulet" }
+    ]);
+    setCreated(null);
+    setError(null);
+  }
+
+  async function editDefinition(definition: JobDefinition) {
+    setIsSubmitting(true);
+    setError(null);
+    setCreated(null);
+    try {
+      const source = await getJobDefinitionSource(definition.id);
+      setName(definition.name);
+      setRuntimeImage(definition.runtime_image);
+      setScript(source.python_script);
+      setContractFields(definition.input_schema.fields ?? []);
+      setEditingId(definition.id);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function removeDefinition(definition: JobDefinition) {
+    if (!window.confirm(`Delete job definition "${definition.name}"? Workflows using it must be updated first.`)) return;
+    setIsSubmitting(true);
+    setError(null);
+    setCreated(null);
+    try {
+      await deleteJobDefinition(definition.id);
+      if (editingId === definition.id) resetForm();
+      await refresh();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
     setCreated(null);
     try {
-      const definition = await createJobDefinition({
+      const request = {
         name,
         runtime_image: runtimeImage,
         python_script: script,
         input_schema: { fields: contractFields },
         retry_max_attempts: 1,
         retry_delay_seconds: 0
-      });
+      };
+      const definition = editingId
+        ? await updateJobDefinition(editingId, request)
+        : await createJobDefinition(request);
       setCreated(definition);
       await refresh();
     } catch (err) {
@@ -100,7 +155,7 @@ export default function JobDefinitionsPage() {
 
       <section className="contentGrid">
         <section className="panel span5">
-          <PanelTitle icon={Plus} title="New Python Job" action="Live API" />
+          <PanelTitle icon={editingId ? Pencil : Plus} title={editingId ? "Edit reusable job" : "New Python Job"} action={editingId ? editingId : "Live API"} />
           <form className="formStack" onSubmit={submit}>
             <label>
               <span>Name</span>
@@ -137,9 +192,14 @@ export default function JobDefinitionsPage() {
               </button>
             </div>
             <button className="primaryAction fullWidthAction" disabled={isSubmitting}>
-              <Send size={16} aria-hidden="true" />
-              {isSubmitting ? "Creating" : "Create job definition"}
+              {editingId ? <Save size={16} aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}
+              {isSubmitting ? "Saving" : editingId ? "Save job definition" : "Create job definition"}
             </button>
+            {editingId ? (
+              <button className="secondaryButton fullWidthAction" type="button" onClick={resetForm} disabled={isSubmitting}>
+                Cancel editing
+              </button>
+            ) : null}
           </form>
         </section>
 
@@ -154,7 +214,7 @@ export default function JobDefinitionsPage() {
           {error ? <div className="errorBox">{error}</div> : null}
           {created ? (
             <div className="successBox">
-              Created {created.id}. Submit it from <Link href="/runs">Runs</Link>.
+              {editingId ? "Updated" : "Created"} {created.id}. Use it from <Link href="/workflows/new">Workflows</Link> or submit it from <Link href="/runs">Runs</Link>.
             </div>
           ) : null}
           <div className="resourceList">
@@ -181,6 +241,14 @@ export default function JobDefinitionsPage() {
                 <span className="tableCell">
                   {definition.input_schema.fields?.length ?? 0} params
                 </span>
+                <div className="resourceActions">
+                  <button className="iconButton" type="button" aria-label={`Edit ${definition.name}`} onClick={() => void editDefinition(definition)} disabled={isSubmitting}>
+                    <Pencil size={15} aria-hidden="true" />
+                  </button>
+                  <button className="iconButton dangerButton" type="button" aria-label={`Delete ${definition.name}`} onClick={() => void removeDefinition(definition)} disabled={isSubmitting}>
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                </div>
               </article>
             ))}
           </div>

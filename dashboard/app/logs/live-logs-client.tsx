@@ -14,7 +14,7 @@ import {
   listWorkflows
 } from "../lib/api";
 
-const pollMs = 2000;
+const defaultPollMs = 2000;
 const workflowRunStates = ["queued", "running", "succeeded", "failed", "timed_out", "cancelled"];
 const defaultRunRange = defaultDateTimeRange();
 
@@ -47,7 +47,7 @@ export default function LiveLogsClient() {
   const [lineQuery, setLineQuery] = useState("");
   const [logs, setLogs] = useState<WorkflowRunLogsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isPolling, setIsPolling] = useState(true);
+  const [pollIntervalMs, setPollIntervalMs] = useState<number | null>(defaultPollMs);
   const [error, setError] = useState<string | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
 
@@ -85,30 +85,32 @@ export default function LiveLogsClient() {
     setLogs(response);
   }, [selectedRunId]);
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true);
+  const refresh = useCallback(async (options: { showLoading?: boolean; includeRuns?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true;
+    const includeRuns = options.includeRuns ?? true;
+    if (showLoading) setIsLoading(true);
     setError(null);
     try {
-      await refreshRuns();
+      if (includeRuns) await refreshRuns();
       await refreshLogs();
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, [refreshLogs, refreshRuns]);
 
   useEffect(() => {
-    void refresh();
+    void refresh({ showLoading: true, includeRuns: true });
   }, [refresh]);
 
   useEffect(() => {
-    if (!isPolling) return;
+    if (pollIntervalMs === null) return;
     const timer = window.setInterval(() => {
-      void refresh();
-    }, pollMs);
+      void refresh({ showLoading: false, includeRuns: false });
+    }, pollIntervalMs);
     return () => window.clearInterval(timer);
-  }, [isPolling, refresh]);
+  }, [pollIntervalMs, refresh]);
 
   useEffect(() => {
     terminalRef.current?.scrollTo({ top: terminalRef.current.scrollHeight });
@@ -129,7 +131,7 @@ export default function LiveLogsClient() {
     () => (logs?.entries ?? []).reduce((count, entry) => count + (entry.logs ? entry.logs.split(/\r?\n/).filter(Boolean).length : 0), 0),
     [logs]
   );
-  const shouldPoll = isPolling && (!selectedRun || !isWorkflowTerminal(selectedRun.status));
+  const shouldPoll = pollIntervalMs !== null && (!selectedRun || !isWorkflowTerminal(selectedRun.status));
   const currentJobRunId = selectedRun?.step_runs.find((step) => step.position === selectedRun.current_step_position)?.job_run_id;
 
   return (
@@ -203,13 +205,24 @@ export default function LiveLogsClient() {
 
         <section className="panel span8 liveLogsMain">
           <div className="logConsoleHeader">
-            <PanelTitle icon={TerminalSquare} title="Live Output" action={shouldPoll ? "Polling" : "Paused"} />
+            <PanelTitle icon={TerminalSquare} title="Live Output" action={shouldPoll ? `${pollIntervalMs! / 1000}s polling` : "Manual"} />
             <div className="logConsoleActions">
-              <button className="secondaryButton" type="button" onClick={() => setIsPolling((current) => !current)}>
-                {isPolling ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
-                {isPolling ? "Pause" : "Resume"}
+              <select
+                aria-label="Log refresh mode"
+                className="logRefreshSelect"
+                value={pollIntervalMs === null ? "manual" : String(pollIntervalMs)}
+                onChange={(event) => setPollIntervalMs(event.target.value === "manual" ? null : Number(event.target.value))}
+              >
+                <option value="manual">Manual refresh</option>
+                <option value="2000">Poll every 2s</option>
+                <option value="5000">Poll every 5s</option>
+                <option value="10000">Poll every 10s</option>
+              </select>
+              <button className="secondaryButton" type="button" onClick={() => setPollIntervalMs((current) => (current === null ? defaultPollMs : null))}>
+                {pollIntervalMs !== null ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+                {pollIntervalMs !== null ? "Pause" : "Resume"}
               </button>
-              <button className="secondaryButton" type="button" onClick={refresh} disabled={isLoading}>
+              <button className="secondaryButton" type="button" onClick={() => refresh({ showLoading: true, includeRuns: true })} disabled={isLoading}>
                 <RefreshCw size={16} aria-hidden="true" />
                 {isLoading ? "Refreshing" : "Refresh"}
               </button>
@@ -271,7 +284,7 @@ export default function LiveLogsClient() {
           {selectedRun ? (
             <div className="logFooter">
               {currentJobRunId ? <Link href={`/runs/${currentJobRunId}`}>Open current job run</Link> : <span>No active job run yet</span>}
-              <span>{isPolling ? `${pollMs / 1000}s refresh` : "Manual refresh"}</span>
+              <span>{pollIntervalMs === null ? "Manual refresh" : `${pollIntervalMs / 1000}s log refresh`}</span>
             </div>
           ) : null}
         </section>

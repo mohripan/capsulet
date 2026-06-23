@@ -351,6 +351,12 @@ export async function updateJobDefinition(id: string, request: CreateJobDefiniti
   });
 }
 
+export async function deleteJobDefinition(id: string) {
+  await apiFetch<void>(`/v1/job-definitions/${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+}
+
 export async function getJobDefinitionSource(id: string) {
   return apiFetch<{ python_script: string }>(`/v1/job-definitions/${encodeURIComponent(id)}/source`);
 }
@@ -390,6 +396,12 @@ export async function updateWorkflow(id: string, request: CreateWorkflowRequest)
   return apiFetch<Workflow>(`/v1/workflows/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(request)
+  });
+}
+
+export async function deleteWorkflow(id: string) {
+  await apiFetch<void>(`/v1/workflows/${encodeURIComponent(id)}`, {
+    method: "DELETE"
   });
 }
 

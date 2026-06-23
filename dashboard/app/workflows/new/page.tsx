@@ -24,6 +24,11 @@ type CellDraft = {
   key: string;
   stepId?: string;
   jobDefinitionId?: string;
+  originalDefinition?: {
+    name: string;
+    code: string;
+    runtimeImage: string;
+  };
   name: string;
   code: string;
   runtimeImage: string;
@@ -71,6 +76,7 @@ function WorkflowNotebookContent() {
   const workflowId = searchParams.get("workflow");
   const editing = Boolean(workflowId);
   const [pools, setPools] = useState<ExecutionPool[]>([]);
+  const [jobDefinitions, setJobDefinitions] = useState<JobDefinition[]>([]);
   const [name, setName] = useState("Customer revenue notebook");
   const [description, setDescription] = useState("Generate a CSV, then transform it in a dependent Python cell.");
   const [cells, setCells] = useState<CellDraft[]>(exampleCells);
@@ -90,6 +96,7 @@ function WorkflowNotebookContent() {
     ]).then(async ([poolResponse, definitionResponse, workflow, editability]) => {
       if (cancelled) return;
       setPools(poolResponse.execution_pools);
+      setJobDefinitions(definitionResponse.job_definitions);
       setLockReason(editability.editable ? null : editability.reason || "This workflow has an active execution.");
       const defaultPool = poolResponse.execution_pools.find((item) => item.is_default)?.name || poolResponse.execution_pools[0]?.name || "";
       if (!workflow) {
@@ -105,6 +112,11 @@ function WorkflowNotebookContent() {
         key: step.id,
         stepId: step.id,
         jobDefinitionId: step.job_definition_id,
+        originalDefinition: {
+          name: step.name,
+          code: sources[index].python_script,
+          runtimeImage: definitions.get(step.job_definition_id)?.runtime_image || "python:3.12-slim"
+        },
         name: step.name,
         code: sources[index].python_script,
         runtimeImage: definitions.get(step.job_definition_id)?.runtime_image || "python:3.12-slim",
@@ -122,6 +134,32 @@ function WorkflowNotebookContent() {
     setCells((current) => current.map((cell) => cell.key === key ? { ...cell, ...update } : cell));
   }
 
+  async function selectJobDefinition(cellKey: string, definitionId: string) {
+    if (!definitionId) {
+      updateCell(cellKey, { jobDefinitionId: undefined, originalDefinition: undefined });
+      return;
+    }
+    const definition = jobDefinitions.find((item) => item.id === definitionId);
+    if (!definition) return;
+    setError(null);
+    try {
+      const source = await getJobDefinitionSource(definition.id);
+      updateCell(cellKey, {
+        jobDefinitionId: definition.id,
+        originalDefinition: {
+          name: definition.name,
+          code: source.python_script,
+          runtimeImage: definition.runtime_image
+        },
+        name: definition.name,
+        code: source.python_script,
+        runtimeImage: definition.runtime_image
+      });
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
   function addCell() {
     const key = `cell-${crypto.randomUUID()}`;
     setCells((current) => [...current, { key, name: `Python cell ${current.length + 1}`, code: "from pathlib import Path\n\noutput = Path(\"/capsulet/artifacts/result.txt\")\noutput.write_text(\"hello from Capsulet\\n\")", runtimeImage: "python:3.12-slim", pool: current[0]?.pool || pools[0]?.name || "", outputs: "result.txt", dependsOn: current.length ? [current[current.length - 1].key] : [] }]);
@@ -136,18 +174,27 @@ function WorkflowNotebookContent() {
     const workflowKey = workflowId || `${slug(name)}-${Date.now()}`;
     const stepIds = new Map(cells.map((cell, index) => [cell.key, cell.stepId || `${workflowKey}-${slug(cell.name)}-${index + 1}`]));
     try {
-      const definitions: JobDefinition[] = [];
+      const jobDefinitionIds: string[] = [];
       for (const cell of cells) {
         const request = { name: cell.name, runtime_image: cell.runtimeImage, python_script: cell.code, retry_max_attempts: 1, retry_delay_seconds: 0 };
-        const definition = cell.jobDefinitionId
-          ? await updateJobDefinition(cell.jobDefinitionId, request)
-          : await createJobDefinition({ ...request, id: `job-${stepIds.get(cell.key)}` });
-        definitions.push(definition);
+        const unchangedReusableDefinition = cell.jobDefinitionId && cell.originalDefinition
+          && cell.name === cell.originalDefinition.name
+          && cell.runtimeImage === cell.originalDefinition.runtimeImage
+          && cell.code === cell.originalDefinition.code;
+        if (cell.jobDefinitionId && unchangedReusableDefinition) {
+          jobDefinitionIds.push(cell.jobDefinitionId);
+        } else if (cell.jobDefinitionId) {
+          const definition = await updateJobDefinition(cell.jobDefinitionId, request);
+          jobDefinitionIds.push(definition.id);
+        } else {
+          const definition = await createJobDefinition({ ...request, id: `job-${stepIds.get(cell.key)}` });
+          jobDefinitionIds.push(definition.id);
+        }
       }
       const request = {
         name,
         description,
-        steps: cells.map((cell, index) => ({ id: stepIds.get(cell.key), name: cell.name, job_definition_id: definitions[index].id, execution_pool: cell.pool })),
+        steps: cells.map((cell, index) => ({ id: stepIds.get(cell.key), name: cell.name, job_definition_id: jobDefinitionIds[index], execution_pool: cell.pool })),
         dependencies: cells.flatMap((cell) => cell.dependsOn.map((parent) => ({ from_step_id: stepIds.get(parent)!, to_step_id: stepIds.get(cell.key)! })))
       };
       if (workflowId) await updateWorkflow(workflowId, request);
@@ -168,6 +215,17 @@ function WorkflowNotebookContent() {
         <div className="notebookRail">{cells.map((cell, index) => <article className="notebookCell" key={cell.key}>
           <div className="cellGutter" aria-hidden="true"><span>{String(index + 1).padStart(2, "0")}</span><GripVertical size={16} /></div>
           <div className="cellBody"><div className="cellHeader"><label><span>Cell name</span><input aria-label={`Cell ${index + 1} name`} value={cell.name} onChange={(event) => updateCell(cell.key, { name: event.target.value })} required /></label>{cells.length > 1 ? <button type="button" className="iconButton dangerButton" aria-label={`Remove ${cell.name}`} onClick={() => removeCell(cell.key)}><Trash2 size={15} /></button> : null}</div>
+            <label className="cellDefinitionPicker">
+              <span>Reusable script</span>
+              <select value={cell.jobDefinitionId ?? ""} onChange={(event) => void selectJobDefinition(cell.key, event.target.value)}>
+                <option value="">Custom Python cell — create/update from this workflow</option>
+                {jobDefinitions.map((definition) => (
+                  <option value={definition.id} key={definition.id}>
+                    {definition.name} · {definition.runtime_image}
+                  </option>
+                ))}
+              </select>
+            </label>
             <PythonEditor value={cell.code} onChange={(code) => updateCell(cell.key, { code })} rows={index === 0 ? 15 : 17} />
             <div className="cellSettings"><label><span>Runtime image</span><input value={cell.runtimeImage} onChange={(event) => updateCell(cell.key, { runtimeImage: event.target.value })} required /></label><label><span>Execution pool</span><select value={cell.pool} onChange={(event) => updateCell(cell.key, { pool: event.target.value })}>{pools.map((pool) => <option value={pool.name} key={pool.name}>{pool.name}</option>)}</select></label><label><span>Artifact files</span><input value={cell.outputs} onChange={(event) => updateCell(cell.key, { outputs: event.target.value })} placeholder="report.csv" /></label></div>
             <div className="cellDependencies"><span>Runs after</span>{index === 0 ? <small>Starts immediately</small> : cells.slice(0, index).map((candidate) => <label key={candidate.key}><input type="checkbox" checked={cell.dependsOn.includes(candidate.key)} onChange={(event) => updateCell(cell.key, { dependsOn: event.target.checked ? [...cell.dependsOn, candidate.key] : cell.dependsOn.filter((key) => key !== candidate.key) })} />{candidate.name}</label>)}</div>

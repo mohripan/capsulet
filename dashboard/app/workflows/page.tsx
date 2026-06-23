@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { FileCode2, GitBranch, LockKeyhole, Pencil, RefreshCw, Workflow as WorkflowIcon } from "lucide-react";
+import { FileCode2, GitBranch, LockKeyhole, Pencil, RefreshCw, Trash2, Workflow as WorkflowIcon } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle } from "../components";
-import { Workflow, getErrorMessage, getWorkflowEditability, listWorkflows } from "../lib/api";
+import { Workflow, deleteWorkflow, getErrorMessage, getWorkflowEditability, listWorkflows } from "../lib/api";
 
 const workflowsPerPage = 8;
 
@@ -59,6 +59,16 @@ function WorkflowsContent() {
   const layers = useMemo(() => workflow ? graphLayers(workflow) : [], [workflow]);
   const pageCount = Math.max(1, Math.ceil(workflows.length / workflowsPerPage));
   const visibleWorkflows = workflows.slice(catalogPage * workflowsPerPage, (catalogPage + 1) * workflowsPerPage);
+  async function removeSelectedWorkflow() {
+    if (!workflow || !window.confirm(`Delete workflow "${workflow.name}"? Automations and active runs must be removed first.`)) return;
+    setError(null);
+    try {
+      await deleteWorkflow(workflow.id);
+      await refresh();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
 
   return <DashboardShell actionLabel="New workflow" actionHref="/workflows/new">
     <PageHeader eyebrow="Workflow catalog" title="Workflows" description="Browse workflow definitions, inspect their dependency graph, and open a dedicated notebook when you need to author a new one." />
@@ -82,7 +92,7 @@ function WorkflowsContent() {
         {!workflow ? <div className="emptyState">Select a workflow to inspect its execution stages.</div> : <>
           <header className="workflowTopologyHeader">
             <div><span>Selected workflow</span><h2>{workflow.name}</h2><p>{workflow.description || "No description"}</p></div>
-            <div className="workflowTopologyActions">{selectedEditable ? <Link className="secondaryButton" href={`/workflows/new?workflow=${encodeURIComponent(workflow.id)}`}><Pencil size={15} />Edit notebook</Link> : <span className="secondaryButton disabledButton"><LockKeyhole size={15} />Notebook locked</span>}<dl><div><dt>Cells</dt><dd>{workflow.steps.length}</dd></div><div><dt>Edges</dt><dd>{workflow.dependencies.length}</dd></div><div><dt>Status</dt><dd>{workflow.status}</dd></div></dl></div>
+            <div className="workflowTopologyActions">{selectedEditable ? <><Link className="secondaryButton" href={`/workflows/new?workflow=${encodeURIComponent(workflow.id)}`}><Pencil size={15} />Edit notebook</Link><button className="secondaryButton dangerButton" onClick={removeSelectedWorkflow} type="button"><Trash2 size={15} />Delete</button></> : <span className="secondaryButton disabledButton"><LockKeyhole size={15} />Notebook locked</span>}<dl><div><dt>Cells</dt><dd>{workflow.steps.length}</dd></div><div><dt>Edges</dt><dd>{workflow.dependencies.length}</dd></div><div><dt>Status</dt><dd>{workflow.status}</dd></div></dl></div>
           </header>
           <div className="dagCanvas workflowTopologyCanvas" aria-label={`${workflow.name} dependency graph`}>{layers.map((layer, layerIndex) => <div className="dagLayer" key={layerIndex}>
             <span className="dagLayerLabel">Stage {layerIndex + 1}</span>

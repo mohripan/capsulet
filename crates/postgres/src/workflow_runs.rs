@@ -53,6 +53,29 @@ impl PostgresStore {
         .await?)
     }
 
+    /// Returns true when any workflow step references the job definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the lookup fails.
+    pub async fn job_definition_is_used_by_workflows(
+        &self,
+        job_definition_id: &capsulet_core::JobDefinitionId,
+    ) -> Result<bool, PostgresStoreError> {
+        Ok(sqlx::query_scalar(
+            r"
+            SELECT EXISTS(
+                SELECT 1
+                FROM workflow_steps
+                WHERE job_definition_id = $1
+            )
+            ",
+        )
+        .bind(job_definition_id.as_str())
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
     ///
     /// # Errors
     ///

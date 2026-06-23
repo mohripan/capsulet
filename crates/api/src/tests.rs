@@ -243,6 +243,23 @@ impl ApiStore for FakeStore {
             }))
     }
 
+    async fn job_definition_is_used_by_workflows(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<bool, Self::Error> {
+        Ok(self
+            .workflows
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .any(|workflow| {
+                workflow
+                    .steps()
+                    .iter()
+                    .any(|step| step.job_definition_id() == id)
+            }))
+    }
+
     async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error> {
         let mut workflows = self.workflows.lock().map_err(|error| error.to_string())?;
         workflows.retain(|existing| existing.id() != workflow.id());
@@ -273,6 +290,13 @@ impl ApiStore for FakeStore {
             .iter()
             .find(|workflow| workflow.id().clone() == *id)
             .cloned())
+    }
+
+    async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
+        let mut workflows = self.workflows.lock().map_err(|error| error.to_string())?;
+        let before = workflows.len();
+        workflows.retain(|workflow| workflow.id() != id);
+        Ok(workflows.len() != before)
     }
 
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {
@@ -1526,6 +1550,26 @@ async fn update_job_definition_rejects_definition_used_by_queued_workflow_run() 
         .await
         .expect("response");
     assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn delete_job_definition_rejects_definition_used_by_workflow() {
+    let response =
+        test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_uses_job"))
+            .oneshot(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri("/v1/job-definitions/job_hello_python")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+    assert_eq!(
+        response_json(response).await["code"],
+        "job_definition_in_use"
+    );
 }
 
 #[tokio::test]

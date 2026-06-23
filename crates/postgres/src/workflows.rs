@@ -134,6 +134,20 @@ impl PostgresStore {
         }
     }
 
+    /// Deletes a workflow definition and its dependent steps.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when deletion fails.
+    pub async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, PostgresStoreError> {
+        let result = sqlx::query("DELETE FROM workflow_definitions WHERE id = $1")
+            .bind(id.as_str())
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     async fn workflow_from_row(
         &self,
         row: &sqlx::postgres::PgRow,

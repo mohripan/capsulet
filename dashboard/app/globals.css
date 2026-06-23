@@ -126,6 +126,25 @@ button {
   gap: 10px;
 }
 
+.loginDivider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.loginDivider::before,
+.loginDivider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+
 .loginForm label {
   color: var(--soft);
   font-size: 0.82rem;
@@ -164,6 +183,14 @@ button {
   background: linear-gradient(135deg, var(--blue), var(--cyan));
   color: #03111d;
   font-weight: 800;
+  text-decoration: none;
+}
+
+.loginButtonOidc {
+  width: 100%;
+  background: linear-gradient(135deg, rgba(32, 214, 210, 0.12), rgba(36, 150, 237, 0.18));
+  color: var(--text);
+  border: 1px solid var(--line-strong);
 }
 
 .loginButton:disabled {
@@ -661,8 +688,14 @@ button {
 }
 
 .jobDefinitionRow {
-  grid-template-columns: minmax(0, 1.35fr) minmax(128px, 0.78fr) minmax(0, 1fr) minmax(82px, 0.42fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(128px, 0.78fr) minmax(0, 1fr) minmax(82px, 0.42fr) auto;
   width: 100%;
+}
+
+.resourceActions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .automationMain,
@@ -2747,6 +2780,26 @@ button {
   justify-content: flex-end;
 }
 
+.logRefreshSelect {
+  min-height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.76);
+  color: var(--text);
+  padding: 0 34px 0 14px;
+  font: inherit;
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.logRefreshSelect:focus-visible {
+  border-color: rgba(56, 189, 248, 0.72);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+}
+
 .logRunSummary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3626,6 +3679,21 @@ select {
   flex: 1;
 }
 
+.cellDefinitionPicker {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.28fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cyan) 5%, transparent);
+}
+
+.cellDefinitionPicker span {
+  margin: 0;
+}
+
 .cellSettings {
   grid-template-columns: 1.3fr 0.8fr 1fr;
 }
@@ -3672,6 +3740,7 @@ select {
 @media (max-width: 700px) {
   .workflowCatalog { grid-template-columns: minmax(0, 1fr); }
   .notebookMeta,
+  .cellDefinitionPicker,
   .cellSettings {
     grid-template-columns: 1fr;
   }

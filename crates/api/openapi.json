@@ -1,0 +1,59 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Capsulet API",
+    "version": "0.1.0",
+    "description": "Control-plane API for jobs, workflow DAGs, automations, logs, artifacts, audit, and health."
+  },
+  "servers": [
+    { "url": "http://127.0.0.1:8080" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "service-token or OIDC JWT"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/livez": { "get": { "security": [], "summary": "Liveness check", "responses": { "200": { "description": "Process is alive" } } } },
+    "/readyz": { "get": { "security": [], "summary": "Readiness check", "responses": { "200": { "description": "Database is reachable" }, "503": { "description": "Not ready" } } } },
+    "/healthz": { "get": { "security": [], "summary": "Health check alias", "responses": { "200": { "description": "Healthy" }, "503": { "description": "Unhealthy" } } } },
+    "/metrics": { "get": { "security": [], "summary": "Prometheus metrics", "responses": { "200": { "description": "Metrics text" } } } },
+    "/openapi.json": { "get": { "security": [], "summary": "OpenAPI description", "responses": { "200": { "description": "OpenAPI JSON" } } } },
+    "/v1/auth/me": { "get": { "summary": "Current principal", "responses": { "200": { "description": "Authenticated identity" }, "401": { "description": "Authentication required" } } } },
+    "/v1/job-definitions": { "get": { "summary": "List job definitions", "responses": { "200": { "description": "Definitions" } } }, "post": { "summary": "Create job definition", "responses": { "201": { "description": "Created" }, "400": { "description": "Validation error" } } } },
+    "/v1/job-definitions/{id}": { "get": { "summary": "Get job definition", "responses": { "200": { "description": "Definition" }, "404": { "description": "Not found" } } }, "put": { "summary": "Replace job definition", "responses": { "200": { "description": "Updated" }, "409": { "description": "Locked by active workflow run" } } }, "delete": { "summary": "Delete job definition", "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found" }, "409": { "description": "Referenced by active workflow run" } } } },
+    "/v1/workflows": { "get": { "summary": "List workflows", "responses": { "200": { "description": "Workflows" } } }, "post": { "summary": "Create workflow DAG", "responses": { "201": { "description": "Created" }, "400": { "description": "Invalid DAG" } } } },
+    "/v1/workflows/{id}": { "get": { "summary": "Get workflow", "responses": { "200": { "description": "Workflow" }, "404": { "description": "Not found" } } }, "put": { "summary": "Replace workflow", "responses": { "200": { "description": "Updated" }, "409": { "description": "Locked by active run" } } }, "delete": { "summary": "Delete workflow", "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found" }, "409": { "description": "Referenced by active run or automation" } } } },
+    "/v1/automations": { "get": { "summary": "List automations", "responses": { "200": { "description": "Automations" } } }, "post": { "summary": "Create automation", "responses": { "201": { "description": "Created" } } } },
+    "/v1/automations/{id}": { "get": { "summary": "Get automation", "responses": { "200": { "description": "Automation" }, "404": { "description": "Not found" } } }, "put": { "summary": "Replace automation", "responses": { "200": { "description": "Updated" } } }, "delete": { "summary": "Delete automation", "responses": { "204": { "description": "Deleted" } } } },
+    "/v1/automations/{id}/enable": { "post": { "summary": "Enable automation", "responses": { "200": { "description": "Enabled" } } } },
+    "/v1/automations/{id}/disable": { "post": { "summary": "Disable automation", "responses": { "200": { "description": "Disabled" } } } },
+    "/v1/automations/{id}/trigger": { "post": { "summary": "Manually trigger automation", "responses": { "201": { "description": "Workflow run created" } } } },
+    "/v1/workflow-runs": { "get": { "summary": "List workflow runs", "responses": { "200": { "description": "Workflow runs with step runs" } } } },
+    "/v1/workflow-runs/{id}": { "get": { "summary": "Get workflow run detail", "responses": { "200": { "description": "Workflow run with step history and job links" }, "404": { "description": "Not found" } } } },
+    "/v1/workflow-runs/{id}/logs": { "get": { "summary": "Get aggregate workflow logs", "responses": { "200": { "description": "Step/job logs" } } } },
+    "/v1/workflow-runs/{id}/cancel": { "post": { "summary": "Cancel workflow run", "responses": { "200": { "description": "Cancelled" } } } },
+    "/v1/workflow-runs/{id}/resume": { "post": { "summary": "Manual re-run from successful checkpoints", "responses": { "200": { "description": "Resumed" } } } },
+    "/v1/jobs/runs": { "get": { "summary": "List job runs", "responses": { "200": { "description": "Runs" } } }, "post": { "summary": "Create job run", "responses": { "201": { "description": "Created" } } } },
+    "/v1/jobs/runs/{id}": { "get": { "summary": "Get job run", "responses": { "200": { "description": "Run" }, "404": { "description": "Not found" } } } },
+    "/v1/jobs/runs/{id}/logs": { "get": { "summary": "Get job logs", "responses": { "200": { "description": "Logs" } } } },
+    "/v1/jobs/runs/{id}/cancel": { "post": { "summary": "Cancel job run", "responses": { "200": { "description": "Cancelled" } } } },
+    "/v1/jobs/runs/{id}/artifacts": { "get": { "summary": "List artifacts", "responses": { "200": { "description": "Artifacts" } } } },
+    "/v1/jobs/runs/{id}/artifacts/{artifact_id}": { "get": { "summary": "Download artifact", "responses": { "200": { "description": "Artifact bytes" }, "404": { "description": "Not found" } } } }
+  }
+}

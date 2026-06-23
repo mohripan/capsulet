@@ -49,6 +49,10 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         id: &JobDefinitionId,
     ) -> Result<bool, Self::Error>;
+    async fn job_definition_is_used_by_workflows(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<bool, Self::Error>;
     async fn delete_job_definition(&self, id: &JobDefinitionId) -> Result<bool, Self::Error>;
     async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error>;
     async fn list_workflows(&self, limit: i64) -> Result<Vec<WorkflowDefinition>, Self::Error>;
@@ -57,6 +61,7 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         id: &WorkflowId,
     ) -> Result<Option<WorkflowDefinition>, Self::Error>;
     async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error>;
+    async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error>;
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error>;
     async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error>;
     async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error>;
@@ -207,6 +212,13 @@ impl ApiStore for PostgresStore {
         self.job_definition_has_active_workflow_runs(id).await
     }
 
+    async fn job_definition_is_used_by_workflows(
+        &self,
+        id: &JobDefinitionId,
+    ) -> Result<bool, Self::Error> {
+        self.job_definition_is_used_by_workflows(id).await
+    }
+
     async fn delete_job_definition(&self, id: &JobDefinitionId) -> Result<bool, Self::Error> {
         self.delete_job_definition(id).await
     }
@@ -228,6 +240,10 @@ impl ApiStore for PostgresStore {
 
     async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
         self.workflow_has_active_runs(id).await
+    }
+
+    async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
+        self.delete_workflow(id).await
     }
 
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {
