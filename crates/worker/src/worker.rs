@@ -87,6 +87,18 @@ pub trait WorkerStore: Clone + Send + Sync + 'static {
     ) -> Result<bool, Self::Error>;
 
     async fn is_run_cancelled(&self, id: &capsulet_core::JobRunId) -> Result<bool, Self::Error>;
+
+    async fn advance_workflow_runs_for_job_run(
+        &self,
+        id: &capsulet_core::JobRunId,
+    ) -> Result<u64, Self::Error>;
+
+    async fn job_run_timeout_seconds(
+        &self,
+        id: &capsulet_core::JobRunId,
+    ) -> Result<Option<u64>, Self::Error>;
+
+    async fn active_leased_run_ids(&self) -> Result<Vec<capsulet_core::JobRunId>, Self::Error>;
 }
 
 #[async_trait]
@@ -176,6 +188,24 @@ impl WorkerStore for PostgresStore {
     async fn is_run_cancelled(&self, id: &capsulet_core::JobRunId) -> Result<bool, Self::Error> {
         self.is_run_cancelled(id).await
     }
+
+    async fn advance_workflow_runs_for_job_run(
+        &self,
+        id: &capsulet_core::JobRunId,
+    ) -> Result<u64, Self::Error> {
+        self.advance_workflow_runs_for_job_run(id).await
+    }
+
+    async fn job_run_timeout_seconds(
+        &self,
+        id: &capsulet_core::JobRunId,
+    ) -> Result<Option<u64>, Self::Error> {
+        self.job_run_timeout_seconds(id).await
+    }
+
+    async fn active_leased_run_ids(&self) -> Result<Vec<capsulet_core::JobRunId>, Self::Error> {
+        self.active_leased_run_ids().await
+    }
 }
 
 /// Outcome of a single worker tick.
@@ -243,10 +273,17 @@ where
         .await
         .map_err(WorkerError::store)?
         .ok_or_else(|| WorkerError::MissingJobDefinition(run.job_definition_id().to_string()))?;
-    let pool = pools
+    let mut pool = pools
         .find(run.execution_pool().as_str())
         .cloned()
         .ok_or_else(|| WorkerError::MissingExecutionPool(run.execution_pool().to_string()))?;
+    if let Some(timeout_seconds) = store
+        .job_run_timeout_seconds(run.id())
+        .await
+        .map_err(WorkerError::store)?
+    {
+        pool.timeout_seconds = timeout_seconds;
+    }
 
     if run.status() != JobRunStatus::Running {
         run.apply(JobRunTransition::StartAttempt)
@@ -313,6 +350,10 @@ where
 
     let latest = store
         .finish_running_attempt(run.id(), run.attempt_count(), final_status, retry_delay)
+        .await
+        .map_err(WorkerError::store)?;
+    store
+        .advance_workflow_runs_for_job_run(run.id())
         .await
         .map_err(WorkerError::store)?;
     if latest.is_none() {
@@ -389,21 +430,50 @@ where
     R: Runner,
     C: CancellationCheck + Sync,
 {
-    let execution_future = runner.execute(execution, cancellation);
-    tokio::pin!(execution_future);
+    let store_for_heartbeat = store.clone();
+    let run_id = execution.run.id().clone();
+    let heartbeat_worker_id = worker_id.to_string();
+    let (stop_heartbeat, mut stop_heartbeat_rx) = tokio::sync::oneshot::channel::<()>();
     let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(heartbeat_seconds));
     heartbeat.tick().await;
-    let report = loop {
-        tokio::select! {
-            result = &mut execution_future => break result.map_err(WorkerError::runner)?,
-            _ = heartbeat.tick() => {
-                let renewed = store
-                    .heartbeat_run(execution.run.id(), worker_id, lease_seconds)
-                    .await
-                    .map_err(WorkerError::store)?;
-                if !renewed {
-                    return Err(WorkerError::LeaseLost(execution.run.id().to_string()));
+
+    let mut heartbeat_task = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut stop_heartbeat_rx => {
+                    return Ok::<(), WorkerError>(());
                 }
+                _ = heartbeat.tick() => {
+                    let renewed = store_for_heartbeat
+                        .heartbeat_run(&run_id, &heartbeat_worker_id, lease_seconds)
+                        .await
+                        .map_err(WorkerError::store)?;
+                    if !renewed {
+                        return Err(WorkerError::LeaseLost(run_id.to_string()));
+                    }
+                }
+            }
+        }
+    });
+
+    let execution_future = runner.execute(execution, cancellation);
+    tokio::pin!(execution_future);
+    let report = tokio::select! {
+        result = &mut execution_future => {
+            let report = result.map_err(WorkerError::runner)?;
+            let _ = stop_heartbeat.send(());
+            match heartbeat_task.await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => return Err(error),
+                Err(error) => return Err(WorkerError::Runner(error.to_string())),
+            }
+            report
+        }
+        heartbeat_result = &mut heartbeat_task => {
+            match heartbeat_result {
+                Ok(Ok(())) => return Err(WorkerError::LeaseLost(execution.run.id().to_string())),
+                Ok(Err(error)) => return Err(error),
+                Err(error) => return Err(WorkerError::Runner(error.to_string())),
             }
         }
     };

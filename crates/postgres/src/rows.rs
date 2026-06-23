@@ -81,6 +81,13 @@ pub(crate) fn row_to_workflow_step(
     let job_definition_id: String = row.try_get("job_definition_id")?;
     let execution_pool: String = row.try_get("execution_pool")?;
 
+    let timeout_seconds = row
+        .try_get::<Option<i64>, _>("timeout_seconds")
+        .unwrap_or(None)
+        .map(u64::try_from)
+        .transpose()
+        .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
+
     Ok(WorkflowStep::new(
         WorkflowStepId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         WorkflowId::new(workflow_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
@@ -90,7 +97,8 @@ pub(crate) fn row_to_workflow_step(
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
         ExecutionPoolName::new(execution_pool)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
-    ))
+    )
+    .with_timeout_seconds(timeout_seconds))
 }
 
 pub(crate) fn row_to_automation(
@@ -176,14 +184,17 @@ pub(crate) fn row_to_workflow_step_run(
     let id: String = row.try_get("id")?;
     let workflow_run_id: String = row.try_get("workflow_run_id")?;
     let workflow_step_id: String = row.try_get("workflow_step_id")?;
-    let job_run_id: String = row.try_get("job_run_id")?;
+    let job_run_id: Option<String> = row.try_get("job_run_id")?;
     let status: String = row.try_get("status")?;
 
     Ok(WorkflowStepRun::new(
         WorkflowStepRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         WorkflowRunId::new(workflow_run_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         WorkflowStepId::new(workflow_step_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
-        JobRunId::new(job_run_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
+        job_run_id
+            .map(JobRunId::new)
+            .transpose()
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
         row.try_get("position")?,
         parse_domain_value(&status)?,
     ))

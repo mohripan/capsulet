@@ -2,7 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use thiserror::Error;
 
-use super::{WorkflowId, WorkflowStep, WorkflowStepDependency, WorkflowStepId};
+use super::{
+    WorkflowDependencyPolicy, WorkflowId, WorkflowRunStatus, WorkflowStep, WorkflowStepDependency,
+    WorkflowStepId,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum WorkflowGraphError {
@@ -34,6 +37,7 @@ pub struct WorkflowGraph {
     nodes: BTreeMap<WorkflowStepId, WorkflowStep>,
     outgoing: BTreeMap<WorkflowStepId, Vec<WorkflowStepId>>,
     incoming: BTreeMap<WorkflowStepId, Vec<WorkflowStepId>>,
+    incoming_dependencies: BTreeMap<WorkflowStepId, Vec<WorkflowStepDependency>>,
     topological_order: Vec<WorkflowStepId>,
 }
 
@@ -70,6 +74,11 @@ impl WorkflowGraph {
             .map(|id| (id, Vec::new()))
             .collect::<BTreeMap<_, _>>();
         let mut incoming = outgoing.clone();
+        let mut incoming_dependencies = nodes
+            .keys()
+            .cloned()
+            .map(|id| (id, Vec::new()))
+            .collect::<BTreeMap<_, _>>();
         let mut edges = BTreeSet::new();
         for dependency in dependencies {
             let from = dependency.from_step_id();
@@ -107,6 +116,12 @@ impl WorkflowGraph {
                 });
             };
             parents.push(from.clone());
+            let Some(incoming_edges) = incoming_dependencies.get_mut(to) else {
+                return Err(WorkflowGraphError::UnknownStep {
+                    step_id: to.clone(),
+                });
+            };
+            incoming_edges.push(dependency.clone());
         }
         for adjacent in outgoing.values_mut() {
             adjacent.sort();
@@ -119,6 +134,7 @@ impl WorkflowGraph {
             nodes,
             outgoing,
             incoming,
+            incoming_dependencies,
             topological_order,
         })
     }
@@ -190,6 +206,64 @@ impl WorkflowGraph {
                     && self.incoming.get(*id).is_some_and(|parents| {
                         parents.iter().all(|parent| succeeded.contains(parent))
                     })
+            })
+            .filter_map(|id| self.nodes.get(id))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn ready_steps_with_policies(
+        &self,
+        started: &BTreeSet<WorkflowStepId>,
+        states: &BTreeMap<WorkflowStepId, WorkflowRunStatus>,
+    ) -> Vec<&WorkflowStep> {
+        self.topological_order
+            .iter()
+            .filter(|id| {
+                !started.contains(*id)
+                    && self.incoming_dependencies.get(*id).is_some_and(|parents| {
+                        parents.iter().all(|dependency| {
+                            let parent_status = states.get(dependency.from_step_id()).copied();
+                            match dependency.policy() {
+                                WorkflowDependencyPolicy::Hard => {
+                                    parent_status == Some(WorkflowRunStatus::Succeeded)
+                                }
+                                WorkflowDependencyPolicy::Soft
+                                | WorkflowDependencyPolicy::Always => {
+                                    parent_status.is_some_and(WorkflowRunStatus::is_terminal)
+                                }
+                            }
+                        })
+                    })
+            })
+            .filter_map(|id| self.nodes.get(id))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn blocked_steps_after_terminal_failure(
+        &self,
+        started: &BTreeSet<WorkflowStepId>,
+        states: &BTreeMap<WorkflowStepId, WorkflowRunStatus>,
+    ) -> Vec<&WorkflowStep> {
+        self.topological_order
+            .iter()
+            .filter(|id| !started.contains(*id))
+            .filter(|id| {
+                self.incoming_dependencies.get(*id).is_some_and(|parents| {
+                    parents.iter().any(|dependency| {
+                        dependency.policy() == WorkflowDependencyPolicy::Hard
+                            && states.get(dependency.from_step_id()).is_some_and(|status| {
+                                matches!(
+                                    status,
+                                    WorkflowRunStatus::Failed
+                                        | WorkflowRunStatus::Cancelled
+                                        | WorkflowRunStatus::TimedOut
+                                        | WorkflowRunStatus::Skipped
+                                )
+                            })
+                    })
+                })
             })
             .filter_map(|id| self.nodes.get(id))
             .collect()

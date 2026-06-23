@@ -45,6 +45,7 @@ pub enum WorkflowRunStatus {
     Failed,
     Cancelled,
     TimedOut,
+    Skipped,
 }
 
 impl WorkflowRunStatus {
@@ -52,7 +53,12 @@ impl WorkflowRunStatus {
     pub const fn is_terminal(self) -> bool {
         matches!(
             self,
-            Self::Removed | Self::Succeeded | Self::Failed | Self::Cancelled | Self::TimedOut
+            Self::Removed
+                | Self::Succeeded
+                | Self::Failed
+                | Self::Cancelled
+                | Self::TimedOut
+                | Self::Skipped
         )
     }
 }
@@ -67,6 +73,7 @@ impl Display for WorkflowRunStatus {
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
             Self::TimedOut => "timed_out",
+            Self::Skipped => "skipped",
         })
     }
 }
@@ -83,7 +90,41 @@ impl FromStr for WorkflowRunStatus {
             "failed" => Ok(Self::Failed),
             "cancelled" => Ok(Self::Cancelled),
             "timed_out" => Ok(Self::TimedOut),
+            "skipped" => Ok(Self::Skipped),
             value => Err(ParseDomainValueError::new("workflow run status", value)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WorkflowDependencyPolicy {
+    Hard,
+    Soft,
+    Always,
+}
+
+impl Display for WorkflowDependencyPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Hard => "hard",
+            Self::Soft => "soft",
+            Self::Always => "always",
+        })
+    }
+}
+
+impl FromStr for WorkflowDependencyPolicy {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "hard" => Ok(Self::Hard),
+            "soft" => Ok(Self::Soft),
+            "always" => Ok(Self::Always),
+            value => Err(ParseDomainValueError::new(
+                "workflow dependency policy",
+                value,
+            )),
         }
     }
 }
@@ -150,12 +191,14 @@ pub struct WorkflowStep {
     name: String,
     job_definition_id: JobDefinitionId,
     execution_pool: ExecutionPoolName,
+    timeout_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WorkflowStepDependency {
     from_step_id: WorkflowStepId,
     to_step_id: WorkflowStepId,
+    policy: WorkflowDependencyPolicy,
 }
 
 impl WorkflowStepDependency {
@@ -164,6 +207,20 @@ impl WorkflowStepDependency {
         Self {
             from_step_id,
             to_step_id,
+            policy: WorkflowDependencyPolicy::Hard,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_policy(
+        from_step_id: WorkflowStepId,
+        to_step_id: WorkflowStepId,
+        policy: WorkflowDependencyPolicy,
+    ) -> Self {
+        Self {
+            from_step_id,
+            to_step_id,
+            policy,
         }
     }
 
@@ -175,6 +232,11 @@ impl WorkflowStepDependency {
     #[must_use]
     pub const fn to_step_id(&self) -> &WorkflowStepId {
         &self.to_step_id
+    }
+
+    #[must_use]
+    pub const fn policy(&self) -> WorkflowDependencyPolicy {
+        self.policy
     }
 }
 
@@ -195,7 +257,14 @@ impl WorkflowStep {
             name: name.into(),
             job_definition_id,
             execution_pool,
+            timeout_seconds: None,
         }
+    }
+
+    #[must_use]
+    pub const fn with_timeout_seconds(mut self, timeout_seconds: Option<u64>) -> Self {
+        self.timeout_seconds = timeout_seconds;
+        self
     }
 
     #[must_use]
@@ -227,6 +296,11 @@ impl WorkflowStep {
     pub const fn execution_pool(&self) -> &ExecutionPoolName {
         &self.execution_pool
     }
+
+    #[must_use]
+    pub const fn timeout_seconds(&self) -> Option<u64> {
+        self.timeout_seconds
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -237,6 +311,7 @@ pub struct WorkflowDefinition {
     status: WorkflowStatus,
     steps: Vec<WorkflowStep>,
     dependencies: Vec<WorkflowStepDependency>,
+    deadline_seconds: Option<u64>,
 }
 
 impl WorkflowDefinition {
@@ -259,6 +334,7 @@ impl WorkflowDefinition {
             status,
             steps,
             dependencies,
+            deadline_seconds: None,
         }
     }
 
@@ -278,7 +354,14 @@ impl WorkflowDefinition {
             status,
             steps,
             dependencies,
+            deadline_seconds: None,
         }
+    }
+
+    #[must_use]
+    pub const fn with_deadline_seconds(mut self, deadline_seconds: Option<u64>) -> Self {
+        self.deadline_seconds = deadline_seconds;
+        self
     }
 
     #[must_use]
@@ -309,6 +392,11 @@ impl WorkflowDefinition {
     #[must_use]
     pub fn dependencies(&self) -> &[WorkflowStepDependency] {
         &self.dependencies
+    }
+
+    #[must_use]
+    pub const fn deadline_seconds(&self) -> Option<u64> {
+        self.deadline_seconds
     }
 }
 
@@ -495,7 +583,7 @@ pub struct WorkflowStepRun {
     id: WorkflowStepRunId,
     workflow_run_id: WorkflowRunId,
     workflow_step_id: WorkflowStepId,
-    job_run_id: JobRunId,
+    job_run_id: Option<JobRunId>,
     position: i32,
     status: WorkflowRunStatus,
 }
@@ -506,7 +594,7 @@ impl WorkflowStepRun {
         id: WorkflowStepRunId,
         workflow_run_id: WorkflowRunId,
         workflow_step_id: WorkflowStepId,
-        job_run_id: JobRunId,
+        job_run_id: Option<JobRunId>,
         position: i32,
         status: WorkflowRunStatus,
     ) -> Self {
@@ -537,7 +625,14 @@ impl WorkflowStepRun {
 
     #[must_use]
     pub const fn job_run_id(&self) -> &JobRunId {
-        &self.job_run_id
+        self.job_run_id
+            .as_ref()
+            .expect("workflow step run has no job run")
+    }
+
+    #[must_use]
+    pub const fn maybe_job_run_id(&self) -> Option<&JobRunId> {
+        self.job_run_id.as_ref()
     }
 
     #[must_use]

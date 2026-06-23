@@ -48,7 +48,7 @@ export type WorkflowRunLogsResponse = {
 export type WorkflowRunLogEntry = {
   step_run_id: string;
   workflow_step_id: string;
-  job_run_id: string;
+  job_run_id: string | null;
   position: number;
   status: WorkflowRun["status"];
   logs: string;
@@ -130,6 +130,7 @@ export type WorkflowStep = {
   job_definition_id: string;
   execution_pool: string;
   host_group: string;
+  timeout_seconds?: number | null;
 };
 
 export type Workflow = {
@@ -144,6 +145,7 @@ export type Workflow = {
 export type WorkflowDependency = {
   from_step_id: string;
   to_step_id: string;
+  policy?: "hard" | "soft" | "always";
 };
 
 export type WorkflowEditability = {
@@ -171,8 +173,10 @@ export type CreateWorkflowRequest = {
     name: string;
     job_definition_id: string;
     execution_pool: string;
+    timeout_seconds?: number;
   }>;
   dependencies?: WorkflowDependency[];
+  deadline_seconds?: number;
 };
 
 export type Automation = {
@@ -244,9 +248,9 @@ export type WorkflowRun = {
 export type WorkflowStepRun = {
   id: string;
   workflow_step_id: string;
-  job_run_id: string;
+  job_run_id: string | null;
   position: number;
-  status: "queued" | "running" | "removed" | "succeeded" | "failed" | "cancelled" | "timed_out";
+  status: "queued" | "running" | "removed" | "succeeded" | "failed" | "cancelled" | "timed_out" | "skipped";
 };
 
 export class CapsuletApiError extends Error {

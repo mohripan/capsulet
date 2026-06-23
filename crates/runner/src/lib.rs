@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, fs, path::Path, process::Stdio, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+    process::Stdio,
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
@@ -467,6 +473,48 @@ impl KubernetesRunner {
     ) -> Result<Self, KubernetesRunnerError> {
         let client = Client::try_default().await?;
         Ok(Self::new(client, namespace, log_limit_bytes))
+    }
+
+    /// Deletes Capsulet-managed Kubernetes Jobs whose run id is no longer active in storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubernetesRunnerError`] when Kubernetes listing or deletion fails.
+    pub async fn reconcile_orphaned_jobs(
+        &self,
+        active_run_ids: &[JobRunId],
+    ) -> Result<u64, KubernetesRunnerError> {
+        let active_labels = active_run_ids
+            .iter()
+            .map(run_label_value)
+            .collect::<BTreeSet<_>>();
+        let jobs: Api<Job> = Api::namespaced(self.client.clone(), &self.namespace);
+        let list = jobs
+            .list(&ListParams::default().labels(&format!("{APP_LABEL}=capsulet")))
+            .await?;
+        let delete_params = DeleteParams {
+            propagation_policy: Some(kube::api::PropagationPolicy::Background),
+            ..DeleteParams::default()
+        };
+        let mut deleted = 0;
+        for job in list {
+            let name = job.name_any();
+            if name.is_empty() {
+                continue;
+            }
+            let Some(labels) = job.metadata.labels.as_ref() else {
+                continue;
+            };
+            let Some(run_label) = labels.get(RUN_LABEL) else {
+                continue;
+            };
+            if active_labels.contains(run_label) {
+                continue;
+            }
+            jobs.delete(&name, &delete_params).await?;
+            deleted += 1;
+        }
+        Ok(deleted)
     }
 }
 

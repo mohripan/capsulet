@@ -57,17 +57,6 @@ export default function TriggerPluginsPage() {
     void refresh();
   }, [refresh]);
 
-  function newPlugin() {
-    setSelectedId(null);
-    setPluginId("plugin_inventory_threshold");
-    setName("Inventory threshold");
-    setRuntimeImage("python:3.12-slim");
-    setScript(starterTriggerScript);
-    setFields([{ name: "threshold", label: "Threshold", type: "number", required: true, default: 10 }]);
-    setMessage(null);
-    setError(null);
-  }
-
   function editPlugin(plugin: TriggerPlugin) {
     setSelectedId(plugin.id);
     setPluginId(plugin.id);
@@ -110,10 +99,6 @@ export default function TriggerPluginsPage() {
         description="Custom triggers evaluate external conditions and emit trigger events. They are separate from job definitions and run before a workflow starts."
       />
       <div className="pageToolbar">
-        <button className="primaryAction" type="button" onClick={newPlugin}>
-          <Plus size={18} aria-hidden="true" />
-          New trigger plugin
-        </button>
         <button className="secondaryButton" type="button" onClick={() => void refresh()} disabled={isLoading}>
           <RefreshCw size={16} aria-hidden="true" />
           {isLoading ? "Refreshing" : "Refresh"}

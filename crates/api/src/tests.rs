@@ -1857,7 +1857,7 @@ async fn fetches_workflow_run_logs_for_step_runs() {
         WorkflowStepRunId::new("workflow_step_run_one").expect("first step run id"),
         workflow_run_id.clone(),
         WorkflowStepId::new("wf_logs_step_1").expect("first step id"),
-        first_job_run_id.clone(),
+        Some(first_job_run_id.clone()),
         1,
         WorkflowRunStatus::Succeeded,
     );
@@ -1865,7 +1865,7 @@ async fn fetches_workflow_run_logs_for_step_runs() {
         WorkflowStepRunId::new("workflow_step_run_two").expect("second step run id"),
         workflow_run_id.clone(),
         WorkflowStepId::new("wf_logs_step_2").expect("second step id"),
-        second_job_run_id.clone(),
+        Some(second_job_run_id.clone()),
         2,
         WorkflowRunStatus::Running,
     );
@@ -1975,7 +1975,7 @@ async fn rejects_removing_workflow_run_after_step_started() {
         WorkflowStepRunId::new("workflow_step_started").expect("step run id"),
         workflow_run_id,
         WorkflowStepId::new("wf_started_step").expect("step id"),
-        JobRunId::new("run_started_step").expect("job run id"),
+        Some(JobRunId::new("run_started_step").expect("job run id")),
         1,
         WorkflowRunStatus::Running,
     );
@@ -2023,7 +2023,7 @@ async fn cancels_running_workflow_run_and_active_step() {
         WorkflowStepRunId::new("workflow_step_cancel").expect("step run id"),
         workflow_run_id,
         WorkflowStepId::new("wf_cancel_step").expect("step id"),
-        job_run.id().clone(),
+        Some(job_run.id().clone()),
         1,
         WorkflowRunStatus::Running,
     );

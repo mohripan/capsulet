@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -14,8 +14,8 @@ use axum::{
 use capsulet_core::{
     ArtifactId, ArtifactObjectKind, AutomationId, CreateManualRunCommand, ExecutionPoolName,
     JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId, RetryPolicy, WorkflowDefinition,
-    WorkflowGraph, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus,
-    WorkflowStep, WorkflowStepDependency, WorkflowStepId,
+    WorkflowDependencyPolicy, WorkflowGraph, WorkflowId, WorkflowRun, WorkflowRunId,
+    WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde_json::Value;
@@ -37,6 +37,12 @@ use crate::{
     state::AppState,
     store::ApiStore,
 };
+
+const MAX_WORKFLOW_STEPS: usize = 256;
+const MAX_WORKFLOW_DEPENDENCIES: usize = 1_024;
+const MAX_WORKFLOW_FAN_IN: usize = 64;
+const MAX_WORKFLOW_FAN_OUT: usize = 64;
+const MAX_WORKFLOW_DEPTH: usize = 64;
 pub fn router<S, O>(state: AppState<S, O>) -> Router
 where
     S: ApiStore,
@@ -807,6 +813,12 @@ where
             "workflow must contain at least one step".to_string(),
         ));
     }
+    if request.steps.len() > MAX_WORKFLOW_STEPS {
+        return Err(ApiError::Validation(format!(
+            "workflow has {} steps, maximum is {MAX_WORKFLOW_STEPS}",
+            request.steps.len()
+        )));
+    }
     let workflow_id = WorkflowId::new(request.id.unwrap_or_else(|| generated_id("workflow")))
         .map_err(ApiError::validation)?;
     let dependency_requests = request.dependencies;
@@ -834,27 +846,49 @@ where
         }
         let position = i32::try_from(index + 1)
             .map_err(|_| ApiError::Validation("too many workflow steps".to_string()))?;
-        steps.push(WorkflowStep::new(
-            WorkflowStepId::new(
-                step.id
-                    .unwrap_or_else(|| format!("{}_step_{position}", workflow_id.as_str())),
+        let timeout_seconds = match step.timeout_seconds {
+            Some(0) => {
+                return Err(ApiError::Validation(
+                    "workflow step timeout_seconds must be greater than zero".to_string(),
+                ));
+            }
+            value => value,
+        };
+        steps.push(
+            WorkflowStep::new(
+                WorkflowStepId::new(
+                    step.id
+                        .unwrap_or_else(|| format!("{}_step_{position}", workflow_id.as_str())),
+                )
+                .map_err(ApiError::validation)?,
+                workflow_id.clone(),
+                position,
+                step.name,
+                job_definition_id,
+                execution_pool,
             )
-            .map_err(ApiError::validation)?,
-            workflow_id.clone(),
-            position,
-            step.name,
-            job_definition_id,
-            execution_pool,
-        ));
+            .with_timeout_seconds(timeout_seconds),
+        );
     }
 
     let dependencies = match dependency_requests {
         Some(dependencies) => dependencies
             .into_iter()
             .map(|dependency| {
-                Ok(WorkflowStepDependency::new(
+                let policy = match dependency.policy.as_deref().unwrap_or("hard") {
+                    "hard" => WorkflowDependencyPolicy::Hard,
+                    "soft" => WorkflowDependencyPolicy::Soft,
+                    "always" => WorkflowDependencyPolicy::Always,
+                    value => {
+                        return Err(ApiError::Validation(format!(
+                            "unsupported workflow dependency policy {value}; expected hard, soft, or always"
+                        )));
+                    }
+                };
+                Ok(WorkflowStepDependency::with_policy(
                     WorkflowStepId::new(dependency.from_step_id).map_err(ApiError::validation)?,
                     WorkflowStepId::new(dependency.to_step_id).map_err(ApiError::validation)?,
+                    policy,
                 ))
             })
             .collect::<Result<Vec<_>, ApiError>>()?,
@@ -863,8 +897,24 @@ where
             .map(|pair| WorkflowStepDependency::new(pair[0].id().clone(), pair[1].id().clone()))
             .collect(),
     };
-    WorkflowGraph::new(&workflow_id, &steps, &dependencies)
+    if dependencies.len() > MAX_WORKFLOW_DEPENDENCIES {
+        return Err(ApiError::Validation(format!(
+            "workflow has {} dependencies, maximum is {MAX_WORKFLOW_DEPENDENCIES}",
+            dependencies.len()
+        )));
+    }
+    let graph = WorkflowGraph::new(&workflow_id, &steps, &dependencies)
         .map_err(|error| ApiError::validation(error.to_string()))?;
+    validate_workflow_graph_limits(&graph, &dependencies)?;
+
+    let deadline_seconds = match request.deadline_seconds {
+        Some(0) => {
+            return Err(ApiError::Validation(
+                "workflow deadline_seconds must be greater than zero".to_string(),
+            ));
+        }
+        value => value,
+    };
 
     Ok(WorkflowDefinition::with_dependencies(
         workflow_id,
@@ -873,7 +923,60 @@ where
         WorkflowStatus::Enabled,
         steps,
         dependencies,
-    ))
+    )
+    .with_deadline_seconds(deadline_seconds))
+}
+
+fn validate_workflow_graph_limits(
+    graph: &WorkflowGraph,
+    dependencies: &[WorkflowStepDependency],
+) -> Result<(), ApiError> {
+    let mut fan_in = BTreeMap::<WorkflowStepId, usize>::new();
+    let mut fan_out = BTreeMap::<WorkflowStepId, usize>::new();
+    for dependency in dependencies {
+        let out_count = fan_out
+            .entry(dependency.from_step_id().clone())
+            .and_modify(|count| *count += 1)
+            .or_insert(1);
+        if *out_count > MAX_WORKFLOW_FAN_OUT {
+            return Err(ApiError::Validation(format!(
+                "workflow step {} has fan-out {}, maximum is {MAX_WORKFLOW_FAN_OUT}",
+                dependency.from_step_id(),
+                out_count
+            )));
+        }
+        let in_count = fan_in
+            .entry(dependency.to_step_id().clone())
+            .and_modify(|count| *count += 1)
+            .or_insert(1);
+        if *in_count > MAX_WORKFLOW_FAN_IN {
+            return Err(ApiError::Validation(format!(
+                "workflow step {} has fan-in {}, maximum is {MAX_WORKFLOW_FAN_IN}",
+                dependency.to_step_id(),
+                in_count
+            )));
+        }
+    }
+
+    let mut depths = BTreeMap::<WorkflowStepId, usize>::new();
+    for step_id in graph.topological_order() {
+        let depth = *depths.entry(step_id.clone()).or_insert(1);
+        if depth > MAX_WORKFLOW_DEPTH {
+            return Err(ApiError::Validation(format!(
+                "workflow depth is {depth}, maximum is {MAX_WORKFLOW_DEPTH}"
+            )));
+        }
+        if let Some(children) = graph.outgoing(step_id) {
+            for child in children {
+                depths
+                    .entry(child.clone())
+                    .and_modify(|child_depth| *child_depth = (*child_depth).max(depth + 1))
+                    .or_insert(depth + 1);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) fn json_from_string(value: &str) -> Result<Value, ApiError> {
@@ -1130,23 +1233,30 @@ where
         .map_err(ApiError::store)?;
     let mut entries = Vec::with_capacity(step_runs.len());
     for step_run in step_runs {
-        let log = state
-            .store
-            .find_run_log(step_run.job_run_id())
-            .await
-            .map_err(ApiError::store)?;
-        let object_log_available = state
-            .store
-            .list_artifacts(step_run.job_run_id())
-            .await
-            .map_err(ApiError::store)?
-            .iter()
-            .any(|artifact| artifact.kind() == ArtifactObjectKind::Log);
+        let (log, object_log_available) = if let Some(job_run_id) = step_run.maybe_job_run_id() {
+            let log = state
+                .store
+                .find_run_log(job_run_id)
+                .await
+                .map_err(ApiError::store)?;
+            let object_log_available = state
+                .store
+                .list_artifacts(job_run_id)
+                .await
+                .map_err(ApiError::store)?
+                .iter()
+                .any(|artifact| artifact.kind() == ArtifactObjectKind::Log);
+            (log, object_log_available)
+        } else {
+            (None, false)
+        };
 
         entries.push(WorkflowRunLogEntryResponse {
             step_run_id: step_run.id().as_str().to_string(),
             workflow_step_id: step_run.workflow_step_id().as_str().to_string(),
-            job_run_id: step_run.job_run_id().as_str().to_string(),
+            job_run_id: step_run
+                .maybe_job_run_id()
+                .map(|job_run_id| job_run_id.as_str().to_string()),
             position: step_run.position(),
             status: step_run.status().to_string(),
             logs: log.map_or_else(String::new, |log| log.text),

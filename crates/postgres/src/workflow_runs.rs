@@ -1,15 +1,132 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use capsulet_core::{
-    AutomationId, WorkflowGraph, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus,
-    WorkflowStepId, WorkflowStepRun,
+    AutomationId, ExecutionPoolName, JobDefinitionId, JobRunId, WorkflowDefinition, WorkflowGraph,
+    WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStep,
+    WorkflowStepDependency, WorkflowStepId, WorkflowStepRun,
 };
+use serde_json::{Value, json};
 use sqlx::Row;
 
 use crate::{
     PostgresStore, PostgresStoreError,
     rows::{generated_store_id, row_to_workflow_run, row_to_workflow_step_run},
 };
+
+fn workflow_snapshot_json(workflow: &WorkflowDefinition) -> Value {
+    json!({
+        "steps": workflow.steps().iter().map(|step| {
+            json!({
+                "id": step.id().as_str(),
+                "position": step.position(),
+                "name": step.name(),
+                "job_definition_id": step.job_definition_id().as_str(),
+                "execution_pool": step.execution_pool().as_str(),
+                "timeout_seconds": step.timeout_seconds(),
+            })
+        }).collect::<Vec<_>>(),
+        "dependencies": workflow.dependencies().iter().map(|dependency| {
+            json!({
+                "from_step_id": dependency.from_step_id().as_str(),
+                "to_step_id": dependency.to_step_id().as_str(),
+                "policy": dependency.policy().to_string(),
+            })
+        }).collect::<Vec<_>>(),
+        "deadline_seconds": workflow.deadline_seconds(),
+    })
+}
+
+fn workflow_from_snapshot(
+    workflow_id: &WorkflowId,
+    snapshot: &Value,
+) -> Result<WorkflowDefinition, PostgresStoreError> {
+    let steps = snapshot
+        .get("steps")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid_snapshot("missing steps"))?
+        .iter()
+        .map(|step| {
+            Ok(WorkflowStep::new(
+                WorkflowStepId::new(snapshot_string(step, "id")?)
+                    .map_err(PostgresStoreError::InvalidPersistedValue)?,
+                workflow_id.clone(),
+                snapshot_i32(step, "position")?,
+                snapshot_string(step, "name")?,
+                JobDefinitionId::new(snapshot_string(step, "job_definition_id")?)
+                    .map_err(PostgresStoreError::InvalidPersistedValue)?,
+                ExecutionPoolName::new(snapshot_string(step, "execution_pool")?)
+                    .map_err(PostgresStoreError::InvalidPersistedValue)?,
+            )
+            .with_timeout_seconds(snapshot_optional_u64(step, "timeout_seconds")?))
+        })
+        .collect::<Result<Vec<_>, PostgresStoreError>>()?;
+    let dependencies = snapshot
+        .get("dependencies")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid_snapshot("missing dependencies"))?
+        .iter()
+        .map(|dependency| {
+            Ok(WorkflowStepDependency::with_policy(
+                WorkflowStepId::new(snapshot_string(dependency, "from_step_id")?)
+                    .map_err(PostgresStoreError::InvalidPersistedValue)?,
+                WorkflowStepId::new(snapshot_string(dependency, "to_step_id")?)
+                    .map_err(PostgresStoreError::InvalidPersistedValue)?,
+                dependency
+                    .get("policy")
+                    .and_then(Value::as_str)
+                    .unwrap_or("hard")
+                    .parse()
+                    .map_err(|error: capsulet_core::ParseDomainValueError| {
+                        PostgresStoreError::InvalidPersistedValue(error.to_string())
+                    })?,
+            ))
+        })
+        .collect::<Result<Vec<_>, PostgresStoreError>>()?;
+
+    Ok(WorkflowDefinition::with_dependencies(
+        workflow_id.clone(),
+        "",
+        "",
+        capsulet_core::WorkflowStatus::Enabled,
+        steps,
+        dependencies,
+    )
+    .with_deadline_seconds(snapshot_optional_u64(snapshot, "deadline_seconds")?))
+}
+
+fn snapshot_string(snapshot: &Value, key: &str) -> Result<String, PostgresStoreError> {
+    snapshot
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| invalid_snapshot(format!("missing string field {key}")))
+}
+
+fn snapshot_i32(snapshot: &Value, key: &str) -> Result<i32, PostgresStoreError> {
+    let value = snapshot
+        .get(key)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| invalid_snapshot(format!("missing integer field {key}")))?;
+    i32::try_from(value).map_err(|_| invalid_snapshot(format!("integer field {key} out of range")))
+}
+
+fn snapshot_optional_u64(snapshot: &Value, key: &str) -> Result<Option<u64>, PostgresStoreError> {
+    match snapshot.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_u64()
+            .map(Some)
+            .ok_or_else(|| invalid_snapshot(format!("field {key} must be unsigned integer"))),
+    }
+}
+
+fn invalid_snapshot(message: impl Into<String>) -> PostgresStoreError {
+    PostgresStoreError::InvalidPersistedValue(format!(
+        "invalid workflow snapshot: {}",
+        message.into()
+    ))
+}
+
 impl PostgresStore {
     /// Returns whether a workflow has an execution that can still consume its definition.
     ///
@@ -87,12 +204,20 @@ impl PostgresStore {
         run_id: &WorkflowRunId,
         input_json: &str,
     ) -> Result<WorkflowRun, PostgresStoreError> {
+        let workflow = self.find_workflow(workflow_id).await?.ok_or_else(|| {
+            PostgresStoreError::InvalidPersistedValue(format!("workflow {workflow_id} not found"))
+        })?;
+        let workflow_snapshot = workflow_snapshot_json(&workflow);
         let row = sqlx::query(
             r"
             INSERT INTO workflow_runs (
-                id, workflow_id, automation_id, input, status, current_step_position, updated_at
+                id, workflow_id, automation_id, input, status, current_step_position, workflow_snapshot, deadline_at, updated_at
             )
-            VALUES ($1, $2, $3, $4::jsonb, 'queued', 0, now())
+            VALUES (
+                $1, $2, $3, $4::jsonb, 'queued', 0, $5::jsonb,
+                CASE WHEN $6::bigint IS NULL THEN NULL ELSE now() + ($6::bigint * interval '1 second') END,
+                now()
+            )
             RETURNING created_at::text AS created_at
             ",
         )
@@ -100,6 +225,8 @@ impl PostgresStore {
         .bind(workflow_id.as_str())
         .bind(automation_id.map(AutomationId::as_str))
         .bind(input_json)
+        .bind(workflow_snapshot)
+        .bind(workflow.deadline_seconds().and_then(|value| i64::try_from(value).ok()))
         .fetch_one(&self.pool)
         .await?;
 
@@ -446,6 +573,39 @@ impl PostgresStore {
         Ok(advanced)
     }
 
+    /// Reconciles workflow runs that reference a just-finished job run.
+    ///
+    /// This is the event-driven fast path used by workers so each DAG layer can
+    /// advance immediately after a step reaches a terminal state. The scheduler
+    /// poll loop remains as a backstop.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the lookup or reconciliation fails.
+    pub async fn advance_workflow_runs_for_job_run(
+        &self,
+        job_run_id: &JobRunId,
+    ) -> Result<u64, PostgresStoreError> {
+        let run_ids = sqlx::query_scalar::<_, String>(
+            r"
+            SELECT DISTINCT workflow_run_id
+            FROM workflow_step_runs
+            WHERE job_run_id = $1
+            ",
+        )
+        .bind(job_run_id.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut advanced = 0;
+        for run_id in run_ids {
+            if self.reconcile_workflow_run(&run_id).await? {
+                advanced += 1;
+            }
+        }
+        Ok(advanced)
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "the scheduler state transition stays in one database transaction"
@@ -465,7 +625,9 @@ impl PostgresStore {
         let Some(run_row) = sqlx::query(
             r"
             SELECT id, workflow_id, automation_id, input::text AS input, status,
-                   current_step_position, created_at::text AS created_at
+                   current_step_position, created_at::text AS created_at,
+                   workflow_snapshot,
+                   (deadline_at IS NOT NULL AND deadline_at <= now()) AS deadline_expired
             FROM workflow_runs
             WHERE id = $1 AND status IN ('queued', 'running')
             FOR UPDATE
@@ -479,15 +641,30 @@ impl PostgresStore {
             return Ok(false);
         };
         let run = row_to_workflow_run(&run_row)?;
-        let workflow = self
-            .find_workflow(run.workflow_id())
-            .await?
-            .ok_or_else(|| {
-                PostgresStoreError::InvalidPersistedValue(format!(
-                    "workflow {} not found",
-                    run.workflow_id()
-                ))
-            })?;
+        if run_row.try_get::<bool, _>("deadline_expired")? {
+            sqlx::query(
+                "UPDATE workflow_step_runs SET status = 'timed_out', updated_at = now() WHERE workflow_run_id = $1 AND status IN ('queued', 'running')",
+            )
+            .bind(run_id)
+            .execute(&mut *tx)
+            .await?;
+            Self::finish_workflow_run_in(&mut tx, run_id, WorkflowRunStatus::TimedOut).await?;
+            tx.commit().await?;
+            return Ok(true);
+        }
+        let workflow_snapshot = run_row.try_get::<Option<Value>, _>("workflow_snapshot")?;
+        let workflow = if let Some(snapshot) = workflow_snapshot {
+            workflow_from_snapshot(run.workflow_id(), &snapshot)?
+        } else {
+            self.find_workflow(run.workflow_id())
+                .await?
+                .ok_or_else(|| {
+                    PostgresStoreError::InvalidPersistedValue(format!(
+                        "workflow {} not found",
+                        run.workflow_id()
+                    ))
+                })?
+        };
         let graph = WorkflowGraph::new(workflow.id(), workflow.steps(), workflow.dependencies())?;
 
         sqlx::query(
@@ -531,31 +708,50 @@ impl PostgresStore {
         .await?;
 
         let mut started = BTreeSet::new();
-        let mut succeeded = BTreeSet::new();
+        let mut step_states = BTreeMap::new();
         let mut active = 0_usize;
         let mut failed = false;
         for state in &states {
             let step_id = WorkflowStepId::new(state.try_get::<String, _>("workflow_step_id")?)
                 .map_err(PostgresStoreError::InvalidPersistedValue)?;
             started.insert(step_id.clone());
-            match state.try_get::<String, _>("status")?.as_str() {
-                "succeeded" => {
-                    succeeded.insert(step_id);
-                }
+            let status = state.try_get::<String, _>("status")?;
+            let workflow_status =
+                status
+                    .parse()
+                    .map_err(|error: capsulet_core::ParseDomainValueError| {
+                        PostgresStoreError::InvalidPersistedValue(error.to_string())
+                    })?;
+            step_states.insert(step_id.clone(), workflow_status);
+            match status.as_str() {
+                "succeeded" => {}
                 "queued" | "running" => active += 1,
                 "failed" | "cancelled" | "timed_out" => failed = true,
                 _ => {}
             }
         }
 
-        if succeeded.len() == workflow.steps().len() {
+        if step_states.len() == workflow.steps().len()
+            && step_states.values().all(|status| {
+                matches!(
+                    status,
+                    WorkflowRunStatus::Succeeded | WorkflowRunStatus::Skipped
+                )
+            })
+        {
             Self::finish_workflow_run_in(&mut tx, run_id, WorkflowRunStatus::Succeeded).await?;
             tx.commit().await?;
             return Ok(true);
         }
 
-        let ready = graph.ready_steps(&started, &succeeded);
+        let ready = graph.ready_steps_with_policies(&started, &step_states);
         let ready_count = ready.len();
+        let skipped = if failed && active == 0 && ready_count == 0 {
+            graph.blocked_steps_after_terminal_failure(&started, &step_states)
+        } else {
+            Vec::new()
+        };
+        let skipped_count = skipped.len();
         let progress_position = workflow
             .steps()
             .iter()
@@ -567,18 +763,25 @@ impl PostgresStore {
                     .copied()
                     .map(capsulet_core::WorkflowStep::position),
             )
+            .chain(
+                skipped
+                    .iter()
+                    .copied()
+                    .map(capsulet_core::WorkflowStep::position),
+            )
             .max()
             .unwrap_or(0);
         for step in ready {
             let job_run_id = generated_store_id("run_workflow_step");
             let step_run_id = generated_store_id("workflow_step_run");
             sqlx::query(
-                "INSERT INTO job_runs (id, job_definition_id, status, execution_pool, input, updated_at) VALUES ($1, $2, 'queued', $3, $4::jsonb, now())",
+                "INSERT INTO job_runs (id, job_definition_id, status, execution_pool, input, timeout_seconds, updated_at) VALUES ($1, $2, 'queued', $3, $4::jsonb, $5, now())",
             )
             .bind(&job_run_id)
             .bind(step.job_definition_id().as_str())
             .bind(step.execution_pool().as_str())
             .bind(run.input_json())
+            .bind(step.timeout_seconds().and_then(|value| i64::try_from(value).ok()))
             .execute(&mut *tx)
             .await?;
             sqlx::query(
@@ -593,7 +796,20 @@ impl PostgresStore {
             .await?;
         }
 
-        if failed && active == 0 && ready_count == 0 {
+        for step in skipped {
+            let step_run_id = generated_store_id("workflow_step_run");
+            sqlx::query(
+                "INSERT INTO workflow_step_runs (id, workflow_run_id, workflow_step_id, job_run_id, position, status, updated_at) VALUES ($1, $2, $3, NULL, $4, 'skipped', now())",
+            )
+            .bind(&step_run_id)
+            .bind(run_id)
+            .bind(step.id().as_str())
+            .bind(step.position())
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        if failed && active == 0 && ready_count == 0 && skipped_count == 0 {
             Self::finish_workflow_run_in(&mut tx, run_id, WorkflowRunStatus::Failed).await?;
         } else if ready_count > 0 || run.status() == WorkflowRunStatus::Queued {
             sqlx::query(

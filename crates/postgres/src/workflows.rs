@@ -20,12 +20,13 @@ impl PostgresStore {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
             r"
-            INSERT INTO workflow_definitions (id, name, description, status, updated_at)
-            VALUES ($1, $2, $3, $4, now())
+            INSERT INTO workflow_definitions (id, name, description, status, deadline_seconds, updated_at)
+            VALUES ($1, $2, $3, $4, $5, now())
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 status = EXCLUDED.status,
+                deadline_seconds = EXCLUDED.deadline_seconds,
                 updated_at = now()
             ",
         )
@@ -33,6 +34,7 @@ impl PostgresStore {
         .bind(workflow.name())
         .bind(workflow.description())
         .bind(workflow.status().to_string())
+        .bind(workflow.deadline_seconds().and_then(|value| i64::try_from(value).ok()))
         .execute(&mut *tx)
         .await?;
 
@@ -50,9 +52,9 @@ impl PostgresStore {
             sqlx::query(
                 r"
                 INSERT INTO workflow_steps (
-                    id, workflow_id, position, name, job_definition_id, execution_pool, updated_at
+                    id, workflow_id, position, name, job_definition_id, execution_pool, timeout_seconds, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, now())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, now())
                 ",
             )
             .bind(step.id().as_str())
@@ -61,17 +63,19 @@ impl PostgresStore {
             .bind(step.name())
             .bind(step.job_definition_id().as_str())
             .bind(step.execution_pool().as_str())
+            .bind(step.timeout_seconds().and_then(|value| i64::try_from(value).ok()))
             .execute(&mut *tx)
             .await?;
         }
 
         for dependency in workflow.dependencies() {
             sqlx::query(
-                "INSERT INTO workflow_step_dependencies (workflow_id, from_step_id, to_step_id) VALUES ($1, $2, $3)",
+                "INSERT INTO workflow_step_dependencies (workflow_id, from_step_id, to_step_id, policy) VALUES ($1, $2, $3, $4)",
             )
             .bind(workflow.id().as_str())
             .bind(dependency.from_step_id().as_str())
             .bind(dependency.to_step_id().as_str())
+            .bind(dependency.policy().to_string())
             .execute(&mut *tx)
             .await?;
         }
@@ -91,7 +95,7 @@ impl PostgresStore {
     ) -> Result<Vec<WorkflowDefinition>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, name, description, status
+            SELECT id, name, description, status, deadline_seconds
             FROM workflow_definitions
             ORDER BY updated_at DESC, id ASC
             LIMIT $1
@@ -119,7 +123,7 @@ impl PostgresStore {
     ) -> Result<Option<WorkflowDefinition>, PostgresStoreError> {
         let row = sqlx::query(
             r"
-            SELECT id, name, description, status
+            SELECT id, name, description, status, deadline_seconds
             FROM workflow_definitions
             WHERE id = $1
             ",
@@ -156,7 +160,7 @@ impl PostgresStore {
         let workflow_id = WorkflowId::new(id).map_err(PostgresStoreError::InvalidPersistedValue)?;
         let step_rows = sqlx::query(
             r"
-            SELECT id, workflow_id, position, name, job_definition_id, execution_pool
+            SELECT id, workflow_id, position, name, job_definition_id, execution_pool, timeout_seconds
             FROM workflow_steps
             WHERE workflow_id = $1
             ORDER BY position ASC
@@ -168,7 +172,7 @@ impl PostgresStore {
 
         let dependency_rows = sqlx::query(
             r"
-            SELECT from_step_id, to_step_id
+            SELECT from_step_id, to_step_id, policy
             FROM workflow_step_dependencies
             WHERE workflow_id = $1
             ORDER BY from_step_id ASC, to_step_id ASC
@@ -181,15 +185,22 @@ impl PostgresStore {
         let dependencies = dependency_rows
             .iter()
             .map(|dependency| {
-                Ok(WorkflowStepDependency::new(
+                Ok(WorkflowStepDependency::with_policy(
                     WorkflowStepId::new(dependency.try_get::<String, _>("from_step_id")?)
                         .map_err(PostgresStoreError::InvalidPersistedValue)?,
                     WorkflowStepId::new(dependency.try_get::<String, _>("to_step_id")?)
                         .map_err(PostgresStoreError::InvalidPersistedValue)?,
+                    parse_domain_value(dependency.try_get::<String, _>("policy")?.as_str())?,
                 ))
             })
             .collect::<Result<Vec<_>, PostgresStoreError>>()?;
 
+        let deadline_seconds = row
+            .try_get::<Option<i64>, _>("deadline_seconds")
+            .unwrap_or(None)
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
         let workflow = WorkflowDefinition::with_dependencies(
             workflow_id.clone(),
             row.try_get::<String, _>("name")?,
@@ -200,7 +211,8 @@ impl PostgresStore {
                 .map(row_to_workflow_step)
                 .collect::<Result<Vec<_>, _>>()?,
             dependencies,
-        );
+        )
+        .with_deadline_seconds(deadline_seconds);
         WorkflowGraph::new(&workflow_id, workflow.steps(), workflow.dependencies())?;
         Ok(workflow)
     }

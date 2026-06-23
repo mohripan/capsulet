@@ -519,10 +519,12 @@ export default function AutomationsPage() {
                         <span>{latestRun.step_runs.length} job{latestRun.step_runs.length === 1 ? "" : "s"}</span>
                       </div>
                       <div className="runMonitorLink">
-                        {latestJob ? (
+                        {latestJob?.job_run_id ? (
                           <Link href={`/runs/${latestJob.job_run_id}`} title={latestJob.job_run_id}>
                             Latest job {latestJob.position}: {latestJob.status}
                           </Link>
+                        ) : latestJob ? (
+                          <span>Latest step {latestJob.position}: {latestJob.status}</span>
                         ) : (
                           <span>No job run created yet</span>
                         )}
@@ -620,7 +622,11 @@ export default function AutomationsPage() {
                 <span className="tableCell" title={run.workflow_id}>{run.workflow_id}</span>
                 <span className="stepRunLinks">
                   {run.step_runs.length === 0 ? "-" : run.step_runs.map((stepRun) => (
-                    <Link href={`/runs/${stepRun.job_run_id}`} key={stepRun.id}>{stepRun.position}: {stepRun.status}</Link>
+                    stepRun.job_run_id ? (
+                      <Link href={`/runs/${stepRun.job_run_id}`} key={stepRun.id}>{stepRun.position}: {stepRun.status}</Link>
+                    ) : (
+                      <span key={stepRun.id}>{stepRun.position}: {stepRun.status}</span>
+                    )
                   ))}
                 </span>
                 <StateBadge state={run.status} />

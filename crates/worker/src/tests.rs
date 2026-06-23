@@ -176,6 +176,24 @@ impl WorkerStore for FakeStore {
             .iter()
             .any(|cancelled| cancelled == id))
     }
+
+    async fn advance_workflow_runs_for_job_run(
+        &self,
+        _id: &capsulet_core::JobRunId,
+    ) -> Result<u64, Self::Error> {
+        Ok(0)
+    }
+
+    async fn job_run_timeout_seconds(
+        &self,
+        _id: &capsulet_core::JobRunId,
+    ) -> Result<Option<u64>, Self::Error> {
+        Ok(None)
+    }
+
+    async fn active_leased_run_ids(&self) -> Result<Vec<capsulet_core::JobRunId>, Self::Error> {
+        Ok(Vec::new())
+    }
 }
 
 impl FakeStore {

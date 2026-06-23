@@ -124,7 +124,7 @@ export default function LiveLogsClient() {
     const needle = lineQuery.trim().toLowerCase();
     if (!needle) return logs?.entries ?? [];
     return (logs?.entries ?? []).filter((entry) =>
-      `${entry.job_run_id} ${entry.workflow_step_id} ${entry.status} ${entry.logs}`.toLowerCase().includes(needle)
+      `${entry.job_run_id ?? ""} ${entry.workflow_step_id} ${entry.status} ${entry.logs}`.toLowerCase().includes(needle)
     );
   }, [lineQuery, logs]);
   const capturedLineCount = useMemo(
@@ -273,7 +273,7 @@ export default function LiveLogsClient() {
                 <header>
                   {entry.status === "succeeded" ? <CheckCircle2 size={16} aria-hidden="true" /> : <CircleDot size={16} aria-hidden="true" />}
                   <strong>Step {entry.position}</strong>
-                  <span className="mono">{entry.job_run_id}</span>
+                  <span className="mono">{entry.job_run_id ?? "no job run"}</span>
                   <StateBadge state={entry.status} />
                 </header>
                 <pre>{entry.logs || "No logs captured for this step yet."}</pre>

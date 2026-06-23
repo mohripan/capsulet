@@ -16,8 +16,9 @@ pub use domain::{
     AutomationTrigger, AutomationTriggerKind, ConditionExpr, CustomTriggerPlugin, ExecutionPool,
     ExecutionPoolName, JobArtifact, JobAttemptId, JobDefinition, JobDefinitionId, JobRun, JobRunId,
     JobRunLog, JobRunStatus, JobRunTransition, ParseDomainValueError, ResourceRequirements,
-    RetryPolicy, StateTransitionError, TriggerKind, TriggerName, WorkflowDefinition, WorkflowGraph,
-    WorkflowGraphError, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus,
-    WorkflowStep, WorkflowStepDependency, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
+    RetryPolicy, StateTransitionError, TriggerKind, TriggerName, WorkflowDefinition,
+    WorkflowDependencyPolicy, WorkflowGraph, WorkflowGraphError, WorkflowId, WorkflowRun,
+    WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepDependency,
+    WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
 };
 pub use ports::{JobArtifactRepository, JobRunLogRepository, JobRunRepository};

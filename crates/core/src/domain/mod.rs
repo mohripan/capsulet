@@ -24,7 +24,7 @@ pub use job_log::JobRunLog;
 pub use parse::ParseDomainValueError;
 pub use workflow::{
     Automation, AutomationSettings, AutomationStatus, AutomationTriggerKind, WorkflowDefinition,
-    WorkflowRun, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepDependency,
-    WorkflowStepRun,
+    WorkflowDependencyPolicy, WorkflowRun, WorkflowRunStatus, WorkflowStatus, WorkflowStep,
+    WorkflowStepDependency, WorkflowStepRun,
 };
 pub use workflow_graph::{WorkflowGraph, WorkflowGraphError};

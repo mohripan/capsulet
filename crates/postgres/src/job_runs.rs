@@ -2,6 +2,36 @@ use capsulet_core::{JobDefinition, JobRun, JobRunId, JobRunRepository, JobRunSta
 
 use crate::{PostgresStore, PostgresStoreError, rows::row_to_job_run};
 impl PostgresStore {
+    pub async fn job_run_timeout_seconds(
+        &self,
+        id: &JobRunId,
+    ) -> Result<Option<u64>, PostgresStoreError> {
+        let value = sqlx::query_scalar::<_, Option<i64>>(
+            "SELECT timeout_seconds FROM job_runs WHERE id = $1",
+        )
+        .bind(id.as_str())
+        .fetch_optional(&self.pool)
+        .await?
+        .flatten();
+
+        value
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))
+    }
+
+    pub async fn active_leased_run_ids(&self) -> Result<Vec<JobRunId>, PostgresStoreError> {
+        let ids = sqlx::query_scalar::<_, String>(
+            "SELECT id FROM job_runs WHERE status IN ('leased', 'running')",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        ids.into_iter()
+            .map(|id| JobRunId::new(id).map_err(PostgresStoreError::InvalidPersistedValue))
+            .collect()
+    }
+
     ///
     /// # Errors
     ///

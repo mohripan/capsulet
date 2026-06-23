@@ -42,6 +42,7 @@ pub struct CreateWorkflowRequest {
     pub description: Option<String>,
     pub steps: Vec<CreateWorkflowStepRequest>,
     pub dependencies: Option<Vec<CreateWorkflowDependencyRequest>>,
+    pub deadline_seconds: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,6 +84,7 @@ pub struct CreateWorkflowStepRequest {
     pub job_definition_id: String,
     #[serde(alias = "host_group")]
     pub execution_pool: String,
+    pub timeout_seconds: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,6 +137,7 @@ pub(crate) struct ListRunsQuery {
 pub struct CreateWorkflowDependencyRequest {
     pub from_step_id: String,
     pub to_step_id: String,
+    pub policy: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,7 +214,7 @@ pub(crate) struct WorkflowRunLogsResponse {
 pub(crate) struct WorkflowRunLogEntryResponse {
     pub(crate) step_run_id: String,
     pub(crate) workflow_step_id: String,
-    pub(crate) job_run_id: String,
+    pub(crate) job_run_id: Option<String>,
     pub(crate) position: i32,
     pub(crate) status: String,
     pub(crate) logs: String,
@@ -278,6 +281,7 @@ pub(crate) struct ListAuditEventsResponse {
 pub(crate) struct WorkflowDependencyResponse {
     pub(crate) from_step_id: String,
     pub(crate) to_step_id: String,
+    pub(crate) policy: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -288,6 +292,7 @@ pub(crate) struct WorkflowStepResponse {
     pub(crate) job_definition_id: String,
     pub(crate) execution_pool: String,
     pub(crate) host_group: String,
+    pub(crate) timeout_seconds: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -339,7 +344,7 @@ pub(crate) struct WorkflowRunResponse {
 pub(crate) struct WorkflowStepRunResponse {
     pub(crate) id: String,
     pub(crate) workflow_step_id: String,
-    pub(crate) job_run_id: String,
+    pub(crate) job_run_id: Option<String>,
     pub(crate) position: i32,
     pub(crate) status: String,
 }
@@ -432,6 +437,7 @@ impl From<&WorkflowStepDependency> for WorkflowDependencyResponse {
         Self {
             from_step_id: dependency.from_step_id().as_str().to_string(),
             to_step_id: dependency.to_step_id().as_str().to_string(),
+            policy: dependency.policy().to_string(),
         }
     }
 }
@@ -445,6 +451,7 @@ impl From<&WorkflowStep> for WorkflowStepResponse {
             job_definition_id: step.job_definition_id().as_str().to_string(),
             execution_pool: step.execution_pool().as_str().to_string(),
             host_group: step.execution_pool().as_str().to_string(),
+            timeout_seconds: step.timeout_seconds(),
         }
     }
 }
@@ -528,7 +535,9 @@ impl From<&WorkflowStepRun> for WorkflowStepRunResponse {
         Self {
             id: step_run.id().as_str().to_string(),
             workflow_step_id: step_run.workflow_step_id().as_str().to_string(),
-            job_run_id: step_run.job_run_id().as_str().to_string(),
+            job_run_id: step_run
+                .maybe_job_run_id()
+                .map(|job_run_id| job_run_id.as_str().to_string()),
             position: step_run.position(),
             status: step_run.status().to_string(),
         }
