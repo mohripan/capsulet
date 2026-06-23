@@ -1036,7 +1036,7 @@ async fn creates_and_lists_custom_trigger_plugins() {
                         "id": "plugin_customer_threshold",
                         "name": "Customer threshold",
                         "runtime_image": "python:3.12-slim",
-                        "command": ["python", "/plugin/check.py"],
+                        "python_script": "import json\nprint(json.dumps({'matched': False}))",
                         "config_schema": { "type": "object" }
                     })
                     .to_string(),
@@ -1063,9 +1063,14 @@ async fn creates_and_lists_custom_trigger_plugins() {
         .expect("response");
 
     assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response_json(response).await;
     assert_eq!(
-        response_json(response).await["trigger_plugins"][0]["runtime_image"],
+        body["trigger_plugins"][0]["runtime_image"],
         "python:3.12-slim"
+    );
+    assert_eq!(
+        body["trigger_plugins"][0]["python_script"],
+        "import json\nprint(json.dumps({'matched': False}))"
     );
 }
 

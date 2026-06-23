@@ -115,7 +115,8 @@ pub struct CreateTriggerPluginRequest {
     pub name: String,
     pub description: Option<String>,
     pub runtime_image: String,
-    pub command: Vec<String>,
+    pub command: Option<Vec<String>>,
+    pub python_script: Option<String>,
     pub config_schema: Option<Value>,
 }
 
@@ -319,6 +320,7 @@ pub(crate) struct TriggerPluginResponse {
     pub(crate) description: String,
     pub(crate) runtime_image: String,
     pub(crate) command: Vec<String>,
+    pub(crate) python_script: String,
     pub(crate) config_schema: Value,
 }
 
@@ -488,9 +490,19 @@ impl From<&CustomTriggerPlugin> for TriggerPluginResponse {
             description: plugin.description().to_string(),
             runtime_image: plugin.runtime_image().to_string(),
             command: plugin.command().to_vec(),
+            python_script: plugin_python_script(plugin),
             config_schema: json_from_string(plugin.config_schema_json())
                 .unwrap_or_else(|_| json!({})),
         }
+    }
+}
+
+fn plugin_python_script(plugin: &CustomTriggerPlugin) -> String {
+    let command = plugin.command();
+    if command.len() == 3 && command[0] == "python" && command[1] == "-c" {
+        command[2].clone()
+    } else {
+        String::new()
     }
 }
 

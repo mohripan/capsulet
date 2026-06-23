@@ -11,15 +11,21 @@ function internalIssuerUrl() {
   ).replace(/\/+$/, "");
 }
 
-function publicUrl(request: NextRequest) {
-  return (process.env.CAPSULET_DASHBOARD_PUBLIC_URL || request.nextUrl.origin).replace(/\/+$/, "");
+function browserOrigin(request: NextRequest) {
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+  const protocol = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol.replace(":", "") || "http";
+  const origin = host ? `${protocol}://${host}` : request.nextUrl.origin.replace(/\/+$/, "");
+  if (!origin.includes("://0.0.0.0")) {
+    return origin;
+  }
+  return (process.env.CAPSULET_DASHBOARD_PUBLIC_URL || origin).replace(/\/+$/, "");
 }
 
 function secureCookie(request: NextRequest) {
   if (process.env.CAPSULET_DASHBOARD_COOKIE_SECURE) {
     return process.env.CAPSULET_DASHBOARD_COOKIE_SECURE === "true";
   }
-  return publicUrl(request).startsWith("https://");
+  return browserOrigin(request).startsWith("https://");
 }
 
 export async function GET(request: NextRequest) {
@@ -27,7 +33,7 @@ export async function GET(request: NextRequest) {
   const code = url.searchParams.get("code") || "";
   const state = url.searchParams.get("state") || "";
   const expectedState = request.cookies.get("capsulet_oidc_state")?.value || "";
-  const publicBase = publicUrl(request);
+  const publicBase = browserOrigin(request);
   if (!code || !state || state !== expectedState) {
     return NextResponse.redirect(new URL("/login?error=oidc_state", publicBase), 303);
   }
@@ -39,7 +45,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=oidc_config", publicBase), 303);
   }
 
-  const redirectUri = `${publicUrl(request)}/api/auth/oidc/callback`;
+  const redirectUri = `${browserOrigin(request)}/api/auth/oidc/callback`;
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,

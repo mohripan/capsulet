@@ -1322,6 +1322,54 @@ button {
   width: 100%;
 }
 
+.triggerPluginCallout,
+.triggerPluginFields,
+.triggerScriptContract {
+  display: grid;
+  gap: 12px;
+}
+
+.triggerPluginCallout p {
+  margin: 0;
+  color: var(--soft);
+  line-height: 1.55;
+}
+
+.triggerScriptContract {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(36, 150, 237, 0.08);
+  color: var(--soft);
+}
+
+.triggerScriptContract code {
+  color: var(--cyan);
+}
+
+.triggerPluginFields {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(7, 17, 31, 0.36);
+}
+
+.triggerPluginFields > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.triggerPluginFields strong {
+  color: var(--text);
+}
+
+.triggerPluginFields span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .formStack {
   display: grid;
   gap: 13px;
@@ -1753,6 +1801,24 @@ button {
   color: var(--soft);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workflowParameterSummary {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: color-mix(in srgb, var(--cyan) 6%, transparent);
+}
+
+.workflowParameterSummary strong {
+  color: var(--text);
+}
+
+.workflowParameterSummary span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .triggerChips {

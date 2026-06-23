@@ -756,18 +756,29 @@ fn build_trigger_plugin(
             "plugin runtime_image cannot be empty".to_string(),
         ));
     }
-    if request.command.is_empty() {
-        return Err(ApiError::Validation(
-            "plugin command cannot be empty".to_string(),
-        ));
-    }
+    let command = if let Some(script) = request.python_script {
+        if script.trim().is_empty() {
+            return Err(ApiError::Validation(
+                "custom trigger python script cannot be empty".to_string(),
+            ));
+        }
+        vec!["python".to_string(), "-c".to_string(), script]
+    } else {
+        let command = request.command.unwrap_or_default();
+        if command.is_empty() {
+            return Err(ApiError::Validation(
+                "plugin command cannot be empty".to_string(),
+            ));
+        }
+        command
+    };
 
     Ok(CustomTriggerPlugin::new(
         request.id,
         request.name,
         request.description.unwrap_or_default(),
         request.runtime_image,
-        request.command,
+        command,
         request
             .config_schema
             .unwrap_or_else(|| json!({}))

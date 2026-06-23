@@ -16,7 +16,6 @@ import {
   Power,
   PowerOff,
   RefreshCw,
-  Save,
   Send,
   Trash2,
   Workflow
@@ -27,25 +26,23 @@ import {
   Automation,
   AutomationRequest,
   ContractField,
-  HostGroup,
   JobDefinition,
   ParameterContract,
   TriggerCondition,
   TriggerKind,
   TriggerPlugin,
+  Workflow as WorkflowDefinition,
   WorkflowRun,
   cancelWorkflowRun,
   createAutomation,
-  createTriggerPlugin,
-  createWorkflow,
   deleteAutomation,
   disableAutomation,
   enableAutomation,
   getErrorMessage,
   listAutomations,
-  listHostGroups,
   listJobDefinitions,
   listTriggerPlugins,
+  listWorkflows,
   listWorkflowRuns,
   removeWorkflowRun,
   triggerAutomation,
@@ -129,6 +126,22 @@ function defaultValues(contract: ParameterContract) {
   );
 }
 
+function contractForWorkflow(workflow: WorkflowDefinition | undefined, definitions: JobDefinition[]): ParameterContract {
+  if (!workflow) return { fields: [] };
+  const definitionsById = new Map(definitions.map((definition) => [definition.id, definition]));
+  const fields: ContractField[] = [];
+  const seen = new Set<string>();
+  for (const step of workflow.steps) {
+    const definition = definitionsById.get(step.job_definition_id);
+    for (const field of definition?.input_schema.fields ?? []) {
+      if (seen.has(field.name)) continue;
+      seen.add(field.name);
+      fields.push({ ...field, label: `${fieldLabel(field)} · ${step.name}` });
+    }
+  }
+  return { fields };
+}
+
 function conditionFromText(value: string): TriggerCondition {
   const tokens = value.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 1) return { trigger: tokens[0] };
@@ -164,7 +177,7 @@ function latestStepRun(run: WorkflowRun) {
 export default function AutomationsPage() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [jobDefinitions, setJobDefinitions] = useState<JobDefinition[]>([]);
-  const [hostGroups, setHostGroups] = useState<HostGroup[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
   const [tableWorkflowRuns, setTableWorkflowRuns] = useState<WorkflowRun[]>([]);
   const [triggerPlugins, setTriggerPlugins] = useState<TriggerPlugin[]>([]);
@@ -183,39 +196,33 @@ export default function AutomationsPage() {
   const [runSortDirection, setRunSortDirection] = useState<"asc" | "desc">("desc");
   const [name, setName] = useState("Inventory email alert");
   const [automationStatus, setAutomationStatus] = useState<Automation["status"]>("enabled");
-  const [jobDefinitionId, setJobDefinitionId] = useState("");
-  const [hostGroup, setHostGroup] = useState("");
+  const [workflowId, setWorkflowId] = useState("");
   const [jobInput, setJobInput] = useState<Record<string, unknown>>({});
-  const [jobInputText, setJobInputText] = useState("{}");
   const [triggers, setTriggers] = useState<DraftTrigger[]>([defaultTrigger()]);
   const [condition, setCondition] = useState("schedule_ready");
-  const [pluginId, setPluginId] = useState("plugin_inventory_threshold");
-  const [pluginName, setPluginName] = useState("Inventory threshold");
-  const [pluginImage, setPluginImage] = useState("python:3.12-slim");
-  const [pluginCommand, setPluginCommand] = useState("python,/plugin/check.py");
-  const [pluginFields, setPluginFields] = useState<ContractField[]>([
-    { name: "threshold", label: "Threshold", type: "number", required: true, default: 10 }
-  ]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastLiveRefresh, setLastLiveRefresh] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSavingPlugin, setIsSavingPlugin] = useState(false);
 
-  const selectedJob = useMemo(
-    () => jobDefinitions.find((definition) => definition.id === jobDefinitionId),
-    [jobDefinitions, jobDefinitionId]
+  const selectedWorkflow = useMemo(
+    () => workflows.find((workflow) => workflow.id === workflowId),
+    [workflows, workflowId]
+  );
+  const selectedWorkflowContract = useMemo(
+    () => contractForWorkflow(selectedWorkflow, jobDefinitions),
+    [jobDefinitions, selectedWorkflow]
   );
 
   const refresh = useCallback(async function refresh(silent = false) {
     if (!silent) setIsLoading(true);
     setError(null);
     try {
-      const [automationResponse, jobResponse, hostResponse, runResponse, tableRunResponse, pluginResponse] = await Promise.all([
+      const [automationResponse, jobResponse, workflowResponse, runResponse, tableRunResponse, pluginResponse] = await Promise.all([
         listAutomations(),
         listJobDefinitions(),
-        listHostGroups(),
+        listWorkflows(),
         listWorkflowRuns({ limit: 500 }),
         listWorkflowRuns({
           limit: 200,
@@ -230,13 +237,12 @@ export default function AutomationsPage() {
       ]);
       setAutomations(automationResponse.automations);
       setJobDefinitions(jobResponse.job_definitions);
-      setHostGroups(hostResponse.host_groups);
+      setWorkflows(workflowResponse.workflows);
       setWorkflowRuns(runResponse.workflow_runs);
       setTableWorkflowRuns(tableRunResponse.workflow_runs);
       setTriggerPlugins(pluginResponse.trigger_plugins);
       setLastLiveRefresh(new Date().toISOString());
-      setJobDefinitionId((current) => current || jobResponse.job_definitions[0]?.id || "");
-      setHostGroup((current) => current || hostResponse.host_groups.find((item) => item.is_default)?.name || hostResponse.host_groups[0]?.name || "");
+      setWorkflowId((current) => current || workflowResponse.workflows[0]?.id || "");
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -257,17 +263,16 @@ export default function AutomationsPage() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!selectedJob) return;
-    setJobInput((current) => ({ ...defaultValues(selectedJob.input_schema), ...current }));
-  }, [selectedJob]);
+    setJobInput((current) => ({ ...defaultValues(selectedWorkflowContract), ...current }));
+  }, [selectedWorkflowContract]);
 
   function openCreateAutomation() {
     setEditingAutomation(null);
     setWizardStep("details");
     setName("Inventory email alert");
     setAutomationStatus("enabled");
-    setJobInput(selectedJob ? defaultValues(selectedJob.input_schema) : {});
-    setJobInputText("{}");
+    setWorkflowId((current) => current || workflows[0]?.id || "");
+    setJobInput(defaultValues(selectedWorkflowContract));
     setTriggers([defaultTrigger()]);
     setCondition("schedule_ready");
     setIsModalOpen(true);
@@ -279,8 +284,8 @@ export default function AutomationsPage() {
     setWizardStep("details");
     setName(automation.name);
     setAutomationStatus(automation.status);
+    setWorkflowId(automation.workflow_id);
     setJobInput(automation.job_input || {});
-    setJobInputText(JSON.stringify(automation.job_input || {}, null, 2));
     setTriggers(
       automation.triggers.length
         ? automation.triggers.map((triggerItem) => ({
@@ -306,22 +311,12 @@ export default function AutomationsPage() {
     setError(null);
     setMessage(null);
     try {
-      const automationJobInput = editingAutomation ? JSON.parse(jobInputText) as Record<string, unknown> : jobInput;
-      const workflowId = editingAutomation
-        ? editingAutomation.workflow_id
-        : (
-            await createWorkflow({
-              name: `${name} workflow`,
-              description: `Generated by automation ${name}`,
-              steps: [{ name: "Run selected job", job_definition_id: jobDefinitionId, execution_pool: hostGroup }]
-            })
-          ).id;
       const request: AutomationRequest = {
         name,
         workflow_id: workflowId,
         status: automationStatus,
         trigger_kind: triggers.some((trigger) => trigger.kind === "schedule") ? "schedule" : "manual",
-        job_input: automationJobInput,
+        job_input: jobInput,
         triggers: triggers.map((trigger) => ({
           name: trigger.name,
           kind: trigger.kind,
@@ -340,28 +335,6 @@ export default function AutomationsPage() {
       setError(getErrorMessage(err));
     } finally {
       setIsSubmitting(false);
-    }
-  }
-
-  async function savePlugin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingPlugin(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const plugin = await createTriggerPlugin({
-        id: pluginId,
-        name: pluginName,
-        runtime_image: pluginImage,
-        command: pluginCommand.split(",").map((part) => part.trim()).filter(Boolean),
-        config_schema: { fields: pluginFields }
-      });
-      setMessage(`Saved trigger plugin ${plugin.name}`);
-      await refresh();
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsSavingPlugin(false);
     }
   }
 
@@ -484,8 +457,8 @@ export default function AutomationsPage() {
     <DashboardShell>
       <PageHeader
         eyebrow="Automation authoring"
-        title="Attach trigger contracts to job workflows"
-        description="Create automations by choosing the job, host group, trigger parameters, and the condition that turns trigger signals into a workflow run."
+        title="Attach trigger contracts to workflows"
+        description="Create automations by choosing the workflow to run, filling its shared input parameters, and defining the condition that turns trigger signals into a workflow run."
       />
 
       <div className="pageToolbar">
@@ -604,35 +577,16 @@ export default function AutomationsPage() {
         </section>
 
         <section className="panel span4">
-          <PanelTitle icon={PlugZap} title="Custom Trigger Plugin" action="Registry" />
-          <form className="formStack" onSubmit={savePlugin}>
-            <label><span>Plugin id</span><input value={pluginId} onChange={(event) => setPluginId(event.target.value)} /></label>
-            <label><span>Name</span><input value={pluginName} onChange={(event) => setPluginName(event.target.value)} /></label>
-            <label><span>Runtime image</span><input value={pluginImage} onChange={(event) => setPluginImage(event.target.value)} /></label>
-            <label><span>Command</span><input value={pluginCommand} onChange={(event) => setPluginCommand(event.target.value)} /></label>
-            <div className="fieldContractList">
-              {pluginFields.map((field, index) => (
-                <div className="contractRow" key={`${field.name}-${index}`}>
-                  <input value={field.name} onChange={(event) => setPluginFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} />
-                  <select value={field.type} onChange={(event) => setPluginFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value as ContractField["type"] } : item))}>
-                    <option value="string">string</option>
-                    <option value="number">number</option>
-                    <option value="boolean">boolean</option>
-                    <option value="textarea">textarea</option>
-                    <option value="password">secret</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-            <button className="secondaryButton" type="button" onClick={() => setPluginFields((current) => [...current, { name: "value", type: "string", required: true }])}>
-              <Plus size={15} aria-hidden="true" />
-              Field
-            </button>
-            <button className="primaryAction fullWidthAction" disabled={isSavingPlugin}>
-              <Save size={16} aria-hidden="true" />
-              {isSavingPlugin ? "Saving" : "Save plugin"}
-            </button>
-          </form>
+          <PanelTitle icon={PlugZap} title="Custom trigger plugins" action={`${triggerPlugins.length} registered`} />
+          <div className="triggerPluginCallout">
+            <p>
+              Custom triggers are Python evaluators that run before a workflow. Author and test their script contract in a full-width workspace.
+            </p>
+            <Link className="primaryAction fullWidthAction" href="/trigger-plugins">
+              <PlugZap size={16} aria-hidden="true" />
+              Open trigger plugins
+            </Link>
+          </div>
         </section>
 
         <section className="panel span12">
@@ -716,25 +670,31 @@ export default function AutomationsPage() {
                 <div className="formStack">
                   <label><span>Automation name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label>
                   <label><span>Status</span><select value={automationStatus} onChange={(event) => setAutomationStatus(event.target.value as Automation["status"])}><option value="enabled">enabled</option><option value="disabled">disabled</option></select></label>
-                  {editingAutomation ? (
-                    <div className="readonlyField">
-                      <span>Workflow</span>
-                      <code title={editingAutomation.workflow_id}>{editingAutomation.workflow_id}</code>
+                  <label>
+                    <span>Workflow</span>
+                    <select value={workflowId} onChange={(event) => setWorkflowId(event.target.value)}>
+                      <option value="">Choose workflow</option>
+                      {workflows.map((workflow) => (
+                        <option value={workflow.id} key={workflow.id}>
+                          {workflow.name} · {workflow.steps.length} step{workflow.steps.length === 1 ? "" : "s"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedWorkflow ? (
+                    <div className="workflowParameterSummary">
+                      <strong>{selectedWorkflow.name}</strong>
+                      <span>{selectedWorkflow.description || "No description"}</span>
+                      <span>{selectedWorkflow.steps.length} job step{selectedWorkflow.steps.length === 1 ? "" : "s"} receive the same workflow input.</span>
                     </div>
                   ) : (
-                    <>
-                      <label><span>Job definition</span><select value={jobDefinitionId} onChange={(event) => setJobDefinitionId(event.target.value)}>{jobDefinitions.map((definition) => <option value={definition.id} key={definition.id}>{definition.name}</option>)}</select></label>
-                      <label><span>Host group</span><select value={hostGroup} onChange={(event) => setHostGroup(event.target.value)}>{hostGroups.map((group) => <option value={group.name} key={group.name}>{group.name}</option>)}</select></label>
-                    </>
+                    <div className="emptyState">Create a workflow before attaching automation triggers.</div>
                   )}
-                  {editingAutomation ? (
-                    <label>
-                      <span>Job parameters JSON</span>
-                      <textarea value={jobInputText} onChange={(event) => setJobInputText(event.target.value)} />
-                    </label>
-                  ) : (
-                    <ContractFields contract={selectedJob?.input_schema || {}} values={jobInput} onChange={setJobInput} />
-                  )}
+                  {selectedWorkflowContract.fields?.length ? (
+                    <ContractFields contract={selectedWorkflowContract} values={jobInput} onChange={setJobInput} />
+                  ) : selectedWorkflow ? (
+                    <div className="conditionHelp"><Braces size={18} /><span>This workflow has no declared job parameters. The automation will trigger it with an empty input object.</span></div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -782,7 +742,7 @@ export default function AutomationsPage() {
               {wizardStep !== "condition" ? (
                 <button type="button" className="primaryAction" onClick={() => setWizardStep(wizardStep === "details" ? "triggers" : "condition")}>Next<ChevronRight size={16} /></button>
               ) : (
-                <button className="primaryAction" disabled={isSubmitting || (!editingAutomation && (!jobDefinitionId || !hostGroup))}><Send size={16} />{isSubmitting ? "Saving" : editingAutomation ? "Save changes" : "Create automation"}</button>
+                <button className="primaryAction" disabled={isSubmitting || !workflowId}><Send size={16} />{isSubmitting ? "Saving" : editingAutomation ? "Save changes" : "Create automation"}</button>
               )}
             </div>
           </form>
@@ -835,7 +795,7 @@ export default function AutomationsPage() {
                 <code className="detailCodeBlock">{JSON.stringify(viewingAutomation.condition, null, 2)}</code>
               </section>
               <section className="detailSection">
-                <h3>Job input</h3>
+                <h3>Workflow input</h3>
                 <code className="detailCodeBlock">{JSON.stringify(viewingAutomation.job_input || {}, null, 2)}</code>
               </section>
             </div>

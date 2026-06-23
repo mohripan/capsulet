@@ -16,6 +16,7 @@ import {
   ListTree,
   LogOut,
   Plus,
+  PlugZap,
   RefreshCw,
   Route,
   Search,
@@ -30,6 +31,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from
 const nav: Array<[LucideIcon, string, string]> = [
   [Home, "Overview", "/"],
   [Workflow, "Automations", "/automations"],
+  [PlugZap, "Trigger Plugins", "/trigger-plugins"],
   [GitBranch, "Workflows", "/workflows"],
   [FileCode2, "Job Definitions", "/job-definitions"],
   [Activity, "Runs", "/runs"],

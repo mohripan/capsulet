@@ -227,6 +227,7 @@ export type TriggerPlugin = {
   description: string;
   runtime_image: string;
   command: string[];
+  python_script: string;
   config_schema: Record<string, unknown>;
 };
 
@@ -452,7 +453,8 @@ export async function createTriggerPlugin(request: {
   name: string;
   description?: string;
   runtime_image: string;
-  command: string[];
+  command?: string[];
+  python_script?: string;
   config_schema?: ParameterContract;
 }) {
   return apiFetch<TriggerPlugin>("/v1/trigger-plugins", {

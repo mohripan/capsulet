@@ -5,7 +5,7 @@
       "value": "capsulet-local-admin-token-change-me",
       "domain": "127.0.0.1",
       "path": "/",
-      "expires": 1782221225.900202,
+      "expires": 1782238921.340711,
       "httpOnly": true,
       "secure": false,
       "sameSite": "Strict"
