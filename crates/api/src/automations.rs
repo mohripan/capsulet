@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use capsulet_core::{
     Automation, AutomationId, AutomationSettings, AutomationStatus, AutomationTrigger,
@@ -14,8 +14,12 @@ use capsulet_storage::ObjectStore;
 use serde_json::{Value, json};
 
 use crate::{
+    auth::Principal,
     error::ApiError,
-    http::{generated_id, json_from_string, valid_json_object_string},
+    http::{
+        assign_resource_project, generated_id, json_from_string, project_context,
+        require_project_role, require_resource_project, valid_json_object_string,
+    },
     models::{
         AutomationResponse, CreateAutomationRequest, CreateAutomationTriggerRequest,
         CreateTriggerPluginRequest, ListAutomationTriggersResponse, ListAutomationsResponse,
@@ -26,19 +30,38 @@ use crate::{
 };
 pub(crate) async fn create_automation<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<CreateAutomationRequest>,
 ) -> Result<(StatusCode, Json<AutomationResponse>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let build = build_automation(&state, request).await?;
     let automation = build.automation;
+    require_resource_project(
+        &state.store,
+        "workflows",
+        automation.workflow_id().as_str(),
+        &context,
+    )
+    .await?;
+    require_trigger_plugin_projects(&state.store, &build.triggers, &context).await?;
     state
         .store
         .upsert_automation(&automation)
         .await
         .map_err(ApiError::store)?;
+    assign_resource_project(
+        &state.store,
+        "automations",
+        automation.id().as_str(),
+        &context,
+    )
+    .await?;
     state
         .store
         .replace_automation_triggers(automation.id(), &build.triggers, &build.condition_json)
@@ -57,6 +80,8 @@ where
 
 pub(crate) async fn update_automation<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(mut request): Json<CreateAutomationRequest>,
 ) -> Result<Json<AutomationResponse>, ApiError>
@@ -64,7 +89,16 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(
+        &state.store,
+        "automations",
+        automation_id.as_str(),
+        &context,
+    )
+    .await?;
     if state
         .store
         .find_automation(&automation_id)
@@ -79,6 +113,14 @@ where
     request.id = Some(automation_id.as_str().to_string());
     let build = build_automation(&state, request).await?;
     let automation = build.automation;
+    require_resource_project(
+        &state.store,
+        "workflows",
+        automation.workflow_id().as_str(),
+        &context,
+    )
+    .await?;
+    require_trigger_plugin_projects(&state.store, &build.triggers, &context).await?;
     state
         .store
         .upsert_automation(&automation)
@@ -99,13 +141,24 @@ where
 
 pub(crate) async fn delete_automation<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_admin")?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(
+        &state.store,
+        "automations",
+        automation_id.as_str(),
+        &context,
+    )
+    .await?;
     let deleted = state
         .store
         .delete_automation(&automation_id)
@@ -122,33 +175,40 @@ where
 
 pub(crate) async fn enable_automation<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<AutomationResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
-    set_automation_status(state, id, AutomationStatus::Enabled).await
+    set_automation_status(state, headers, principal, id, AutomationStatus::Enabled).await
 }
 
 pub(crate) async fn disable_automation<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<AutomationResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
-    set_automation_status(state, id, AutomationStatus::Disabled).await
+    set_automation_status(state, headers, principal, id, AutomationStatus::Disabled).await
 }
 
 pub(crate) async fn list_automations<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListAutomationsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let automations = state
         .store
         .list_automations(100)
@@ -156,6 +216,17 @@ where
         .map_err(ApiError::store)?;
     let mut responses = Vec::with_capacity(automations.len());
     for automation in &automations {
+        if require_resource_project(
+            &state.store,
+            "automations",
+            automation.id().as_str(),
+            &context,
+        )
+        .await
+        .is_err()
+        {
+            continue;
+        }
         let (triggers, condition_json) = trigger_graph_for_response(&state, automation).await?;
         responses.push(AutomationResponse::new(
             automation,
@@ -170,13 +241,17 @@ where
 
 pub(crate) async fn get_automation<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<AutomationResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = AutomationId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "automations", id.as_str(), &context).await?;
     let Some(automation) = state
         .store
         .find_automation(&id)
@@ -295,6 +370,8 @@ where
 
 async fn set_automation_status<S, O>(
     state: AppState<S, O>,
+    headers: HeaderMap,
+    principal: Principal,
     id: String,
     status: AutomationStatus,
 ) -> Result<Json<AutomationResponse>, ApiError>
@@ -302,7 +379,16 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(
+        &state.store,
+        "automations",
+        automation_id.as_str(),
+        &context,
+    )
+    .await?;
     let Some(automation) = state
         .store
         .set_automation_status(&automation_id, status)
@@ -658,13 +744,23 @@ fn legacy_trigger_name(automation: &Automation) -> &'static str {
 
 pub(crate) async fn list_automation_triggers<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<ListAutomationTriggersResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(
+        &state.store,
+        "automations",
+        automation_id.as_str(),
+        &context,
+    )
+    .await?;
     let Some(automation) = state
         .store
         .find_automation(&automation_id)
@@ -684,18 +780,23 @@ where
 
 pub(crate) async fn create_trigger_plugin<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<CreateTriggerPluginRequest>,
 ) -> Result<(StatusCode, Json<TriggerPluginResponse>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let plugin = build_trigger_plugin(request)?;
     state
         .store
         .upsert_custom_trigger_plugin(&plugin)
         .await
         .map_err(ApiError::store)?;
+    assign_resource_project(&state.store, "trigger_plugins", plugin.id(), &context).await?;
     Ok((
         StatusCode::CREATED,
         Json(TriggerPluginResponse::from(&plugin)),
@@ -704,29 +805,58 @@ where
 
 pub(crate) async fn list_trigger_plugins<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListTriggerPluginsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let plugins = state
         .store
         .list_custom_trigger_plugins(100)
         .await
         .map_err(ApiError::store)?;
+    let mut scoped = Vec::new();
+    for plugin in &plugins {
+        if require_resource_project(&state.store, "trigger_plugins", plugin.id(), &context)
+            .await
+            .is_ok()
+        {
+            scoped.push(TriggerPluginResponse::from(plugin));
+        }
+    }
     Ok(Json(ListTriggerPluginsResponse {
-        trigger_plugins: plugins.iter().map(TriggerPluginResponse::from).collect(),
+        trigger_plugins: scoped,
     }))
+}
+
+async fn require_trigger_plugin_projects<S: ApiStore>(
+    store: &S,
+    triggers: &[AutomationTrigger],
+    context: &crate::http::ProjectContext,
+) -> Result<(), ApiError> {
+    for trigger in triggers {
+        if let Some(plugin_id) = trigger.plugin_id() {
+            require_resource_project(store, "trigger_plugins", plugin_id, context).await?;
+        }
+    }
+    Ok(())
 }
 
 pub(crate) async fn get_trigger_plugin<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<TriggerPluginResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_resource_project(&state.store, "trigger_plugins", &id, &context).await?;
     let Some(plugin) = state
         .store
         .find_custom_trigger_plugin(&id)

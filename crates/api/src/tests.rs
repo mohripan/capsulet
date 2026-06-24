@@ -11,7 +11,9 @@ use capsulet_core::{
     WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
     WorkflowStepRun, WorkflowStepRunId,
 };
-use capsulet_postgres::{ProjectRecord, TriggerEvent};
+use capsulet_postgres::{
+    NewProjectMembership, ProjectMembershipRecord, ProjectRecord, TriggerEvent,
+};
 use capsulet_storage::ObjectStore;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -34,6 +36,16 @@ struct FakeStore {
     workflow_runs: Arc<Mutex<Vec<WorkflowRun>>>,
     workflow_step_runs: Arc<Mutex<Vec<WorkflowStepRun>>>,
     projects: Arc<Mutex<Vec<ProjectRecord>>>,
+    project_memberships: Arc<Mutex<Vec<ProjectMembershipRecord>>>,
+    ownership: Arc<Mutex<Vec<FakeOwnership>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FakeOwnership {
+    resource: String,
+    id: String,
+    tenant_id: String,
+    project_id: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -107,6 +119,134 @@ impl ApiStore for FakeStore {
             })
             .cloned()
             .collect())
+    }
+
+    async fn list_all_projects(&self, tenant_id: &str) -> Result<Vec<ProjectRecord>, Self::Error> {
+        Ok(self
+            .projects
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|project| project.tenant_id == tenant_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn list_project_memberships(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
+        Ok(self
+            .project_memberships
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|membership| {
+                membership.tenant_id == tenant_id && membership.project_id == project_id
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn list_principal_project_memberships(
+        &self,
+        tenant_id: &str,
+        principal_name: &str,
+    ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
+        Ok(self
+            .project_memberships
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|membership| {
+                membership.tenant_id == tenant_id && membership.principal_name == principal_name
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn upsert_project_membership(
+        &self,
+        membership: &NewProjectMembership,
+    ) -> Result<ProjectMembershipRecord, Self::Error> {
+        let mut records = self
+            .project_memberships
+            .lock()
+            .map_err(|error| error.to_string())?;
+        records.retain(|record| {
+            !(record.tenant_id == membership.tenant_id
+                && record.project_id == membership.project_id
+                && record.principal_kind == membership.principal_kind
+                && record.principal_name == membership.principal_name)
+        });
+        let record = ProjectMembershipRecord {
+            id: membership.id.clone(),
+            tenant_id: membership.tenant_id.clone(),
+            project_id: membership.project_id.clone(),
+            principal_kind: membership.principal_kind.clone(),
+            principal_name: membership.principal_name.clone(),
+            role: membership.role.clone(),
+            created_by: membership.created_by.clone(),
+            created_at: "2026-06-24 00:00:00+00".to_string(),
+            updated_at: "2026-06-24 00:00:00+00".to_string(),
+        };
+        records.push(record.clone());
+        Ok(record)
+    }
+
+    async fn delete_project_membership(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        principal_kind: &str,
+        principal_name: &str,
+    ) -> Result<bool, Self::Error> {
+        let mut records = self
+            .project_memberships
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let initial_len = records.len();
+        records.retain(|record| {
+            !(record.tenant_id == tenant_id
+                && record.project_id == project_id
+                && record.principal_kind == principal_kind
+                && record.principal_name == principal_name)
+        });
+        Ok(records.len() != initial_len)
+    }
+
+    async fn resource_project(
+        &self,
+        resource: &str,
+        id: &str,
+    ) -> Result<Option<(String, String)>, Self::Error> {
+        Ok(self
+            .ownership
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|ownership| ownership.resource == resource && ownership.id == id)
+            .map(|ownership| (ownership.tenant_id.clone(), ownership.project_id.clone()))
+            .or_else(|| Some(("default".to_string(), "default".to_string()))))
+    }
+
+    async fn set_resource_project(
+        &self,
+        resource: &str,
+        id: &str,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        let mut ownership = self.ownership.lock().map_err(|error| error.to_string())?;
+        ownership.retain(|ownership| !(ownership.resource == resource && ownership.id == id));
+        ownership.push(FakeOwnership {
+            resource: resource.to_string(),
+            id: id.to_string(),
+            tenant_id: tenant_id.to_string(),
+            project_id: project_id.to_string(),
+        });
+        Ok(())
     }
 
     async fn enqueue_trigger_event(
@@ -741,6 +881,33 @@ impl FakeStore {
             tenant_id: "default".to_string(),
             name: "Finance".to_string(),
         });
+        drop(projects);
+        let mut memberships = self
+            .project_memberships
+            .lock()
+            .expect("project memberships mutex");
+        memberships.push(ProjectMembershipRecord {
+            id: "default_owner".to_string(),
+            tenant_id: "default".to_string(),
+            project_id: "default".to_string(),
+            principal_kind: "user".to_string(),
+            principal_name: "owner".to_string(),
+            role: "project_admin".to_string(),
+            created_by: "system".to_string(),
+            created_at: "2026-06-24 00:00:00+00".to_string(),
+            updated_at: "2026-06-24 00:00:00+00".to_string(),
+        });
+        memberships.push(ProjectMembershipRecord {
+            id: "finance_user".to_string(),
+            tenant_id: "default".to_string(),
+            project_id: "finance".to_string(),
+            principal_kind: "user".to_string(),
+            principal_name: "finance".to_string(),
+            role: "project_operator".to_string(),
+            created_by: "system".to_string(),
+            created_at: "2026-06-24 00:00:00+00".to_string(),
+            updated_at: "2026-06-24 00:00:00+00".to_string(),
+        });
     }
 
     fn with_workflow(self, id: &str) -> Self {
@@ -966,6 +1133,189 @@ async fn rate_limit_uses_bearer_token_before_local_fallback() {
         .expect("response");
 
     assert_eq!(response.status(), axum::http::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn job_definitions_are_scoped_to_selected_project() {
+    let app = authenticated_app(FakeStore::default());
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/job-definitions")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("x-capsulet-project-id", "finance")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "job_finance_report",
+                        "name": "Finance report",
+                        "python_script": "print('finance')"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create_response.status(), 201);
+
+    let default_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/job-definitions")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response_json(default_response).await["job_definitions"],
+        json!([])
+    );
+
+    let finance_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/job-definitions")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("x-capsulet-project-id", "finance")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response_json(finance_response).await["job_definitions"][0]["id"],
+        "job_finance_report"
+    );
+}
+
+#[tokio::test]
+async fn principal_cannot_select_project_without_membership() {
+    let response = authenticated_app(FakeStore::default())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/job-definitions")
+                .header(
+                    "authorization",
+                    "Bearer finance-token-0123456789-abcdefghijkl",
+                )
+                .header("x-capsulet-project-id", "default")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn project_admin_can_manage_project_memberships() {
+    let app = authenticated_app(FakeStore::default());
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/projects/finance/memberships")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "principal_kind": "user",
+                        "principal_name": "developer",
+                        "role": "project_operator"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create_response.status(), 200);
+
+    let list_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/projects/finance/memberships")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = response_json(list_response).await;
+    assert!(
+        body["memberships"]
+            .as_array()
+            .expect("memberships")
+            .iter()
+            .any(|membership| membership["principal_name"] == "developer"
+                && membership["role"] == "project_operator")
+    );
+}
+
+#[tokio::test]
+async fn stored_project_admin_membership_can_manage_project_memberships() {
+    let store = FakeStore::default();
+    store.ensure_default_projects();
+    store
+        .project_memberships
+        .lock()
+        .expect("project memberships mutex")
+        .push(ProjectMembershipRecord {
+            id: "finance_reader_admin".to_string(),
+            tenant_id: "default".to_string(),
+            project_id: "finance".to_string(),
+            principal_kind: "user".to_string(),
+            principal_name: "reader".to_string(),
+            role: "project_admin".to_string(),
+            created_by: "system".to_string(),
+            created_at: "2026-06-24 00:00:00+00".to_string(),
+            updated_at: "2026-06-24 00:00:00+00".to_string(),
+        });
+    let app = authenticated_app(store);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/projects/finance/memberships")
+                .header("authorization", "Bearer viewer-token-0123456789-abcdefgh")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "principal_kind": "user",
+                        "principal_name": "developer",
+                        "role": "project_operator"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), 200);
 }
 
 #[tokio::test]

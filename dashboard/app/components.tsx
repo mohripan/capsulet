@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { listProjects, type Project } from "./lib/api";
+import { listProjects, selectedProjectId, setSelectedProjectId, type Project } from "./lib/api";
 
 const nav: Array<[LucideIcon, string, string]> = [
   [Home, "Overview", "/"],
@@ -60,7 +60,14 @@ export function DashboardShell({
     void listProjects()
       .then((response) => {
         setProjects(response.projects);
-        setActiveProject((current) => current || response.projects[0]?.id || "");
+        const storedProject = selectedProjectId();
+        const nextProject = response.projects.some((project) => project.id === storedProject)
+          ? storedProject
+          : response.projects[0]?.id || "";
+        if (nextProject) {
+          setSelectedProjectId(nextProject);
+        }
+        setActiveProject((current) => current || nextProject);
       })
       .catch(() => {
         setProjects([]);
@@ -118,7 +125,14 @@ export function DashboardShell({
           <div className="topbarActions">
             <label className="projectSelector">
               <span>Project</span>
-              <select value={activeProject} onChange={(event) => setActiveProject(event.target.value)}>
+              <select
+                value={activeProject}
+                onChange={(event) => {
+                  setActiveProject(event.target.value);
+                  setSelectedProjectId(event.target.value);
+                  window.location.reload();
+                }}
+              >
                 {projects.length ? projects.map((project) => (
                   <option value={project.id} key={`${project.tenant_id}:${project.id}`}>{project.name}</option>
                 )) : <option value="">No project</option>}

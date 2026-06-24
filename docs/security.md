@@ -81,12 +81,24 @@ Project roles:
 
 - `project_viewer`: read project resources, runs, logs, artifacts, and audit events
 - `project_operator`: viewer plus run/cancel/resume operations
-- `project_admin`: operator plus resource, service-account, and member management
+- `project_admin`: operator plus project resource and member management
 
 `GET /v1/auth/me` returns the caller's `platform_admin` flag and
 `project_memberships`. `GET /v1/projects` returns only projects visible to the
 caller. The dashboard project switcher is a convenience control; backend APIs
 must continue to enforce project scope on resource access.
+
+Project membership can be managed from the dashboard Security page or through
+`/v1/projects/{project_id}/memberships`. Platform admins can manage every
+project. Project admins can manage memberships for their own project without
+being assigned as Keycloak platform admins.
+
+Project-scoped API requests use `x-capsulet-project-id` to select the active
+project. The API rejects that header unless the caller is a platform admin or
+has a Capsulet membership in the selected project. Core control-plane resources,
+including job definitions, workflows, automations, trigger plugins, runs, logs,
+artifacts, and topology reads, are checked against their stored `tenant_id` and
+`project_id` before they are returned, modified, or operated.
 
 ## Runtime isolation controls
 

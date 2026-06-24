@@ -1,24 +1,36 @@
  "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { KeyRound, LockKeyhole, Network, ShieldCheck } from "lucide-react";
+import { KeyRound, LockKeyhole, Network, ShieldCheck, Users } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle } from "../components";
 import {
   AuditEvent,
   Principal,
+  Project,
+  ProjectMember,
   ServiceAccount,
   createServiceAccount,
+  deleteProjectMember,
   getCurrentPrincipal,
   getErrorMessage,
   listAuditEvents,
+  listProjectMembers,
+  listProjects,
   listServiceAccounts,
-  revokeServiceAccount
+  revokeServiceAccount,
+  upsertProjectMember
 } from "../lib/api";
 
 export default function SecurityPage() {
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [serviceAccounts, setServiceAccounts] = useState<ServiceAccount[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
+  const [selectedProject, setSelectedProject] = useState("");
+  const [memberKind, setMemberKind] = useState<ProjectMember["principal_kind"]>("user");
+  const [memberName, setMemberName] = useState("developer");
+  const [memberRole, setMemberRole] = useState<ProjectMember["role"]>("project_operator");
   const [newToken, setNewToken] = useState("");
   const [accountName, setAccountName] = useState("ci-runner");
   const [accountRole, setAccountRole] = useState<"viewer" | "operator" | "admin">("operator");
@@ -29,6 +41,14 @@ export default function SecurityPage() {
     void getCurrentPrincipal()
       .then(async (identity) => {
         setPrincipal(identity);
+        const projectResponse = await listProjects();
+        setProjects(projectResponse.projects);
+        const projectId = projectResponse.projects[0]?.id || "";
+        setSelectedProject(projectId);
+        if (projectId) {
+          const members = await listProjectMembers(projectId);
+          setProjectMembers(members.memberships);
+        }
         if (identity.role === "admin") {
           const [audit, accounts] = await Promise.all([listAuditEvents(), listServiceAccounts()]);
           setAuditEvents(audit.audit_events.slice(0, 8));
@@ -41,6 +61,41 @@ export default function SecurityPage() {
   async function refreshServiceAccounts() {
     const accounts = await listServiceAccounts();
     setServiceAccounts(accounts.service_accounts);
+  }
+
+  async function refreshProjectMembers(projectId = selectedProject) {
+    if (!projectId) {
+      setProjectMembers([]);
+      return;
+    }
+    const members = await listProjectMembers(projectId);
+    setProjectMembers(members.memberships);
+  }
+
+  async function submitProjectMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedProject) return;
+    setError(null);
+    try {
+      await upsertProjectMember(selectedProject, {
+        principal_kind: memberKind,
+        principal_name: memberName,
+        role: memberRole
+      });
+      await refreshProjectMembers(selectedProject);
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    }
+  }
+
+  async function removeProjectMember(member: ProjectMember) {
+    setError(null);
+    try {
+      await deleteProjectMember(member.project_id, member);
+      await refreshProjectMembers(member.project_id);
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    }
   }
 
   async function submitServiceAccount(event: FormEvent<HTMLFormElement>) {
@@ -147,6 +202,59 @@ export default function SecurityPage() {
           ) : (
             <div className="emptyState">Admin role is required to manage service accounts.</div>
           )}
+        </section>
+
+        <section className="panel span12">
+          <PanelTitle icon={Users} title="Project IAM" action={`${projectMembers.length} memberships`} />
+          <form className="projectIamForm" onSubmit={submitProjectMember}>
+            <label>
+              <span>Project</span>
+              <select
+                value={selectedProject}
+                onChange={(event) => {
+                  setSelectedProject(event.target.value);
+                  void refreshProjectMembers(event.target.value);
+                }}
+              >
+                {projects.map((project) => (
+                  <option value={project.id} key={`${project.tenant_id}:${project.id}`}>{project.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Kind</span>
+              <select value={memberKind} onChange={(event) => setMemberKind(event.target.value as ProjectMember["principal_kind"])}>
+                <option value="user">user</option>
+                <option value="group">group</option>
+                <option value="service_account">service account</option>
+              </select>
+            </label>
+            <label>
+              <span>Name</span>
+              <input value={memberName} onChange={(event) => setMemberName(event.target.value)} />
+            </label>
+            <label>
+              <span>Role</span>
+              <select value={memberRole} onChange={(event) => setMemberRole(event.target.value as ProjectMember["role"])}>
+                <option value="project_viewer">project viewer</option>
+                <option value="project_operator">project operator</option>
+                <option value="project_admin">project admin</option>
+              </select>
+            </label>
+            <button className="primaryButton" type="submit" disabled={!selectedProject}>Save member</button>
+          </form>
+          <div className="policyMatrix">
+            {projectMembers.length ? projectMembers.map((member) => (
+              <div className="policyRow" key={member.id}>
+                <span>{member.principal_kind} · {member.principal_name}</span>
+                <span>{member.project_id}</span>
+                <strong>{member.role}</strong>
+                <button className="secondaryButton" type="button" onClick={() => void removeProjectMember(member)}>
+                  Remove
+                </button>
+              </div>
+            )) : <div className="emptyState">No memberships for this project.</div>}
+          </div>
         </section>
 
         <section className="panel span12">

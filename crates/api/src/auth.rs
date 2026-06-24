@@ -103,6 +103,29 @@ impl Principal {
             scopes: scopes.into_iter().map(Arc::from).collect::<Vec<_>>().into(),
         }
     }
+
+    #[must_use]
+    pub fn with_project_memberships(
+        mut self,
+        memberships: impl IntoIterator<Item = ProjectMembership>,
+    ) -> Self {
+        let memberships = memberships.into_iter().collect::<Vec<_>>();
+        let mut scopes = self
+            .scopes
+            .iter()
+            .map(|scope| scope.as_ref().to_string())
+            .collect::<BTreeSet<_>>();
+        if !scopes.contains("*") {
+            for membership in &memberships {
+                for scope in project_scopes_for_role(&membership.role) {
+                    scopes.insert((*scope).to_string());
+                }
+            }
+        }
+        self.project_memberships = memberships.into();
+        self.scopes = scopes.into_iter().map(Arc::from).collect::<Vec<_>>().into();
+        self
+    }
 }
 
 #[derive(Clone)]
@@ -320,7 +343,7 @@ impl AuthConfig {
             })
             .find_map(
                 |key| match decode::<OidcClaims>(token, &key.decoding_key, &validation) {
-                    Ok(data) => principal_from_claims(&data.claims, &oidc.audience),
+                    Ok(data) => Some(principal_from_claims(&data.claims, &oidc.audience)),
                     Err(error) => {
                         capsulet_observability::tracing::warn!(%error, "OIDC token rejected");
                         None
@@ -344,15 +367,15 @@ struct OidcRealmAccess {
     roles: Vec<String>,
 }
 
-fn principal_from_claims(claims: &OidcClaims, audience: &str) -> Option<Principal> {
-    let role = oidc_role(claims, audience)?;
+fn principal_from_claims(claims: &OidcClaims, audience: &str) -> Principal {
+    let role = oidc_role(claims, audience).unwrap_or(Role::Viewer);
     let name = claims
         .preferred_username
         .as_deref()
         .or(claims.email.as_deref())
         .or(claims.sub.as_deref())
         .unwrap_or("oidc-user");
-    Some(Principal {
+    Principal {
         name: Arc::from(name),
         role,
         platform_admin: role == Role::Admin,
@@ -360,7 +383,7 @@ fn principal_from_claims(claims: &OidcClaims, audience: &str) -> Option<Principa
         project_id: Arc::from("default"),
         project_memberships: Arc::from([]),
         scopes: default_scopes_for_role(role),
-    })
+    }
 }
 
 const fn project_role_for_role(role: Role) -> &'static str {
@@ -434,6 +457,44 @@ fn default_scopes_for_role(role: Role) -> Arc<[Arc<str>]> {
         .map(Arc::from)
         .collect::<Vec<_>>()
         .into()
+}
+
+fn project_scopes_for_role(role: &str) -> &'static [&'static str] {
+    match role {
+        "project_viewer" => &[
+            "auth:read",
+            "jobs:read",
+            "workflows:read",
+            "automations:read",
+            "system:read",
+        ],
+        "project_operator" => &[
+            "auth:read",
+            "jobs:read",
+            "jobs:run",
+            "jobs:cancel",
+            "workflows:read",
+            "workflows:operate",
+            "automations:read",
+            "automations:operate",
+            "system:read",
+        ],
+        "project_admin" => &[
+            "auth:read",
+            "jobs:read",
+            "jobs:run",
+            "jobs:cancel",
+            "jobs:write",
+            "workflows:read",
+            "workflows:operate",
+            "workflows:write",
+            "automations:read",
+            "automations:operate",
+            "automations:write",
+            "system:read",
+        ],
+        _ => &[],
+    }
 }
 
 fn now_unix_seconds() -> u64 {

@@ -3,7 +3,7 @@ use capsulet_core::{
     JobRunStatus, WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepDependency,
     WorkflowStepRun,
 };
-use capsulet_postgres::{ProjectRecord, ServiceAccountRecord};
+use capsulet_postgres::{ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -91,6 +91,47 @@ impl From<&ProjectRecord> for ProjectResponse {
 #[derive(Debug, Serialize)]
 pub(crate) struct ListProjectsResponse {
     pub(crate) projects: Vec<ProjectResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct UpsertProjectMembershipRequest {
+    pub(crate) principal_kind: String,
+    pub(crate) principal_name: String,
+    pub(crate) role: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ProjectMembershipResponse {
+    pub(crate) id: String,
+    pub(crate) tenant_id: String,
+    pub(crate) project_id: String,
+    pub(crate) principal_kind: String,
+    pub(crate) principal_name: String,
+    pub(crate) role: String,
+    pub(crate) created_by: String,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
+}
+
+impl From<&ProjectMembershipRecord> for ProjectMembershipResponse {
+    fn from(membership: &ProjectMembershipRecord) -> Self {
+        Self {
+            id: membership.id.clone(),
+            tenant_id: membership.tenant_id.clone(),
+            project_id: membership.project_id.clone(),
+            principal_kind: membership.principal_kind.clone(),
+            principal_name: membership.principal_name.clone(),
+            role: membership.role.clone(),
+            created_by: membership.created_by.clone(),
+            created_at: membership.created_at.clone(),
+            updated_at: membership.updated_at.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListProjectMembershipsResponse {
+    pub(crate) memberships: Vec<ProjectMembershipResponse>,
 }
 
 #[derive(Debug, Deserialize)]

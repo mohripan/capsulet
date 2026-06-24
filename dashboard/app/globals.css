@@ -644,6 +644,25 @@ button {
   gap: 10px;
 }
 
+.projectIamForm {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(130px, 0.7fr) minmax(160px, 1fr) minmax(160px, 0.9fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.projectIamForm label {
+  display: grid;
+  gap: 6px;
+}
+
+.projectIamForm span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .resourceRow {
   display: grid;
   grid-template-columns: minmax(220px, 1.4fr) minmax(220px, 1fr) 94px 108px;

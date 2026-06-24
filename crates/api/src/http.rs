@@ -9,7 +9,7 @@ use std::{
 use axum::{
     Extension, Json, Router,
     extract::{DefaultBodyLimit, Path, Query, Request, State},
-    http::{HeaderValue, Method, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::{
         IntoResponse, Response,
@@ -24,7 +24,7 @@ use capsulet_core::{
     WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 use capsulet_observability::{self as observability, tracing::Instrument};
-use capsulet_postgres::NewServiceAccount;
+use capsulet_postgres::{NewProjectMembership, NewServiceAccount};
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde::Serialize;
 use serde_json::Value;
@@ -40,7 +40,7 @@ use tower_http::{
 use uuid::Uuid;
 
 use crate::{
-    auth::{Principal, Role, token_digest},
+    auth::{Principal, ProjectMembership, Role, token_digest},
     error::ApiError,
     models::{
         ArtifactResponse, AuditEventResponse, CreateJobDefinitionRequest, CreateRunRequest,
@@ -48,12 +48,13 @@ use crate::{
         ExecutionPoolResponse, HealthResponse, HostGroupResponse, JobDefinitionResponse,
         JobDefinitionSourceResponse, JobRunLogsResponse, JobRunResponse, ListArtifactsResponse,
         ListAuditEventsResponse, ListExecutionPoolsResponse, ListHostGroupsResponse,
-        ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListProjectsResponse, ListRunsQuery,
-        ListRunsResponse, ListServiceAccountsResponse, ListWorkflowRunsQuery,
-        ListWorkflowRunsResponse, ListWorkflowsResponse, ProjectResponse, ServiceAccountResponse,
-        TopologyEdgeResponse, TopologyNodeResponse, TopologyResponse, WorkflowEditabilityResponse,
-        WorkflowResponse, WorkflowRunLogEntryResponse, WorkflowRunLogsResponse,
-        WorkflowRunResponse,
+        ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListProjectMembershipsResponse,
+        ListProjectsResponse, ListRunsQuery, ListRunsResponse, ListServiceAccountsResponse,
+        ListWorkflowRunsQuery, ListWorkflowRunsResponse, ListWorkflowsResponse,
+        ProjectMembershipResponse, ProjectResponse, ServiceAccountResponse, TopologyEdgeResponse,
+        TopologyNodeResponse, TopologyResponse, UpsertProjectMembershipRequest,
+        WorkflowEditabilityResponse, WorkflowResponse, WorkflowRunLogEntryResponse,
+        WorkflowRunLogsResponse, WorkflowRunResponse,
     },
     state::AppState,
     store::ApiStore,
@@ -122,6 +123,13 @@ fn rate_limit_token_key(token: &str) -> String {
 #[derive(Debug, Clone)]
 struct RequestId(String);
 
+#[derive(Debug, Clone)]
+pub(crate) struct ProjectContext {
+    pub(crate) tenant_id: String,
+    pub(crate) project_id: String,
+    pub(crate) role: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct ActivitySnapshot {
     job_definition_count: usize,
@@ -175,6 +183,14 @@ where
     let protected = Router::new()
         .route("/v1/auth/me", get(current_principal))
         .route("/v1/projects", get(list_projects))
+        .route(
+            "/v1/projects/{project_id}/memberships",
+            get(list_project_memberships).post(upsert_project_membership),
+        )
+        .route(
+            "/v1/projects/{project_id}/memberships/{principal_kind}/{principal_name}",
+            axum::routing::delete(delete_project_membership),
+        )
         .route(
             "/v1/service-accounts",
             post(create_service_account).get(list_service_accounts),
@@ -392,19 +408,237 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
-    let project_ids = principal
-        .project_memberships
-        .iter()
-        .map(|membership| membership.project_id.to_string())
-        .collect::<Vec<_>>();
-    let projects = state
-        .store
-        .list_projects(principal.tenant_id.as_ref(), &project_ids)
-        .await
-        .map_err(ApiError::store)?;
+    let projects = if principal.platform_admin {
+        state
+            .store
+            .list_all_projects(principal.tenant_id.as_ref())
+            .await
+            .map_err(ApiError::store)?
+    } else {
+        let project_ids = principal
+            .project_memberships
+            .iter()
+            .map(|membership| membership.project_id.to_string())
+            .collect::<Vec<_>>();
+        state
+            .store
+            .list_projects(principal.tenant_id.as_ref(), &project_ids)
+            .await
+            .map_err(ApiError::store)?
+    };
     Ok(Json(ListProjectsResponse {
         projects: projects.iter().map(ProjectResponse::from).collect(),
     }))
+}
+
+async fn list_project_memberships<S, O>(
+    State(state): State<AppState<S, O>>,
+    Extension(principal): Extension<Principal>,
+    Path(project_id): Path<String>,
+) -> Result<Json<ListProjectMembershipsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&HeaderMap::new(), &principal)?;
+    let project_id = non_empty_trimmed(&project_id, "project id")?;
+    require_project_admin(&principal, &context.tenant_id, &project_id)?;
+    let memberships = state
+        .store
+        .list_project_memberships(&context.tenant_id, &project_id)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ListProjectMembershipsResponse {
+        memberships: memberships
+            .iter()
+            .map(ProjectMembershipResponse::from)
+            .collect(),
+    }))
+}
+
+async fn upsert_project_membership<S, O>(
+    State(state): State<AppState<S, O>>,
+    Extension(principal): Extension<Principal>,
+    Path(project_id): Path<String>,
+    Json(request): Json<UpsertProjectMembershipRequest>,
+) -> Result<Json<ProjectMembershipResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&HeaderMap::new(), &principal)?;
+    let project_id = non_empty_trimmed(&project_id, "project id")?;
+    require_project_admin(&principal, &context.tenant_id, &project_id)?;
+    let principal_kind = validate_principal_kind(&request.principal_kind)?;
+    let principal_name = non_empty_trimmed(&request.principal_name, "principal name")?;
+    let role = validate_project_role(&request.role)?;
+    let membership = NewProjectMembership {
+        id: format!(
+            "{}_{}_{}_{}",
+            context.tenant_id, project_id, principal_kind, principal_name
+        ),
+        tenant_id: context.tenant_id,
+        project_id,
+        principal_kind,
+        principal_name,
+        role,
+        created_by: principal.name.to_string(),
+    };
+    let membership = state
+        .store
+        .upsert_project_membership(&membership)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ProjectMembershipResponse::from(&membership)))
+}
+
+async fn delete_project_membership<S, O>(
+    State(state): State<AppState<S, O>>,
+    Extension(principal): Extension<Principal>,
+    Path((project_id, principal_kind, principal_name)): Path<(String, String, String)>,
+) -> Result<StatusCode, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&HeaderMap::new(), &principal)?;
+    let project_id = non_empty_trimmed(&project_id, "project id")?;
+    require_project_admin(&principal, &context.tenant_id, &project_id)?;
+    let principal_kind = validate_principal_kind(&principal_kind)?;
+    let principal_name = non_empty_trimmed(&principal_name, "principal name")?;
+    let deleted = state
+        .store
+        .delete_project_membership(
+            &context.tenant_id,
+            &project_id,
+            &principal_kind,
+            &principal_name,
+        )
+        .await
+        .map_err(ApiError::store)?;
+    if !deleted {
+        return Err(ApiError::Validation(
+            "project membership not found".to_string(),
+        ));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(crate) fn project_context(
+    headers: &HeaderMap,
+    principal: &Principal,
+) -> Result<ProjectContext, ApiError> {
+    let requested_project = headers
+        .get("x-capsulet-project-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(principal.project_id.as_ref());
+    let tenant_id = principal.tenant_id.to_string();
+    if principal.platform_admin {
+        return Ok(ProjectContext {
+            tenant_id,
+            project_id: requested_project.to_string(),
+            role: "project_admin".to_string(),
+        });
+    }
+    let Some(membership) = principal.project_memberships.iter().find(|membership| {
+        membership.tenant_id.as_ref() == tenant_id
+            && membership.project_id.as_ref() == requested_project
+    }) else {
+        return Err(ApiError::Forbidden("project:access"));
+    };
+    Ok(ProjectContext {
+        tenant_id,
+        project_id: requested_project.to_string(),
+        role: membership.role.to_string(),
+    })
+}
+
+pub(crate) fn require_project_role(
+    context: &ProjectContext,
+    required: &str,
+) -> Result<(), ApiError> {
+    if project_role_rank(&context.role) >= project_role_rank(required) {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden("project:role"))
+    }
+}
+
+fn require_project_admin(
+    principal: &Principal,
+    tenant_id: &str,
+    project_id: &str,
+) -> Result<(), ApiError> {
+    if principal.platform_admin {
+        return Ok(());
+    }
+    let allowed = principal.project_memberships.iter().any(|membership| {
+        membership.tenant_id.as_ref() == tenant_id
+            && membership.project_id.as_ref() == project_id
+            && membership.role.as_ref() == "project_admin"
+    });
+    if allowed {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden("project:admin"))
+    }
+}
+
+fn project_role_rank(role: &str) -> u8 {
+    match role {
+        "project_admin" => 3,
+        "project_operator" => 2,
+        "project_viewer" => 1,
+        _ => 0,
+    }
+}
+
+pub(crate) async fn require_resource_project<S: ApiStore>(
+    store: &S,
+    resource: &str,
+    id: &str,
+    context: &ProjectContext,
+) -> Result<(), ApiError> {
+    let Some((tenant_id, project_id)) = store
+        .resource_project(resource, id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Ok(());
+    };
+    if tenant_id == context.tenant_id && project_id == context.project_id {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden("project:access"))
+    }
+}
+
+pub(crate) async fn assign_resource_project<S: ApiStore>(
+    store: &S,
+    resource: &str,
+    id: &str,
+    context: &ProjectContext,
+) -> Result<(), ApiError> {
+    store
+        .set_resource_project(resource, id, &context.tenant_id, &context.project_id)
+        .await
+        .map_err(ApiError::store)
+}
+
+fn validate_project_role(value: &str) -> Result<String, ApiError> {
+    match value {
+        "project_viewer" | "project_operator" | "project_admin" => Ok(value.to_string()),
+        _ => Err(ApiError::Validation("invalid project role".to_string())),
+    }
+}
+
+fn validate_principal_kind(value: &str) -> Result<String, ApiError> {
+    match value {
+        "user" | "group" | "service_account" => Ok(value.to_string()),
+        _ => Err(ApiError::Validation("invalid principal kind".to_string())),
+    }
 }
 
 async fn require_auth<S, O>(
@@ -515,7 +749,9 @@ where
     O: ObjectStore,
 {
     if let Some(principal) = state.auth.authenticate(token) {
-        return Ok(Some(principal));
+        return hydrate_project_memberships(state, principal)
+            .await
+            .map(Some);
     }
     let token_hash = token_digest(token);
     let Some(account) = state
@@ -529,13 +765,47 @@ where
     let Some(role) = Role::parse(&account.role) else {
         return Ok(None);
     };
-    Ok(Some(Principal::service_account(
+    let principal = Principal::service_account(
         account.name,
         role,
         account.tenant_id,
         account.project_id,
         account.scopes,
-    )))
+    );
+    hydrate_project_memberships(state, principal)
+        .await
+        .map(Some)
+}
+
+async fn hydrate_project_memberships<S, O>(
+    state: &AppState<S, O>,
+    principal: Principal,
+) -> Result<Principal, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let mut memberships: Vec<ProjectMembership> =
+        principal.project_memberships.iter().cloned().collect();
+    for membership in state
+        .store
+        .list_principal_project_memberships(&principal.tenant_id, &principal.name)
+        .await
+        .map_err(ApiError::store)?
+    {
+        let exists = memberships.iter().any(|existing| {
+            existing.tenant_id.as_ref() == membership.tenant_id
+                && existing.project_id.as_ref() == membership.project_id
+        });
+        if !exists {
+            memberships.push(ProjectMembership {
+                tenant_id: Arc::from(membership.tenant_id),
+                project_id: Arc::from(membership.project_id),
+                role: Arc::from(membership.role),
+            });
+        }
+    }
+    Ok(principal.with_project_memberships(memberships))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -576,6 +846,9 @@ async fn audit_auth_failure<S, O>(
 
 fn required_scope(method: &Method, path: &str) -> &'static str {
     if path == "/v1/auth/me" {
+        return "auth:read";
+    }
+    if path == "/v1/projects" || path.starts_with("/v1/projects/") {
         return "auth:read";
     }
     if path == "/v1/audit-events" {
@@ -923,18 +1196,29 @@ where
 
 async fn create_job_definition<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<CreateJobDefinitionRequest>,
 ) -> Result<(StatusCode, Json<JobDefinitionResponse>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let definition = build_python_job_definition(&state, request).await?;
     state
         .store
         .upsert_job_definition(&definition)
         .await
         .map_err(ApiError::store)?;
+    assign_resource_project(
+        &state.store,
+        "job_definitions",
+        definition.id().as_str(),
+        &context,
+    )
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -944,6 +1228,8 @@ where
 
 async fn update_job_definition<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(mut request): Json<CreateJobDefinitionRequest>,
 ) -> Result<Json<JobDefinitionResponse>, ApiError>
@@ -951,7 +1237,16 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let definition_id = JobDefinitionId::new(id.clone()).map_err(ApiError::validation)?;
+    require_resource_project(
+        &state.store,
+        "job_definitions",
+        definition_id.as_str(),
+        &context,
+    )
+    .await?;
     if state
         .store
         .job_definition_has_active_workflow_runs(&definition_id)
@@ -967,42 +1262,67 @@ where
         .upsert_job_definition(&definition)
         .await
         .map_err(ApiError::store)?;
+    assign_resource_project(
+        &state.store,
+        "job_definitions",
+        definition.id().as_str(),
+        &context,
+    )
+    .await?;
 
     Ok(Json(JobDefinitionResponse::from(&definition)))
 }
 
 async fn list_job_definitions<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Query(query): Query<ListJobDefinitionsQuery>,
 ) -> Result<Json<ListJobDefinitionsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let definitions = state
         .store
         .list_job_definitions(i64::from(limit))
         .await
         .map_err(ApiError::store)?;
+    let mut scoped = Vec::new();
+    for definition in definitions {
+        if require_resource_project(
+            &state.store,
+            "job_definitions",
+            definition.id().as_str(),
+            &context,
+        )
+        .await
+        .is_ok()
+        {
+            scoped.push(definition);
+        }
+    }
 
     Ok(Json(ListJobDefinitionsResponse {
-        job_definitions: definitions
-            .iter()
-            .map(JobDefinitionResponse::from)
-            .collect(),
+        job_definitions: scoped.iter().map(JobDefinitionResponse::from).collect(),
     }))
 }
 
 async fn get_job_definition<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<JobDefinitionResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = JobDefinitionId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_definitions", id.as_str(), &context).await?;
     let Some(definition) = state
         .store
         .find_job_definition(&id)
@@ -1017,13 +1337,17 @@ where
 
 async fn get_job_definition_source<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<JobDefinitionSourceResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = JobDefinitionId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_definitions", id.as_str(), &context).await?;
     let Some(definition) = state
         .store
         .find_job_definition(&id)
@@ -1060,13 +1384,18 @@ fn inline_python_source(definition: &JobDefinition) -> Option<String> {
 
 async fn delete_job_definition<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_admin")?;
     let id = JobDefinitionId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_definitions", id.as_str(), &context).await?;
     if state
         .store
         .job_definition_is_used_by_workflows(&id)
@@ -1147,24 +1476,32 @@ where
 
 async fn create_workflow<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<CreateWorkflowRequest>,
 ) -> Result<(StatusCode, Json<WorkflowResponse>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let workflow = build_workflow(&state, request).await?;
+    require_workflow_step_projects(&state.store, &workflow, &context).await?;
     state
         .store
         .upsert_workflow(&workflow)
         .await
         .map_err(ApiError::store)?;
+    assign_resource_project(&state.store, "workflows", workflow.id().as_str(), &context).await?;
 
     Ok((StatusCode::CREATED, Json(WorkflowResponse::from(&workflow))))
 }
 
 async fn update_workflow<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(mut request): Json<CreateWorkflowRequest>,
 ) -> Result<Json<WorkflowResponse>, ApiError>
@@ -1172,7 +1509,10 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let workflow_id = WorkflowId::new(id.clone()).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflows", workflow_id.as_str(), &context).await?;
     if state
         .store
         .workflow_has_active_runs(&workflow_id)
@@ -1183,40 +1523,58 @@ where
     }
     request.id = Some(id);
     let workflow = build_workflow(&state, request).await?;
+    require_workflow_step_projects(&state.store, &workflow, &context).await?;
     state
         .store
         .upsert_workflow(&workflow)
         .await
         .map_err(ApiError::store)?;
+    assign_resource_project(&state.store, "workflows", workflow.id().as_str(), &context).await?;
     Ok(Json(WorkflowResponse::from(&workflow)))
 }
 
 async fn list_workflows<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListWorkflowsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let workflows = state
         .store
         .list_workflows(100)
         .await
         .map_err(ApiError::store)?;
+    let mut scoped = Vec::new();
+    for workflow in workflows {
+        if require_resource_project(&state.store, "workflows", workflow.id().as_str(), &context)
+            .await
+            .is_ok()
+        {
+            scoped.push(workflow);
+        }
+    }
     Ok(Json(ListWorkflowsResponse {
-        workflows: workflows.iter().map(WorkflowResponse::from).collect(),
+        workflows: scoped.iter().map(WorkflowResponse::from).collect(),
     }))
 }
 
 async fn get_workflow<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<WorkflowResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = WorkflowId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflows", id.as_str(), &context).await?;
     let Some(workflow) = state
         .store
         .find_workflow(&id)
@@ -1231,13 +1589,18 @@ where
 
 async fn delete_workflow<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_admin")?;
     let workflow_id = WorkflowId::new(id.clone()).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflows", workflow_id.as_str(), &context).await?;
     if state
         .store
         .find_workflow(&workflow_id)
@@ -1278,13 +1641,17 @@ where
 
 async fn get_workflow_editability<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<WorkflowEditabilityResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = WorkflowId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflows", id.as_str(), &context).await?;
     if state
         .store
         .find_workflow(&id)
@@ -1307,21 +1674,47 @@ where
 
 async fn get_topology<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<TopologyResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let workflows = state
         .store
         .list_workflows(100)
         .await
         .map_err(ApiError::store)?;
+    let mut scoped_workflows = Vec::new();
+    for workflow in workflows {
+        if require_resource_project(&state.store, "workflows", workflow.id().as_str(), &context)
+            .await
+            .is_ok()
+        {
+            scoped_workflows.push(workflow);
+        }
+    }
     let automations = state
         .store
         .list_automations(100)
         .await
         .map_err(ApiError::store)?;
+    let mut scoped_automations = Vec::new();
+    for automation in automations {
+        if require_resource_project(
+            &state.store,
+            "automations",
+            automation.id().as_str(),
+            &context,
+        )
+        .await
+        .is_ok()
+        {
+            scoped_automations.push(automation);
+        }
+    }
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     for pool in state.execution_pools.iter() {
@@ -1332,7 +1725,7 @@ where
             status: "available".to_string(),
         });
     }
-    for workflow in &workflows {
+    for workflow in &scoped_workflows {
         nodes.push(TopologyNodeResponse {
             id: format!("workflow:{}", workflow.id()),
             label: workflow.name().to_string(),
@@ -1350,7 +1743,7 @@ where
             label: "executes on".to_string(),
         }));
     }
-    for automation in &automations {
+    for automation in &scoped_automations {
         nodes.push(TopologyNodeResponse {
             id: format!("automation:{}", automation.id()),
             label: automation.name().to_string(),
@@ -1364,6 +1757,23 @@ where
         });
     }
     Ok(Json(TopologyResponse { nodes, edges }))
+}
+
+async fn require_workflow_step_projects<S: ApiStore>(
+    store: &S,
+    workflow: &WorkflowDefinition,
+    context: &ProjectContext,
+) -> Result<(), ApiError> {
+    for step in workflow.steps() {
+        require_resource_project(
+            store,
+            "job_definitions",
+            step.job_definition_id().as_str(),
+            context,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1689,13 +2099,24 @@ fn filter_workflow_runs(
 
 async fn trigger_automation<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<WorkflowRunResponse>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(
+        &state.store,
+        "automations",
+        automation_id.as_str(),
+        &context,
+    )
+    .await?;
     let Some(automation) = state
         .store
         .find_automation(&automation_id)
@@ -1717,6 +2138,7 @@ where
         )
         .await
         .map_err(ApiError::store)?;
+    assign_resource_project(&state.store, "workflow_runs", run.id().as_str(), &context).await?;
     Ok((
         StatusCode::CREATED,
         Json(WorkflowRunResponse::new(&run, &[])),
@@ -1725,12 +2147,15 @@ where
 
 async fn list_workflow_runs<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Query(query): Query<ListWorkflowRunsQuery>,
 ) -> Result<Json<ListWorkflowRunsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let runs = state
         .store
@@ -1740,6 +2165,12 @@ where
     let runs = filter_workflow_runs(runs, &query);
     let mut workflow_runs = Vec::with_capacity(runs.len());
     for run in runs {
+        if require_resource_project(&state.store, "workflow_runs", run.id().as_str(), &context)
+            .await
+            .is_err()
+        {
+            continue;
+        }
         let step_runs = state
             .store
             .list_workflow_step_runs(run.id())
@@ -1750,16 +2181,21 @@ where
     Ok(Json(ListWorkflowRunsResponse { workflow_runs }))
 }
 
-async fn stream_activity_events<S, O>(State(state): State<AppState<S, O>>) -> Response
+async fn stream_activity_events<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+) -> Result<Response, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let stream_state = state.clone();
     let stream = async_stream::stream! {
         let mut last_snapshot: Option<ActivitySnapshot> = None;
         loop {
-            match load_activity_snapshot(&stream_state).await {
+            match load_activity_snapshot(&stream_state, &context).await {
                 Ok(snapshot) => {
                     if last_snapshot.as_ref() != Some(&snapshot) {
                         match serde_json::to_string(&snapshot) {
@@ -1782,12 +2218,15 @@ where
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
     };
-    Sse::new(stream)
+    Ok(Sse::new(stream)
         .keep_alive(KeepAlive::default())
-        .into_response()
+        .into_response())
 }
 
-async fn load_activity_snapshot<S, O>(state: &AppState<S, O>) -> Result<ActivitySnapshot, ApiError>
+async fn load_activity_snapshot<S, O>(
+    state: &AppState<S, O>,
+    context: &ProjectContext,
+) -> Result<ActivitySnapshot, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
@@ -1800,17 +2239,29 @@ where
     )
     .map_err(ApiError::store)?;
 
-    let mut job_runs = runs
-        .iter()
-        .map(|run| ActivityRunSnapshot {
+    let mut job_runs = Vec::new();
+    for run in runs {
+        if require_resource_project(&state.store, "job_runs", run.id().as_str(), context)
+            .await
+            .is_err()
+        {
+            continue;
+        }
+        job_runs.push(ActivityRunSnapshot {
             id: run.id().as_str().to_string(),
             status: run.status().to_string(),
-        })
-        .collect::<Vec<_>>();
+        });
+    }
     job_runs.sort_by(|left, right| left.id.cmp(&right.id));
 
     let mut workflow_snapshots = Vec::with_capacity(workflow_runs.len());
     for run in workflow_runs {
+        if require_resource_project(&state.store, "workflow_runs", run.id().as_str(), context)
+            .await
+            .is_err()
+        {
+            continue;
+        }
         let mut step_runs = state
             .store
             .list_workflow_step_runs(run.id())
@@ -1836,9 +2287,38 @@ where
     }
     workflow_snapshots.sort_by(|left, right| left.id.cmp(&right.id));
 
+    let mut job_definition_count = 0;
+    for definition in definitions {
+        if require_resource_project(
+            &state.store,
+            "job_definitions",
+            definition.id().as_str(),
+            context,
+        )
+        .await
+        .is_ok()
+        {
+            job_definition_count += 1;
+        }
+    }
+    let mut automation_count = 0;
+    for automation in automations {
+        if require_resource_project(
+            &state.store,
+            "automations",
+            automation.id().as_str(),
+            context,
+        )
+        .await
+        .is_ok()
+        {
+            automation_count += 1;
+        }
+    }
+
     Ok(ActivitySnapshot {
-        job_definition_count: definitions.len(),
-        automation_count: automations.len(),
+        job_definition_count,
+        automation_count,
         job_runs,
         workflow_runs: workflow_snapshots,
     })
@@ -1846,13 +2326,17 @@ where
 
 async fn get_workflow_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<WorkflowRunResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
         .find_workflow_run(&id)
@@ -1871,25 +2355,33 @@ where
 
 async fn get_workflow_run_logs<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<WorkflowRunLogsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     Ok(Json(load_workflow_run_logs(&state, &id).await?))
 }
 
 async fn stream_workflow_run_logs<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     if state
         .store
         .find_workflow_run(&id)
@@ -1998,13 +2490,18 @@ where
 
 async fn remove_workflow_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<WorkflowRunResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
         .remove_queued_workflow_run(&id)
@@ -2029,13 +2526,18 @@ where
 
 async fn cancel_workflow_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<WorkflowRunResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
         .cancel_running_workflow_run(&id)
@@ -2060,13 +2562,18 @@ where
 
 async fn resume_workflow_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<WorkflowRunResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
         .resume_workflow_run(&id)
@@ -2091,12 +2598,16 @@ where
 
 async fn create_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<CreateRunRequest>,
 ) -> Result<(StatusCode, Json<JobRunResponse>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let execution_pool =
         ExecutionPoolName::new(request.execution_pool).map_err(ApiError::validation)?;
 
@@ -2125,6 +2636,13 @@ where
                 job_definition_id.as_str().to_string(),
             ));
         }
+        require_resource_project(
+            &state.store,
+            "job_definitions",
+            job_definition_id.as_str(),
+            &context,
+        )
+        .await?;
         (job_definition_id, None)
     };
 
@@ -2140,6 +2658,7 @@ where
     .into_job_run();
 
     state.store.save_run(&run).await.map_err(ApiError::store)?;
+    assign_resource_project(&state.store, "job_runs", run.id().as_str(), &context).await?;
     let run = state
         .store
         .find_run(run.id())
@@ -2152,6 +2671,13 @@ where
             .save_artifact(&metadata)
             .await
             .map_err(ApiError::store)?;
+        assign_resource_project(
+            &state.store,
+            "job_definitions",
+            run.job_definition_id().as_str(),
+            &context,
+        )
+        .await?;
     }
 
     Ok((StatusCode::CREATED, Json(JobRunResponse::from(&run))))
@@ -2219,12 +2745,15 @@ where
 
 async fn list_runs<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Query(query): Query<ListRunsQuery>,
 ) -> Result<Json<ListRunsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let limit = query.limit.unwrap_or(50).clamp(1, 500);
     let runs = state
         .store
@@ -2232,21 +2761,34 @@ where
         .await
         .map_err(ApiError::store)?;
     let runs = filter_job_runs(runs, &query);
+    let mut scoped = Vec::new();
+    for run in runs {
+        if require_resource_project(&state.store, "job_runs", run.id().as_str(), &context)
+            .await
+            .is_ok()
+        {
+            scoped.push(run);
+        }
+    }
 
     Ok(Json(ListRunsResponse {
-        runs: runs.iter().map(JobRunResponse::from).collect(),
+        runs: scoped.iter().map(JobRunResponse::from).collect(),
     }))
 }
 
 async fn get_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<JobRunResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     let Some(run) = state.store.find_run(&id).await.map_err(ApiError::store)? else {
         return Err(ApiError::RunNotFound(id.as_str().to_string()));
     };
@@ -2256,25 +2798,33 @@ where
 
 async fn get_run_logs<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<JobRunLogsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     Ok(Json(load_run_logs(&state, &id, true).await?))
 }
 
 async fn stream_run_logs<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     if state
         .store
         .find_run(&id)
@@ -2368,13 +2918,18 @@ where
 
 async fn cancel_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<JobRunResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_operator")?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     let Some(run) = state.store.cancel_run(&id).await.map_err(ApiError::store)? else {
         return Err(ApiError::RunNotFound(id.as_str().to_string()));
     };
@@ -2384,13 +2939,17 @@ where
 
 async fn list_artifacts<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<ListArtifactsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     if state
         .store
         .find_run(&id)
@@ -2414,14 +2973,18 @@ where
 
 async fn download_artifact<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path((id, artifact_id)): Path<(String, String)>,
 ) -> Result<Response, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
     let artifact_id = ArtifactId::new(artifact_id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     if state
         .store
         .find_run(&id)

@@ -7,8 +7,8 @@ use capsulet_core::{
     JobRunRepository, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
 use capsulet_postgres::{
-    AuditEvent, NewServiceAccount, PostgresStore, PostgresStoreError, ProjectRecord,
-    ServiceAccountRecord, TriggerEvent,
+    AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore, PostgresStoreError,
+    ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, TriggerEvent,
 };
 
 /// Storage operations required by the HTTP API.
@@ -29,6 +29,54 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         _project_ids: &[String],
     ) -> Result<Vec<ProjectRecord>, Self::Error> {
         Ok(Vec::new())
+    }
+    async fn list_all_projects(&self, _tenant_id: &str) -> Result<Vec<ProjectRecord>, Self::Error> {
+        Ok(Vec::new())
+    }
+    async fn list_project_memberships(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+    ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
+        Ok(Vec::new())
+    }
+    async fn list_principal_project_memberships(
+        &self,
+        _tenant_id: &str,
+        _principal_name: &str,
+    ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
+        Ok(Vec::new())
+    }
+    async fn upsert_project_membership(
+        &self,
+        _membership: &NewProjectMembership,
+    ) -> Result<ProjectMembershipRecord, Self::Error> {
+        unreachable!("project membership creation is unsupported by this store")
+    }
+    async fn delete_project_membership(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _principal_kind: &str,
+        _principal_name: &str,
+    ) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
+    async fn resource_project(
+        &self,
+        _resource: &str,
+        _id: &str,
+    ) -> Result<Option<(String, String)>, Self::Error> {
+        Ok(Some(("default".to_string(), "default".to_string())))
+    }
+    async fn set_resource_project(
+        &self,
+        _resource: &str,
+        _id: &str,
+        _tenant_id: &str,
+        _project_id: &str,
+    ) -> Result<(), Self::Error> {
+        Ok(())
     }
     async fn authenticate_service_account_hash(
         &self,
@@ -189,6 +237,68 @@ impl ApiStore for PostgresStore {
         project_ids: &[String],
     ) -> Result<Vec<ProjectRecord>, Self::Error> {
         PostgresStore::list_projects(self, tenant_id, project_ids).await
+    }
+
+    async fn list_all_projects(&self, tenant_id: &str) -> Result<Vec<ProjectRecord>, Self::Error> {
+        PostgresStore::list_all_projects(self, tenant_id).await
+    }
+
+    async fn list_project_memberships(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
+        PostgresStore::list_project_memberships(self, tenant_id, project_id).await
+    }
+
+    async fn list_principal_project_memberships(
+        &self,
+        tenant_id: &str,
+        principal_name: &str,
+    ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
+        PostgresStore::list_principal_project_memberships(self, tenant_id, principal_name).await
+    }
+
+    async fn upsert_project_membership(
+        &self,
+        membership: &NewProjectMembership,
+    ) -> Result<ProjectMembershipRecord, Self::Error> {
+        PostgresStore::upsert_project_membership(self, membership).await
+    }
+
+    async fn delete_project_membership(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        principal_kind: &str,
+        principal_name: &str,
+    ) -> Result<bool, Self::Error> {
+        PostgresStore::delete_project_membership(
+            self,
+            tenant_id,
+            project_id,
+            principal_kind,
+            principal_name,
+        )
+        .await
+    }
+
+    async fn resource_project(
+        &self,
+        resource: &str,
+        id: &str,
+    ) -> Result<Option<(String, String)>, Self::Error> {
+        PostgresStore::resource_project(self, resource, id).await
+    }
+
+    async fn set_resource_project(
+        &self,
+        resource: &str,
+        id: &str,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        PostgresStore::set_resource_project(self, resource, id, tenant_id, project_id).await
     }
 
     async fn authenticate_service_account_hash(

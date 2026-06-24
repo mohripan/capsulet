@@ -28,6 +28,17 @@ export type Project = {
   tenant_id: string;
   name: string;
 };
+export type ProjectMember = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  principal_kind: "user" | "group" | "service_account";
+  principal_name: string;
+  role: "project_viewer" | "project_operator" | "project_admin";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
 export type ServiceAccount = {
   id: string;
   name: string;
@@ -306,6 +317,18 @@ export type TableQuery = {
   direction?: "asc" | "desc";
 };
 
+const PROJECT_STORAGE_KEY = "capsulet.activeProject";
+
+export function selectedProjectId() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(PROJECT_STORAGE_KEY) || "";
+}
+
+export function setSelectedProjectId(projectId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
+}
+
 function queryString(query: TableQuery) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
@@ -318,11 +341,13 @@ function queryString(query: TableQuery) {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const projectId = selectedProjectId();
   const response = await fetch(`/api/capsulet${path}`, {
     ...init,
     cache: "no-store",
     headers: {
       "content-type": "application/json",
+      ...(projectId ? { "x-capsulet-project-id": projectId } : {}),
       ...(init?.headers ?? {})
     }
   });
@@ -363,7 +388,11 @@ export async function listRuns(query: number | TableQuery = 50) {
 }
 
 export function capsuletStreamUrl(path: string) {
-  return `/api/capsulet${path.startsWith("/") ? path : `/${path}`}`;
+  const route = `/api/capsulet${path.startsWith("/") ? path : `/${path}`}`;
+  const projectId = selectedProjectId();
+  if (!projectId) return route;
+  const separator = route.includes("?") ? "&" : "?";
+  return `${route}${separator}project_id=${encodeURIComponent(projectId)}`;
 }
 
 export async function getCurrentPrincipal() {
@@ -372,6 +401,28 @@ export async function getCurrentPrincipal() {
 
 export async function listProjects() {
   return apiFetch<{ projects: Project[] }>("/v1/projects");
+}
+
+export async function listProjectMembers(projectId: string) {
+  return apiFetch<{ memberships: ProjectMember[] }>(`/v1/projects/${encodeURIComponent(projectId)}/memberships`);
+}
+
+export async function upsertProjectMember(projectId: string, request: {
+  principal_kind: ProjectMember["principal_kind"];
+  principal_name: string;
+  role: ProjectMember["role"];
+}) {
+  return apiFetch<ProjectMember>(`/v1/projects/${encodeURIComponent(projectId)}/memberships`, {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function deleteProjectMember(projectId: string, member: ProjectMember) {
+  return apiFetch<void>(
+    `/v1/projects/${encodeURIComponent(projectId)}/memberships/${encodeURIComponent(member.principal_kind)}/${encodeURIComponent(member.principal_name)}`,
+    { method: "DELETE" }
+  );
 }
 
 export async function listAuditEvents() {

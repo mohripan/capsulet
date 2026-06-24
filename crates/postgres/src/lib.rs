@@ -22,7 +22,7 @@ mod workflows;
 
 pub use artifacts::UpstreamArtifact;
 pub use audit::AuditEvent;
-pub use projects::ProjectRecord;
+pub use projects::{NewProjectMembership, ProjectMembershipRecord, ProjectRecord};
 pub use retention::RetentionCandidate;
 pub use service_accounts::{NewServiceAccount, ServiceAccountRecord};
 pub use trigger_events::{CustomRuntimeTrigger, ScheduleTrigger, TriggerEvent};

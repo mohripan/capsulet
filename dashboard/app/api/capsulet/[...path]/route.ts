@@ -33,6 +33,10 @@ async function proxy(request: NextRequest, context: RouteContext) {
   if (forwardedFor) {
     headers.set("x-forwarded-for", forwardedFor);
   }
+  const selectedProject = request.headers.get("x-capsulet-project-id") || request.nextUrl.searchParams.get("project_id");
+  if (selectedProject) {
+    headers.set("x-capsulet-project-id", selectedProject);
+  }
   headers.set("accept-encoding", "identity");
   const token = request.cookies.get("capsulet_session")?.value || process.env.CAPSULET_DASHBOARD_API_TOKEN;
   if (token) {
