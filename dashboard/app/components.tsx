@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { listProjects, type Project } from "./lib/api";
 
 const nav: Array<[LucideIcon, string, string]> = [
   [Home, "Overview", "/"],
@@ -52,6 +53,20 @@ export function DashboardShell({
   actionHref?: string;
 }) {
   const pathname = usePathname();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProject, setActiveProject] = useState("");
+
+  useEffect(() => {
+    void listProjects()
+      .then((response) => {
+        setProjects(response.projects);
+        setActiveProject((current) => current || response.projects[0]?.id || "");
+      })
+      .catch(() => {
+        setProjects([]);
+        setActiveProject("");
+      });
+  }, []);
 
   return (
     <main className="shell">
@@ -101,6 +116,14 @@ export function DashboardShell({
             <input aria-label="Search" placeholder="Search automations, runs, artifacts" />
           </div>
           <div className="topbarActions">
+            <label className="projectSelector">
+              <span>Project</span>
+              <select value={activeProject} onChange={(event) => setActiveProject(event.target.value)}>
+                {projects.length ? projects.map((project) => (
+                  <option value={project.id} key={`${project.tenant_id}:${project.id}`}>{project.name}</option>
+                )) : <option value="">No project</option>}
+              </select>
+            </label>
             <button className="iconButton" title="Refresh">
               <RefreshCw size={18} aria-hidden="true" />
             </button>

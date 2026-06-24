@@ -6,16 +6,19 @@ Accepted
 
 ## Context
 
-Enterprise buyers need a clear isolation model. Capsulet now has tenant/project schema foundations and principals carry tenant/project context, but not every data-access query is tenant-filtered yet.
+Enterprise buyers need a clear isolation model. Capsulet now has tenant/project schema foundations and principals carry tenant/project context. Internal enterprise deployments also need one control plane shared by many departments without requiring project owners to manage Keycloak.
 
 ## Decision
 
-Capsulet remains single-tenant per cluster for strict isolation in this release. Enterprise isolation is provided by deploying one Capsulet control plane per tenant, backed by tenant-specific PostgreSQL, object storage, Kubernetes namespace, secrets, and identity configuration.
+Capsulet remains single-tenant per cluster for strict tenant isolation. Inside that tenant, departments and product teams are represented as Capsulet projects.
 
-The database schema includes `tenants`, `projects`, and ownership columns on core resources. Existing rows migrate to the `default` tenant/project. Service-account tokens are tenant/project-scoped at creation time.
+Keycloak owns login, SSO/MFA, and platform-admin assignment through `capsulet-platform-admin`. Capsulet owns project membership, project roles, service-account ownership, and resource authorization after login.
+
+The database schema includes `tenants`, `projects`, `project_memberships`, and ownership columns on core resources. Existing rows migrate to the `default` tenant/project. Service-account tokens are tenant/project-scoped at creation time.
 
 ## Consequences
 
-- All API users within one deployment can see the deployment's shared resources according to their role until row-level filtering is completed.
-- Procurement and operations documentation must state this explicitly.
-- Completing in-database multi-tenancy requires row-level filtering in every API/store query, tenant-aware object key prefixes, per-tenant quotas, and dashboard tenant switching.
+- Platform administrators are assigned outside Capsulet through Keycloak.
+- Project administrators manage project memberships inside Capsulet.
+- The dashboard exposes visible projects through a project switcher, but API authorization remains the security boundary.
+- Completing hard multi-project isolation requires project-scope coverage on every API/store query, tenant-aware object key prefixes, and per-project quotas.

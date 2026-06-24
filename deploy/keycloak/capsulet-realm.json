@@ -4,6 +4,7 @@
   "roles": {
     "realm": [
       { "name": "capsulet-admin", "description": "Full Capsulet administration" },
+      { "name": "capsulet-platform-admin", "description": "Full Capsulet platform administration across projects" },
       { "name": "capsulet-operator", "description": "Operate workflow and job runs" },
       { "name": "capsulet-viewer", "description": "Read-only Capsulet access" }
     ]
@@ -61,7 +62,7 @@
         }
       ],
       "realmRoles": [
-        "capsulet-admin"
+        "capsulet-platform-admin"
       ]
     }
   ]

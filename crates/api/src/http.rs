@@ -26,10 +26,12 @@ use capsulet_core::{
 use capsulet_observability::{self as observability, tracing::Instrument};
 use capsulet_postgres::NewServiceAccount;
 use capsulet_storage::{ObjectStore, run_object_key};
+use serde::Serialize;
 use serde_json::Value;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_governor::{
-    GovernorLayer, governor::GovernorConfigBuilder, key_extractor::GlobalKeyExtractor,
+    GovernorLayer, errors::GovernorError, governor::GovernorConfigBuilder,
+    key_extractor::KeyExtractor,
 };
 use tower_http::{
     compression::CompressionLayer, cors::CorsLayer, limit::RequestBodyLimitLayer,
@@ -46,11 +48,12 @@ use crate::{
         ExecutionPoolResponse, HealthResponse, HostGroupResponse, JobDefinitionResponse,
         JobDefinitionSourceResponse, JobRunLogsResponse, JobRunResponse, ListArtifactsResponse,
         ListAuditEventsResponse, ListExecutionPoolsResponse, ListHostGroupsResponse,
-        ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListRunsQuery, ListRunsResponse,
-        ListServiceAccountsResponse, ListWorkflowRunsQuery, ListWorkflowRunsResponse,
-        ListWorkflowsResponse, ServiceAccountResponse, TopologyEdgeResponse, TopologyNodeResponse,
-        TopologyResponse, WorkflowEditabilityResponse, WorkflowResponse,
-        WorkflowRunLogEntryResponse, WorkflowRunLogsResponse, WorkflowRunResponse,
+        ListJobDefinitionsQuery, ListJobDefinitionsResponse, ListProjectsResponse, ListRunsQuery,
+        ListRunsResponse, ListServiceAccountsResponse, ListWorkflowRunsQuery,
+        ListWorkflowRunsResponse, ListWorkflowsResponse, ProjectResponse, ServiceAccountResponse,
+        TopologyEdgeResponse, TopologyNodeResponse, TopologyResponse, WorkflowEditabilityResponse,
+        WorkflowResponse, WorkflowRunLogEntryResponse, WorkflowRunLogsResponse,
+        WorkflowRunResponse,
     },
     state::AppState,
     store::ApiStore,
@@ -67,8 +70,87 @@ const DEFAULT_CONCURRENCY_LIMIT: usize = 256;
 const DEFAULT_RATE_LIMIT_PER_SECOND: u64 = 50;
 const DEFAULT_RATE_LIMIT_BURST: u32 = 100;
 
+#[derive(Clone)]
+struct ForwardedIpOrLocalKeyExtractor;
+
+impl KeyExtractor for ForwardedIpOrLocalKeyExtractor {
+    type Key = String;
+
+    fn extract<T>(&self, request: &axum::http::Request<T>) -> Result<Self::Key, GovernorError> {
+        let headers = request.headers();
+        if let Some(key) = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "))
+            .filter(|value| !value.is_empty())
+            .map(rate_limit_token_key)
+        {
+            return Ok(key);
+        }
+
+        Ok(headers
+            .get("x-forwarded-for")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                headers
+                    .get("x-real-ip")
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            })
+            .unwrap_or("local")
+            .to_string())
+    }
+}
+
+fn rate_limit_token_key(token: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    let digest = token_digest(token);
+    let mut key = String::with_capacity("token:".len() + 16);
+    key.push_str("token:");
+    for byte in digest.iter().take(8) {
+        key.push(HEX[(byte >> 4) as usize] as char);
+        key.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    key
+}
+
 #[derive(Debug, Clone)]
 struct RequestId(String);
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ActivitySnapshot {
+    job_definition_count: usize,
+    automation_count: usize,
+    job_runs: Vec<ActivityRunSnapshot>,
+    workflow_runs: Vec<ActivityWorkflowRunSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ActivityRunSnapshot {
+    id: String,
+    status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ActivityWorkflowRunSnapshot {
+    id: String,
+    status: String,
+    current_step_position: i32,
+    step_runs: Vec<ActivityStepRunSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ActivityStepRunSnapshot {
+    id: String,
+    job_run_id: Option<String>,
+    position: i32,
+    status: String,
+}
 
 #[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 pub fn router<S, O>(state: AppState<S, O>) -> Router
@@ -78,7 +160,7 @@ where
 {
     let rate_limit = Arc::new(
         GovernorConfigBuilder::default()
-            .key_extractor(GlobalKeyExtractor)
+            .key_extractor(ForwardedIpOrLocalKeyExtractor)
             .per_second(env_u64(
                 "CAPSULET_API_RATE_LIMIT_PER_SECOND",
                 DEFAULT_RATE_LIMIT_PER_SECOND,
@@ -92,6 +174,7 @@ where
     );
     let protected = Router::new()
         .route("/v1/auth/me", get(current_principal))
+        .route("/v1/projects", get(list_projects))
         .route(
             "/v1/service-accounts",
             post(create_service_account).get(list_service_accounts),
@@ -162,6 +245,7 @@ where
             get(crate::automations::get_trigger_plugin),
         )
         .route("/v1/workflow-runs", get(list_workflow_runs))
+        .route("/v1/events/stream", get(stream_activity_events))
         .route("/v1/workflow-runs/{id}", get(get_workflow_run))
         .route("/v1/workflow-runs/{id}/logs", get(get_workflow_run_logs))
         .route(
@@ -288,9 +372,38 @@ async fn current_principal(Extension(principal): Extension<Principal>) -> Json<V
     Json(serde_json::json!({
         "name": principal.name,
         "role": principal.role.as_str(),
+        "platform_admin": principal.platform_admin,
         "tenant_id": principal.tenant_id,
         "project_id": principal.project_id,
+        "project_memberships": principal.project_memberships.iter().map(|membership| serde_json::json!({
+            "tenant_id": membership.tenant_id,
+            "project_id": membership.project_id,
+            "role": membership.role,
+        })).collect::<Vec<_>>(),
         "scopes": principal.scopes().iter().map(AsRef::as_ref).collect::<Vec<_>>(),
+    }))
+}
+
+async fn list_projects<S, O>(
+    State(state): State<AppState<S, O>>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<ListProjectsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let project_ids = principal
+        .project_memberships
+        .iter()
+        .map(|membership| membership.project_id.to_string())
+        .collect::<Vec<_>>();
+    let projects = state
+        .store
+        .list_projects(principal.tenant_id.as_ref(), &project_ids)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ListProjectsResponse {
+        projects: projects.iter().map(ProjectResponse::from).collect(),
     }))
 }
 
@@ -923,14 +1036,26 @@ where
         .object_store
         .get(definition.bundle_object_key())
         .await
-        .map_err(ApiError::object_store)?
-        .ok_or_else(|| ApiError::JobDefinitionSourceNotFound(id.as_str().to_string()))?;
-    let python_script = String::from_utf8(source)
-        .map_err(|_| ApiError::Validation("job definition source is not UTF-8".to_string()))?;
+        .map_err(ApiError::object_store)?;
+    let python_script = match source {
+        Some(source) => String::from_utf8(source)
+            .map_err(|_| ApiError::Validation("job definition source is not UTF-8".to_string()))?,
+        None => inline_python_source(&definition)
+            .ok_or_else(|| ApiError::JobDefinitionSourceNotFound(id.as_str().to_string()))?,
+    };
     Ok(Json(JobDefinitionSourceResponse {
         python_script,
         python_dependencies: definition.python_dependencies().to_vec(),
     }))
+}
+
+fn inline_python_source(definition: &JobDefinition) -> Option<String> {
+    let command = definition.command();
+    if command.len() == 3 && command[0] == "python" && command[1] == "-c" {
+        Some(command[2].clone())
+    } else {
+        None
+    }
 }
 
 async fn delete_job_definition<S, O>(
@@ -1623,6 +1748,100 @@ where
         workflow_runs.push(WorkflowRunResponse::new(&run, &step_runs));
     }
     Ok(Json(ListWorkflowRunsResponse { workflow_runs }))
+}
+
+async fn stream_activity_events<S, O>(State(state): State<AppState<S, O>>) -> Response
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let stream_state = state.clone();
+    let stream = async_stream::stream! {
+        let mut last_snapshot: Option<ActivitySnapshot> = None;
+        loop {
+            match load_activity_snapshot(&stream_state).await {
+                Ok(snapshot) => {
+                    if last_snapshot.as_ref() != Some(&snapshot) {
+                        match serde_json::to_string(&snapshot) {
+                            Ok(data) => {
+                                last_snapshot = Some(snapshot);
+                                yield Ok::<_, Infallible>(Event::default().event("snapshot").data(data));
+                            }
+                            Err(error) => {
+                                observability::tracing::warn!(%error, "failed to serialize activity stream snapshot");
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    yield Ok(Event::default().event("error").data(error.to_string()));
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    };
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
+}
+
+async fn load_activity_snapshot<S, O>(state: &AppState<S, O>) -> Result<ActivitySnapshot, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let (definitions, automations, runs, workflow_runs) = tokio::try_join!(
+        state.store.list_job_definitions(500),
+        state.store.list_automations(500),
+        state.store.list_runs(200),
+        state.store.list_workflow_runs(200),
+    )
+    .map_err(ApiError::store)?;
+
+    let mut job_runs = runs
+        .iter()
+        .map(|run| ActivityRunSnapshot {
+            id: run.id().as_str().to_string(),
+            status: run.status().to_string(),
+        })
+        .collect::<Vec<_>>();
+    job_runs.sort_by(|left, right| left.id.cmp(&right.id));
+
+    let mut workflow_snapshots = Vec::with_capacity(workflow_runs.len());
+    for run in workflow_runs {
+        let mut step_runs = state
+            .store
+            .list_workflow_step_runs(run.id())
+            .await
+            .map_err(ApiError::store)?
+            .iter()
+            .map(|step_run| ActivityStepRunSnapshot {
+                id: step_run.id().as_str().to_string(),
+                job_run_id: step_run
+                    .maybe_job_run_id()
+                    .map(|job_run_id| job_run_id.as_str().to_string()),
+                position: step_run.position(),
+                status: step_run.status().to_string(),
+            })
+            .collect::<Vec<_>>();
+        step_runs.sort_by_key(|step_run| step_run.position);
+        workflow_snapshots.push(ActivityWorkflowRunSnapshot {
+            id: run.id().as_str().to_string(),
+            status: run.status().to_string(),
+            current_step_position: run.current_step_position(),
+            step_runs,
+        });
+    }
+    workflow_snapshots.sort_by(|left, right| left.id.cmp(&right.id));
+
+    Ok(ActivitySnapshot {
+        job_definition_count: definitions.len(),
+        automation_count: automations.len(),
+        job_runs,
+        workflow_runs: workflow_snapshots,
+    })
 }
 
 async fn get_workflow_run<S, O>(

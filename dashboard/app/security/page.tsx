@@ -113,8 +113,10 @@ export default function SecurityPage() {
           <div className="settingStack">
             <Setting label="Principal" value={principal?.name || "-"} />
             <Setting label="Role" value={principal?.role || "-"} />
+            <Setting label="Platform admin" value={principal?.platform_admin ? "yes" : "no"} />
             <Setting label="Tenant" value={principal?.tenant_id || "-"} />
             <Setting label="Project" value={principal?.project_id || "-"} />
+            <Setting label="Project access" value={principal?.project_memberships.map((membership) => `${membership.project_id}:${membership.role}`).join(", ") || "-"} />
             <Setting label="API policy" value="deny by default" />
           </div>
         </section>

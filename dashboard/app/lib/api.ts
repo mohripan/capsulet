@@ -9,7 +9,25 @@ export type RunStatus =
   | "timed_out"
   | "retry_scheduled";
 
-export type Principal = { name: string; role: "viewer" | "operator" | "admin"; tenant_id: string; project_id: string; scopes: string[] };
+export type ProjectMembership = {
+  tenant_id: string;
+  project_id: string;
+  role: "project_viewer" | "project_operator" | "project_admin";
+};
+export type Principal = {
+  name: string;
+  role: "viewer" | "operator" | "admin";
+  platform_admin: boolean;
+  tenant_id: string;
+  project_id: string;
+  project_memberships: ProjectMembership[];
+  scopes: string[];
+};
+export type Project = {
+  id: string;
+  tenant_id: string;
+  name: string;
+};
 export type ServiceAccount = {
   id: string;
   name: string;
@@ -344,8 +362,16 @@ export async function listRuns(query: number | TableQuery = 50) {
   return apiFetch<{ runs: JobRun[] }>(`/v1/jobs/runs${queryString(params)}`);
 }
 
+export function capsuletStreamUrl(path: string) {
+  return `/api/capsulet${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 export async function getCurrentPrincipal() {
   return apiFetch<Principal>("/v1/auth/me");
+}
+
+export async function listProjects() {
+  return apiFetch<{ projects: Project[] }>("/v1/projects");
 }
 
 export async function listAuditEvents() {

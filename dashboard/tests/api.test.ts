@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { CapsuletApiError, formatBytes, getErrorMessage, isTerminalStatus } from "../app/lib/api";
+import { CapsuletApiError, capsuletStreamUrl, formatBytes, getErrorMessage, isTerminalStatus } from "../app/lib/api";
 
 describe("dashboard API helpers", () => {
   it("formats artifact sizes", () => {
@@ -23,5 +23,10 @@ describe("dashboard API helpers", () => {
   it("renders API errors with code and message", () => {
     const error = new CapsuletApiError("job artifact not found", 404, "job_artifact_not_found");
     assert.equal(getErrorMessage(error), "job_artifact_not_found: job artifact not found");
+  });
+
+  it("builds proxied stream URLs", () => {
+    assert.equal(capsuletStreamUrl("/v1/events/stream"), "/api/capsulet/v1/events/stream");
+    assert.equal(capsuletStreamUrl("v1/events/stream"), "/api/capsulet/v1/events/stream");
   });
 });

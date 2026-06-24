@@ -60,9 +60,33 @@ Supported scope families are:
 
 Keycloak realm/client roles accepted by the API:
 
+- `capsulet-platform-admin`: full platform administration across all projects
 - `capsulet-viewer` or `viewer`
 - `capsulet-operator` or `operator`
 - `capsulet-admin` or `admin`
+
+`capsulet-admin` and `admin` remain accepted as compatibility aliases. New
+deployments should grant `capsulet-platform-admin` for global administrators.
+
+## Project IAM
+
+Capsulet uses a hybrid IAM model for internal enterprise deployments:
+
+- Keycloak owns login, SSO, MFA, and platform-admin assignment.
+- Capsulet owns project membership and project-level roles after login.
+- A signed-in user can belong to multiple Capsulet projects at once.
+- Project memberships are stored in `project_memberships`.
+
+Project roles:
+
+- `project_viewer`: read project resources, runs, logs, artifacts, and audit events
+- `project_operator`: viewer plus run/cancel/resume operations
+- `project_admin`: operator plus resource, service-account, and member management
+
+`GET /v1/auth/me` returns the caller's `platform_admin` flag and
+`project_memberships`. `GET /v1/projects` returns only projects visible to the
+caller. The dashboard project switcher is a convenience control; backend APIs
+must continue to enforce project scope on resource access.
 
 ## Runtime isolation controls
 
@@ -120,8 +144,9 @@ execution images are digest pinned.
 
 ## Tenancy
 
-The persistence schema includes `tenants`, `projects`, and `tenant_id` /
-`project_id` ownership columns on core resources. Existing installs migrate to
-the `default` tenant/project. Principals now carry tenant/project context. Full
-row-level filtering across every resource is the next data-access hardening pass;
-until then, use one tenant per cluster for strict isolation.
+The persistence schema includes `tenants`, `projects`, `project_memberships`,
+and `tenant_id` / `project_id` ownership columns on core resources. Existing
+installs migrate to the `default` tenant/project. Principals now carry
+tenant/project context and project memberships. Continue to use one tenant per
+cluster for strict isolation until every resource-specific query is covered by
+project-scope tests.

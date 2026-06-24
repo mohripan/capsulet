@@ -44,9 +44,18 @@ impl Role {
 pub struct Principal {
     pub name: Arc<str>,
     pub role: Role,
+    pub platform_admin: bool,
     pub tenant_id: Arc<str>,
     pub project_id: Arc<str>,
+    pub project_memberships: Arc<[ProjectMembership]>,
     scopes: Arc<[Arc<str>]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectMembership {
+    pub tenant_id: Arc<str>,
+    pub project_id: Arc<str>,
+    pub role: Arc<str>,
 }
 
 impl Principal {
@@ -78,11 +87,19 @@ impl Principal {
         project_id: impl Into<Arc<str>>,
         scopes: impl IntoIterator<Item = String>,
     ) -> Self {
+        let tenant_id = tenant_id.into();
+        let project_id = project_id.into();
         Self {
             name: name.into(),
             role,
-            tenant_id: tenant_id.into(),
-            project_id: project_id.into(),
+            platform_admin: role == Role::Admin,
+            tenant_id: Arc::clone(&tenant_id),
+            project_id: Arc::clone(&project_id),
+            project_memberships: Arc::from([ProjectMembership {
+                tenant_id,
+                project_id,
+                role: Arc::from(project_role_for_role(role)),
+            }]),
             scopes: scopes.into_iter().map(Arc::from).collect::<Vec<_>>().into(),
         }
     }
@@ -244,8 +261,14 @@ impl AuthConfig {
             return Some(Principal {
                 name: Arc::from("authentication-disabled"),
                 role: Role::Admin,
+                platform_admin: true,
                 tenant_id: Arc::from("default"),
                 project_id: Arc::from("default"),
+                project_memberships: Arc::from([ProjectMembership {
+                    tenant_id: Arc::from("default"),
+                    project_id: Arc::from("default"),
+                    role: Arc::from("project_admin"),
+                }]),
                 scopes: Arc::from([Arc::from("*")]),
             });
         }
@@ -260,12 +283,21 @@ impl AuthConfig {
             let not_expired = credential
                 .expires_at_unix
                 .is_none_or(|expires_at| now_unix_seconds() < expires_at);
-            (bool::from(credential.digest.ct_eq(&candidate)) && not_expired).then(|| Principal {
-                name: Arc::clone(&credential.name),
-                role: credential.role,
-                tenant_id: Arc::clone(&credential.tenant_id),
-                project_id: Arc::clone(&credential.project_id),
-                scopes: Arc::clone(&credential.scopes),
+            (bool::from(credential.digest.ct_eq(&candidate)) && not_expired).then(|| {
+                let project_memberships = Arc::from([ProjectMembership {
+                    tenant_id: Arc::clone(&credential.tenant_id),
+                    project_id: Arc::clone(&credential.project_id),
+                    role: Arc::from(project_role_for_role(credential.role)),
+                }]);
+                Principal {
+                    name: Arc::clone(&credential.name),
+                    role: credential.role,
+                    platform_admin: credential.role == Role::Admin,
+                    tenant_id: Arc::clone(&credential.tenant_id),
+                    project_id: Arc::clone(&credential.project_id),
+                    project_memberships,
+                    scopes: Arc::clone(&credential.scopes),
+                }
             })
         })
     }
@@ -323,10 +355,20 @@ fn principal_from_claims(claims: &OidcClaims, audience: &str) -> Option<Principa
     Some(Principal {
         name: Arc::from(name),
         role,
+        platform_admin: role == Role::Admin,
         tenant_id: Arc::from("default"),
         project_id: Arc::from("default"),
+        project_memberships: Arc::from([]),
         scopes: default_scopes_for_role(role),
     })
+}
+
+const fn project_role_for_role(role: Role) -> &'static str {
+    match role {
+        Role::Viewer => "project_viewer",
+        Role::Operator => "project_operator",
+        Role::Admin => "project_admin",
+    }
 }
 
 #[must_use]
@@ -415,7 +457,7 @@ fn oidc_role(claims: &OidcClaims, audience: &str) -> Option<Role> {
     realm_roles
         .chain(client_roles)
         .fold(None, |current, role| match role.as_str() {
-            "capsulet-admin" | "admin" => Some(Role::Admin),
+            "capsulet-platform-admin" | "capsulet-admin" | "admin" => Some(Role::Admin),
             "capsulet-operator" | "operator" => current.max(Some(Role::Operator)),
             "capsulet-viewer" | "viewer" => current.max(Some(Role::Viewer)),
             _ => current,

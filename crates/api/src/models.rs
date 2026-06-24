@@ -3,7 +3,7 @@ use capsulet_core::{
     JobRunStatus, WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepDependency,
     WorkflowStepRun,
 };
-use capsulet_postgres::ServiceAccountRecord;
+use capsulet_postgres::{ProjectRecord, ServiceAccountRecord};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -69,6 +69,28 @@ pub(crate) struct CreateServiceAccountResponse {
 #[derive(Debug, Serialize)]
 pub(crate) struct ListServiceAccountsResponse {
     pub(crate) service_accounts: Vec<ServiceAccountResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ProjectResponse {
+    pub(crate) id: String,
+    pub(crate) tenant_id: String,
+    pub(crate) name: String,
+}
+
+impl From<&ProjectRecord> for ProjectResponse {
+    fn from(project: &ProjectRecord) -> Self {
+        Self {
+            id: project.id.clone(),
+            tenant_id: project.tenant_id.clone(),
+            name: project.name.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListProjectsResponse {
+    pub(crate) projects: Vec<ProjectResponse>,
 }
 
 #[derive(Debug, Deserialize)]

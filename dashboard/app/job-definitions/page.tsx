@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { FileCode2, Package, Pencil, Plus, RefreshCw, Save, Send, Trash2 } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle, PythonEditor } from "../components";
 import {
@@ -49,6 +49,17 @@ export default function JobDefinitionsPage() {
   const [created, setCreated] = useState<JobDefinition | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const formErrors = useMemo(() => {
+    const errors: string[] = [];
+    if (!name.trim()) errors.push("Name is required.");
+    if (!runtimeImage.trim()) errors.push("Runtime image is required.");
+    if (!script.trim()) errors.push("Python script is required.");
+    const fieldNames = contractFields.map((field) => field.name.trim()).filter(Boolean);
+    if (fieldNames.length !== new Set(fieldNames).size) errors.push("Parameter names must be unique.");
+    if (contractFields.some((field) => !field.name.trim())) errors.push("Every parameter needs a name.");
+    return errors;
+  }, [contractFields, name, runtimeImage, script]);
 
   async function refresh() {
     setIsLoading(true);
@@ -128,16 +139,26 @@ export default function JobDefinitionsPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (formErrors.length > 0) {
+      setError(formErrors[0]);
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     setCreated(null);
     try {
+      const normalizedFields = contractFields.map((field) => ({
+        ...field,
+        name: field.name.trim(),
+        label: field.label?.trim() || undefined,
+        placeholder: field.placeholder?.trim() || undefined
+      }));
       const request = {
-        name,
-        runtime_image: runtimeImage,
+        name: name.trim(),
+        runtime_image: runtimeImage.trim(),
         python_script: script,
         python_dependencies: dependencyLines(pythonDependencies),
-        input_schema: { fields: contractFields },
+        input_schema: { fields: normalizedFields },
         retry_max_attempts: 1,
         retry_delay_seconds: 0
       };
@@ -203,10 +224,15 @@ export default function JobDefinitionsPage() {
                 Parameter
               </button>
             </div>
-            <button className="primaryAction fullWidthAction" disabled={isSubmitting}>
+            <button className="primaryAction fullWidthAction" disabled={isSubmitting || formErrors.length > 0}>
               {editingId ? <Save size={16} aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}
               {isSubmitting ? "Saving" : editingId ? "Save job definition" : "Create job definition"}
             </button>
+            {formErrors.length > 0 ? (
+              <div className="formValidation" role="status">
+                {formErrors[0]}
+              </div>
+            ) : null}
             {editingId ? (
               <button className="secondaryButton fullWidthAction" type="button" onClick={resetForm} disabled={isSubmitting}>
                 Cancel editing
@@ -244,17 +270,17 @@ export default function JobDefinitionsPage() {
                     <p title={definition.id}>{definition.id}</p>
                   </div>
                 </div>
-                <span className="tableCell" title={definition.runtime_image}>
+                <span className="tableCell jobDefinitionRuntime" title={definition.runtime_image}>
                   {definition.runtime_image}
                 </span>
-                <span className="tableCell" title={definition.bundle_object_key}>
+                <span className="tableCell jobDefinitionBundle" title={definition.bundle_object_key}>
                   {definition.bundle_object_key}
                 </span>
-                <span className="tableCell" title={definition.python_dependencies.join(", ") || "No packages"}>
+                <span className="tableCell jobDefinitionPackages" title={definition.python_dependencies.join(", ") || "No packages"}>
                   <Package size={14} aria-hidden="true" />
                   {definition.python_dependencies.length} packages
                 </span>
-                <span className="tableCell">
+                <span className="tableCell jobDefinitionParams">
                   {definition.input_schema.fields?.length ?? 0} params
                 </span>
                 <div className="resourceActions">

@@ -11,6 +11,7 @@ mod automations;
 mod job_definitions;
 mod job_runs;
 mod metrics;
+mod projects;
 mod repositories;
 mod retention;
 mod rows;
@@ -21,6 +22,7 @@ mod workflows;
 
 pub use artifacts::UpstreamArtifact;
 pub use audit::AuditEvent;
+pub use projects::ProjectRecord;
 pub use retention::RetentionCandidate;
 pub use service_accounts::{NewServiceAccount, ServiceAccountRecord};
 pub use trigger_events::{CustomRuntimeTrigger, ScheduleTrigger, TriggerEvent};

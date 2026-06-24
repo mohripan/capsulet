@@ -29,6 +29,10 @@ async function proxy(request: NextRequest, context: RouteContext) {
   if (accept) {
     headers.set("accept", accept);
   }
+  const forwardedFor = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip");
+  if (forwardedFor) {
+    headers.set("x-forwarded-for", forwardedFor);
+  }
   headers.set("accept-encoding", "identity");
   const token = request.cookies.get("capsulet_session")?.value || process.env.CAPSULET_DASHBOARD_API_TOKEN;
   if (token) {

@@ -8,13 +8,13 @@ import {
   Workflow,
   WorkflowRun,
   WorkflowRunLogsResponse,
+  capsuletStreamUrl,
   getErrorMessage,
   getWorkflowRunLogs,
   listWorkflowRuns,
   listWorkflows
 } from "../lib/api";
 
-const defaultPollMs = 2000;
 const workflowRunStates = ["queued", "running", "succeeded", "failed", "timed_out", "cancelled"];
 const defaultRunRange = defaultDateTimeRange();
 
@@ -47,9 +47,10 @@ export default function LiveLogsClient() {
   const [lineQuery, setLineQuery] = useState("");
   const [logs, setLogs] = useState<WorkflowRunLogsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [pollIntervalMs, setPollIntervalMs] = useState<number | null>(defaultPollMs);
+  const [liveEnabled, setLiveEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [streamActive, setStreamActive] = useState(false);
+  const [activityStreamActive, setActivityStreamActive] = useState(false);
   const terminalRef = useRef<HTMLDivElement | null>(null);
 
   const refreshRuns = useCallback(async () => {
@@ -106,24 +107,35 @@ export default function LiveLogsClient() {
   }, [refresh]);
 
   useEffect(() => {
-    if (pollIntervalMs === null) return;
-    const timer = window.setInterval(() => {
-      if (selectedRunId) {
-        void refreshRuns().catch((err) => setError(getErrorMessage(err)));
-      } else {
-        void refresh({ showLoading: false, includeRuns: true });
-      }
-    }, pollIntervalMs);
-    return () => window.clearInterval(timer);
-  }, [pollIntervalMs, refresh, refreshRuns, selectedRunId]);
+    if (!liveEnabled) {
+      setActivityStreamActive(false);
+      return;
+    }
+    let closed = false;
+    const source = new EventSource(capsuletStreamUrl("/v1/events/stream"));
+    source.addEventListener("open", () => {
+      if (!closed) setActivityStreamActive(true);
+    });
+    source.addEventListener("snapshot", () => {
+      if (!closed) void refreshRuns().catch((err) => setError(getErrorMessage(err)));
+    });
+    source.addEventListener("error", () => {
+      if (!closed) setActivityStreamActive(false);
+    });
+    return () => {
+      closed = true;
+      setActivityStreamActive(false);
+      source.close();
+    };
+  }, [liveEnabled, refreshRuns]);
 
   useEffect(() => {
-    if (!selectedRunId || pollIntervalMs === null) {
+    if (!selectedRunId || !liveEnabled) {
       setStreamActive(false);
       return;
     }
     let closed = false;
-    const source = new EventSource(`/api/capsulet/v1/workflow-runs/${encodeURIComponent(selectedRunId)}/logs/stream`);
+    const source = new EventSource(capsuletStreamUrl(`/v1/workflow-runs/${encodeURIComponent(selectedRunId)}/logs/stream`));
     source.addEventListener("open", () => {
       if (!closed) setStreamActive(true);
     });
@@ -153,7 +165,7 @@ export default function LiveLogsClient() {
       setStreamActive(false);
       source.close();
     };
-  }, [pollIntervalMs, refresh, refreshRuns, selectedRunId]);
+  }, [liveEnabled, refresh, refreshRuns, selectedRunId]);
 
   useEffect(() => {
     terminalRef.current?.scrollTo({ top: terminalRef.current.scrollHeight });
@@ -174,7 +186,7 @@ export default function LiveLogsClient() {
     () => (logs?.entries ?? []).reduce((count, entry) => count + (entry.logs ? entry.logs.split(/\r?\n/).filter(Boolean).length : 0), 0),
     [logs]
   );
-  const shouldPoll = pollIntervalMs !== null && (!selectedRun || !isWorkflowTerminal(selectedRun.status));
+  const liveStatus = streamActive ? "Log streaming" : activityStreamActive ? "Activity stream" : liveEnabled ? "Reconnecting" : "Manual";
   const currentJobRunId = selectedRun?.step_runs.find((step) => step.position === selectedRun.current_step_position)?.job_run_id;
 
   return (
@@ -182,7 +194,7 @@ export default function LiveLogsClient() {
       <PageHeader
         eyebrow="Live workflow logs"
         title="Watch running workflow containers"
-        description="Choose a workflow run, filter step output, and keep the terminal view polling while jobs are still moving."
+        description="Choose a workflow run, filter step output, and stream run updates while jobs are still moving."
       />
 
       <section className="contentGrid liveLogsLayout">
@@ -248,22 +260,11 @@ export default function LiveLogsClient() {
 
         <section className="panel span8 liveLogsMain">
           <div className="logConsoleHeader">
-            <PanelTitle icon={TerminalSquare} title="Live Output" action={streamActive ? "Streaming" : shouldPoll ? `${pollIntervalMs! / 1000}s polling` : "Manual"} />
+            <PanelTitle icon={TerminalSquare} title="Live Output" action={liveStatus} />
             <div className="logConsoleActions">
-              <select
-                aria-label="Log refresh mode"
-                className="logRefreshSelect"
-                value={pollIntervalMs === null ? "manual" : String(pollIntervalMs)}
-                onChange={(event) => setPollIntervalMs(event.target.value === "manual" ? null : Number(event.target.value))}
-              >
-                <option value="manual">Manual refresh</option>
-                <option value="2000">Poll every 2s</option>
-                <option value="5000">Poll every 5s</option>
-                <option value="10000">Poll every 10s</option>
-              </select>
-              <button className="secondaryButton" type="button" onClick={() => setPollIntervalMs((current) => (current === null ? defaultPollMs : null))}>
-                {pollIntervalMs !== null ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
-                {pollIntervalMs !== null ? "Pause" : "Resume"}
+              <button className="secondaryButton" type="button" onClick={() => setLiveEnabled((current) => !current)}>
+                {liveEnabled ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+                {liveEnabled ? "Pause stream" : "Resume stream"}
               </button>
               <button className="secondaryButton" type="button" onClick={() => refresh({ showLoading: true, includeRuns: true })} disabled={isLoading}>
                 <RefreshCw size={16} aria-hidden="true" />
@@ -327,7 +328,7 @@ export default function LiveLogsClient() {
           {selectedRun ? (
             <div className="logFooter">
               {currentJobRunId ? <Link href={`/runs/${currentJobRunId}`}>Open current job run</Link> : <span>No active job run yet</span>}
-              <span>{pollIntervalMs === null ? "Manual refresh" : `${pollIntervalMs / 1000}s log refresh`}</span>
+              <span>{liveEnabled ? "SSE refresh" : "Manual refresh"}</span>
             </div>
           ) : null}
         </section>

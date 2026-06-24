@@ -34,6 +34,7 @@ import {
   Workflow as WorkflowDefinition,
   WorkflowRun,
   cancelWorkflowRun,
+  capsuletStreamUrl,
   createAutomation,
   deleteAutomation,
   disableAutomation,
@@ -204,6 +205,7 @@ export default function AutomationsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastLiveRefresh, setLastLiveRefresh] = useState<string | null>(null);
+  const [liveStreamConnected, setLiveStreamConnected] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedWorkflow = useMemo(
@@ -256,10 +258,22 @@ export default function AutomationsPage() {
   }, [refresh]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      void refresh(true);
-    }, 5000);
-    return () => window.clearInterval(timer);
+    let closed = false;
+    const source = new EventSource(capsuletStreamUrl("/v1/events/stream"));
+    source.addEventListener("open", () => {
+      if (!closed) setLiveStreamConnected(true);
+    });
+    source.addEventListener("snapshot", () => {
+      if (!closed) void refresh(true);
+    });
+    source.addEventListener("error", () => {
+      if (!closed) setLiveStreamConnected(false);
+    });
+    return () => {
+      closed = true;
+      setLiveStreamConnected(false);
+      source.close();
+    };
   }, [refresh]);
 
   useEffect(() => {
@@ -479,7 +493,8 @@ export default function AutomationsPage() {
           <PanelTitle icon={Workflow} title="Automations" action="Live API" />
           <div className="liveMonitorBar">
             <span className="liveDot" aria-hidden="true" />
-            <span>{lastLiveRefresh ? `Live refresh ${formatDateTime(lastLiveRefresh)}` : "Live refresh starting"}</span>
+            <span>{lastLiveRefresh ? `Stream refresh ${formatDateTime(lastLiveRefresh)}` : "Stream starting"}</span>
+            <span>{liveStreamConnected ? "SSE connected" : "SSE reconnecting"}</span>
           </div>
           <div className="resourceList">
             {!isLoading && automations.length === 0 ? <div className="emptyState">No automations yet.</div> : null}

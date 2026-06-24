@@ -388,6 +388,28 @@ button {
   gap: 9px;
 }
 
+.projectSelector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 32, 52, 0.82);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.projectSelector select {
+  min-width: 132px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+}
+
 .iconButton,
 .primaryAction,
 .panelTitle button {
@@ -688,14 +710,56 @@ button {
 }
 
 .jobDefinitionRow {
-  grid-template-columns: minmax(0, 1.35fr) minmax(128px, 0.78fr) minmax(0, 1fr) minmax(82px, 0.42fr) auto;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  grid-template-areas:
+    "main actions"
+    "runtime actions"
+    "bundle actions"
+    "packages params";
+  row-gap: 7px;
   width: 100%;
+}
+
+.jobDefinitionRow .resourceMain {
+  grid-area: main;
+}
+
+.jobDefinitionRuntime {
+  grid-area: runtime;
+}
+
+.jobDefinitionBundle {
+  grid-area: bundle;
+}
+
+.jobDefinitionPackages {
+  grid-area: packages;
+}
+
+.jobDefinitionParams {
+  grid-area: params;
+  justify-content: flex-end;
+}
+
+.jobDefinitionRow .resourceActions {
+  grid-area: actions;
+  align-self: start;
+}
+
+.jobDefinitionRow .tableCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--soft);
+  font-size: 13px;
 }
 
 .resourceActions {
   display: inline-flex;
   justify-content: flex-end;
   gap: 8px;
+  justify-self: end;
+  min-width: max-content;
 }
 
 .automationMain,
@@ -1320,6 +1384,16 @@ button {
 
 .formStack .fullWidthAction {
   width: 100%;
+}
+
+.formValidation {
+  min-height: 36px;
+  padding: 10px 12px;
+  border: 1px solid rgba(248, 193, 74, 0.42);
+  border-radius: 8px;
+  background: rgba(248, 193, 74, 0.1);
+  color: var(--amber);
+  font-size: 13px;
 }
 
 .triggerPluginCallout,

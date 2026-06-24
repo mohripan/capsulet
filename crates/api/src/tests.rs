@@ -11,7 +11,7 @@ use capsulet_core::{
     WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
     WorkflowStepRun, WorkflowStepRunId,
 };
-use capsulet_postgres::TriggerEvent;
+use capsulet_postgres::{ProjectRecord, TriggerEvent};
 use capsulet_storage::ObjectStore;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -33,6 +33,7 @@ struct FakeStore {
     trigger_plugins: Arc<Mutex<Vec<CustomTriggerPlugin>>>,
     workflow_runs: Arc<Mutex<Vec<WorkflowRun>>>,
     workflow_step_runs: Arc<Mutex<Vec<WorkflowStepRun>>>,
+    projects: Arc<Mutex<Vec<ProjectRecord>>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -89,6 +90,23 @@ impl ApiStore for FakeStore {
 
     async fn ping(&self) -> Result<(), Self::Error> {
         Ok(())
+    }
+
+    async fn list_projects(
+        &self,
+        tenant_id: &str,
+        project_ids: &[String],
+    ) -> Result<Vec<ProjectRecord>, Self::Error> {
+        Ok(self
+            .projects
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|project| {
+                project.tenant_id == tenant_id && project_ids.iter().any(|id| id == &project.id)
+            })
+            .cloned()
+            .collect())
     }
 
     async fn enqueue_trigger_event(
@@ -699,12 +717,30 @@ impl ApiStore for FakeStore {
 impl FakeStore {
     fn with_definition(id: &str) -> Self {
         let store = Self::default();
+        store.ensure_default_projects();
         store
             .known_definitions
             .lock()
             .expect("definition mutex")
             .push(id.to_string());
         store
+    }
+
+    fn ensure_default_projects(&self) {
+        let mut projects = self.projects.lock().expect("projects mutex");
+        if !projects.is_empty() {
+            return;
+        }
+        projects.push(ProjectRecord {
+            id: "default".to_string(),
+            tenant_id: "default".to_string(),
+            name: "Default Project".to_string(),
+        });
+        projects.push(ProjectRecord {
+            id: "finance".to_string(),
+            tenant_id: "default".to_string(),
+            name: "Finance".to_string(),
+        });
     }
 
     fn with_workflow(self, id: &str) -> Self {
@@ -778,10 +814,12 @@ fn test_app(store: FakeStore) -> axum::Router {
 }
 
 fn authenticated_app(store: FakeStore) -> axum::Router {
+    store.ensure_default_projects();
     let auth = AuthConfig::from_json(
         r#"[
             {"name":"reader","role":"viewer","token":"viewer-token-0123456789-abcdefgh"},
             {"name":"runner","role":"operator","token":"operator-token-0123456789-abcdef"},
+            {"name":"finance","role":"operator","token":"finance-token-0123456789-abcdefghijkl","project_id":"finance"},
             {"name":"ci-runner","role":"operator","token":"ci-runner-token-0123456789-abcdef","scopes":["jobs:run"]},
             {"name":"owner","role":"admin","token":"admin-token-0123456789-abcdefghijkl"}
         ]"#,
@@ -825,6 +863,109 @@ async fn protected_routes_require_a_valid_bearer_token() {
         response_json(response).await["code"],
         "authentication_required"
     );
+}
+
+#[tokio::test]
+async fn activity_stream_requires_auth_and_uses_sse() {
+    let app = authenticated_app(FakeStore::default());
+    let unauthenticated_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/events/stream")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(unauthenticated_response.status(), 401);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/events/stream")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok()),
+        Some("text/event-stream")
+    );
+}
+
+#[tokio::test]
+async fn rate_limit_is_partitioned_by_client_ip() {
+    let app = test_app(FakeStore::default());
+    for _ in 0..105 {
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/livez")
+                    .header("x-forwarded-for", "10.10.10.1")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+    }
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/livez")
+                .header("x-forwarded-for", "10.10.10.2")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn rate_limit_uses_bearer_token_before_local_fallback() {
+    let app = authenticated_app(FakeStore::default());
+    for _ in 0..105 {
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/livez")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+    }
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth/me")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
 }
 
 #[tokio::test]
@@ -883,7 +1024,69 @@ async fn current_principal_reports_authenticated_identity() {
     assert_eq!(response.status(), 200);
     assert_eq!(
         response_json(response).await,
-        json!({"name":"owner","role":"admin","tenant_id":"default","project_id":"default","scopes":["*"]})
+        json!({
+            "name":"owner",
+            "role":"admin",
+            "platform_admin":true,
+            "tenant_id":"default",
+            "project_id":"default",
+            "project_memberships":[
+                {"tenant_id":"default","project_id":"default","role":"project_admin"}
+            ],
+            "scopes":["*"]
+        })
+    );
+}
+
+#[tokio::test]
+async fn current_principal_reports_project_memberships() {
+    let response = authenticated_app(FakeStore::default())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth/me")
+                .header(
+                    "authorization",
+                    "Bearer finance-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response_json(response).await["project_memberships"],
+        json!([
+            {"tenant_id":"default","project_id":"finance","role":"project_operator"}
+        ])
+    );
+}
+
+#[tokio::test]
+async fn lists_only_projects_visible_to_the_principal() {
+    let response = authenticated_app(FakeStore::default())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/projects")
+                .header(
+                    "authorization",
+                    "Bearer finance-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response_json(response).await,
+        json!({
+            "projects": [
+                {"id":"finance","tenant_id":"default","name":"Finance"}
+            ]
+        })
     );
 }
 
@@ -1554,6 +1757,24 @@ async fn creates_and_reads_reusable_python_job_definition() {
     let source_body = response_json(source_response).await;
     assert_eq!(source_status, axum::http::StatusCode::OK, "{source_body}");
     assert_eq!(source_body["python_script"], "print('daily report')");
+}
+
+#[tokio::test]
+async fn reads_inline_python_command_when_source_object_is_missing() {
+    let response = test_app(FakeStore::with_definition("job_inline_python"))
+        .oneshot(
+            Request::builder()
+                .uri("/v1/job-definitions/job_inline_python/source")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    let status = response.status();
+    let body = response_json(response).await;
+    assert_eq!(status, axum::http::StatusCode::OK, "{body}");
+    assert_eq!(body["python_script"], "print('fake')");
 }
 
 fn store_with_queued_workflow_run() -> FakeStore {

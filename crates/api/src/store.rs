@@ -7,9 +7,10 @@ use capsulet_core::{
     JobRunRepository, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
 use capsulet_postgres::{
-    AuditEvent, NewServiceAccount, PostgresStore, PostgresStoreError, ServiceAccountRecord,
-    TriggerEvent,
+    AuditEvent, NewServiceAccount, PostgresStore, PostgresStoreError, ProjectRecord,
+    ServiceAccountRecord, TriggerEvent,
 };
+
 /// Storage operations required by the HTTP API.
 #[async_trait]
 pub trait ApiStore: Clone + Send + Sync + 'static {
@@ -20,6 +21,13 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         Ok(String::new())
     }
     async fn list_audit_events(&self, _limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
+        Ok(Vec::new())
+    }
+    async fn list_projects(
+        &self,
+        _tenant_id: &str,
+        _project_ids: &[String],
+    ) -> Result<Vec<ProjectRecord>, Self::Error> {
         Ok(Vec::new())
     }
     async fn authenticate_service_account_hash(
@@ -173,6 +181,14 @@ impl ApiStore for PostgresStore {
 
     async fn list_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
         PostgresStore::list_audit_events(self, limit).await
+    }
+
+    async fn list_projects(
+        &self,
+        tenant_id: &str,
+        project_ids: &[String],
+    ) -> Result<Vec<ProjectRecord>, Self::Error> {
+        PostgresStore::list_projects(self, tenant_id, project_ids).await
     }
 
     async fn authenticate_service_account_hash(
