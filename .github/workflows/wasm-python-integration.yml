@@ -1,0 +1,42 @@
+name: WASI Python Integration
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-python-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTUP_TOOLCHAIN: 1.96.0
+
+jobs:
+  wasm-python:
+    name: WASI Python Runner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Wasmtime
+        uses: bytecodealliance/actions/wasmtime/setup@v1
+
+      - name: Install WASI Python runtime
+        run: bash scripts/install-wasi-python.sh >> "$GITHUB_ENV"
+
+      - name: Run WASI Python integration test
+        run: cargo test -p capsulet-runner --test wasm_python_runner --locked -- --nocapture

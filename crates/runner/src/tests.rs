@@ -3,7 +3,8 @@ use capsulet_core::{ExecutionPoolName, JobDefinition, JobRun, JobRunId};
 
 use super::{
     ExecutionPoolConfig, ExecutionPoolsConfig, InputArtifact, PoolResources, PoolToleration,
-    RUN_LABEL, RunExecution, build_job, kubernetes_job_name, run_label_value, truncate_utf8,
+    RUN_LABEL, RunExecution, WasmPythonConfig, build_job, kubernetes_job_name, run_label_value,
+    truncate_utf8,
 };
 
 fn execution(pool: ExecutionPoolConfig) -> RunExecution {
@@ -215,4 +216,59 @@ fn parses_artifact_markers_from_logs() {
     assert_eq!(logs.as_deref(), Some("before\nafter\n"));
     assert_eq!(artifacts[0].name, "report.txt");
     assert_eq!(artifacts[0].bytes, b"hello");
+}
+
+#[test]
+fn renders_wasmtime_command_with_sandbox_preopen_before_runtime() {
+    let config = WasmPythonConfig::new("runtime/python.wasm").with_wasmtime_bin("wasmtime");
+    let spec =
+        super::wasmtime_command_spec(&config, std::path::Path::new("sandbox")).expect("command");
+
+    assert_eq!(
+        spec.current_dir.as_deref(),
+        Some(std::path::Path::new("runtime"))
+    );
+    assert_eq!(spec.parts[0], "wasmtime");
+    assert_eq!(&spec.parts[1..3], ["--dir", "."]);
+    assert_eq!(spec.parts[3], "--dir");
+    assert_eq!(
+        spec.parts[4],
+        format!(
+            "{}::/capsulet",
+            std::path::Path::new("sandbox").join("capsulet").display()
+        )
+    );
+    assert_eq!(
+        &spec.parts[5..],
+        [
+            "--env",
+            "CAPSULET_INPUT_JSON",
+            "python.wasm",
+            "/capsulet/workspace/main.py"
+        ]
+    );
+}
+
+#[test]
+fn wasm_python_runner_rejects_python_dependencies() {
+    let mut execution = execution(pool());
+    execution.definition = JobDefinition::new(
+        execution.definition.id().clone(),
+        execution.definition.name(),
+        execution.definition.runtime_image(),
+        execution.definition.command().to_vec(),
+        vec!["requests==2.32.5".to_string()],
+        execution.definition.bundle_object_key(),
+        execution.definition.input_schema(),
+        capsulet_core::RetryPolicy::no_retry(),
+    )
+    .expect("dependency definition");
+
+    let error = super::validate_wasm_python_execution(&execution)
+        .expect_err("dependencies should be rejected");
+
+    assert_eq!(
+        error.to_string(),
+        "WASI Python runner does not support python_dependencies yet"
+    );
 }

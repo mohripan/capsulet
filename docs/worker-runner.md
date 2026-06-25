@@ -9,6 +9,7 @@ Current runner implementations:
 - `StubRunner::success()`: always marks the run as `succeeded`
 - `StubRunner::failure()`: always marks the run as `failed`
 - `ProcessRunner`: executes the configured command as a trusted local child process for development
+- `WasmPythonRunner`: executes Python scripts with an operator-provided WASI Python runtime through `wasmtime`
 - `KubernetesRunner`: creates a Kubernetes Job, waits for terminal status, supports cancellation, classifies timeouts, captures pod logs, and collects files published under `/capsulet/artifacts`
 
 The runner boundary returns a `RunReport` with an outcome, logs, and collected artifacts. Outcomes are `succeeded`, `failed`, `timed_out`, or `cancelled`. Small logs are stored inline for the existing logs API. Logs larger than 64 KiB are also uploaded to object storage as `stdout.log`, with PostgreSQL storing the artifact metadata and object key.
@@ -16,6 +17,8 @@ The runner boundary returns a `RunReport` with an outcome, logs, and collected a
 Single-file Python script submissions are stored as bundle objects. Before execution, the worker reads the bundle and rewrites the run command to execute the script content.
 
 Reusable Python job definitions can declare `python_dependencies`, a list of pip package requirement specs such as `requests==2.32.5`. The process and Kubernetes runners install those packages into `/capsulet/python-site` with `pip --target` before running the job command, then prepend that directory to `PYTHONPATH`. Dependency entries are single-line package specs; installer options such as `--extra-index-url` are intentionally rejected at validation time.
+
+The WASI Python runner intentionally rejects `python_dependencies` for now. WASI Python package support depends on how the runtime was built and packaged, and many Python packages publish native wheels that cannot run in WASI without a compatible build.
 
 ## Run Locally
 
@@ -75,6 +78,32 @@ cargo run -p capsulet-worker
 ```
 
 For the Helm-installed minikube flow, see `docs/local-kubernetes-runner.md`.
+
+## WASI Python Runner
+
+The WASI Python runner provides a WebAssembly sandbox path for Python scripts. It does not embed a Python runtime in Capsulet; operators provide a compatible WASI Python module or component and a `wasmtime` binary.
+
+Configure a worker tick with:
+
+```powershell
+$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
+$env:CAPSULET_WORKER_ID = "worker-wasm-local"
+$env:CAPSULET_RUNNER_MODE = "wasm"
+$env:CAPSULET_WASM_RUNTIME_PATH = "C:\path\to\python.wasm"
+$env:CAPSULET_WASMTIME_BIN = "wasmtime"
+cargo run -p capsulet-worker
+```
+
+`CAPSULET_WASMTIME_BIN` is optional and defaults to `wasmtime`. `CAPSULET_WASM_RUNTIME_PATH` is required when `CAPSULET_RUNNER_MODE=wasm`.
+
+For each run, the worker creates a temporary sandbox, stages the script at `/capsulet/workspace/main.py`, writes input JSON to `/capsulet/input.json`, stages upstream artifacts under `/capsulet/inputs`, and maps only that staged tree into the guest with `wasmtime --mapdir /capsulet::<sandbox>/capsulet`. The guest receives `CAPSULET_INPUT_JSON` through WASI environment inheritance and can publish artifacts by writing files to `/capsulet/artifacts`.
+
+Current limitations:
+
+- only `python -c <script>` and `python <script-file>` job commands are supported
+- `python_dependencies` are rejected
+- cancellation is checked before launch; in-flight cancellation remains future work
+- the worker image does not bundle `wasmtime` or a WASI Python runtime
 
 The worker reads execution pools from one of these sources:
 

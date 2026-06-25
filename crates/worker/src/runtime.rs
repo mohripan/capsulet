@@ -10,7 +10,10 @@ use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, rou
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_observability as observability;
 use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
-use capsulet_runner::{ExecutionPoolsConfig, KubernetesRunner, ProcessRunner, Runner, StubRunner};
+use capsulet_runner::{
+    ExecutionPoolsConfig, KubernetesRunner, ProcessRunner, Runner, StubRunner, WasmPythonConfig,
+    WasmPythonRunner,
+};
 use capsulet_storage::ConfiguredObjectStore;
 use tokio::task::JoinSet;
 
@@ -64,6 +67,7 @@ enum RunnerMode {
     Kubernetes,
     Stub,
     Process,
+    Wasm,
 }
 
 /// Runs the worker service from environment configuration.
@@ -184,6 +188,21 @@ pub async fn run() -> anyhow::Result<()> {
                 max_concurrent_runs,
                 loop_enabled,
                 ProcessRunner,
+            )
+            .await?;
+        }
+        RunnerMode::Wasm => {
+            let runner = load_wasm_python_runner()?;
+            run_loop(
+                store,
+                object_store,
+                pools,
+                worker_id,
+                lease_seconds,
+                poll_seconds,
+                max_concurrent_runs,
+                loop_enabled,
+                runner,
             )
             .await?;
         }
@@ -491,10 +510,22 @@ fn parse_runner_mode(value: &str) -> anyhow::Result<RunnerMode> {
         "kubernetes" | "k8s" => Ok(RunnerMode::Kubernetes),
         "stub" => Ok(RunnerMode::Stub),
         "process" | "local" => Ok(RunnerMode::Process),
+        "wasm" | "wasi" => Ok(RunnerMode::Wasm),
         value => {
-            bail!("unsupported CAPSULET_RUNNER_MODE {value}; expected stub, process, or kubernetes")
+            bail!(
+                "unsupported CAPSULET_RUNNER_MODE {value}; expected stub, process, kubernetes, or wasm"
+            )
         }
     }
+}
+
+fn load_wasm_python_runner() -> anyhow::Result<WasmPythonRunner> {
+    let runtime_path = env::var("CAPSULET_WASM_RUNTIME_PATH")
+        .context("set CAPSULET_WASM_RUNTIME_PATH before using CAPSULET_RUNNER_MODE=wasm")?;
+    let wasmtime_bin = env::var("CAPSULET_WASMTIME_BIN").unwrap_or_else(|_| "wasmtime".to_string());
+    Ok(WasmPythonRunner::new(
+        WasmPythonConfig::new(runtime_path).with_wasmtime_bin(wasmtime_bin),
+    ))
 }
 
 fn env_bool(name: &str) -> bool {
@@ -514,7 +545,15 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "unsupported CAPSULET_RUNNER_MODE docker; expected stub, process, or kubernetes"
+            "unsupported CAPSULET_RUNNER_MODE docker; expected stub, process, kubernetes, or wasm"
+        );
+    }
+
+    #[test]
+    fn parse_runner_mode_should_accept_wasm_alias() {
+        assert_eq!(
+            parse_runner_mode("wasm").expect("wasm mode"),
+            RunnerMode::Wasm
         );
     }
 }

@@ -26,6 +26,9 @@ next-dev.err.log
 test-results/
 playwright-report/
 
+# Downloaded WASI Python runtime for local integration tests
+.wasi-python/
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

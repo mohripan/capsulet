@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
@@ -27,6 +27,7 @@ use kube::{
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::{
+    io::{AsyncRead, AsyncReadExt},
     process::Command,
     time::{Instant, sleep},
 };
@@ -194,6 +195,50 @@ pub struct StubRunner {
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessRunner;
 
+/// Configuration for running Python scripts through a WASI Python runtime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WasmPythonConfig {
+    wasmtime_bin: String,
+    runtime_path: PathBuf,
+}
+
+impl WasmPythonConfig {
+    /// Creates a WASI Python runtime configuration.
+    #[must_use]
+    pub fn new(runtime_path: impl Into<PathBuf>) -> Self {
+        Self {
+            wasmtime_bin: "wasmtime".to_string(),
+            runtime_path: runtime_path.into(),
+        }
+    }
+
+    /// Sets the `wasmtime` executable path.
+    #[must_use]
+    pub fn with_wasmtime_bin(mut self, wasmtime_bin: impl Into<String>) -> Self {
+        self.wasmtime_bin = wasmtime_bin.into();
+        self
+    }
+}
+
+/// Runner that executes Python scripts inside an operator-provided WASI Python runtime.
+#[derive(Debug, Clone)]
+pub struct WasmPythonRunner {
+    config: WasmPythonConfig,
+}
+
+impl WasmPythonRunner {
+    #[must_use]
+    pub const fn new(config: WasmPythonConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WasmtimeCommandSpec {
+    current_dir: Option<PathBuf>,
+    parts: Vec<String>,
+}
+
 #[async_trait]
 impl Runner for ProcessRunner {
     type Error = ProcessRunnerError;
@@ -265,6 +310,207 @@ impl Runner for ProcessRunner {
             })
         }
     }
+}
+
+#[async_trait]
+impl Runner for WasmPythonRunner {
+    type Error = WasmPythonRunnerError;
+
+    async fn execute<C>(
+        &self,
+        execution: &RunExecution,
+        cancellation: &C,
+    ) -> Result<RunReport, Self::Error>
+    where
+        C: CancellationCheck + Sync,
+    {
+        if cancellation
+            .is_cancelled(execution.run.id())
+            .await
+            .map_err(|error| WasmPythonRunnerError::CancellationCheck(error.to_string()))?
+        {
+            return Ok(RunReport::cancelled(None));
+        }
+
+        validate_execution_policy(execution).map_err(WasmPythonRunnerError::Policy)?;
+        validate_wasm_python_execution(execution)?;
+
+        let sandbox = tempfile::Builder::new()
+            .prefix("capsulet-wasm-python-")
+            .tempdir()
+            .map_err(WasmPythonRunnerError::Io)?;
+        stage_wasm_python_sandbox(sandbox.path(), execution)?;
+
+        let output = run_wasmtime_python(&self.config, sandbox.path(), execution).await?;
+        let logs = combined_output_logs(&output);
+        let artifacts = collect_artifacts_from(sandbox.path().join("capsulet").join("artifacts"))?;
+
+        if output.status.success() {
+            Ok(RunReport::succeeded_with_artifacts(Some(logs), artifacts))
+        } else {
+            Ok(RunReport {
+                outcome: RunOutcome::Failed,
+                logs: Some(logs),
+                artifacts,
+            })
+        }
+    }
+}
+
+async fn run_wasmtime_python(
+    config: &WasmPythonConfig,
+    sandbox_path: &Path,
+    execution: &RunExecution,
+) -> Result<std::process::Output, WasmPythonRunnerError> {
+    let spec = wasmtime_command_spec(config, sandbox_path)?;
+    let Some((program, args)) = spec.parts.split_first() else {
+        return Err(WasmPythonRunnerError::InvalidCommand);
+    };
+    let mut command = Command::new(program);
+    command.args(args);
+    if let Some(current_dir) = spec.current_dir {
+        command.current_dir(current_dir);
+    }
+    let mut child = command
+        .env("CAPSULET_INPUT_JSON", execution.run.input_json())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let child_id = child.id();
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or(WasmPythonRunnerError::InvalidCommand)?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or(WasmPythonRunnerError::InvalidCommand)?;
+    let stdout_task = tokio::spawn(read_child_pipe(stdout));
+    let stderr_task = tokio::spawn(read_child_pipe(stderr));
+    let timeout = tokio::time::sleep(Duration::from_secs(execution.pool.timeout_seconds));
+    tokio::pin!(timeout);
+
+    let status = tokio::select! {
+        status = child.wait() => status?,
+        () = &mut timeout => {
+            child.start_kill()?;
+            let _ = child.wait().await;
+            return Err(WasmPythonRunnerError::TimedOut { process_id: child_id });
+        }
+    };
+
+    let stdout = stdout_task
+        .await
+        .map_err(|error| WasmPythonRunnerError::Io(std::io::Error::other(error)))??;
+    let stderr = stderr_task
+        .await
+        .map_err(|error| WasmPythonRunnerError::Io(std::io::Error::other(error)))??;
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+async fn read_child_pipe<R>(mut pipe: R) -> Result<Vec<u8>, std::io::Error>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut bytes = Vec::new();
+    pipe.read_to_end(&mut bytes).await?;
+    Ok(bytes)
+}
+
+fn validate_wasm_python_execution(execution: &RunExecution) -> Result<(), WasmPythonRunnerError> {
+    if !execution.definition.python_dependencies().is_empty() {
+        return Err(WasmPythonRunnerError::UnsupportedPythonDependencies);
+    }
+    let command = execution.definition.command();
+    if command.len() == 3 && command[0] == "python" && command[1] == "-c" {
+        return Ok(());
+    }
+    if command.len() == 2 && command[0] == "python" {
+        return Ok(());
+    }
+    Err(WasmPythonRunnerError::UnsupportedCommand(command.join(" ")))
+}
+
+fn stage_wasm_python_sandbox(
+    sandbox_path: &Path,
+    execution: &RunExecution,
+) -> Result<(), WasmPythonRunnerError> {
+    let capsulet_root = sandbox_path.join("capsulet");
+    let workspace = capsulet_root.join("workspace");
+    let artifacts = capsulet_root.join("artifacts");
+    let inputs = capsulet_root.join("inputs");
+    fs::create_dir_all(&workspace)?;
+    fs::create_dir_all(&artifacts)?;
+    fs::create_dir_all(&inputs)?;
+    fs::write(capsulet_root.join("input.json"), execution.run.input_json())?;
+    write_wasm_python_script(&workspace.join("main.py"), execution.definition.command())?;
+    materialize_inputs_at(&inputs, &execution.input_artifacts)?;
+    Ok(())
+}
+
+fn write_wasm_python_script(path: &Path, command: &[String]) -> Result<(), WasmPythonRunnerError> {
+    match command {
+        [program, flag, script] if program == "python" && flag == "-c" => {
+            fs::write(path, script)?;
+            Ok(())
+        }
+        [program, script_path] if program == "python" => {
+            let script = fs::read_to_string(script_path)?;
+            fs::write(path, script)?;
+            Ok(())
+        }
+        _ => Err(WasmPythonRunnerError::UnsupportedCommand(command.join(" "))),
+    }
+}
+
+fn materialize_inputs_at(root: &Path, artifacts: &[InputArtifact]) -> Result<(), std::io::Error> {
+    for artifact in artifacts {
+        let producer_path = root.join(&artifact.producer_step_id).join(&artifact.name);
+        if let Some(parent) = producer_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&producer_path, &artifact.bytes)?;
+        fs::write(root.join(&artifact.name), &artifact.bytes)?;
+    }
+    Ok(())
+}
+
+fn wasmtime_command_spec(
+    config: &WasmPythonConfig,
+    sandbox_path: &Path,
+) -> Result<WasmtimeCommandSpec, WasmPythonRunnerError> {
+    let capsulet_root = sandbox_path.join("capsulet");
+    let mapped_root = capsulet_root
+        .to_str()
+        .ok_or(WasmPythonRunnerError::NonUtf8Path)?;
+    let runtime_name = config
+        .runtime_path
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .ok_or(WasmPythonRunnerError::NonUtf8Path)?;
+    let current_dir = config
+        .runtime_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf);
+    Ok(WasmtimeCommandSpec {
+        current_dir,
+        parts: vec![
+            config.wasmtime_bin.clone(),
+            "--dir".to_string(),
+            ".".to_string(),
+            "--dir".to_string(),
+            format!("{mapped_root}::/capsulet"),
+            "--env".to_string(),
+            "CAPSULET_INPUT_JSON".to_string(),
+            runtime_name.to_string(),
+            "/capsulet/workspace/main.py".to_string(),
+        ],
+    })
 }
 
 fn process_python_path() -> String {
@@ -1065,6 +1311,28 @@ fn materialize_local_inputs(artifacts: &[InputArtifact]) -> Result<(), std::io::
     Ok(())
 }
 
+fn collect_artifacts_from(
+    path: impl AsRef<Path>,
+) -> Result<Vec<CollectedArtifact>, std::io::Error> {
+    let path = path.as_ref();
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let mut artifacts = Vec::new();
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        artifacts.push(CollectedArtifact {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            content_type: "application/octet-stream".to_string(),
+            bytes: fs::read(entry.path())?,
+        });
+    }
+    Ok(artifacts)
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
@@ -1106,23 +1374,7 @@ fn reset_artifact_dir() -> Result<(), std::io::Error> {
 }
 
 fn collect_local_artifacts() -> Result<Vec<CollectedArtifact>, std::io::Error> {
-    let path = Path::new(ARTIFACT_DIR);
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let mut artifacts = Vec::new();
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_file() {
-            continue;
-        }
-        artifacts.push(CollectedArtifact {
-            name: entry.file_name().to_string_lossy().into_owned(),
-            content_type: "application/octet-stream".to_string(),
-            bytes: fs::read(entry.path())?,
-        });
-    }
-    Ok(artifacts)
+    collect_artifacts_from(ARTIFACT_DIR)
 }
 
 impl PoolResources {
@@ -1239,6 +1491,27 @@ pub enum KubernetesRunnerError {
     Policy(String),
     #[error("cancellation check failed: {0}")]
     CancellationCheck(String),
+}
+
+/// WASI Python runner error.
+#[derive(Debug, Error)]
+pub enum WasmPythonRunnerError {
+    #[error("WASI Python runner does not support python_dependencies yet")]
+    UnsupportedPythonDependencies,
+    #[error("WASI Python runner only supports python -c scripts or python script files: {0}")]
+    UnsupportedCommand(String),
+    #[error("wasmtime command could not be rendered")]
+    InvalidCommand,
+    #[error("wasmtime command path is not valid UTF-8")]
+    NonUtf8Path,
+    #[error("wasmtime failed to run Python script: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("WASI Python execution timed out for process {process_id:?}")]
+    TimedOut { process_id: Option<u32> },
+    #[error("cancellation check failed: {0}")]
+    CancellationCheck(String),
+    #[error("execution policy rejected run: {0}")]
+    Policy(String),
 }
 
 #[cfg(test)]
