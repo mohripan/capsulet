@@ -15,6 +15,7 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
+anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 capsulet-core = { path = "../core" }

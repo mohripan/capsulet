@@ -2,6 +2,7 @@
 
 use std::{env, time::Duration};
 
+use anyhow::{Context as _, anyhow};
 use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_observability as observability;
@@ -16,8 +17,10 @@ const DEFAULT_HEALTH_ADDR: &str = "0.0.0.0:8082";
 ///
 /// Returns an error when required environment variables are missing, database
 /// setup fails, or a scheduler tick cannot be persisted.
-pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    observability::init("capsulet-scheduler")?;
+pub async fn run() -> anyhow::Result<()> {
+    observability::init("capsulet-scheduler")
+        .map_err(|error| anyhow!("{error}"))
+        .context("initialize scheduler observability")?;
     let descriptor = ComponentDescriptor::new(
         ComponentKind::Scheduler,
         "creates scheduled automation workflow runs and advances workflow steps",
@@ -26,18 +29,17 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let database_url = env::var("CAPSULET_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
-        .map_err(
-            |_| "set CAPSULET_DATABASE_URL or DATABASE_URL before starting capsulet-scheduler",
-        )?;
+        .context("set CAPSULET_DATABASE_URL or DATABASE_URL before starting capsulet-scheduler")?;
     let poll_seconds = env::var("CAPSULET_SCHEDULER_POLL_SECONDS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(DEFAULT_POLL_SECONDS);
     let loop_enabled = env_bool("CAPSULET_SCHEDULER_LOOP");
 
-    let store =
-        PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?).await?;
-    store.migrate().await?;
+    let store = PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?)
+        .await
+        .context("connect scheduler to Postgres")?;
+    store.migrate().await.context("run scheduler migrations")?;
     start_health_server(
         store.clone(),
         &env::var("CAPSULET_SCHEDULER_HEALTH_ADDR")
@@ -47,8 +49,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         let started = std::time::Instant::now();
-        let triggered = store.trigger_due_interval_automations().await?;
-        let advanced = store.advance_workflow_runs().await?;
+        let triggered = store
+            .trigger_due_interval_automations()
+            .await
+            .context("trigger due interval automations")?;
+        let advanced = store
+            .advance_workflow_runs()
+            .await
+            .context("advance workflow runs")?;
         observability::record_service_tick("scheduler", "success", started.elapsed());
         observability::tracing::info!(triggered, advanced, "scheduler tick");
 
@@ -61,17 +69,16 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn start_health_server(
-    store: PostgresStore,
-    address: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn start_health_server(store: PostgresStore, address: &str) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/livez", get(|| async { StatusCode::OK }))
         .route("/healthz", get(ready))
         .route("/readyz", get(ready))
         .route("/metrics", get(metrics))
         .with_state(store);
-    let listener = tokio::net::TcpListener::bind(address).await?;
+    let listener = tokio::net::TcpListener::bind(address)
+        .await
+        .with_context(|| format!("bind scheduler health listener on {address}"))?;
     tokio::spawn(async move {
         if let Err(error) = axum::serve(listener, app).await {
             observability::tracing::warn!(%error, "scheduler health server stopped");

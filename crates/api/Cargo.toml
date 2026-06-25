@@ -12,6 +12,7 @@ name = "capsulet-api"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
 async-trait.workspace = true
 async-stream = "0.3"
 axum.workspace = true

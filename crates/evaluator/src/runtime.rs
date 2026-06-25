@@ -1,5 +1,6 @@
 use std::{env, net::SocketAddr, time::Duration};
 
+use anyhow::{Context as _, anyhow, bail};
 use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_observability as observability;
@@ -21,8 +22,10 @@ const DEFAULT_RETENTION_INTERVAL_SECONDS: u64 = 3600;
 /// # Errors
 ///
 /// Returns an error when configuration is invalid or a dependency cannot be initialized.
-pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    observability::init("capsulet-evaluator")?;
+pub async fn run() -> anyhow::Result<()> {
+    observability::init("capsulet-evaluator")
+        .map_err(|error| anyhow!("{error}"))
+        .context("initialize evaluator observability")?;
     let descriptor = ComponentDescriptor::new(
         ComponentKind::Evaluator,
         "evaluates durable automation trigger conditions and creates workflow runs",
@@ -30,20 +33,26 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     observability::tracing::info!(component = "evaluator", banner = %descriptor.banner());
     let database_url = env::var("CAPSULET_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
-        .map_err(|_| "set CAPSULET_DATABASE_URL or DATABASE_URL")?;
-    let store =
-        PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?).await?;
-    store.migrate().await?;
+        .context("set CAPSULET_DATABASE_URL or DATABASE_URL")?;
+    let store = PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?)
+        .await
+        .context("connect evaluator to Postgres")?;
+    store.migrate().await.context("run evaluator migrations")?;
     let owner = env::var("CAPSULET_EVALUATOR_ID")
         .unwrap_or_else(|_| format!("evaluator-{}", std::process::id()));
     let poll_seconds = env::var("CAPSULET_EVALUATOR_POLL_SECONDS")
         .ok()
-        .map(|value| value.parse())
+        .map(|value| {
+            value
+                .parse()
+                .context("parse CAPSULET_EVALUATOR_POLL_SECONDS")
+        })
         .transpose()?
         .unwrap_or(DEFAULT_POLL_SECONDS);
     let health_addr: SocketAddr = env::var("CAPSULET_EVALUATOR_HEALTH_ADDR")
         .unwrap_or_else(|_| DEFAULT_HEALTH_ADDR.to_string())
-        .parse()?;
+        .parse()
+        .context("parse CAPSULET_EVALUATOR_HEALTH_ADDR")?;
     let health_store = store.clone();
     let metrics_store = store.clone();
     tokio::spawn(async move {
@@ -92,7 +101,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     let sql_connections = match env::var("CAPSULET_SQL_CONNECTIONS") {
-        Ok(value) => SqlConnections::from_json(&value).await?,
+        Ok(value) => SqlConnections::from_json(&value)
+            .await
+            .context("parse CAPSULET_SQL_CONNECTIONS")?,
         Err(_) => SqlConnections::default(),
     };
     let retention_store = store.clone();
@@ -104,7 +115,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let retention_interval = env::var("CAPSULET_RETENTION_INTERVAL_SECONDS")
         .ok()
-        .map(|value| value.parse())
+        .map(|value| {
+            value
+                .parse()
+                .context("parse CAPSULET_RETENTION_INTERVAL_SECONDS")
+        })
         .transpose()?
         .unwrap_or(DEFAULT_RETENTION_INTERVAL_SECONDS);
     tokio::spawn(async move {
@@ -147,21 +162,36 @@ async fn run_retention(
     object_store: &ConfiguredObjectStore,
     retention_days: i32,
     audit_retention_days: i32,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> anyhow::Result<()> {
     for candidate in store.list_retention_candidates(retention_days, 100).await? {
         for key in &candidate.object_keys {
-            object_store.delete(key).await?;
+            object_store
+                .delete(key)
+                .await
+                .with_context(|| format!("delete retained object {key}"))?;
         }
         store
             .complete_retention_cleanup(&candidate.job_run_id)
-            .await?;
+            .await
+            .with_context(|| {
+                format!(
+                    "mark retention cleanup complete for {}",
+                    candidate.job_run_id
+                )
+            })?;
     }
-    store.cleanup_old_audit_events(audit_retention_days).await?;
-    store.cleanup_old_trigger_events(retention_days).await?;
+    store
+        .cleanup_old_audit_events(audit_retention_days)
+        .await
+        .context("cleanup old audit events")?;
+    store
+        .cleanup_old_trigger_events(retention_days)
+        .await
+        .context("cleanup old trigger events")?;
     Ok(())
 }
 
-fn load_object_store() -> Result<ConfiguredObjectStore, Box<dyn std::error::Error>> {
+fn load_object_store() -> anyhow::Result<ConfiguredObjectStore> {
     match env::var("CAPSULET_OBJECT_STORAGE_MODE")
         .unwrap_or_else(|_| "filesystem".to_string())
         .as_str()
@@ -171,26 +201,40 @@ fn load_object_store() -> Result<ConfiguredObjectStore, Box<dyn std::error::Erro
                 .unwrap_or_else(|_| "capsulet-artifacts".to_string()),
             env::var("CAPSULET_OBJECT_STORAGE_ENDPOINT").ok().as_deref(),
             &env::var("CAPSULET_OBJECT_STORAGE_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
-            &env::var("CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID")?,
-            &env::var("CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY")?,
+            &env::var("CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID")
+                .context("set CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID for s3 object storage")?,
+            &env::var("CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY")
+                .context("set CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY for s3 object storage")?,
             env_bool("CAPSULET_OBJECT_STORAGE_PATH_STYLE"),
-        )?),
+        )
+        .context("configure s3 object storage")?),
         "filesystem" => Ok(ConfiguredObjectStore::filesystem(
             env::var("CAPSULET_OBJECT_STORAGE_PATH")
                 .unwrap_or_else(|_| DEFAULT_OBJECT_STORAGE_PATH.to_string()),
         )),
-        value => Err(format!("unsupported CAPSULET_OBJECT_STORAGE_MODE {value}").into()),
+        value => bail!("unsupported CAPSULET_OBJECT_STORAGE_MODE {value}"),
     }
 }
 
-fn env_i32(name: &str, default: i32) -> Result<i32, Box<dyn std::error::Error>> {
-    let value = env::var(name)
-        .ok()
-        .map(|value| value.parse::<i32>())
+fn env_i32(name: &str, default: i32) -> anyhow::Result<i32> {
+    parse_positive_i32_setting(name, env::var(name).ok().as_deref(), default)
+}
+
+fn parse_positive_i32_setting(
+    name: &str,
+    value: Option<&str>,
+    default: i32,
+) -> anyhow::Result<i32> {
+    let value = value
+        .map(|value| {
+            value
+                .parse::<i32>()
+                .with_context(|| format!("parse {name}"))
+        })
         .transpose()?
         .unwrap_or(default);
     if value < 1 {
-        return Err(format!("{name} must be at least 1").into());
+        bail!("{name} must be at least 1");
     }
     Ok(value)
 }
@@ -200,4 +244,20 @@ fn env_bool(name: &str) -> bool {
         env::var(name).as_deref(),
         Ok("1" | "true" | "TRUE" | "yes" | "YES")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn positive_i32_setting_should_error_when_value_is_zero() {
+        let error = parse_positive_i32_setting("CAPSULET_RETENTION_DAYS", Some("0"), 30)
+            .expect_err("zero should be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "CAPSULET_RETENTION_DAYS must be at least 1"
+        );
+    }
 }

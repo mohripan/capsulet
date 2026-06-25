@@ -5,6 +5,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use anyhow::{Context as _, anyhow, bail};
 use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
 use capsulet_observability as observability;
@@ -58,6 +59,13 @@ pools:
     ttlSecondsAfterFinished: 300
 "#;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunnerMode {
+    Kubernetes,
+    Stub,
+    Process,
+}
+
 /// Runs the worker service from environment configuration.
 ///
 /// # Errors
@@ -66,8 +74,10 @@ pools:
 /// setup fails, object storage or execution pools cannot be configured, or a
 /// worker tick fails.
 #[allow(clippy::too_many_lines)]
-pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    observability::init("capsulet-worker")?;
+pub async fn run() -> anyhow::Result<()> {
+    observability::init("capsulet-worker")
+        .map_err(|error| anyhow!("{error}"))
+        .context("initialize worker observability")?;
     let descriptor = ComponentDescriptor::new(
         ComponentKind::Worker,
         "leases queued job runs and coordinates execution",
@@ -76,7 +86,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let database_url = env::var("CAPSULET_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
-        .map_err(|_| "set CAPSULET_DATABASE_URL or DATABASE_URL before starting capsulet-worker")?;
+        .context("set CAPSULET_DATABASE_URL or DATABASE_URL before starting capsulet-worker")?;
     let worker_id =
         env::var("CAPSULET_WORKER_ID").unwrap_or_else(|_| DEFAULT_WORKER_ID.to_string());
     let lease_seconds = env::var("CAPSULET_WORKER_LEASE_SECONDS")
@@ -85,9 +95,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(DEFAULT_LEASE_SECONDS);
     let pools = load_execution_pools()?;
 
-    let store =
-        PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?).await?;
-    store.migrate().await?;
+    let store = PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?)
+        .await
+        .context("connect worker to Postgres")?;
+    store.migrate().await.context("run worker migrations")?;
     start_health_server(
         store.clone(),
         &env::var("CAPSULET_WORKER_HEALTH_ADDR")
@@ -109,15 +120,17 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_MAX_CONCURRENT_RUNS);
 
-    match runner_mode.as_str() {
-        "kubernetes" | "k8s" => {
+    match parse_runner_mode(&runner_mode)? {
+        RunnerMode::Kubernetes => {
             let namespace = env::var("CAPSULET_EXECUTION_NAMESPACE")
                 .unwrap_or_else(|_| DEFAULT_EXECUTION_NAMESPACE.to_string());
             let log_limit_bytes = env::var("CAPSULET_LOG_LIMIT_BYTES")
                 .ok()
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(DEFAULT_LOG_LIMIT_BYTES);
-            let runner = KubernetesRunner::from_default_config(namespace, log_limit_bytes).await?;
+            let runner = KubernetesRunner::from_default_config(namespace, log_limit_bytes)
+                .await
+                .context("initialize Kubernetes runner")?;
             start_kubernetes_reconciler(store.clone(), runner.clone(), &worker_id);
             run_loop(
                 store,
@@ -132,7 +145,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
         }
-        "stub" => {
+        RunnerMode::Stub => {
             let runner = match env::var("CAPSULET_STUB_RUNNER_RESULT").as_deref() {
                 Ok("failed" | "failure") => StubRunner::failure(),
                 _ => match (
@@ -160,7 +173,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
         }
-        "process" | "local" => {
+        RunnerMode::Process => {
             run_loop(
                 store,
                 object_store,
@@ -173,12 +186,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ProcessRunner,
             )
             .await?;
-        }
-        value => {
-            return Err(format!(
-                "unsupported CAPSULET_RUNNER_MODE {value}; expected stub, process, or kubernetes"
-            )
-            .into());
         }
     }
 
@@ -221,17 +228,16 @@ fn start_kubernetes_reconciler(store: PostgresStore, runner: KubernetesRunner, w
     });
 }
 
-async fn start_health_server(
-    store: PostgresStore,
-    address: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn start_health_server(store: PostgresStore, address: &str) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/livez", get(|| async { StatusCode::OK }))
         .route("/healthz", get(ready))
         .route("/readyz", get(ready))
         .route("/metrics", get(metrics))
         .with_state(store);
-    let listener = tokio::net::TcpListener::bind(address).await?;
+    let listener = tokio::net::TcpListener::bind(address)
+        .await
+        .with_context(|| format!("bind worker health listener on {address}"))?;
     tokio::spawn(async move {
         if let Err(error) = axum::serve(listener, app).await {
             observability::tracing::warn!(%error, "worker health server stopped");
@@ -272,7 +278,7 @@ async fn run_loop<R>(
     max_concurrent_runs: usize,
     loop_enabled: bool,
     runner: R,
-) -> Result<(), Box<dyn std::error::Error>>
+) -> anyhow::Result<()>
 where
     R: Runner,
 {
@@ -325,7 +331,7 @@ async fn drain_available_runs<R>(
     runner: R,
     shutdown: &mut (impl std::future::Future<Output = ()> + Unpin),
     shutting_down: &mut bool,
-) -> Result<(), Box<dyn std::error::Error>>
+) -> anyhow::Result<()>
 where
     R: Runner,
 {
@@ -392,12 +398,8 @@ where
                         );
                         observability::tracing::info!(?outcome, "worker tick outcome");
                     }
-                    Ok(Err(error)) => {
-                        return Err(Box::new(error));
-                    }
-                    Err(error) => {
-                        return Err(Box::new(error));
-                    }
+                    Ok(Err(error)) => return Err(anyhow!(error)),
+                    Err(error) => return Err(error).context("worker task join failed"),
                 }
             }
         }
@@ -437,16 +439,17 @@ fn jittered_poll_duration(worker_id: &str, poll_seconds: u64) -> Duration {
     base + Duration::from_millis(jitter_ms)
 }
 
-fn load_execution_pools() -> Result<ExecutionPoolsConfig, Box<dyn std::error::Error>> {
+fn load_execution_pools() -> anyhow::Result<ExecutionPoolsConfig> {
     let yaml = if let Ok(value) = env::var("CAPSULET_EXECUTION_POOLS_YAML") {
         value
     } else if let Ok(path) = env::var("CAPSULET_EXECUTION_POOLS_FILE") {
-        fs::read_to_string(path)?
+        fs::read_to_string(&path)
+            .with_context(|| format!("read CAPSULET_EXECUTION_POOLS_FILE {path}"))?
     } else {
         DEFAULT_EXECUTION_POOLS_YAML.to_string()
     };
 
-    let mut pools = ExecutionPoolsConfig::from_yaml(&yaml)?;
+    let mut pools = ExecutionPoolsConfig::from_yaml(&yaml).context("parse execution pools YAML")?;
     for pool in pools.pools.values_mut() {
         if pool.runtime_class_name.is_none() {
             pool.runtime_class_name = env::var("CAPSULET_EXECUTION_RUNTIME_CLASS").ok();
@@ -458,7 +461,7 @@ fn load_execution_pools() -> Result<ExecutionPoolsConfig, Box<dyn std::error::Er
     Ok(pools)
 }
 
-fn load_object_store() -> Result<ConfiguredObjectStore, Box<dyn std::error::Error>> {
+fn load_object_store() -> anyhow::Result<ConfiguredObjectStore> {
     match env::var("CAPSULET_OBJECT_STORAGE_MODE")
         .unwrap_or_else(|_| "filesystem".to_string())
         .as_str()
@@ -468,15 +471,29 @@ fn load_object_store() -> Result<ConfiguredObjectStore, Box<dyn std::error::Erro
                 .unwrap_or_else(|_| "capsulet-artifacts".to_string()),
             env::var("CAPSULET_OBJECT_STORAGE_ENDPOINT").ok().as_deref(),
             &env::var("CAPSULET_OBJECT_STORAGE_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
-            &env::var("CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID")?,
-            &env::var("CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY")?,
+            &env::var("CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID")
+                .context("set CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID for s3 object storage")?,
+            &env::var("CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY")
+                .context("set CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY for s3 object storage")?,
             env_bool("CAPSULET_OBJECT_STORAGE_PATH_STYLE"),
-        )?),
+        )
+        .context("configure s3 object storage")?),
         "filesystem" => Ok(ConfiguredObjectStore::filesystem(
             env::var("CAPSULET_OBJECT_STORAGE_PATH")
                 .unwrap_or_else(|_| DEFAULT_OBJECT_STORAGE_PATH.to_string()),
         )),
-        value => Err(format!("unsupported CAPSULET_OBJECT_STORAGE_MODE {value}").into()),
+        value => bail!("unsupported CAPSULET_OBJECT_STORAGE_MODE {value}"),
+    }
+}
+
+fn parse_runner_mode(value: &str) -> anyhow::Result<RunnerMode> {
+    match value {
+        "kubernetes" | "k8s" => Ok(RunnerMode::Kubernetes),
+        "stub" => Ok(RunnerMode::Stub),
+        "process" | "local" => Ok(RunnerMode::Process),
+        value => {
+            bail!("unsupported CAPSULET_RUNNER_MODE {value}; expected stub, process, or kubernetes")
+        }
     }
 }
 
@@ -485,4 +502,19 @@ fn env_bool(name: &str) -> bool {
         env::var(name).as_deref(),
         Ok("1" | "true" | "TRUE" | "yes" | "YES")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_runner_mode_should_reject_unknown_values() {
+        let error = parse_runner_mode("docker").expect_err("unknown runner mode should fail");
+
+        assert_eq!(
+            error.to_string(),
+            "unsupported CAPSULET_RUNNER_MODE docker; expected stub, process, or kubernetes"
+        );
+    }
 }

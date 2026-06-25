@@ -12,6 +12,7 @@ name = "capsulet-evaluator"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
 axum.workspace = true
 capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }

@@ -322,6 +322,7 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 name = "capsulet-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "async-trait",
  "axum",
@@ -371,6 +372,7 @@ dependencies = [
 name = "capsulet-evaluator"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "capsulet-core",
  "capsulet-observability",
@@ -433,6 +435,7 @@ dependencies = [
 name = "capsulet-scheduler"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "capsulet-core",
  "capsulet-observability",
@@ -455,6 +458,7 @@ dependencies = [
 name = "capsulet-worker"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axum",
  "capsulet-core",
