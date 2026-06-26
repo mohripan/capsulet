@@ -1,11 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use capsulet_application::{JobRunLogRepository, JobRunRepository};
 use capsulet_core::{
     ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationSettings, AutomationStatus,
     AutomationTrigger, AutomationTriggerKind, CustomTriggerPlugin, ExecutionPoolName, JobArtifact,
-    JobDefinition, JobRun, JobRunId, JobRunLog, JobRunLogRepository, JobRunRepository,
-    JobRunTransition, TriggerKind, TriggerName, WorkflowDefinition, WorkflowId, WorkflowStatus,
-    WorkflowStep, WorkflowStepDependency, WorkflowStepId,
+    JobDefinition, JobRun, JobRunId, JobRunLog, JobRunTransition, TriggerKind, TriggerName,
+    WorkflowDefinition, WorkflowId, WorkflowStatus, WorkflowStep, WorkflowStepDependency,
+    WorkflowStepId,
 };
 
 use capsulet_core::JobRunStatus;

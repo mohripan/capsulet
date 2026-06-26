@@ -1,4 +1,4 @@
-use crate::domain::{ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunStatus};
+use capsulet_core::{ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunStatus};
 
 /// Command side input for the first manual submission use case.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,27 +45,5 @@ impl From<&JobRun> for JobRunSummary {
             execution_pool: run.execution_pool().clone(),
             attempt_count: run.attempt_count(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{CreateManualRunCommand, JobRunSummary};
-    use crate::domain::{ExecutionPoolName, JobDefinitionId, JobRunId, JobRunStatus};
-
-    #[test]
-    fn manual_run_command_creates_queued_run() {
-        let command = CreateManualRunCommand {
-            run_id: JobRunId::new("run_1").expect("valid run id"),
-            job_definition_id: JobDefinitionId::new("job_1").expect("valid job id"),
-            execution_pool: ExecutionPoolName::new("mini").expect("valid pool"),
-            input_json: None,
-        };
-
-        let run = command.into_job_run();
-        let summary = JobRunSummary::from(&run);
-
-        assert_eq!(summary.status, JobRunStatus::Queued);
-        assert_eq!(summary.execution_pool.as_str(), "mini");
     }
 }

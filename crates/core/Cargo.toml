@@ -5,13 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Core domain and application contracts for Capsulet."
+description = "Core domain model for Capsulet."
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-async-trait.workspace = true
 thiserror.workspace = true
 
 [lints]

@@ -1,11 +1,7 @@
-use crate::domain::{ArtifactId, JobArtifact, JobRun, JobRunId, JobRunLog};
 use async_trait::async_trait;
+use capsulet_core::{ArtifactId, JobArtifact, JobRun, JobRunId, JobRunLog};
 
 /// Repository port for durable job run state.
-///
-/// Infrastructure crates implement this against concrete stores such as
-/// `PostgreSQL`. Keeping it here preserves the application boundary without
-/// leaking database clients into the domain core.
 #[async_trait]
 pub trait JobRunRepository {
     type Error;
@@ -27,10 +23,6 @@ pub trait JobRunRepository {
 }
 
 /// Repository port for bounded job run logs.
-///
-/// The first implementation stores logs in `PostgreSQL`, but this port keeps
-/// callers independent from the storage backend so object storage can replace
-/// large-log persistence later.
 #[async_trait]
 pub trait JobRunLogRepository {
     type Error;
@@ -56,11 +48,29 @@ pub trait JobRunLogRepository {
 pub trait JobArtifactRepository {
     type Error;
 
+    /// Persists artifact metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns the implementation-specific repository error when persistence
+    /// fails.
     async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error>;
+
+    /// Lists artifact metadata for a job run.
+    ///
+    /// # Errors
+    ///
+    /// Returns the implementation-specific repository error when lookup fails.
     async fn list_artifacts_by_run(
         &self,
         run_id: &JobRunId,
     ) -> Result<Vec<JobArtifact>, Self::Error>;
+
+    /// Finds artifact metadata by run and artifact id.
+    ///
+    /// # Errors
+    ///
+    /// Returns the implementation-specific repository error when lookup fails.
     async fn find_artifact_by_run(
         &self,
         run_id: &JobRunId,

@@ -11,7 +11,7 @@ Capsulet is a Kubernetes-native automation control plane for durable, script-cen
 - manual, timezone-aware cron, read-only SQL, signed webhook, and isolated custom-plugin triggers
 - bearer authentication with viewer/operator/admin authorization and durable mutation auditing
 - durable PostgreSQL job, attempt, workflow-step, log, and artifact metadata
-- local process, stub, and Kubernetes Job runners
+- stub, trusted local process, WASI Python, and Kubernetes Job runners
 - S3-compatible or filesystem artifact storage
 - enforced execution-pool concurrency, cancellation, timeouts, delayed retry, and stale-lease recovery
 - owner-bound worker heartbeats that prevent stale workers from finalizing reassigned work
@@ -99,13 +99,14 @@ See [installation](docs/installation.md), [Helm values](docs/helm-values.md), an
 
 ```text
 crates/
+  application/  application services, use cases, and ports
   api/          HTTP control plane
-  core/         domain types, state machines, and ports
+  core/         domain types, state machines, and validation rules
   postgres/     SQLx persistence and migrations
-  runner/       stub, process, and Kubernetes runners
+  runner/       runner contracts plus stub, process, WASI, and Kubernetes adapters
   scheduler/    automation triggering and DAG reconciliation
   evaluator/    durable trigger evaluation and retention cleanup
-  worker/       leasing, heartbeat, execution, logs, and artifacts
+  worker/       worker runtime loop, runner selection, and health endpoints
   storage/      filesystem and S3-compatible object storage
   cli/          command-line client
 dashboard/      Next.js dashboard
@@ -143,7 +144,6 @@ Database integration tests run when `CAPSULET_TEST_DATABASE_URL` is set. Full lo
 - [Development](docs/development.md)
 - [Installation](docs/installation.md)
 - [Persistence](docs/persistence.md)
-- [Roadmap](ROADMAP.md)
 
 ## License
 

@@ -326,6 +326,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "axum",
+ "capsulet-application",
  "capsulet-core",
  "capsulet-observability",
  "capsulet-postgres",
@@ -347,6 +348,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "capsulet-application"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "capsulet-core",
+ "capsulet-observability",
+ "capsulet-runner",
+ "capsulet-storage",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "capsulet-cli"
 version = "0.1.0"
 dependencies = [
@@ -364,7 +378,6 @@ dependencies = [
 name = "capsulet-core"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "thiserror 2.0.18",
 ]
 
@@ -409,6 +422,7 @@ name = "capsulet-postgres"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "capsulet-application",
  "capsulet-core",
  "serde_json",
  "sqlx",
@@ -462,6 +476,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "capsulet-application",
  "capsulet-core",
  "capsulet-observability",
  "capsulet-postgres",

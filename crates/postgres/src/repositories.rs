@@ -1,8 +1,6 @@
 use async_trait::async_trait;
-use capsulet_core::{
-    ArtifactId, JobArtifact, JobArtifactRepository, JobRun, JobRunId, JobRunLog,
-    JobRunLogRepository, JobRunRepository,
-};
+use capsulet_application::{JobArtifactRepository, JobRunLogRepository, JobRunRepository};
+use capsulet_core::{ArtifactId, JobArtifact, JobRun, JobRunId, JobRunLog};
 
 use crate::{
     PostgresStore, PostgresStoreError,

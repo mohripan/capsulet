@@ -1,11 +1,11 @@
 [package]
-name = "capsulet-postgres"
+name = "capsulet-application"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "PostgreSQL persistence adapter for Capsulet."
+description = "Application services and ports for Capsulet."
 
 [lib]
 path = "src/lib.rs"
@@ -13,12 +13,10 @@ path = "src/lib.rs"
 [dependencies]
 async-trait.workspace = true
 capsulet-core = { path = "../core" }
-capsulet-application = { path = "../application" }
-sqlx.workspace = true
-serde_json.workspace = true
+capsulet-observability = { version = "0.1.0", path = "../observability" }
+capsulet-runner = { path = "../runner" }
+capsulet-storage = { path = "../storage" }
 thiserror.workspace = true
-
-[dev-dependencies]
 tokio.workspace = true
 
 [lints]

@@ -17,6 +17,7 @@ mod retention;
 mod rows;
 mod service_accounts;
 mod trigger_events;
+mod worker_store;
 mod workflow_runs;
 mod workflows;
 

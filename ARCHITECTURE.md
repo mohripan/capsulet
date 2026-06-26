@@ -6,7 +6,7 @@ For a shorter operator-facing overview, see [docs/architecture.md](docs/architec
 
 ## Scope and maturity
 
-The current system provides an authenticated PostgreSQL-backed control plane, a dashboard and CLI, filesystem or S3-compatible object storage, and stub, local-process, and Kubernetes Job execution backends.
+The current system provides an authenticated PostgreSQL-backed control plane, a dashboard and CLI, filesystem or S3-compatible object storage, and stub, local-process, WASI Python, and Kubernetes Job execution backends.
 
 PostgreSQL is the implemented durable event and coordination channel. Kafka remains an optional future scaling path. Hostile multi-tenant workloads should configure a sandboxed Kubernetes RuntimeClass such as gVisor or Kata in addition to the enforced pod security and default-deny network policy.
 
@@ -55,7 +55,7 @@ The Axum API is the synchronous control-plane boundary. It:
 - validates job input contracts, workflow graphs, trigger configuration, and condition trees;
 - exposes `/livez`, `/readyz`, `/metrics`, and the compatibility alias `/healthz`.
 
-The API uses `capsulet-postgres` directly as its persistence adapter and `capsulet-storage` for bundle and artifact objects. Bearer authentication is fail-closed by default, viewer/operator/admin roles authorize routes, and mutation audits are durable.
+The API is the HTTP transport adapter. Route wiring, middleware, request extraction, response models, and status-code mapping live in `capsulet-api`. Shared application commands and ports live in `capsulet-application`; some HTTP orchestration still lives in `capsulet-api` and is being moved behind application services incrementally. PostgreSQL and object storage remain concrete adapters through `capsulet-postgres` and `capsulet-storage`. Bearer authentication is fail-closed by default, viewer/operator/admin roles authorize routes, and mutation audits are durable.
 
 ### Scheduler (`capsulet-scheduler`)
 
@@ -70,16 +70,17 @@ It exposes health endpoints on a separate listener (default `0.0.0.0:8082`). `/l
 
 ### Worker (`capsulet-worker`)
 
-The worker is the job-run executor. Before leasing work it promotes ready retries and recovers expired leases. It then leases the oldest queued run with `FOR UPDATE SKIP LOCKED`, creates an attempt, executes through a runner, persists logs and artifacts, and commits a guarded terminal or retry state.
+The worker is the job-run runtime. Environment parsing, polling, runner selection, and health endpoints live in `capsulet-worker`; the lease-and-run use case lives in `capsulet-application::execution`. Before leasing work it promotes ready retries and recovers expired leases. It then leases the oldest queued run with `FOR UPDATE SKIP LOCKED`, creates an attempt, executes through a runner, persists logs and artifacts, and commits a guarded terminal or retry state.
 
 For long-running work, a heartbeat task refreshes `heartbeat_at` and extends `lease_expires_at`. The worker health listener defaults to `0.0.0.0:8081`; readiness depends on PostgreSQL.
 
 ### Runner library (`capsulet-runner`)
 
-The `Runner` port accepts a `RunExecution` and returns a `RunReport`. Three implementations exist:
+The `Runner` contract accepts a `RunExecution` and returns a `RunReport`. The crate exposes focused modules for the contract, execution pools, and runner adapters. Implementations include:
 
 - `StubRunner` returns deterministic success or failure for tests and Compose smoke flows.
 - `ProcessRunner` executes a local process and is intended for trusted development use.
+- `WasmPythonRunner` executes Python scripts through an operator-provided WASI Python runtime.
 - `KubernetesRunner` builds a Kubernetes Job, applies execution-pool scheduling and resource settings, watches completion/cancellation/timeout, captures pod logs, and collects files from `/capsulet/artifacts`.
 
 The `capsulet-runner` binary is only a component placeholder; execution is coordinated by the worker library.
@@ -100,33 +101,45 @@ The evaluator continuously produces timezone-aware cron, read-only SQL, and isol
 
 ```mermaid
 flowchart TD
-    core[capsulet-core<br/>domain types, invariants, ports]
-    postgres[capsulet-postgres<br/>SQLx adapter and migrations]
+    core[capsulet-core<br/>domain types, invariants, state transitions]
+    app[capsulet-application<br/>commands, ports, worker execution use case]
+    postgres[capsulet-postgres<br/>SQLx adapter, migrations, port impls]
     storage[capsulet-storage<br/>filesystem and S3 adapter]
-    runner[capsulet-runner<br/>execution adapter]
-    api[capsulet-api]
-    scheduler[capsulet-scheduler]
-    worker[capsulet-worker]
+    runner[capsulet-runner<br/>execution contracts and adapters]
+    api[capsulet-api<br/>HTTP transport]
+    scheduler[capsulet-scheduler<br/>polling runtime]
+    worker[capsulet-worker<br/>worker runtime]
     cli[capsulet-cli]
     evaluator[capsulet-evaluator]
 
+    app --> core
+    app --> runner
+    app --> storage
+    postgres --> app
     postgres --> core
     storage --> core
     runner --> core
+    api --> app
     api --> core
     api --> postgres
     api --> storage
     scheduler --> core
     scheduler --> postgres
+    worker --> app
     worker --> core
     worker --> postgres
     worker --> storage
     worker --> runner
     cli --> core
     evaluator --> core
+    evaluator --> postgres
+    evaluator --> runner
+    evaluator --> storage
 ```
 
-`capsulet-core` is dependency-light and owns typed IDs, validated value objects, aggregate state, state transitions, workflow graph validation, trigger conditions, and repository/object-storage ports. Infrastructure crates translate at their boundaries rather than exposing SQL rows or Kubernetes types to the domain.
+`capsulet-core` is the pure domain crate. It owns typed IDs, validated value objects, aggregate state, state transitions, workflow graph validation, trigger conditions, and domain errors. It intentionally does not own async repository traits, SQL rows, HTTP models, runner implementations, or process runtime logic.
+
+`capsulet-application` sits between the domain and adapters. It currently owns command/query shapes, application ports, orchestration errors, and the worker lease-and-run use case. Ports include job-run repositories, log repositories, artifact repositories, and worker execution storage. Infrastructure crates implement these ports at their boundaries rather than exposing SQL rows, object-store details, or Kubernetes types to the domain.
 
 ## Domain and persistence model
 

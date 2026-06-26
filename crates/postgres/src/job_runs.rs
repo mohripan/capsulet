@@ -1,4 +1,5 @@
-use capsulet_core::{JobDefinition, JobRun, JobRunId, JobRunRepository, JobRunStatus};
+use capsulet_application::JobRunRepository;
+use capsulet_core::{JobDefinition, JobRun, JobRunId, JobRunStatus};
 
 use crate::{PostgresStore, PostgresStoreError, rows::row_to_job_run};
 impl PostgresStore {

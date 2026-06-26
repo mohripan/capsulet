@@ -18,6 +18,7 @@ path = "src/lib.rs"
 anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
+capsulet-application = { path = "../application" }
 capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-runner = { path = "../runner" }

@@ -1,10 +1,11 @@
 use std::fmt::Display;
 
 use async_trait::async_trait;
+use capsulet_application::{JobArtifactRepository, JobRunLogRepository, JobRunRepository};
 use capsulet_core::{
     ArtifactId, Automation, AutomationId, AutomationTrigger, CustomTriggerPlugin, JobArtifact,
-    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunLogRepository,
-    JobRunRepository, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
+    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, WorkflowDefinition, WorkflowId,
+    WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
 use capsulet_postgres::{
     AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore, PostgresStoreError,
@@ -562,6 +563,6 @@ impl ApiStore for PostgresStore {
     }
 
     async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error> {
-        capsulet_core::JobArtifactRepository::save_artifact(self, artifact).await
+        JobArtifactRepository::save_artifact(self, artifact).await
     }
 }

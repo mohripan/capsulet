@@ -18,6 +18,7 @@ async-stream = "0.3"
 axum.workspace = true
 hmac.workspace = true
 jsonwebtoken.workspace = true
+capsulet-application = { path = "../application" }
 capsulet-core = { path = "../core" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-storage = { path = "../storage" }
