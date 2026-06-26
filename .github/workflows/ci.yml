@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --component clippy rustfmt
+          rustup toolchain install 1.96.0 --profile minimal --component clippy --component rustfmt
           rustup default 1.96.0
 
       - name: Cache Cargo

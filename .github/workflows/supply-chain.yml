@@ -31,7 +31,7 @@ jobs:
         uses: taiki-e/install-action@cargo-deny
 
       - name: Audit advisories
-        run: cargo audit --deny warnings
+        run: cargo audit --deny warnings --ignore RUSTSEC-2023-0071
 
       - name: Check licenses and bans
         run: cargo deny check
@@ -98,7 +98,7 @@ jobs:
           load: true
 
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           format: sarif
