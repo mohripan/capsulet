@@ -5,7 +5,7 @@ use std::{env, time::Duration};
 use anyhow::{Context as _, anyhow};
 use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
-use capsulet_observability as observability;
+use capsulet_observability::{self as observability, tracing::Instrument};
 use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 
 const DEFAULT_POLL_SECONDS: u64 = 5;
@@ -49,14 +49,43 @@ pub async fn run() -> anyhow::Result<()> {
 
     loop {
         let started = std::time::Instant::now();
-        let triggered = store
-            .trigger_due_interval_automations()
-            .await
-            .context("trigger due interval automations")?;
-        let advanced = store
-            .advance_workflow_runs()
-            .await
-            .context("advance workflow runs")?;
+        let span = observability::tracing::info_span!(
+            "scheduler.tick",
+            triggered = observability::tracing::field::Empty,
+            advanced = observability::tracing::field::Empty,
+            outcome = observability::tracing::field::Empty,
+            error = observability::tracing::field::Empty,
+        );
+        let (triggered, advanced) = async {
+            let result = async {
+                let triggered = store
+                    .trigger_due_interval_automations()
+                    .await
+                    .context("trigger due interval automations")?;
+                let advanced = store
+                    .advance_workflow_runs()
+                    .await
+                    .context("advance workflow runs")?;
+                Ok::<_, anyhow::Error>((triggered, advanced))
+            }
+            .await;
+            match &result {
+                Ok((triggered, advanced)) => {
+                    observability::tracing::Span::current()
+                        .record("triggered", *triggered)
+                        .record("advanced", *advanced)
+                        .record("outcome", "success");
+                }
+                Err(error) => {
+                    observability::tracing::Span::current()
+                        .record("outcome", "error")
+                        .record("error", observability::tracing::field::display(error));
+                }
+            }
+            result
+        }
+        .instrument(span)
+        .await?;
         observability::record_service_tick("scheduler", "success", started.elapsed());
         observability::tracing::info!(triggered, advanced, "scheduler tick");
 

@@ -24,3 +24,11 @@ Grafana and alerting starter assets live under `deploy/observability/`.
 ## Tracing
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` to an OTLP collector endpoint. Standard OTEL protocol variables such as `OTEL_EXPORTER_OTLP_PROTOCOL` are passed through to the exporter.
+
+Key service spans:
+
+- `http.request` records request ID, method, route, status code, and elapsed milliseconds.
+- `worker.drain`, `worker.run_task`, and `worker.tick` record worker loop, task, run, execution pool, and outcome fields.
+- `worker.kubernetes_reconcile` records active run counts and orphaned Kubernetes job deletions.
+- `scheduler.tick` records triggered automations, advanced workflow runs, and outcome.
+- `evaluator.tick`, `evaluator.trigger_group`, and `evaluator.retention_cleanup` record trigger evaluation and retention outcomes.

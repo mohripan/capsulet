@@ -352,17 +352,18 @@ async fn request_context(mut request: Request, next: Next) -> Response {
         request.id = %request_id,
         http.method = %method,
         http.route = %path,
+        http.status_code = observability::tracing::field::Empty,
+        duration.ms = observability::tracing::field::Empty,
     );
     async move {
         let started = Instant::now();
         let mut response = next.run(request).await;
         let status = response.status();
-        observability::record_http_request(
-            method.as_str(),
-            &path,
-            status.as_u16(),
-            started.elapsed(),
-        );
+        let elapsed = started.elapsed();
+        observability::record_http_request(method.as_str(), &path, status.as_u16(), elapsed);
+        observability::tracing::Span::current()
+            .record("http.status_code", status.as_u16())
+            .record("duration.ms", elapsed.as_millis());
         if let Ok(value) = HeaderValue::from_str(&request_id) {
             response.headers_mut().insert("x-request-id", value);
         }

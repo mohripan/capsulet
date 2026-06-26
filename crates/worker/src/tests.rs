@@ -289,6 +289,11 @@ fn run() -> JobRun {
     )
 }
 
+#[test]
+fn worker_tick_outcome_as_str_should_return_stable_span_field_values() {
+    assert_eq!(WorkerTickOutcome::RunSucceeded.as_str(), "run_succeeded");
+}
+
 #[tokio::test]
 async fn renews_lease_while_runner_is_active() {
     let store = FakeStore::with_run(run());

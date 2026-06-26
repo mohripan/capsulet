@@ -3,7 +3,7 @@ use std::{env, net::SocketAddr, time::Duration};
 use anyhow::{Context as _, anyhow, bail};
 use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
-use capsulet_observability as observability;
+use capsulet_observability::{self as observability, tracing::Instrument};
 use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 use capsulet_storage::{ConfiguredObjectStore, ObjectStore};
 
@@ -124,23 +124,66 @@ pub async fn run() -> anyhow::Result<()> {
         .unwrap_or(DEFAULT_RETENTION_INTERVAL_SECONDS);
     tokio::spawn(async move {
         loop {
-            if let Err(error) = run_retention(
-                &retention_store,
-                &object_store,
-                retention_days,
-                audit_retention_days,
-            )
-            .await
-            {
-                observability::tracing::warn!(%error, "retention cleanup failed");
+            let span = observability::tracing::info_span!(
+                "evaluator.retention_cleanup",
+                retention.days = retention_days,
+                audit_retention.days = audit_retention_days,
+                outcome = observability::tracing::field::Empty,
+                error = observability::tracing::field::Empty,
+            );
+            async {
+                let result = run_retention(
+                    &retention_store,
+                    &object_store,
+                    retention_days,
+                    audit_retention_days,
+                )
+                .await;
+                match &result {
+                    Ok(()) => {
+                        observability::tracing::Span::current().record("outcome", "success");
+                    }
+                    Err(error) => {
+                        observability::tracing::Span::current()
+                            .record("outcome", "error")
+                            .record("error", observability::tracing::field::display(error));
+                        observability::tracing::warn!(%error, "retention cleanup failed");
+                    }
+                }
             }
+            .instrument(span)
+            .await;
             tokio::time::sleep(Duration::from_secs(retention_interval.max(60))).await;
         }
     });
     let evaluator = Evaluator::new(store, owner).with_sql_connections(sql_connections);
     loop {
         let started = std::time::Instant::now();
-        match evaluator.tick().await {
+        let span = observability::tracing::info_span!(
+            "evaluator.tick",
+            outcome = observability::tracing::field::Empty,
+            error = observability::tracing::field::Empty,
+        );
+        let tick = async {
+            let result = evaluator.tick().await;
+            match &result {
+                Ok(true) => {
+                    observability::tracing::Span::current().record("outcome", "work");
+                }
+                Ok(false) => {
+                    observability::tracing::Span::current().record("outcome", "idle");
+                }
+                Err(error) => {
+                    observability::tracing::Span::current()
+                        .record("outcome", "error")
+                        .record("error", observability::tracing::field::display(error));
+                }
+            }
+            result
+        }
+        .instrument(span)
+        .await;
+        match tick {
             Ok(true) => {
                 observability::record_service_tick("evaluator", "work", started.elapsed());
             }

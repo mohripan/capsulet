@@ -7,6 +7,7 @@ use capsulet_core::{
     ArtifactId, ArtifactObjectKind, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunLog,
     JobRunLogRepository, JobRunRepository, JobRunStatus, JobRunTransition,
 };
+use capsulet_observability::{self as observability, tracing::Instrument};
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
 use capsulet_runner::{
     CancellationCheck, ExecutionPoolsConfig, InputArtifact, RunExecution, RunOutcome, RunReport,
@@ -219,6 +220,20 @@ pub enum WorkerTickOutcome {
     RunRetryScheduled,
 }
 
+impl WorkerTickOutcome {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NoRunAvailable => "no_run_available",
+            Self::RunSucceeded => "run_succeeded",
+            Self::RunFailed => "run_failed",
+            Self::RunTimedOut => "run_timed_out",
+            Self::RunCancelled => "run_cancelled",
+            Self::RunRetryScheduled => "run_retry_scheduled",
+        }
+    }
+}
+
 /// Executes one queued run if one is available.
 ///
 /// # Errors
@@ -239,8 +254,60 @@ where
     R: Runner,
     O: ObjectStore,
 {
+    let span = observability::tracing::info_span!(
+        "worker.tick",
+        worker.id = %worker_id,
+        lease.seconds = lease_seconds,
+        runner.reattachment = observability::tracing::field::Empty,
+        job.run.id = observability::tracing::field::Empty,
+        job.definition.id = observability::tracing::field::Empty,
+        execution.pool = observability::tracing::field::Empty,
+        outcome = observability::tracing::field::Empty,
+        error = observability::tracing::field::Empty,
+    );
+    async move {
+        let result = execute_one_queued_run_inner(
+            store,
+            runner,
+            object_store,
+            pools,
+            worker_id,
+            lease_seconds,
+        )
+        .await;
+        match &result {
+            Ok(outcome) => {
+                observability::tracing::Span::current().record("outcome", outcome.as_str());
+            }
+            Err(error) => {
+                observability::tracing::Span::current()
+                    .record("outcome", "error")
+                    .record("error", observability::tracing::field::display(error));
+            }
+        }
+        result
+    }
+    .instrument(span)
+    .await
+}
+
+#[allow(clippy::too_many_lines)]
+async fn execute_one_queued_run_inner<S, R, O>(
+    store: &S,
+    runner: &R,
+    object_store: &O,
+    pools: &ExecutionPoolsConfig,
+    worker_id: &str,
+    lease_seconds: i64,
+) -> Result<WorkerTickOutcome, WorkerError>
+where
+    S: WorkerStore,
+    R: Runner,
+    O: ObjectStore,
+{
     let heartbeat_seconds = heartbeat_seconds(lease_seconds)?;
     let supports_reattachment = runner.supports_reattachment();
+    observability::tracing::Span::current().record("runner.reattachment", supports_reattachment);
     store
         .recover_expired_leases(supports_reattachment)
         .await
@@ -267,6 +334,10 @@ where
     else {
         return Ok(WorkerTickOutcome::NoRunAvailable);
     };
+    observability::tracing::Span::current()
+        .record("job.run.id", run.id().as_str())
+        .record("job.definition.id", run.job_definition_id().as_str())
+        .record("execution.pool", run.execution_pool().as_str());
 
     let definition = store
         .find_job_definition(run.job_definition_id())

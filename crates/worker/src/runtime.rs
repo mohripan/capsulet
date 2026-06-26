@@ -8,7 +8,7 @@ use std::{
 use anyhow::{Context as _, anyhow, bail};
 use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
-use capsulet_observability as observability;
+use capsulet_observability::{self as observability, tracing::Instrument};
 use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 use capsulet_runner::{
     ExecutionPoolsConfig, KubernetesRunner, ProcessRunner, Runner, StubRunner, WasmPythonConfig,
@@ -70,6 +70,17 @@ enum RunnerMode {
     Wasm,
 }
 
+impl RunnerMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Kubernetes => "kubernetes",
+            Self::Stub => "stub",
+            Self::Process => "process",
+            Self::Wasm => "wasm",
+        }
+    }
+}
+
 /// Runs the worker service from environment configuration.
 ///
 /// # Errors
@@ -124,7 +135,12 @@ pub async fn run() -> anyhow::Result<()> {
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_MAX_CONCURRENT_RUNS);
 
-    match parse_runner_mode(&runner_mode)? {
+    let runner_mode = parse_runner_mode(&runner_mode)?;
+    observability::tracing::info!(
+        runner.mode = runner_mode.as_str(),
+        "worker runner configured"
+    );
+    match runner_mode {
         RunnerMode::Kubernetes => {
             let namespace = env::var("CAPSULET_EXECUTION_NAMESPACE")
                 .unwrap_or_else(|_| DEFAULT_EXECUTION_NAMESPACE.to_string());
@@ -223,26 +239,51 @@ fn start_kubernetes_reconciler(store: PostgresStore, runner: KubernetesRunner, w
             tokio::time::interval(jittered_poll_duration(&worker_id, interval_seconds));
         loop {
             interval.tick().await;
-            match store.active_leased_run_ids().await {
-                Ok(active_run_ids) => match runner.reconcile_orphaned_jobs(&active_run_ids).await {
-                    Ok(deleted) if deleted > 0 => {
-                        observability::tracing::info!(
-                            deleted,
-                            "kubernetes reconciler deleted orphaned jobs"
+            let span = observability::tracing::info_span!(
+                "worker.kubernetes_reconcile",
+                worker.id = %worker_id,
+                interval.seconds = interval_seconds,
+                active_runs = observability::tracing::field::Empty,
+                deleted = observability::tracing::field::Empty,
+                error = observability::tracing::field::Empty,
+            );
+            async {
+                match store.active_leased_run_ids().await {
+                    Ok(active_run_ids) => {
+                        observability::tracing::Span::current()
+                            .record("active_runs", active_run_ids.len());
+                        match runner.reconcile_orphaned_jobs(&active_run_ids).await {
+                            Ok(deleted) if deleted > 0 => {
+                                observability::tracing::Span::current().record("deleted", deleted);
+                                observability::tracing::info!(
+                                    deleted,
+                                    "kubernetes reconciler deleted orphaned jobs"
+                                );
+                            }
+                            Ok(deleted) => {
+                                observability::tracing::Span::current().record("deleted", deleted);
+                            }
+                            Err(error) => {
+                                observability::tracing::Span::current().record(
+                                    "error",
+                                    observability::tracing::field::display(&error),
+                                );
+                                observability::tracing::warn!(%error, "kubernetes reconciler failed");
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        observability::tracing::Span::current()
+                            .record("error", observability::tracing::field::display(&error));
+                        observability::tracing::warn!(
+                            %error,
+                            "kubernetes reconciler could not list active runs"
                         );
                     }
-                    Ok(_) => {}
-                    Err(error) => {
-                        observability::tracing::warn!(%error, "kubernetes reconciler failed");
-                    }
-                },
-                Err(error) => {
-                    observability::tracing::warn!(
-                        %error,
-                        "kubernetes reconciler could not list active runs"
-                    );
                 }
             }
+            .instrument(span)
+            .await;
         }
     });
 }
@@ -306,6 +347,14 @@ where
     let mut shutting_down = false;
 
     loop {
+        let span = observability::tracing::info_span!(
+            "worker.drain",
+            worker.id = %worker_id,
+            lease.seconds = lease_seconds,
+            max_concurrent_runs = max_concurrent_runs,
+            loop.enabled = loop_enabled,
+            shutting_down = shutting_down,
+        );
         drain_available_runs(
             &store,
             &object_store,
@@ -317,6 +366,7 @@ where
             &mut shutdown,
             &mut shutting_down,
         )
+        .instrument(span)
         .await?;
 
         if !loop_enabled || shutting_down {
@@ -365,17 +415,25 @@ where
             let task_pools = pools.clone();
             let task_worker_id = worker_id.to_string();
             let task_runner = runner.clone();
-            tasks.spawn(async move {
-                execute_one_queued_run(
-                    &task_store,
-                    &task_runner,
-                    &task_object_store,
-                    &task_pools,
-                    &task_worker_id,
-                    lease_seconds,
-                )
-                .await
-            });
+            let span = observability::tracing::info_span!(
+                "worker.run_task",
+                worker.id = %task_worker_id,
+                lease.seconds = lease_seconds,
+            );
+            tasks.spawn(
+                async move {
+                    execute_one_queued_run(
+                        &task_store,
+                        &task_runner,
+                        &task_object_store,
+                        &task_pools,
+                        &task_worker_id,
+                        lease_seconds,
+                    )
+                    .await
+                }
+                .instrument(span),
+            );
         }
 
         if tasks.is_empty() {
@@ -401,7 +459,7 @@ where
                         accepting = false;
                         observability::record_service_tick(
                             "worker",
-                            "no_run_available",
+                            crate::WorkerTickOutcome::NoRunAvailable.as_str(),
                             started.elapsed(),
                         );
                         observability::tracing::info!(
@@ -412,7 +470,7 @@ where
                     Ok(Ok(outcome)) => {
                         observability::record_service_tick(
                             "worker",
-                            "run_processed",
+                            outcome.as_str(),
                             started.elapsed(),
                         );
                         observability::tracing::info!(?outcome, "worker tick outcome");
@@ -555,5 +613,10 @@ mod tests {
             parse_runner_mode("wasm").expect("wasm mode"),
             RunnerMode::Wasm
         );
+    }
+
+    #[test]
+    fn runner_mode_as_str_should_return_stable_span_field_values() {
+        assert_eq!(RunnerMode::Kubernetes.as_str(), "kubernetes");
     }
 }

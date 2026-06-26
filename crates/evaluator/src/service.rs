@@ -4,6 +4,7 @@ use std::{
 };
 
 use capsulet_core::{AutomationId, AutomationStatus, ConditionExpr, TriggerName};
+use capsulet_observability::{self as observability, tracing::Instrument};
 use capsulet_postgres::{PostgresStore, PostgresStoreError, TriggerEvent};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -81,50 +82,85 @@ impl Evaluator {
 
     async fn evaluate_group(&self, events: &[TriggerEvent]) -> Result<(), EvaluatorError> {
         let first = events.first().ok_or(EvaluatorError::EmptyGroup)?;
-        if events.iter().any(|event| {
-            event.automation_id != first.automation_id
-                || event.correlation_key != first.correlation_key
-        }) {
-            return Err(EvaluatorError::MixedGroup);
+        let span = observability::tracing::info_span!(
+            "evaluator.trigger_group",
+            owner = %self.owner,
+            automation.id = %first.automation_id,
+            correlation.key = %first.correlation_key,
+            trigger.events = events.len(),
+            satisfied = observability::tracing::field::Empty,
+            workflow.run.id = observability::tracing::field::Empty,
+            outcome = observability::tracing::field::Empty,
+            error = observability::tracing::field::Empty,
+        );
+        async move {
+            let result = async {
+                if events.iter().any(|event| {
+                    event.automation_id != first.automation_id
+                        || event.correlation_key != first.correlation_key
+                }) {
+                    return Err(EvaluatorError::MixedGroup);
+                }
+                let automation_id = AutomationId::new(first.automation_id.clone())
+                    .map_err(EvaluatorError::InvalidDefinition)?;
+                let automation = self
+                    .store
+                    .find_automation(&automation_id)
+                    .await?
+                    .ok_or_else(|| {
+                        EvaluatorError::AutomationNotFound(first.automation_id.clone())
+                    })?;
+                let (triggers, condition_json) =
+                    self.store.list_automation_triggers(&automation_id).await?;
+                let enabled: HashMap<_, _> = triggers
+                    .iter()
+                    .filter(|trigger| trigger.enabled())
+                    .map(|trigger| (trigger.name().as_str(), trigger.kind()))
+                    .collect();
+                let satisfied_triggers = events
+                    .iter()
+                    .filter(|event| enabled.contains_key(event.trigger_name.as_str()))
+                    .map(|event| TriggerName::new(event.trigger_name.clone()))
+                    .collect::<Result<HashSet<_>, _>>()
+                    .map_err(EvaluatorError::InvalidDefinition)?;
+                let condition = condition_from_json(
+                    &serde_json::from_str(&condition_json)
+                        .map_err(EvaluatorError::InvalidConditionJson)?,
+                )?;
+                let satisfied = automation.status() == AutomationStatus::Enabled
+                    && condition.evaluate(&satisfied_triggers);
+                let run_id = deterministic_run_id(&first.automation_id, &first.correlation_key);
+                observability::tracing::Span::current()
+                    .record("satisfied", satisfied)
+                    .record("workflow.run.id", run_id.as_str());
+                self.store
+                    .complete_trigger_group(
+                        &self.owner,
+                        &first.automation_id,
+                        &first.correlation_key,
+                        automation.workflow_id().as_str(),
+                        &run_id,
+                        automation.job_input_json(),
+                        satisfied,
+                    )
+                    .await?;
+                Ok(())
+            }
+            .await;
+            match &result {
+                Ok(()) => {
+                    observability::tracing::Span::current().record("outcome", "success");
+                }
+                Err(error) => {
+                    observability::tracing::Span::current()
+                        .record("outcome", "error")
+                        .record("error", observability::tracing::field::display(error));
+                }
+            }
+            result
         }
-        let automation_id = AutomationId::new(first.automation_id.clone())
-            .map_err(EvaluatorError::InvalidDefinition)?;
-        let automation = self
-            .store
-            .find_automation(&automation_id)
-            .await?
-            .ok_or_else(|| EvaluatorError::AutomationNotFound(first.automation_id.clone()))?;
-        let (triggers, condition_json) =
-            self.store.list_automation_triggers(&automation_id).await?;
-        let enabled: HashMap<_, _> = triggers
-            .iter()
-            .filter(|trigger| trigger.enabled())
-            .map(|trigger| (trigger.name().as_str(), trigger.kind()))
-            .collect();
-        let satisfied_triggers = events
-            .iter()
-            .filter(|event| enabled.contains_key(event.trigger_name.as_str()))
-            .map(|event| TriggerName::new(event.trigger_name.clone()))
-            .collect::<Result<HashSet<_>, _>>()
-            .map_err(EvaluatorError::InvalidDefinition)?;
-        let condition = condition_from_json(
-            &serde_json::from_str(&condition_json).map_err(EvaluatorError::InvalidConditionJson)?,
-        )?;
-        let satisfied = automation.status() == AutomationStatus::Enabled
-            && condition.evaluate(&satisfied_triggers);
-        let run_id = deterministic_run_id(&first.automation_id, &first.correlation_key);
-        self.store
-            .complete_trigger_group(
-                &self.owner,
-                &first.automation_id,
-                &first.correlation_key,
-                automation.workflow_id().as_str(),
-                &run_id,
-                automation.job_input_json(),
-                satisfied,
-            )
-            .await?;
-        Ok(())
+        .instrument(span)
+        .await
     }
 }
 
