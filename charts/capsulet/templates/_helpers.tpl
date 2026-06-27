@@ -188,3 +188,20 @@ Component image.
 {{- printf "%s:%s" $repository $root.Values.image.tag -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+CEL expression for execution image allowlists. Patterns ending in * are treated
+as prefixes, matching the runner's pool policy behavior.
+*/}}
+{{- define "capsulet.allowedImagesCel" -}}
+{{- $checks := list -}}
+{{- range $image := . -}}
+{{- if hasSuffix "*" $image -}}
+{{- $prefix := trimSuffix "*" $image -}}
+{{- $checks = append $checks (printf "c.image.startsWith(%q)" $prefix) -}}
+{{- else -}}
+{{- $checks = append $checks (printf "c.image == %q" $image) -}}
+{{- end -}}
+{{- end -}}
+{{- printf "object.spec.containers.all(c, %s)" (join " || " $checks) -}}
+{{- end -}}

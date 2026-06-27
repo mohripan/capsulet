@@ -1,0 +1,100 @@
+{{- if .Values.prometheusRules.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "capsulet.fullname" . }}-slo-alerts
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRules.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: capsulet.slo
+      rules:
+        - alert: CapsuletApiErrorRateHigh
+          expr: |
+            (
+              sum(rate(capsulet_http_request_errors_total[5m]))
+              /
+              clamp_min(sum(rate(capsulet_http_requests_total[5m])), 1)
+            ) > {{ .Values.prometheusRules.apiErrorRateRatio }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Capsulet API error rate is high
+            description: More than {{ mulf .Values.prometheusRules.apiErrorRateRatio 100 }}% of API requests have failed for 10 minutes.
+        - alert: CapsuletAdmissionRejecting
+          expr: sum(rate(capsulet_admission_decisions_total{decision="rejected"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Capsulet admission is rejecting new work
+            description: API admission backpressure has rejected job or workflow submissions for 10 minutes.
+        - alert: CapsuletJobQueueOldestAgeHigh
+          expr: max(capsulet_job_queue_oldest_age_seconds) > {{ .Values.prometheusRules.queueOldestAgeSeconds }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Capsulet job queue age is high
+            description: The oldest queued job has exceeded the configured queue-age SLO.
+        - alert: CapsuletJobLeaseAgeHigh
+          expr: max(capsulet_job_lease_age_seconds) > {{ .Values.prometheusRules.leaseAgeSeconds }}
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Capsulet worker lease heartbeat age is high
+            description: A leased or running job has not heartbeated recently enough.
+        - alert: CapsuletExecutionPoolSaturated
+          expr: max(capsulet_execution_pool_saturation) > {{ .Values.prometheusRules.poolSaturationRatio }}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Capsulet execution pool saturation is high
+            description: An execution pool has sustained high active-plus-queued demand.
+        - alert: CapsuletSchedulerLagHigh
+          expr: capsulet_scheduler_lag_seconds > {{ .Values.prometheusRules.schedulerLagSeconds }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Capsulet scheduler lag is high
+            description: The oldest queued workflow run has exceeded the configured scheduler-lag SLO.
+        - alert: CapsuletWorkflowCriticalPathHigh
+          expr: max(capsulet_workflow_critical_path_latency_seconds) > {{ .Values.prometheusRules.workflowCriticalPathSeconds }}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Capsulet workflow critical-path latency is high
+            description: A workflow status bucket has exceeded the configured critical-path latency SLO.
+        - alert: CapsuletStuckWorkflowRuns
+          expr: capsulet_stuck_workflow_runs > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Capsulet has stuck workflow runs
+            description: One or more queued or running workflow runs have not advanced for the stuck-workflow window.
+        - alert: CapsuletRetryExhaustion
+          expr: capsulet_job_retry_exhausted_runs > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Capsulet job retries are exhausted
+            description: One or more failed or timed-out job runs have no retry attempts remaining.
+        - alert: CapsuletTriggerRuntimeFailures
+          expr: capsulet_trigger_runtime_failures > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Capsulet trigger runtimes are failing
+            description: Cron or SQL triggers have consecutive runtime failures.
+{{- end }}

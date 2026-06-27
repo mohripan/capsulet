@@ -296,12 +296,15 @@ executionPools:
       timeoutSeconds: 120
       maxConcurrentJobs: 50
       ttlSecondsAfterFinished: 300
-      allowedImages:
-        - python:*
-      requireDigestImages: false
-      maxPythonDependencies: 32
-      maxPythonDependencyLength: 128
-      blockedPythonDependencies: []
+      policy:
+        images:
+          allowed:
+            - python:*
+          requireDigest: false
+        python:
+          maxDependencies: 32
+          maxDependencyLength: 128
+          blockedDependencies: []
 
     large:
       description: Compute-heavy jobs such as model inference and batch processing
@@ -322,11 +325,14 @@ executionPools:
       timeoutSeconds: 3600
       maxConcurrentJobs: 10
       ttlSecondsAfterFinished: 300
-      allowedImages: []
-      requireDigestImages: false
-      maxPythonDependencies: 32
-      maxPythonDependencyLength: 128
-      blockedPythonDependencies: []
+      policy:
+        images:
+          allowed: []
+          requireDigest: false
+        python:
+          maxDependencies: 32
+          maxDependencyLength: 128
+          blockedDependencies: []
 
 executionNetworkPolicy:
   enabled: true
@@ -337,11 +343,40 @@ executionIsolation:
   serviceAccountName: ""
   runtimeClassName: ""
 
+admissionPolicies:
+  enabled: false
+  failurePolicy: Fail
+  security:
+    enabled: true
+    validationActions:
+      - Deny
+  images:
+    requireDigest: false
+    enforceAllowed: false
+    allowed: []
+    validationActions:
+      - Audit
+
 networkPolicies:
   enabled: false
 
 serviceMonitor:
   enabled: false
+
+prometheusRules:
+  enabled: false
+  labels: {}
+  queueOldestAgeSeconds: 300
+  leaseAgeSeconds: 180
+  poolSaturationRatio: 0.9
+  schedulerLagSeconds: 300
+  workflowCriticalPathSeconds: 1800
+  apiErrorRateRatio: 0.05
+
+grafanaDashboards:
+  enabled: false
+  labels:
+    grafana_dashboard: "1"
 
 highAvailability:
   podDisruptionBudget:

@@ -14,21 +14,10 @@ RUN --mount=type=cache,id=capsulet-cargo-registry-v3,target=/usr/local/cargo/reg
     cargo build --release -p "${PACKAGE}" --bin "${BIN}" \
     && cp "/app/target/release/${BIN}" /tmp/capsulet-bin
 
-FROM debian:bookworm-slim
+FROM gcr.io/distroless/cc-debian12:nonroot
 
 ARG BIN
-ENV CAPSULET_BIN="${BIN}"
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl python3 python3-pip \
-    && groupadd --gid 10001 capsulet \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin capsulet \
-    && mkdir -p /capsulet/artifacts \
-    && chown -R 10001:10001 /capsulet \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /tmp/capsulet-bin /usr/local/bin/capsulet-bin
 
-COPY --from=build /tmp/capsulet-bin /usr/local/bin/${BIN}
-
-USER 10001:10001
-
-ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/${CAPSULET_BIN}"]
+ENTRYPOINT ["/usr/local/bin/capsulet-bin"]

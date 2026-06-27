@@ -39,6 +39,14 @@ pub struct PostgresStore {
     pub(crate) pool: PgPool,
 }
 
+/// Queue state used by API admission backpressure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AdmissionSnapshot {
+    pub queued_runs: u64,
+    pub queued_runs_in_pool: u64,
+    pub queued_workflow_runs: u64,
+}
+
 /// `PostgreSQL` connection-pool settings.
 #[derive(Debug, Clone, Copy)]
 pub struct PostgresPoolConfig {

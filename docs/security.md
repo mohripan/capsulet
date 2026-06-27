@@ -149,10 +149,34 @@ Capsulet does not by itself protect against:
 
 Production deployments should pair Capsulet with Kubernetes Pod Security Admission, NetworkPolicy enforcement, image admission policy, secret rotation, and centralized audit logging.
 
-Example ValidatingAdmissionPolicy manifests live in `ops/admission/`. The digest
-image policy is shipped in audit mode by default because local development often
-uses tag-based images; production clusters should switch it to `Deny` after all
-execution images are digest pinned.
+The Helm chart can render native Kubernetes `ValidatingAdmissionPolicy`
+resources for Capsulet execution pods:
+
+```yaml
+admissionPolicies:
+  enabled: true
+  security:
+    validationActions:
+      - Deny
+  images:
+    requireDigest: true
+    enforceAllowed: true
+    validationActions:
+      - Audit
+```
+
+`security` denies privileged execution pods, privilege escalation, missing
+`RuntimeDefault` seccomp, and service-account token automounting. The image
+allowlist is derived from execution-pool `policy.images.allowed` plus any extra
+`admissionPolicies.images.allowed` entries. Keep image actions in `Audit` while
+migrating local or legacy workloads, then switch to `Deny` after approved
+runtime images are digest-pinned and allowlisted.
+
+Example standalone manifests live in `ops/admission/` for clusters that manage
+admission policy separately from Helm. Native `ValidatingAdmissionPolicy` cannot
+verify signatures by itself; pair digest/allowlist enforcement with a signature
+policy engine such as Sigstore Policy Controller or Kyverno for signed-image
+attestation.
 
 ## Tenancy
 

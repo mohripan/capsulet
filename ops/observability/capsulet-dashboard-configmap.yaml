@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: capsulet-grafana-dashboards
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: capsulet
+data:
+  README: |-
+    The full dashboard JSON is available at
+    ops/observability/capsulet-overview.json.
+
+    For standalone installs, create this ConfigMap from the JSON asset:
+
+      kubectl create configmap capsulet-grafana-dashboards \
+        --from-file=capsulet-overview.json=ops/observability/capsulet-overview.json \
+        --dry-run=client -o yaml | kubectl apply -f -

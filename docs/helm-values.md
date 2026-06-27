@@ -235,6 +235,31 @@ evaluator:
 
 Custom-trigger Jobs use `worker.runner.executionNamespace` and the same `executionIsolation` service account and RuntimeClass as ordinary execution Jobs.
 
+Native Kubernetes admission policies are opt-in because local clusters often use
+tagged development images:
+
+```yaml
+admissionPolicies:
+  enabled: true
+  failurePolicy: Fail
+  security:
+    enabled: true
+    validationActions:
+      - Deny
+  images:
+    requireDigest: true
+    enforceAllowed: true
+    allowed: []
+    validationActions:
+      - Audit
+```
+
+When `images.enforceAllowed` is true, the chart builds the admission image
+allowlist from `executionPools.*.policy.images.allowed` and
+`admissionPolicies.images.allowed`. Patterns ending in `*` are treated as
+prefixes, matching runner pool policy behavior. Switch image validation actions
+from `Audit` to `Deny` after all approved runtime images are pinned and tested.
+
 ## Execution Pools
 
 Execution pools define job routing defaults:
@@ -271,9 +296,21 @@ networkPolicies:
 
 serviceMonitor:
   enabled: false
+
+prometheusRules:
+  enabled: false
+
+grafanaDashboards:
+  enabled: false
 ```
 
 `executionNetworkPolicy.enabled` defaults to true and isolates execution Jobs with default-deny ingress/egress plus optional DNS and explicit egress rules. `executionIsolation` selects the permissionless execution service account and an optional sandbox RuntimeClass. Enabling `serviceMonitor` renders discovery for API, worker, scheduler, and evaluator metrics Services.
+
+`prometheusRules.enabled` renders Prometheus Operator alerts for API error rate,
+admission rejection, queue age, worker lease age, pool saturation, scheduler
+lag, workflow critical-path latency, stuck workflows, retry exhaustion, and
+trigger runtime failures. `grafanaDashboards.enabled` renders a Grafana sidecar
+ConfigMap containing the packaged Capsulet overview dashboard.
 
 ## Validation
 

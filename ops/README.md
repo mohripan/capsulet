@@ -5,7 +5,9 @@ staging, or production-like clusters.
 
 ## Admission Policies
 
-Apply the execution-pod policies after the Kubernetes runner is enabled:
+The Helm chart can manage equivalent native `ValidatingAdmissionPolicy`
+resources through `admissionPolicies.enabled=true`. Use the standalone manifest
+when admission policy is managed outside the application release:
 
 ```powershell
 kubectl apply -f ops/admission/capsulet-execution-policies.yaml
@@ -13,7 +15,8 @@ kubectl apply -f ops/admission/capsulet-execution-policies.yaml
 
 The pod-security policy denies unsafe execution pods. The digest image policy is
 in `Audit` mode by default; change its binding to `Deny` after all approved
-runtime images are pinned by digest.
+runtime images are pinned by digest. The Helm-managed allowlist policy can also
+derive accepted image patterns from `executionPools.*.policy.images.allowed`.
 
 ## Load Smoke
 
@@ -32,3 +35,9 @@ docker run --rm -i grafana/k6 run -e CAPSULET_LOAD_SUBMIT=true -e CAPSULET_LOAD_
 Copy `ops/load/capacity-fixtures.example.json` for each certified cluster size
 and fill in observed p95/p99 latency, failure rate, and sustained job submit
 capacity.
+
+## Observability
+
+Starter PrometheusRule and Grafana dashboard assets live in
+`ops/observability/`. The Helm chart can render equivalent resources with
+`prometheusRules.enabled=true` and `grafanaDashboards.enabled=true`.

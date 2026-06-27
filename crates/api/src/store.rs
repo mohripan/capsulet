@@ -8,8 +8,8 @@ use capsulet_core::{
     WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
 use capsulet_postgres::{
-    AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore, PostgresStoreError,
-    ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, TriggerEvent,
+    AdmissionSnapshot, AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore,
+    PostgresStoreError, ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, TriggerEvent,
 };
 
 /// Storage operations required by the HTTP API.
@@ -20,6 +20,12 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn ping(&self) -> Result<(), Self::Error>;
     async fn prometheus_metrics(&self) -> Result<String, Self::Error> {
         Ok(String::new())
+    }
+    async fn admission_snapshot(
+        &self,
+        _execution_pool: &str,
+    ) -> Result<AdmissionSnapshot, Self::Error> {
+        Ok(AdmissionSnapshot::default())
     }
     async fn list_audit_events(&self, _limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
         Ok(Vec::new())
@@ -226,6 +232,13 @@ impl ApiStore for PostgresStore {
 
     async fn prometheus_metrics(&self) -> Result<String, Self::Error> {
         PostgresStore::prometheus_metrics(self).await
+    }
+
+    async fn admission_snapshot(
+        &self,
+        execution_pool: &str,
+    ) -> Result<AdmissionSnapshot, Self::Error> {
+        PostgresStore::admission_snapshot(self, execution_pool).await
     }
 
     async fn list_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {

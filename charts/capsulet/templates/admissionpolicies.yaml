@@ -1,0 +1,130 @@
+{{- if .Values.admissionPolicies.enabled }}
+{{- $fullname := include "capsulet.fullname" . }}
+{{- $failurePolicy := default "Fail" .Values.admissionPolicies.failurePolicy }}
+{{- $imagePolicy := .Values.admissionPolicies.images }}
+{{- $allowedImages := list }}
+{{- range $_, $pool := .Values.executionPools.pools }}
+  {{- range $image := dig "policy" "images" "allowed" (list) $pool }}
+    {{- $allowedImages = append $allowedImages $image }}
+  {{- end }}
+  {{- range $image := get $pool "allowedImages" | default (list) }}
+    {{- $allowedImages = append $allowedImages $image }}
+  {{- end }}
+{{- end }}
+{{- range $image := default (list) $imagePolicy.allowed }}
+  {{- $allowedImages = append $allowedImages $image }}
+{{- end }}
+{{- $allowedImages = uniq $allowedImages }}
+{{- $containerSelector := "has(object.metadata.labels) && 'capsulet.dev/job-run-id' in object.metadata.labels" }}
+{{- if .Values.admissionPolicies.security.enabled }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ printf "%s-execution-pod-security" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+spec:
+  failurePolicy: {{ $failurePolicy }}
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: capsulet-execution-pod
+      expression: {{ $containerSelector | quote }}
+  validations:
+    - expression: "object.spec.containers.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) || c.securityContext.privileged == false)"
+      message: "Capsulet execution pods must not run privileged containers."
+    - expression: "object.spec.containers.all(c, has(c.securityContext) && has(c.securityContext.allowPrivilegeEscalation) && c.securityContext.allowPrivilegeEscalation == false)"
+      message: "Capsulet execution pods must disable privilege escalation."
+    - expression: "has(object.spec.securityContext) && has(object.spec.securityContext.seccompProfile) && object.spec.securityContext.seccompProfile.type == 'RuntimeDefault'"
+      message: "Capsulet execution pods must use RuntimeDefault seccomp."
+    - expression: "object.spec.automountServiceAccountToken == false"
+      message: "Capsulet execution pods must not automount service account tokens."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ printf "%s-execution-pod-security" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+spec:
+  policyName: {{ printf "%s-execution-pod-security" $fullname | trunc 63 | trimSuffix "-" }}
+  validationActions:
+    {{- toYaml .Values.admissionPolicies.security.validationActions | nindent 4 }}
+{{- end }}
+{{- if $imagePolicy.requireDigest }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ printf "%s-execution-digest-images" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+spec:
+  failurePolicy: {{ $failurePolicy }}
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: capsulet-execution-pod
+      expression: {{ $containerSelector | quote }}
+  validations:
+    - expression: "object.spec.containers.all(c, c.image.contains('@sha256:'))"
+      message: "Capsulet execution containers must use digest-pinned images."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ printf "%s-execution-digest-images" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+spec:
+  policyName: {{ printf "%s-execution-digest-images" $fullname | trunc 63 | trimSuffix "-" }}
+  validationActions:
+    {{- toYaml $imagePolicy.validationActions | nindent 4 }}
+{{- end }}
+{{- if $imagePolicy.enforceAllowed }}
+{{- if empty $allowedImages }}
+{{- fail "admissionPolicies.images.enforceAllowed requires at least one allowed image from admissionPolicies.images.allowed or executionPools.*.policy.images.allowed" }}
+{{- end }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ printf "%s-execution-allowed-images" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+spec:
+  failurePolicy: {{ $failurePolicy }}
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: capsulet-execution-pod
+      expression: {{ $containerSelector | quote }}
+  validations:
+    - expression: {{ include "capsulet.allowedImagesCel" $allowedImages | quote }}
+      message: "Capsulet execution container image is not allowed."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ printf "%s-execution-allowed-images" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+spec:
+  policyName: {{ printf "%s-execution-allowed-images" $fullname | trunc 63 | trimSuffix "-" }}
+  validationActions:
+    {{- toYaml $imagePolicy.validationActions | nindent 4 }}
+{{- end }}
+{{- end }}

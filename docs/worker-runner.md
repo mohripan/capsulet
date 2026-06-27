@@ -119,20 +119,25 @@ the process runner or Kubernetes runner starts work:
 ```yaml
 pools:
   mini:
-    allowedImages:
-      - python:*
-    requireDigestImages: false
-    maxPythonDependencies: 32
-    maxPythonDependencyLength: 128
-    blockedPythonDependencies:
-      - torch
-      - tensorflow
+    policy:
+      images:
+        allowed:
+          - python:*
+        requireDigest: false
+      python:
+        maxDependencies: 32
+        maxDependencyLength: 128
+        blockedDependencies:
+          - torch
+          - tensorflow
 ```
 
-`allowedImages` accepts exact image references or prefix patterns ending in
-`*`. Set `requireDigestImages: true` in production pools that must reject
-tag-only images. Dependency limits apply to `python_dependencies` before any
-`pip install` is attempted.
+`policy.images.allowed` accepts exact image references or prefix patterns ending in
+`*`. Set `policy.images.requireDigest: true` in production pools that must
+reject tag-only images. Dependency limits apply to `python_dependencies` before
+any `pip install` is attempted. Legacy top-level fields such as `allowedImages`
+and `requireDigestImages` are still accepted and normalized into the same
+policy model.
 
 For artifact-producing jobs, write files to:
 

@@ -16,6 +16,10 @@ pub(crate) enum ApiError {
     Forbidden(&'static str),
     #[error("validation error: {0}")]
     Validation(String),
+    #[error("queue overloaded: {0}")]
+    QueueOverloaded(String),
+    #[error("admission state unavailable: {0}")]
+    AdmissionUnavailable(String),
     #[error("unknown job definition: {0}")]
     UnknownJobDefinition(String),
     #[error("job definition source not found: {0}")]
@@ -68,6 +72,7 @@ impl ApiError {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::Validation(_) | Self::InvalidWorkflowRunTransition(_) => StatusCode::BAD_REQUEST,
+            Self::QueueOverloaded(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::WorkflowLocked(_) | Self::JobDefinitionInUse(_) => StatusCode::CONFLICT,
             Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
                 StatusCode::UNPROCESSABLE_ENTITY
@@ -81,6 +86,7 @@ impl ApiError {
             | Self::RunLogsNotFound(_)
             | Self::ArtifactNotFound(_)
             | Self::ArtifactObjectNotFound(_) => StatusCode::NOT_FOUND,
+            Self::AdmissionUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Store(_) | Self::ObjectStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -90,6 +96,8 @@ impl ApiError {
             Self::Unauthorized => "authentication_required",
             Self::Forbidden(_) => "permission_denied",
             Self::Validation(_) => "validation_error",
+            Self::QueueOverloaded(_) => "queue_overloaded",
+            Self::AdmissionUnavailable(_) => "admission_unavailable",
             Self::UnknownJobDefinition(_) => "unknown_job_definition",
             Self::JobDefinitionSourceNotFound(_) => "job_definition_source_not_found",
             Self::JobDefinitionInUse(_) => "job_definition_in_use",

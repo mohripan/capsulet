@@ -17,7 +17,7 @@ pub use models::{
     CreateRunRequest, CreateTriggerPluginRequest, CreateWorkflowDependencyRequest,
     CreateWorkflowRequest, CreateWorkflowStepRequest,
 };
-pub use state::AppState;
+pub use state::{AdmissionConfig, AppState};
 pub use store::ApiStore;
 pub use webhooks::WebhookSecrets;
 

@@ -8,7 +8,7 @@ use capsulet_storage::ConfiguredObjectStore;
 
 use jsonwebtoken::jwk::JwkSet;
 
-use crate::{AppState, AuthConfig, WebhookSecrets, router};
+use crate::{AdmissionConfig, AppState, AuthConfig, WebhookSecrets, router};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_EXECUTION_POOLS: &str = "mini,large";
@@ -80,7 +80,8 @@ pub async fn run() -> anyhow::Result<()> {
         router(
             AppState::new(store, object_store, execution_pools)
                 .with_auth(auth)
-                .with_webhook_secrets(webhook_secrets),
+                .with_webhook_secrets(webhook_secrets)
+                .with_admission(AdmissionConfig::from_env()),
         ),
     )
     .await

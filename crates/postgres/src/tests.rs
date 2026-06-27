@@ -144,6 +144,40 @@ async fn migrates_and_persists_job_runs_when_database_is_available() {
 }
 
 #[tokio::test]
+async fn prometheus_metrics_include_queue_slo_gauges_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+
+    let definition = JobDefinition::hello_python();
+    store
+        .upsert_job_definition(&definition)
+        .await
+        .expect("upsert job definition");
+    let pool_name = unique_id("metrics_pool");
+    let run = JobRun::new(
+        JobRunId::new(unique_id("metrics_run")).expect("run id"),
+        definition.id().clone(),
+        ExecutionPoolName::new(pool_name.clone()).expect("pool"),
+    );
+    store.save(&run).await.expect("save queued run");
+
+    let metrics = store
+        .prometheus_metrics()
+        .await
+        .expect("render prometheus metrics");
+    assert!(metrics.contains("capsulet_job_queue_oldest_age_seconds"));
+    assert!(metrics.contains(&format!("pool=\"{pool_name}\"")));
+    assert!(metrics.contains("capsulet_execution_pool_saturation"));
+    assert!(metrics.contains("capsulet_workflow_critical_path_latency_seconds"));
+}
+
+#[tokio::test]
 async fn lease_query_does_not_hand_out_same_run_twice_when_database_is_available() {
     let Some(database_url) = database_url() else {
         return;

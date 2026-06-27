@@ -13,7 +13,8 @@ pub mod contract {
 /// Static execution-pool configuration.
 pub mod pools {
     pub use crate::internal::{
-        ExecutionPoolConfig, ExecutionPoolsConfig, PoolResources, PoolToleration,
+        ExecutionPolicy, ExecutionPoolConfig, ExecutionPoolsConfig, ImagePolicy, PoolResources,
+        PoolToleration, PythonDependencyPolicy,
     };
 }
 
@@ -42,7 +43,10 @@ pub use contract::{
     RunExecution, RunOutcome, RunReport, Runner,
 };
 pub use kubernetes::{KubernetesRunner, KubernetesRunnerError, build_job};
-pub use pools::{ExecutionPoolConfig, ExecutionPoolsConfig, PoolResources, PoolToleration};
+pub use pools::{
+    ExecutionPolicy, ExecutionPoolConfig, ExecutionPoolsConfig, ImagePolicy, PoolResources,
+    PoolToleration, PythonDependencyPolicy,
+};
 pub use process::{ProcessRunner, ProcessRunnerError};
 pub use stub::{StubRunner, StubRunnerError};
 pub use wasm_python::{WasmPythonConfig, WasmPythonRunner, WasmPythonRunnerError};

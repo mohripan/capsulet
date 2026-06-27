@@ -46,6 +46,26 @@
               "timeoutSeconds": { "type": "integer", "minimum": 1 },
               "maxConcurrentJobs": { "type": "integer", "minimum": 1 },
               "ttlSecondsAfterFinished": { "type": "integer", "minimum": 0 },
+              "policy": {
+                "type": "object",
+                "properties": {
+                  "images": {
+                    "type": "object",
+                    "properties": {
+                      "allowed": { "type": "array", "items": { "type": "string" } },
+                      "requireDigest": { "type": "boolean" }
+                    }
+                  },
+                  "python": {
+                    "type": "object",
+                    "properties": {
+                      "maxDependencies": { "type": "integer", "minimum": 0 },
+                      "maxDependencyLength": { "type": "integer", "minimum": 1 },
+                      "blockedDependencies": { "type": "array", "items": { "type": "string" } }
+                    }
+                  }
+                }
+              },
               "allowedImages": { "type": "array", "items": { "type": "string" } },
               "requireDigestImages": { "type": "boolean" },
               "maxPythonDependencies": { "type": "integer", "minimum": 0 },
@@ -290,11 +310,85 @@
         "runtimeClassName": { "type": "string" }
       }
     },
+    "admissionPolicies": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "failurePolicy": {
+          "type": "string",
+          "enum": ["Fail", "Ignore"]
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "validationActions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["Deny", "Warn", "Audit"]
+              },
+              "minItems": 1
+            }
+          },
+          "required": ["enabled", "validationActions"]
+        },
+        "images": {
+          "type": "object",
+          "properties": {
+            "requireDigest": { "type": "boolean" },
+            "enforceAllowed": { "type": "boolean" },
+            "allowed": { "type": "array", "items": { "type": "string" } },
+            "validationActions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["Deny", "Warn", "Audit"]
+              },
+              "minItems": 1
+            }
+          },
+          "required": ["requireDigest", "enforceAllowed", "allowed", "validationActions"]
+        }
+      },
+      "required": ["enabled", "failurePolicy", "security", "images"]
+    },
     "dashboard": {
       "type": "object",
       "properties": {
         "apiBaseUrl": { "type": "string" }
       }
+    },
+    "prometheusRules": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "labels": { "type": "object" },
+        "queueOldestAgeSeconds": { "type": "integer", "minimum": 1 },
+        "leaseAgeSeconds": { "type": "integer", "minimum": 1 },
+        "poolSaturationRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "schedulerLagSeconds": { "type": "integer", "minimum": 1 },
+        "workflowCriticalPathSeconds": { "type": "integer", "minimum": 1 },
+        "apiErrorRateRatio": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": [
+        "enabled",
+        "labels",
+        "queueOldestAgeSeconds",
+        "leaseAgeSeconds",
+        "poolSaturationRatio",
+        "schedulerLagSeconds",
+        "workflowCriticalPathSeconds",
+        "apiErrorRateRatio"
+      ]
+    },
+    "grafanaDashboards": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "labels": { "type": "object" }
+      },
+      "required": ["enabled", "labels"]
     },
     "config": {
       "type": "object",

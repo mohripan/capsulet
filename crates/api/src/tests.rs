@@ -7,12 +7,12 @@ use axum::{
 use capsulet_core::{
     ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
     CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun,
-    JobRunId, JobRunLog, JobRunTransition, WorkflowDefinition, WorkflowId, WorkflowRun,
-    WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
+    JobRunId, JobRunLog, JobRunStatus, JobRunTransition, WorkflowDefinition, WorkflowId,
+    WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
     WorkflowStepRun, WorkflowStepRunId,
 };
 use capsulet_postgres::{
-    NewProjectMembership, ProjectMembershipRecord, ProjectRecord, TriggerEvent,
+    AdmissionSnapshot, NewProjectMembership, ProjectMembershipRecord, ProjectRecord, TriggerEvent,
 };
 use capsulet_storage::ObjectStore;
 use http_body_util::BodyExt;
@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use super::{ApiStore, AppState, AuthConfig, router};
+use crate::state::AdmissionConfig;
 
 #[derive(Debug, Clone, Default)]
 struct FakeStore {
@@ -38,6 +39,26 @@ struct FakeStore {
     projects: Arc<Mutex<Vec<ProjectRecord>>>,
     project_memberships: Arc<Mutex<Vec<ProjectMembershipRecord>>>,
     ownership: Arc<Mutex<Vec<FakeOwnership>>>,
+}
+
+fn queued_run(id: &str, pool: &str) -> JobRun {
+    JobRun::new(
+        JobRunId::new(id).expect("run id"),
+        JobDefinitionId::new("job_hello_python").expect("definition id"),
+        ExecutionPoolName::new(pool).expect("pool"),
+    )
+}
+
+fn queued_workflow_run(id: &str, workflow_id: &str) -> WorkflowRun {
+    WorkflowRun::new(
+        WorkflowRunId::new(id).expect("workflow run id"),
+        WorkflowId::new(workflow_id).expect("workflow id"),
+        None,
+        "{}",
+        WorkflowRunStatus::Queued,
+        0,
+        "",
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +123,40 @@ impl ApiStore for FakeStore {
 
     async fn ping(&self) -> Result<(), Self::Error> {
         Ok(())
+    }
+
+    async fn admission_snapshot(
+        &self,
+        execution_pool: &str,
+    ) -> Result<AdmissionSnapshot, Self::Error> {
+        let runs = self.runs.lock().map_err(|error| error.to_string())?;
+        let queued_runs = runs
+            .iter()
+            .filter(|run| run.status() == JobRunStatus::Queued)
+            .count();
+        let queued_runs_in_pool = runs
+            .iter()
+            .filter(|run| {
+                run.status() == JobRunStatus::Queued
+                    && run.execution_pool().as_str() == execution_pool
+            })
+            .count();
+        drop(runs);
+        let queued_workflow_runs = self
+            .workflow_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|run| run.status() == WorkflowRunStatus::Queued)
+            .count();
+
+        Ok(AdmissionSnapshot {
+            queued_runs: u64::try_from(queued_runs).map_err(|error| error.to_string())?,
+            queued_runs_in_pool: u64::try_from(queued_runs_in_pool)
+                .map_err(|error| error.to_string())?,
+            queued_workflow_runs: u64::try_from(queued_workflow_runs)
+                .map_err(|error| error.to_string())?,
+        })
     }
 
     async fn list_projects(
@@ -968,16 +1023,23 @@ impl FakeStore {
 }
 
 fn test_app(store: FakeStore) -> axum::Router {
+    test_app_with_admission(store, AdmissionConfig::default())
+}
+
+fn test_app_with_admission(store: FakeStore, admission: AdmissionConfig) -> axum::Router {
     let object_store = FakeObjectStore::default();
     object_store.objects.lock().expect("objects mutex").push((
         "artifacts/run_with_artifact/report.txt".to_string(),
         b"report".to_vec(),
     ));
-    router(AppState::new(
-        store,
-        object_store,
-        ["mini".to_string(), "large".to_string()],
-    ))
+    router(
+        AppState::new(
+            store,
+            object_store,
+            ["mini".to_string(), "large".to_string()],
+        )
+        .with_admission(admission),
+    )
 }
 
 fn authenticated_app(store: FakeStore) -> axum::Router {
@@ -1910,6 +1972,66 @@ async fn disabled_automation_can_still_be_triggered_manually() {
 }
 
 #[tokio::test]
+async fn rejects_manual_automation_trigger_when_workflow_queue_is_overloaded() {
+    let store = FakeStore::with_definition("job_hello_python")
+        .with_workflow("wf_pipeline")
+        .with_workflow_run(queued_workflow_run("workflow_run_existing", "wf_pipeline"));
+    let app = test_app_with_admission(
+        store.clone(),
+        AdmissionConfig {
+            max_queued_runs: None,
+            max_queued_runs_per_pool: None,
+            max_queued_workflow_runs: Some(1),
+        },
+    );
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "automation_overload_test",
+                        "name": "Overload test",
+                        "workflow_id": "wf_pipeline",
+                        "trigger_kind": "manual",
+                        "triggers": [{ "name": "manual_ready", "kind": "manual", "config": {} }],
+                        "condition": { "trigger": "manual_ready" }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/automations/automation_overload_test/trigger")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response_json(response).await["code"], "queue_overloaded");
+    assert_eq!(
+        store
+            .workflow_runs
+            .lock()
+            .expect("workflow runs mutex")
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn updates_existing_automation() {
     let app = test_app(FakeStore::with_definition("job_hello_python").with_workflow("wf_pipeline"));
     let create_response = app
@@ -2258,6 +2380,50 @@ async fn creates_manual_run() {
             "created_at": "",
             "input": {}
         })
+    );
+}
+
+#[tokio::test]
+async fn rejects_manual_run_when_pool_queue_is_overloaded() {
+    let store = FakeStore::with_definition("job_hello_python")
+        .with_run(queued_run("run_existing_queued", "mini"));
+    let app = test_app_with_admission(
+        store.clone(),
+        AdmissionConfig {
+            max_queued_runs: None,
+            max_queued_runs_per_pool: Some(1),
+            max_queued_workflow_runs: None,
+        },
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/jobs/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "run_id": "run_rejected",
+                        "job_definition_id": "job_hello_python",
+                        "execution_pool": "mini"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response_json(response).await["code"], "queue_overloaded");
+    assert!(
+        store
+            .runs
+            .lock()
+            .expect("runs mutex")
+            .iter()
+            .all(|run| { run.id() != &JobRunId::new("run_rejected").expect("run id") })
     );
 }
 

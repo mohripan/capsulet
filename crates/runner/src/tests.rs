@@ -2,9 +2,9 @@ use base64::Engine as _;
 use capsulet_core::{ExecutionPoolName, JobDefinition, JobRun, JobRunId};
 
 use super::{
-    ExecutionPoolConfig, ExecutionPoolsConfig, InputArtifact, PoolResources, PoolToleration,
-    RUN_LABEL, RunExecution, WasmPythonConfig, build_job, kubernetes_job_name, run_label_value,
-    truncate_utf8,
+    ExecutionPolicy, ExecutionPoolConfig, ExecutionPoolsConfig, InputArtifact, PoolResources,
+    PoolToleration, RUN_LABEL, RunExecution, WasmPythonConfig, build_job, kubernetes_job_name,
+    run_label_value, truncate_utf8,
 };
 
 fn execution(pool: ExecutionPoolConfig) -> RunExecution {
@@ -190,6 +190,92 @@ pools:
     assert_eq!(
         pools.find("mini").expect("mini").ttl_seconds_after_finished,
         Some(300)
+    );
+}
+
+#[test]
+fn parses_nested_execution_policy_yaml() {
+    let yaml = r"
+defaultPool: mini
+pools:
+  mini:
+    policy:
+      images:
+        allowed:
+          - ghcr.io/acme/*
+        requireDigest: true
+      python:
+        maxDependencies: 2
+        maxDependencyLength: 80
+        blockedDependencies:
+          - torch
+";
+
+    let pools = ExecutionPoolsConfig::from_yaml(yaml).expect("pool yaml");
+    let policy = pools.find("mini").expect("mini pool").execution_policy();
+
+    assert_eq!(policy.images.allowed, vec!["ghcr.io/acme/*"]);
+    assert!(policy.images.require_digest);
+    assert_eq!(policy.python.max_dependencies, Some(2));
+    assert_eq!(policy.python.max_dependency_length, Some(80));
+    assert_eq!(policy.python.blocked_dependencies, vec!["torch"]);
+}
+
+#[test]
+fn legacy_policy_fields_are_normalized_into_execution_policy() {
+    let pool = ExecutionPoolConfig {
+        allowed_images: vec!["python:*".to_string()],
+        require_digest_images: true,
+        max_python_dependencies: Some(1),
+        max_python_dependency_length: Some(32),
+        blocked_python_dependencies: vec!["numpy".to_string()],
+        ..ExecutionPoolConfig::default()
+    };
+
+    assert_eq!(
+        pool.execution_policy(),
+        ExecutionPolicy {
+            images: super::ImagePolicy {
+                allowed: vec!["python:*".to_string()],
+                require_digest: true,
+            },
+            python: super::PythonDependencyPolicy {
+                max_dependencies: Some(1),
+                max_dependency_length: Some(32),
+                blocked_dependencies: vec!["numpy".to_string()],
+            },
+        }
+    );
+}
+
+#[test]
+fn execution_policy_evaluator_rejects_images_and_dependencies() {
+    let policy = ExecutionPolicy {
+        images: super::ImagePolicy {
+            allowed: vec!["ghcr.io/acme/*".to_string()],
+            require_digest: true,
+        },
+        python: super::PythonDependencyPolicy {
+            max_dependencies: Some(1),
+            max_dependency_length: Some(16),
+            blocked_dependencies: vec!["torch".to_string()],
+        },
+    };
+
+    assert!(
+        policy
+            .validate("ghcr.io/acme/runner:latest", &[])
+            .expect_err("tag should be rejected")
+            .contains("pinned by digest")
+    );
+    assert!(
+        policy
+            .validate(
+                "ghcr.io/acme/runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                &["torch==2.0".to_string()]
+            )
+            .expect_err("blocked dependency should be rejected")
+            .contains("blocked")
     );
 }
 

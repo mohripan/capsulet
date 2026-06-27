@@ -281,6 +281,7 @@ The worker service account can create, watch, and delete Kubernetes Jobs and ins
 ## Reliability and health
 
 - PostgreSQL is the durable queue; workers coordinate with row locks and leases.
+- API admission can reject manual job submissions and manual workflow triggers before persistence when configured queue-depth caps are reached.
 - Workers periodically heartbeat active runs and extend leases.
 - Expired `leased` and `running` rows are requeued.
 - API, scheduler, and worker expose liveness/readiness endpoints; readiness checks PostgreSQL.
@@ -293,15 +294,15 @@ Recovery is at-least-once. Kubernetes Job names and labels encode the run and at
 
 User-authored commands are untrusted relative to the control plane. The Kubernetes runner supplies process isolation, resource limits, security context, and scheduling constraints, but a Kubernetes Job is not a complete sandbox.
 
-The chart defaults platform and execution containers toward non-root execution, dropped capabilities, disabled privilege escalation, read-only root filesystems, and `RuntimeDefault` seccomp. Execution Jobs also disable service-account token mounting, use a separate permissionless ServiceAccount, receive bounded writable volumes, and are selected by a default-deny egress policy. A sandboxed RuntimeClass can be configured per pool or globally.
+The chart defaults platform and execution containers toward non-root execution, dropped capabilities, disabled privilege escalation, read-only root filesystems, and `RuntimeDefault` seccomp. Execution Jobs also disable service-account token mounting, use a separate permissionless ServiceAccount, receive bounded writable volumes, and are selected by a default-deny egress policy. A sandboxed RuntimeClass can be configured per pool or globally. Optional Helm-managed `ValidatingAdmissionPolicy` resources enforce execution-pod security, digest-pinned runtime images, and pool-derived image allowlists at the Kubernetes API boundary.
 
 The API requires configured bearer credentials unless authentication is explicitly disabled. The dashboard stores the credential in a same-origin HttpOnly cookie. Operators remain responsible for secret rotation, TLS ingress, trusted image policy, and cluster-level controls.
 
 ## Known gaps and intended evolution
 
 - add an optional event-stream transport for deployments that outgrow PostgreSQL polling;
-- add distributed tracing, request histograms, and packaged SLO dashboards;
-- add image signature/admission policy integration;
+- add packaged SLO dashboards;
+- add image-signature verification through a cluster policy engine such as Sigstore Policy Controller or Kyverno;
 - support multi-file and versioned bundles.
 
 These are extension paths beyond the implemented production baseline.

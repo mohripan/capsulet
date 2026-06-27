@@ -1,6 +1,6 @@
 use capsulet_runner::{
     contract::{CollectedArtifact, RunOutcome, RunReport},
-    pools::ExecutionPoolsConfig,
+    pools::{ExecutionPolicy, ExecutionPoolsConfig, ImagePolicy, PythonDependencyPolicy},
     process::ProcessRunner,
     stub::StubRunner,
 };
@@ -20,6 +20,10 @@ fn runner_public_modules_expose_contracts_and_adapters() {
     assert_eq!(report.artifacts.len(), 1);
     let _ = StubRunner::success();
     let _ = ProcessRunner;
+    let _ = ExecutionPolicy {
+        images: ImagePolicy::default(),
+        python: PythonDependencyPolicy::default(),
+    };
     let _ = ExecutionPoolsConfig::from_yaml(
         r"
 defaultPool: mini

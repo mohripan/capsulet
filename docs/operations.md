@@ -38,7 +38,20 @@ Recommended settings:
 
 ## Backpressure
 
-Backpressure is enforced through execution-pool concurrency and retry scheduling. Saturated pools leave runs queued instead of over-admitting work. Operators should alert on:
+Backpressure is enforced at two layers:
+
+- API admission can reject new manual job and manual workflow-trigger submissions before they are persisted.
+- Worker leasing enforces execution-pool concurrency and retry scheduling after work is queued.
+
+Configure API admission with:
+
+- `CAPSULET_ADMISSION_MAX_QUEUED_RUNS`: global queued job-run cap.
+- `CAPSULET_ADMISSION_MAX_QUEUED_RUNS_PER_POOL`: per execution-pool queued job-run cap.
+- `CAPSULET_ADMISSION_MAX_QUEUED_WORKFLOW_RUNS`: queued workflow-run cap.
+
+When a configured cap is reached, the API returns `429` with `queue_overloaded`. If the API cannot read admission state from PostgreSQL, it returns `503` with `admission_unavailable`.
+
+Operators should alert on:
 
 - growing queued runs by pool
 - long queue age

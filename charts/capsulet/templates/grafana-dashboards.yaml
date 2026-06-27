@@ -1,0 +1,12 @@
+{{- if .Values.grafanaDashboards.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "capsulet.fullname" . }}-grafana-dashboards
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    {{- toYaml .Values.grafanaDashboards.labels | nindent 4 }}
+data:
+  capsulet-overview.json: |-
+{{ .Files.Get "dashboards/capsulet-overview.json" | indent 4 }}
+{{- end }}

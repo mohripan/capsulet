@@ -1,0 +1,118 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        { "expr": "sum by (method, route, status) (rate(capsulet_http_requests_total[5m]))", "legendFormat": "{{method}} {{route}} {{status}}", "refId": "A" },
+        { "expr": "sum(rate(capsulet_http_request_errors_total[5m]))", "legendFormat": "errors", "refId": "B" }
+      ],
+      "title": "API Requests",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        { "expr": "capsulet_job_queue_depth", "legendFormat": "{{pool}} queued", "refId": "A" },
+        { "expr": "capsulet_job_queue_oldest_age_seconds", "legendFormat": "{{pool}} oldest age", "refId": "B" }
+      ],
+      "title": "Queue Depth And Age",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "max": 1, "min": 0, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        { "expr": "capsulet_execution_pool_saturation", "legendFormat": "{{pool}}", "refId": "A" }
+      ],
+      "title": "Execution Pool Saturation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 7 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        { "expr": "capsulet_job_lease_age_seconds", "legendFormat": "{{pool}} {{status}}", "refId": "A" }
+      ],
+      "title": "Worker Lease Age",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 7 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        { "expr": "capsulet_scheduler_lag_seconds", "legendFormat": "scheduler lag", "refId": "A" },
+        { "expr": "capsulet_workflow_critical_path_latency_seconds", "legendFormat": "{{status}} critical path", "refId": "B" }
+      ],
+      "title": "Workflow Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 7 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        { "expr": "capsulet_stuck_workflow_runs", "legendFormat": "stuck workflows", "refId": "A" },
+        { "expr": "capsulet_job_retry_exhausted_runs", "legendFormat": "retry exhausted", "refId": "B" },
+        { "expr": "capsulet_trigger_runtime_failures", "legendFormat": "trigger failures", "refId": "C" },
+        { "expr": "sum by (kind, decision) (rate(capsulet_admission_decisions_total[5m]))", "legendFormat": "admission {{kind}} {{decision}}", "refId": "D" }
+      ],
+      "title": "Operational Exceptions",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["capsulet"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Capsulet Overview",
+  "uid": "capsulet-overview",
+  "version": 1,
+  "weekStart": ""
+}
