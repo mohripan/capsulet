@@ -13,7 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 async-trait.workspace = true
 capsulet-core = { path = "../core" }
-object_store = { version = "0.12", features = ["aws"] }
+object_store = { version = "0.14", features = ["aws"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs"] }
 
