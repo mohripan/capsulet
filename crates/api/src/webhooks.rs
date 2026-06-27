@@ -14,7 +14,7 @@ use axum::{
 use capsulet_core::{AutomationId, TriggerKind};
 use capsulet_postgres::TriggerEvent;
 use capsulet_storage::ObjectStore;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -211,7 +211,7 @@ fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     use sha2::Sha256;
 
     use super::{WebhookSecrets, hex, verify_signature};
