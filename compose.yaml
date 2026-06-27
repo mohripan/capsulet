@@ -81,6 +81,7 @@ services:
     restart: unless-stopped
 
   api:
+    init: true
     build:
       context: .
       dockerfile: crates/Dockerfile
@@ -122,6 +123,7 @@ services:
     restart: unless-stopped
 
   worker:
+    init: true
     build:
       context: .
       dockerfile: crates/Dockerfile
@@ -167,6 +169,7 @@ services:
     restart: unless-stopped
 
   scheduler:
+    init: true
     build:
       context: .
       dockerfile: crates/Dockerfile
@@ -192,6 +195,7 @@ services:
     restart: unless-stopped
 
   evaluator:
+    init: true
     build:
       context: .
       dockerfile: crates/Dockerfile

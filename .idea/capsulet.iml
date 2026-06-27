@@ -11,6 +11,10 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/scheduler/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/worker/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/storage/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/application/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/application/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/observability/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/runner/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

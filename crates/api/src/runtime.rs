@@ -42,9 +42,12 @@ pub async fn run() -> anyhow::Result<()> {
         .map(str::to_string)
         .collect::<Vec<_>>();
 
-    let store = PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?)
-        .await
-        .context("connect API to Postgres")?;
+    let store = PostgresStore::connect_with_config_and_retry(
+        &database_url,
+        PostgresPoolConfig::from_env()?,
+    )
+    .await
+    .context("connect API to Postgres")?;
     store.migrate().await.context("run API migrations")?;
     if env::var("CAPSULET_SEED_EXAMPLES").is_ok_and(|value| value == "true") {
         store

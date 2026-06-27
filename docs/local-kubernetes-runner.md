@@ -35,12 +35,19 @@ docker build -f dashboard/Dockerfile -t capsulet-dashboard:dev dashboard
 Install the full local alpha stack:
 
 ```powershell
+kubectl create secret generic capsulet-api-auth `
+  --namespace capsulet --dry-run=client -o yaml `
+  --from-literal='tokens=[{"name":"local-admin","role":"admin","token":"capsulet-local-admin-token-change-me"}]' `
+  | kubectl apply -f -
+
 helm upgrade --install capsulet charts/capsulet `
   --namespace capsulet `
   --set image.registry= `
   --set image.repository=capsulet `
   --set image.tag=dev `
-  --set image.pullPolicy=Never
+  --set image.pullPolicy=Never `
+  --set api.auth.existingSecret=capsulet-api-auth `
+  --set api.auth.secretKey=tokens
 ```
 
 Wait for bundled dependencies, migration, bucket creation, and app deployments:

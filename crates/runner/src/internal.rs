@@ -939,6 +939,7 @@ impl KubernetesRunner {
         namespace: String,
         log_limit_bytes: usize,
     ) -> Result<Self, KubernetesRunnerError> {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let client = Client::try_default().await?;
         Ok(Self::new(client, namespace, log_limit_bytes))
     }

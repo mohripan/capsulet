@@ -34,9 +34,12 @@ pub async fn run() -> anyhow::Result<()> {
     let database_url = env::var("CAPSULET_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
         .context("set CAPSULET_DATABASE_URL or DATABASE_URL")?;
-    let store = PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?)
-        .await
-        .context("connect evaluator to Postgres")?;
+    let store = PostgresStore::connect_with_config_and_retry(
+        &database_url,
+        PostgresPoolConfig::from_env()?,
+    )
+    .await
+    .context("connect evaluator to Postgres")?;
     store.migrate().await.context("run evaluator migrations")?;
     let owner = env::var("CAPSULET_EVALUATOR_ID")
         .unwrap_or_else(|_| format!("evaluator-{}", std::process::id()));

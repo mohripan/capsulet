@@ -29,6 +29,8 @@ pub use service_accounts::{NewServiceAccount, ServiceAccountRecord};
 pub use trigger_events::{CustomRuntimeTrigger, ScheduleTrigger, TriggerEvent};
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
+const DEFAULT_DATABASE_CONNECT_RETRIES: u32 = 30;
+const DEFAULT_DATABASE_CONNECT_RETRY_SECONDS: u64 = 2;
 
 #[cfg(test)]
 mod tests;
@@ -134,6 +136,45 @@ impl PostgresStore {
             .await?;
 
         Ok(Self { pool })
+    }
+
+    /// Connects to `PostgreSQL` with bounded retry for container and Kubernetes startup races.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the connection pool cannot be
+    /// created after the configured retry attempts.
+    pub async fn connect_with_config_and_retry(
+        database_url: &str,
+        config: PostgresPoolConfig,
+    ) -> Result<Self, PostgresStoreError> {
+        let attempts = env_positive_u32(
+            "CAPSULET_DATABASE_CONNECT_RETRIES",
+            DEFAULT_DATABASE_CONNECT_RETRIES,
+        )?;
+        let retry_delay = Duration::from_secs(env_positive_u64(
+            "CAPSULET_DATABASE_CONNECT_RETRY_SECONDS",
+            DEFAULT_DATABASE_CONNECT_RETRY_SECONDS,
+        )?);
+        let mut last_error = None;
+
+        for attempt in 1..=attempts {
+            match Self::connect_with_config(database_url, config).await {
+                Ok(store) => return Ok(store),
+                Err(error) => {
+                    last_error = Some(error);
+                    if attempt < attempts {
+                        tokio::time::sleep(retry_delay).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            PostgresStoreError::InvalidPoolConfig(
+                "CAPSULET_DATABASE_CONNECT_RETRIES must be greater than zero".to_string(),
+            )
+        }))
     }
 
     /// Creates a store from an existing pool.

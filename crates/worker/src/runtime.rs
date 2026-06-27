@@ -2,6 +2,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     env, fs,
     hash::{Hash, Hasher},
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -15,7 +16,13 @@ use capsulet_runner::{
     WasmPythonRunner,
 };
 use capsulet_storage::ConfiguredObjectStore;
-use tokio::task::JoinSet;
+use tokio::{
+    sync::{
+        Semaphore,
+        mpsc::{self, error::TrySendError},
+    },
+    task::JoinSet,
+};
 
 use crate::execute_one_queued_run;
 
@@ -110,9 +117,12 @@ pub async fn run() -> anyhow::Result<()> {
         .unwrap_or(DEFAULT_LEASE_SECONDS);
     let pools = load_execution_pools()?;
 
-    let store = PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?)
-        .await
-        .context("connect worker to Postgres")?;
+    let store = PostgresStore::connect_with_config_and_retry(
+        &database_url,
+        PostgresPoolConfig::from_env()?,
+    )
+    .await
+    .context("connect worker to Postgres")?;
     store.migrate().await.context("run worker migrations")?;
     start_health_server(
         store.clone(),
@@ -407,9 +417,30 @@ where
     let started = std::time::Instant::now();
     let mut tasks = JoinSet::new();
     let mut accepting = !*shutting_down;
+    let semaphore = Arc::new(Semaphore::new(max_concurrent_runs));
+    let (slot_tx, mut slot_rx) = mpsc::channel(max_concurrent_runs);
 
     loop {
-        while accepting && tasks.len() < max_concurrent_runs {
+        while accepting {
+            let permit = match semaphore.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(tokio::sync::TryAcquireError::NoPermits) => break,
+                Err(tokio::sync::TryAcquireError::Closed) => {
+                    accepting = false;
+                    break;
+                }
+            };
+            match slot_tx.try_send(permit) {
+                Ok(()) => {}
+                Err(TrySendError::Full(_permit)) => break,
+                Err(TrySendError::Closed(_permit)) => {
+                    accepting = false;
+                    break;
+                }
+            }
+        }
+
+        while let Ok(permit) = slot_rx.try_recv() {
             let task_store = store.clone();
             let task_object_store = object_store.clone();
             let task_pools = pools.clone();
@@ -422,6 +453,7 @@ where
             );
             tasks.spawn(
                 async move {
+                    let _permit = permit;
                     execute_one_queued_run(
                         &task_store,
                         &task_runner,

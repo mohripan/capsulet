@@ -36,9 +36,12 @@ pub async fn run() -> anyhow::Result<()> {
         .unwrap_or(DEFAULT_POLL_SECONDS);
     let loop_enabled = env_bool("CAPSULET_SCHEDULER_LOOP");
 
-    let store = PostgresStore::connect_with_config(&database_url, PostgresPoolConfig::from_env()?)
-        .await
-        .context("connect scheduler to Postgres")?;
+    let store = PostgresStore::connect_with_config_and_retry(
+        &database_url,
+        PostgresPoolConfig::from_env()?,
+    )
+    .await
+    .context("connect scheduler to Postgres")?;
     store.migrate().await.context("run scheduler migrations")?;
     start_health_server(
         store.clone(),

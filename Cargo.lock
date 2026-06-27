@@ -443,6 +443,7 @@ dependencies = [
  "capsulet-core",
  "k8s-openapi",
  "kube",
+ "rustls",
  "serde",
  "serde_yaml",
  "tempfile",
