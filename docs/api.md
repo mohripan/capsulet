@@ -217,7 +217,7 @@ Create a manual automation:
 ```sh
 curl -X POST http://127.0.0.1:8080/v1/automations \
   -H "content-type: application/json" \
-  -d '{"name":"Manual email","workflow_id":"workflow_123","trigger_kind":"manual"}'
+  -d '{"name":"Manual email","workflow_id":"workflow_123","triggers":[{"name":"manual","kind":"manual","config":{}}],"condition":{"trigger":"manual"}}'
 ```
 
 Create an interval automation. For hourly execution, use `3600` seconds:
@@ -225,10 +225,10 @@ Create an interval automation. For hourly execution, use `3600` seconds:
 ```sh
 curl -X POST http://127.0.0.1:8080/v1/automations \
   -H "content-type: application/json" \
-  -d '{"name":"Hourly email","workflow_id":"workflow_123","trigger_kind":"interval","interval_seconds":3600}'
+  -d '{"name":"Hourly email","workflow_id":"workflow_123","triggers":[{"name":"hourly","kind":"schedule","config":{"interval_seconds":3600}}],"condition":{"trigger":"hourly"}}'
 ```
 
-The compatibility fields above drive the currently implemented manual and fixed-interval runtime. The richer authoring model accepts a `triggers` array with named `manual`, `schedule`, `sql`, or `custom` definitions and a structured `condition`. The API validates and persists those definitions, but schedule/SQL/custom execution through the evaluator is not wired yet.
+Automations use a `triggers` array with named `manual`, `schedule`, `sql`, `webhook`, or `custom` definitions and a structured `condition`. Fixed-interval schedule triggers are executed by the scheduler when their config includes `interval_seconds`.
 
 List and fetch automations:
 
@@ -242,7 +242,7 @@ Replace, enable, disable, delete, or inspect triggers:
 ```sh
 curl -X PUT http://127.0.0.1:8080/v1/automations/automation_123 \
   -H "content-type: application/json" \
-  -d '{"name":"Updated automation","workflow_id":"workflow_123","trigger_kind":"manual"}'
+  -d '{"name":"Updated automation","workflow_id":"workflow_123","triggers":[{"name":"manual","kind":"manual","config":{}}],"condition":{"trigger":"manual"}}'
 curl -X POST http://127.0.0.1:8080/v1/automations/automation_123/enable
 curl -X POST http://127.0.0.1:8080/v1/automations/automation_123/disable
 curl http://127.0.0.1:8080/v1/automations/automation_123/triggers

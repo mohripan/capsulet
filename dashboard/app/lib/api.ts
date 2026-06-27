@@ -228,8 +228,6 @@ export type Automation = {
   description: string;
   workflow_id: string;
   status: "enabled" | "disabled";
-  trigger_kind: "manual" | "interval";
-  interval_seconds: number | null;
   triggers: AutomationTrigger[];
   condition: TriggerCondition;
   job_input: Record<string, unknown>;
@@ -255,8 +253,6 @@ export type AutomationRequest = {
   description?: string;
   workflow_id: string;
   status?: "enabled" | "disabled";
-  trigger_kind?: "manual" | "interval" | "schedule";
-  interval_seconds?: number;
   job_input?: Record<string, unknown>;
   triggers?: Array<{
     name: string;

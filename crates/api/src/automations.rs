@@ -6,9 +6,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use capsulet_core::{
-    Automation, AutomationId, AutomationSettings, AutomationStatus, AutomationTrigger,
-    AutomationTriggerKind, ConditionExpr, CustomTriggerPlugin, TriggerKind, TriggerName,
-    WorkflowId,
+    Automation, AutomationId, AutomationStatus, AutomationTrigger, ConditionExpr,
+    CustomTriggerPlugin, TriggerKind, TriggerName, WorkflowId,
 };
 use capsulet_storage::ObjectStore;
 use serde_json::{Value, json};
@@ -286,44 +285,6 @@ where
     {
         return Err(ApiError::WorkflowNotFound(workflow_id.as_str().to_string()));
     }
-    let requested_trigger_kind = request
-        .trigger_kind
-        .as_deref()
-        .or_else(|| {
-            request
-                .triggers
-                .as_ref()?
-                .first()
-                .map(|trigger| trigger.kind.as_str())
-        })
-        .unwrap_or("manual");
-    let trigger_kind = match requested_trigger_kind {
-        "manual" => AutomationTriggerKind::Manual,
-        "interval" | "schedule" | "sql" | "webhook" | "custom" => AutomationTriggerKind::Interval,
-        value => {
-            return Err(ApiError::Validation(format!(
-                "unsupported automation trigger kind: {value}"
-            )));
-        }
-    };
-    let inferred_interval_seconds = request.interval_seconds.or_else(|| {
-        request
-            .triggers
-            .as_ref()?
-            .iter()
-            .find(|trigger| trigger.kind == "schedule")?
-            .config
-            .get("interval_seconds")
-            .and_then(Value::as_i64)
-    });
-    if trigger_kind == AutomationTriggerKind::Interval
-        && request.triggers.is_none()
-        && inferred_interval_seconds.is_none()
-    {
-        return Err(ApiError::Validation(
-            "interval automations require interval_seconds".to_string(),
-        ));
-    }
     let automation_id = AutomationId::new(
         request
             .id
@@ -331,7 +292,7 @@ where
             .map_or_else(|| generated_id("automation"), str::to_string),
     )
     .map_err(ApiError::validation)?;
-    let triggers = build_automation_triggers(&automation_id, trigger_kind, &request)?;
+    let triggers = build_automation_triggers(&automation_id, &request)?;
     validate_custom_plugin_references(state, &triggers).await?;
     validate_trigger_contracts(state, &triggers).await?;
     let condition = request.condition.unwrap_or_else(|| {
@@ -352,16 +313,12 @@ where
                 &request.job_input.unwrap_or_else(|| json!({})),
                 "automation job input",
             )?,
-            AutomationSettings::new(
-                request
-                    .status
-                    .as_deref()
-                    .map(parse_automation_status)
-                    .transpose()?
-                    .unwrap_or(AutomationStatus::Enabled),
-                trigger_kind,
-                inferred_interval_seconds,
-            ),
+            request
+                .status
+                .as_deref()
+                .map(parse_automation_status)
+                .transpose()?
+                .unwrap_or(AutomationStatus::Enabled),
         ),
         triggers,
         condition_json: condition.to_string(),
@@ -423,7 +380,6 @@ struct AutomationBuild {
 
 fn build_automation_triggers(
     automation_id: &AutomationId,
-    trigger_kind: AutomationTriggerKind,
     request: &CreateAutomationRequest,
 ) -> Result<Vec<AutomationTrigger>, ApiError> {
     if let Some(triggers) = &request.triggers {
@@ -438,27 +394,11 @@ fn build_automation_triggers(
             .collect();
     }
 
-    let name = if trigger_kind == AutomationTriggerKind::Interval {
-        "schedule"
-    } else {
-        "manual"
-    };
-    let kind = if trigger_kind == AutomationTriggerKind::Interval {
-        TriggerKind::Schedule
-    } else {
-        TriggerKind::Manual
-    };
-    let config_json = if let Some(interval_seconds) = request.interval_seconds {
-        json!({ "interval_seconds": interval_seconds }).to_string()
-    } else {
-        "{}".to_string()
-    };
-
     Ok(vec![AutomationTrigger::new(
         automation_id.clone(),
-        TriggerName::new(name).map_err(ApiError::validation)?,
-        kind,
-        config_json,
+        TriggerName::new("manual").map_err(ApiError::validation)?,
+        TriggerKind::Manual,
+        "{}",
         None,
         true,
     )])
@@ -498,7 +438,7 @@ fn build_trigger(
     automation_id: &AutomationId,
     request: &CreateAutomationTriggerRequest,
 ) -> Result<AutomationTrigger, ApiError> {
-    let kind = parse_trigger_kind(&request.kind)?;
+    let kind = parse_trigger_type(&request.kind)?;
     if kind == TriggerKind::Custom && request.plugin_id.as_deref().unwrap_or("").trim().is_empty() {
         return Err(ApiError::Validation(
             "custom triggers require plugin_id".to_string(),
@@ -684,7 +624,7 @@ fn condition_expr_from_json(value: &Value) -> Result<ConditionExpr, ApiError> {
     ))
 }
 
-fn parse_trigger_kind(kind: &str) -> Result<TriggerKind, ApiError> {
+fn parse_trigger_type(kind: &str) -> Result<TriggerKind, ApiError> {
     kind.parse()
         .map_err(|error: capsulet_core::ParseDomainValueError| {
             ApiError::Validation(error.to_string())
@@ -706,40 +646,18 @@ where
         .map_err(ApiError::store)?;
     if triggers.is_empty() {
         return Ok((
-            legacy_triggers(automation)?,
-            json!({ "trigger": legacy_trigger_name(automation) }).to_string(),
+            vec![AutomationTrigger::new(
+                automation.id().clone(),
+                TriggerName::new("manual").map_err(ApiError::validation)?,
+                TriggerKind::Manual,
+                "{}",
+                None,
+                true,
+            )],
+            json!({ "trigger": "manual" }).to_string(),
         ));
     }
     Ok((triggers, condition_json))
-}
-
-fn legacy_triggers(automation: &Automation) -> Result<Vec<AutomationTrigger>, ApiError> {
-    let trigger_name = legacy_trigger_name(automation);
-    let kind = if automation.trigger_kind() == AutomationTriggerKind::Interval {
-        TriggerKind::Schedule
-    } else {
-        TriggerKind::Manual
-    };
-    let config_json = automation.interval_seconds().map_or_else(
-        || "{}".to_string(),
-        |seconds| json!({ "interval_seconds": seconds }).to_string(),
-    );
-    Ok(vec![AutomationTrigger::new(
-        automation.id().clone(),
-        TriggerName::new(trigger_name).map_err(ApiError::validation)?,
-        kind,
-        config_json,
-        None,
-        true,
-    )])
-}
-
-fn legacy_trigger_name(automation: &Automation) -> &'static str {
-    if automation.trigger_kind() == AutomationTriggerKind::Interval {
-        "schedule"
-    } else {
-        "manual"
-    }
 }
 
 pub(crate) async fn list_automation_triggers<S, O>(

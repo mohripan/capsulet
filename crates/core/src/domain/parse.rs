@@ -20,15 +20,14 @@ impl ParseDomainValueError {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        ArtifactObjectKind, AutomationStatus, AutomationTriggerKind, JobRunStatus, TriggerKind,
-        WorkflowRunStatus, WorkflowStatus,
+        ArtifactObjectKind, AutomationStatus, JobRunStatus, TriggerKind, WorkflowRunStatus,
+        WorkflowStatus,
     };
 
     #[test]
     fn persisted_domain_values_round_trip() {
         assert_eq!("artifact".parse(), Ok(ArtifactObjectKind::Artifact));
         assert_eq!("enabled".parse(), Ok(AutomationStatus::Enabled));
-        assert_eq!("interval".parse(), Ok(AutomationTriggerKind::Interval));
         assert_eq!("retry_scheduled".parse(), Ok(JobRunStatus::RetryScheduled));
         assert_eq!("custom".parse(), Ok(TriggerKind::Custom));
         assert_eq!("timed_out".parse(), Ok(WorkflowRunStatus::TimedOut));

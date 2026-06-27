@@ -1767,11 +1767,10 @@ async fn creates_automation_with_trigger_condition_graph() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "id": "automation_customer_pipeline",
-                        "name": "Customer pipeline",
-                        "workflow_id": "wf_pipeline",
-                        "trigger_kind": "schedule",
-                        "triggers": [
+                            "id": "automation_customer_pipeline",
+                            "name": "Customer pipeline",
+                            "workflow_id": "wf_pipeline",
+                            "triggers": [
                             {
                                 "name": "nightly",
                                 "kind": "schedule",
@@ -1810,8 +1809,8 @@ async fn creates_automation_with_trigger_condition_graph() {
 
     assert_eq!(response.status(), axum::http::StatusCode::CREATED);
     let body = response_json(response).await;
-    assert_eq!(body["trigger_kind"], "interval");
-    assert_eq!(body["interval_seconds"], 300);
+    assert!(body.get("trigger_kind").is_none());
+    assert!(body.get("interval_seconds").is_none());
     assert_eq!(body["triggers"][2]["kind"], "custom");
     assert_eq!(
         body["condition"]["all"][1]["any"][0]["trigger"],
@@ -1833,7 +1832,6 @@ async fn creates_cron_automation_without_legacy_interval_seconds() {
                             "id": "automation_cron",
                             "name": "Cron automation",
                             "workflow_id": "wf_pipeline",
-                            "trigger_kind": "schedule",
                             "triggers": [{
                                 "name": "nightly",
                                 "kind": "schedule",
@@ -1850,7 +1848,8 @@ async fn creates_cron_automation_without_legacy_interval_seconds() {
 
     assert_eq!(response.status(), axum::http::StatusCode::CREATED);
     let body = response_json(response).await;
-    assert_eq!(body["interval_seconds"], Value::Null);
+    assert!(body.get("trigger_kind").is_none());
+    assert!(body.get("interval_seconds").is_none());
     assert_eq!(body["triggers"][0]["config"]["timezone"], "UTC");
 }
 
@@ -1868,7 +1867,6 @@ async fn creates_sql_automation_without_legacy_interval_seconds() {
                             "id": "automation_sql",
                             "name": "SQL automation",
                             "workflow_id": "wf_pipeline",
-                            "trigger_kind": "sql",
                             "triggers": [{
                                 "name": "ready",
                                 "kind": "sql",
@@ -1902,7 +1900,6 @@ async fn disabled_automation_can_still_be_triggered_manually() {
                         "id": "automation_toggle_test",
                         "name": "Toggle test",
                         "workflow_id": "wf_pipeline",
-                        "trigger_kind": "manual",
                         "triggers": [{ "name": "manual_ready", "kind": "manual", "config": {} }],
                         "condition": { "trigger": "manual_ready" }
                     })
@@ -1996,7 +1993,6 @@ async fn rejects_manual_automation_trigger_when_workflow_queue_is_overloaded() {
                         "id": "automation_overload_test",
                         "name": "Overload test",
                         "workflow_id": "wf_pipeline",
-                        "trigger_kind": "manual",
                         "triggers": [{ "name": "manual_ready", "kind": "manual", "config": {} }],
                         "condition": { "trigger": "manual_ready" }
                     })
@@ -2046,7 +2042,6 @@ async fn updates_existing_automation() {
                         "id": "automation_update_test",
                         "name": "Before update",
                         "workflow_id": "wf_pipeline",
-                        "trigger_kind": "manual",
                         "triggers": [{ "name": "manual_ready", "kind": "manual", "config": {} }],
                         "condition": { "trigger": "manual_ready" }
                     })
@@ -2069,7 +2064,6 @@ async fn updates_existing_automation() {
                         "name": "After update",
                         "workflow_id": "wf_pipeline",
                         "status": "disabled",
-                        "trigger_kind": "schedule",
                         "job_input": { "email": "mohripan16@gmail.com" },
                         "triggers": [{
                             "name": "schedule_ready",
@@ -2092,7 +2086,8 @@ async fn updates_existing_automation() {
     let body = response_json(update_response).await;
     assert_eq!(body["name"], "After update");
     assert_eq!(body["status"], "disabled");
-    assert_eq!(body["interval_seconds"], 600);
+    assert!(body.get("trigger_kind").is_none());
+    assert!(body.get("interval_seconds").is_none());
     assert_eq!(body["job_input"]["email"], "mohripan16@gmail.com");
     assert_eq!(body["triggers"][0]["name"], "schedule_ready");
 }
@@ -2112,7 +2107,6 @@ async fn deletes_existing_automation() {
                         "id": "automation_delete_test",
                         "name": "Delete test",
                         "workflow_id": "wf_pipeline",
-                        "trigger_kind": "manual",
                         "triggers": [{ "name": "manual_ready", "kind": "manual", "config": {} }],
                         "condition": { "trigger": "manual_ready" }
                     })

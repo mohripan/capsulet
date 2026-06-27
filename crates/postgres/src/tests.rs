@@ -2,11 +2,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use capsulet_application::{JobRunLogRepository, JobRunRepository};
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationSettings, AutomationStatus,
-    AutomationTrigger, AutomationTriggerKind, CustomTriggerPlugin, ExecutionPoolName, JobArtifact,
-    JobDefinition, JobRun, JobRunId, JobRunLog, JobRunTransition, TriggerKind, TriggerName,
-    WorkflowDefinition, WorkflowId, WorkflowStatus, WorkflowStep, WorkflowStepDependency,
-    WorkflowStepId,
+    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
+    CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobDefinition, JobRun, JobRunId,
+    JobRunLog, JobRunTransition, TriggerKind, TriggerName, WorkflowDefinition, WorkflowId,
+    WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 
 use capsulet_core::JobRunStatus;
@@ -332,7 +331,7 @@ async fn finds_job_definition_when_database_is_available() {
 }
 
 #[tokio::test]
-async fn saves_and_finds_interval_automation_when_database_is_available() {
+async fn saves_and_finds_automation_when_database_is_available() {
     let Some(database_url) = database_url() else {
         return;
     };
@@ -360,11 +359,7 @@ async fn saves_and_finds_interval_automation_when_database_is_available() {
         "",
         workflow.id().clone(),
         "{}",
-        AutomationSettings::new(
-            AutomationStatus::Enabled,
-            AutomationTriggerKind::Interval,
-            Some(30),
-        ),
+        AutomationStatus::Enabled,
     );
     store
         .upsert_automation(&automation)
@@ -377,7 +372,75 @@ async fn saves_and_finds_interval_automation_when_database_is_available() {
         .expect("find automation")
         .expect("automation exists");
 
-    assert_eq!(persisted.interval_seconds(), Some(30));
+    assert_eq!(persisted.status(), AutomationStatus::Enabled);
+}
+
+#[tokio::test]
+async fn due_schedule_trigger_creates_workflow_run_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+
+    let workflow = WorkflowDefinition::new(
+        WorkflowId::new(unique_id("workflow_schedule_trigger_test")).expect("workflow id"),
+        "Schedule trigger workflow",
+        "",
+        WorkflowStatus::Enabled,
+        Vec::new(),
+    );
+    store
+        .upsert_workflow(&workflow)
+        .await
+        .expect("save workflow");
+
+    let automation = Automation::new(
+        AutomationId::new(unique_id("automation_schedule_trigger_test")).expect("automation id"),
+        "Schedule trigger automation",
+        "",
+        workflow.id().clone(),
+        "{}",
+        AutomationStatus::Enabled,
+    );
+    store
+        .upsert_automation(&automation)
+        .await
+        .expect("save automation");
+    store
+        .replace_automation_triggers(
+            automation.id(),
+            &[AutomationTrigger::new(
+                automation.id().clone(),
+                TriggerName::new("schedule_ready").expect("trigger name"),
+                TriggerKind::Schedule,
+                "{\"interval_seconds\":30}",
+                None,
+                true,
+            )],
+            "{\"trigger\":\"schedule_ready\"}",
+        )
+        .await
+        .expect("save trigger");
+
+    let triggered = store
+        .trigger_due_interval_automations()
+        .await
+        .expect("trigger due schedule automations");
+    let created_for_automation: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM workflow_runs WHERE automation_id = $1 AND workflow_id = $2",
+    )
+    .bind(automation.id().as_str())
+    .bind(workflow.id().as_str())
+    .fetch_one(store.pool())
+    .await
+    .expect("count workflow runs for automation");
+
+    assert!(triggered >= 1);
+    assert_eq!(created_for_automation, 1);
 }
 
 #[tokio::test]
@@ -403,11 +466,7 @@ async fn custom_trigger_claim_is_exclusive_when_database_is_available() {
         "",
         workflow.id().clone(),
         "{}",
-        AutomationSettings::new(
-            AutomationStatus::Enabled,
-            AutomationTriggerKind::Manual,
-            None,
-        ),
+        AutomationStatus::Enabled,
     );
     store
         .upsert_automation(&automation)

@@ -18,12 +18,10 @@ impl PostgresStore {
         sqlx::query(
             r"
             INSERT INTO automations (
-                id, name, description, workflow_id, job_input, status, trigger_kind,
-                interval_seconds, next_fire_at, updated_at
+                id, name, description, workflow_id, job_input, status, next_fire_at, updated_at
             )
             VALUES (
-                $1, $2, $3, $4, $5::jsonb, $6, $7, $8,
-                CASE WHEN $7 = 'interval' AND $8 IS NOT NULL THEN now() ELSE NULL END,
+                $1, $2, $3, $4, $5::jsonb, $6, NULL,
                 now()
             )
             ON CONFLICT (id) DO UPDATE SET
@@ -32,13 +30,6 @@ impl PostgresStore {
                 workflow_id = EXCLUDED.workflow_id,
                 job_input = EXCLUDED.job_input,
                 status = EXCLUDED.status,
-                trigger_kind = EXCLUDED.trigger_kind,
-                interval_seconds = EXCLUDED.interval_seconds,
-                next_fire_at = CASE
-                    WHEN EXCLUDED.interval_seconds IS NOT NULL
-                        THEN COALESCE(automations.next_fire_at, EXCLUDED.next_fire_at)
-                    ELSE NULL
-                END,
                 updated_at = now()
             ",
         )
@@ -48,8 +39,6 @@ impl PostgresStore {
         .bind(automation.workflow_id().as_str())
         .bind(automation.job_input_json())
         .bind(automation.status().to_string())
-        .bind(automation.trigger_kind().to_string())
-        .bind(automation.interval_seconds())
         .execute(&self.pool)
         .await?;
 
@@ -67,7 +56,7 @@ impl PostgresStore {
     ) -> Result<Vec<Automation>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, name, description, workflow_id, job_input::text AS job_input, status, trigger_kind, interval_seconds
+            SELECT id, name, description, workflow_id, job_input::text AS job_input, status
             FROM automations
             ORDER BY updated_at DESC, id ASC
             LIMIT $1
@@ -91,7 +80,7 @@ impl PostgresStore {
     ) -> Result<Option<Automation>, PostgresStoreError> {
         let row = sqlx::query(
             r"
-            SELECT id, name, description, workflow_id, job_input::text AS job_input, status, trigger_kind, interval_seconds
+            SELECT id, name, description, workflow_id, job_input::text AS job_input, status
             FROM automations
             WHERE id = $1
             ",
@@ -118,15 +107,23 @@ impl PostgresStore {
             UPDATE automations
             SET status = $2,
                 next_fire_at = CASE
-                    WHEN $2 = 'enabled' AND trigger_kind = 'interval'
-                        AND interval_seconds IS NOT NULL
+                    WHEN $2 = 'enabled'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM automation_triggers
+                            WHERE automation_id = automations.id
+                              AND kind = 'schedule'
+                              AND enabled
+                              AND (config->>'interval_seconds') ~ '^[0-9]+$'
+                              AND (config->>'interval_seconds')::integer > 0
+                        )
                         THEN COALESCE(next_fire_at, now())
                     ELSE NULL
                 END,
                 updated_at = now()
             WHERE id = $1
             RETURNING id, name, description, workflow_id, job_input::text AS job_input,
-                      status, trigger_kind, interval_seconds
+                      status
             ",
         )
         .bind(id.as_str())
@@ -170,19 +167,6 @@ impl PostgresStore {
         condition_json: &str,
     ) -> Result<(), PostgresStoreError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            r"
-            UPDATE automations
-            SET condition_tree = $2::jsonb,
-                updated_at = now()
-            WHERE id = $1
-            ",
-        )
-        .bind(automation_id.as_str())
-        .bind(condition_json)
-        .execute(&mut *tx)
-        .await?;
-
         sqlx::query("DELETE FROM automation_triggers WHERE automation_id = $1")
             .bind(automation_id.as_str())
             .execute(&mut *tx)
@@ -211,6 +195,33 @@ impl PostgresStore {
             .execute(&mut *tx)
             .await?;
         }
+
+        sqlx::query(
+            r"
+            UPDATE automations
+            SET condition_tree = $2::jsonb,
+                next_fire_at = CASE
+                    WHEN status = 'enabled'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM automation_triggers
+                            WHERE automation_id = automations.id
+                              AND kind = 'schedule'
+                              AND enabled
+                              AND (config->>'interval_seconds') ~ '^[0-9]+$'
+                              AND (config->>'interval_seconds')::integer > 0
+                        )
+                        THEN COALESCE(next_fire_at, now())
+                    ELSE NULL
+                END,
+                updated_at = now()
+            WHERE id = $1
+            ",
+        )
+        .bind(automation_id.as_str())
+        .bind(condition_json)
+        .execute(&mut *tx)
+        .await?;
 
         tx.commit().await?;
         Ok(())

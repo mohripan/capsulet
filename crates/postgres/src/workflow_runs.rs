@@ -492,14 +492,21 @@ impl PostgresStore {
     pub async fn trigger_due_interval_automations(&self) -> Result<u64, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, workflow_id, interval_seconds
-            FROM automations
-            WHERE status = 'enabled'
-              AND trigger_kind = 'interval'
-              AND interval_seconds IS NOT NULL
-              AND next_fire_at IS NOT NULL
-              AND next_fire_at <= now()
-            ORDER BY next_fire_at ASC
+            SELECT DISTINCT ON (a.id)
+                   a.id,
+                   a.workflow_id,
+                   (t.config->>'interval_seconds')::integer AS interval_seconds
+            FROM automations a
+            JOIN automation_triggers t
+              ON t.automation_id = a.id
+            WHERE a.status = 'enabled'
+              AND t.kind = 'schedule'
+              AND t.enabled
+              AND (t.config->>'interval_seconds') ~ '^[0-9]+$'
+              AND (t.config->>'interval_seconds')::integer > 0
+              AND a.next_fire_at IS NOT NULL
+              AND a.next_fire_at <= now()
+            ORDER BY a.id ASC, a.next_fire_at ASC
             LIMIT 25
             ",
         )

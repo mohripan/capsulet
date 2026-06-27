@@ -262,7 +262,7 @@ export default function OverviewPage() {
                 </div>
                 <div className="successCell">
                   <strong>{automation.triggers.length}</strong>
-                  <span>{automation.trigger_kind}</span>
+                  <span>{primaryTriggerKind(automation)}</span>
                 </div>
               </article>
             ))}
@@ -424,4 +424,8 @@ function conditionToText(condition: Automation["condition"]): string {
     return condition.all.map(conditionToText).join(" AND ");
   }
   return condition.any.map(conditionToText).join(" OR ");
+}
+
+function primaryTriggerKind(automation: Automation) {
+  return automation.triggers[0]?.kind ?? "manual";
 }

@@ -158,6 +158,25 @@ function conditionToText(condition: TriggerCondition): string {
   return condition.any.map(conditionToText).join(" OR ");
 }
 
+function primaryTriggerKind(automation: Automation): TriggerKind {
+  return automation.triggers[0]?.kind ?? "manual";
+}
+
+function triggerKindLabel(kind: TriggerKind) {
+  if (kind === "schedule") return "Scheduled";
+  if (kind === "sql") return "SQL";
+  if (kind === "webhook") return "Webhook";
+  if (kind === "custom") return "Custom";
+  return "Manual";
+}
+
+function scheduleIntervalSeconds(automation: Automation) {
+  const interval = automation.triggers
+    .find((triggerItem) => triggerItem.kind === "schedule")
+    ?.config.interval_seconds;
+  return typeof interval === "number" ? interval : null;
+}
+
 function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value || "-";
@@ -329,7 +348,6 @@ export default function AutomationsPage() {
         name,
         workflow_id: workflowId,
         status: automationStatus,
-        trigger_kind: triggers.some((trigger) => trigger.kind === "schedule") ? "schedule" : "manual",
         job_input: jobInput,
         triggers: triggers.map((trigger) => ({
           name: trigger.name,
@@ -503,19 +521,21 @@ export default function AutomationsPage() {
               const activeRun = runSummary?.active;
               const latestRun = runSummary?.latest;
               const latestJob = latestRun ? latestStepRun(latestRun) : undefined;
+              const primaryKind = primaryTriggerKind(automation);
+              const scheduleInterval = scheduleIntervalSeconds(automation);
               return (
               <article className={`automationCard ${activeRun ? "hasActiveRun" : ""}`} key={automation.id}>
                 <div className="resourceMain">
                   <div className="automationIcon">
-                    {automation.trigger_kind === "interval" ? <Clock3 size={19} /> : <Play size={19} />}
+                    {primaryKind === "schedule" ? <Clock3 size={19} /> : <Play size={19} />}
                   </div>
                   <div>
                     <h2>{automation.name}</h2>
                     <p title={automation.workflow_id}>{automation.workflow_id}</p>
                     <div className="automationMetaLine">
-                      <span>{automation.trigger_kind === "interval" ? "Scheduled" : "Manual"}</span>
+                      <span>{triggerKindLabel(primaryKind)}</span>
                       <span>{automation.triggers.length} trigger{automation.triggers.length === 1 ? "" : "s"}</span>
-                      {automation.interval_seconds ? <span>{automation.interval_seconds}s interval</span> : null}
+                      {scheduleInterval ? <span>{scheduleInterval}s interval</span> : null}
                     </div>
                   </div>
                 </div>
@@ -788,10 +808,10 @@ export default function AutomationsPage() {
                 <strong>{viewingAutomation.workflow_id}</strong>
                 <span>Status</span>
                 <strong>{viewingAutomation.status}</strong>
-                <span>Mode</span>
-                <strong>{viewingAutomation.trigger_kind}</strong>
-                <span>Interval</span>
-                <strong>{viewingAutomation.interval_seconds ? `${viewingAutomation.interval_seconds}s` : "-"}</strong>
+                <span>Primary trigger</span>
+                <strong>{triggerKindLabel(primaryTriggerKind(viewingAutomation))}</strong>
+                <span>Schedule interval</span>
+                <strong>{scheduleIntervalSeconds(viewingAutomation) ? `${scheduleIntervalSeconds(viewingAutomation)}s` : "-"}</strong>
                 <span>Condition</span>
                 <strong>{conditionToText(viewingAutomation.condition)}</strong>
               </div>

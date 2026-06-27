@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
-use super::{AutomationId, ParseDomainValueError};
+use super::{AutomationId, ParseDomainValueError, WorkflowId};
 
 /// Trigger name scoped to a single automation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -79,6 +79,100 @@ impl FromStr for TriggerKind {
             "custom" => Ok(Self::Custom),
             value => Err(ParseDomainValueError::new("trigger kind", value)),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutomationStatus {
+    Enabled,
+    Disabled,
+}
+
+impl Display for AutomationStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Enabled => "enabled",
+            Self::Disabled => "disabled",
+        })
+    }
+}
+
+impl FromStr for AutomationStatus {
+    type Err = ParseDomainValueError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "enabled" => Ok(Self::Enabled),
+            "disabled" => Ok(Self::Disabled),
+            value => Err(ParseDomainValueError::new("automation status", value)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Automation {
+    id: AutomationId,
+    name: String,
+    description: String,
+    workflow_id: WorkflowId,
+    job_input_json: String,
+    status: AutomationStatus,
+}
+
+impl Automation {
+    #[must_use]
+    pub fn new(
+        id: AutomationId,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        workflow_id: WorkflowId,
+        job_input_json: impl Into<String>,
+        status: AutomationStatus,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            description: description.into(),
+            workflow_id,
+            job_input_json: job_input_json.into(),
+            status,
+        }
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> &AutomationId {
+        &self.id
+    }
+
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[must_use]
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    #[must_use]
+    pub const fn workflow_id(&self) -> &WorkflowId {
+        &self.workflow_id
+    }
+
+    #[must_use]
+    pub fn job_input_json(&self) -> &str {
+        &self.job_input_json
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> AutomationStatus {
+        self.status
+    }
+
+    #[must_use]
+    pub const fn with_status(mut self, status: AutomationStatus) -> Self {
+        self.status = status;
+        self
     }
 }
 

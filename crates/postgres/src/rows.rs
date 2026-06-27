@@ -3,10 +3,10 @@ use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use capsulet_core::{
-    ArtifactId, Automation, AutomationId, AutomationSettings, AutomationTrigger,
-    CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobAttemptId, JobDefinition,
-    JobDefinitionId, JobRun, JobRunId, JobRunLog, RetryPolicy, TriggerName, WorkflowId,
-    WorkflowRun, WorkflowRunId, WorkflowStep, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
+    ArtifactId, Automation, AutomationId, AutomationTrigger, CustomTriggerPlugin,
+    ExecutionPoolName, JobArtifact, JobAttemptId, JobDefinition, JobDefinitionId, JobRun, JobRunId,
+    JobRunLog, RetryPolicy, TriggerName, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStep,
+    WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
 };
 use sqlx::Row;
 
@@ -109,8 +109,6 @@ pub(crate) fn row_to_automation(
     let id: String = row.try_get("id")?;
     let workflow_id: String = row.try_get("workflow_id")?;
     let status: String = row.try_get("status")?;
-    let trigger_kind: String = row.try_get("trigger_kind")?;
-    let interval_seconds: Option<i32> = row.try_get("interval_seconds")?;
     let job_input_json: String = row.try_get("job_input")?;
 
     Ok(Automation::new(
@@ -119,11 +117,7 @@ pub(crate) fn row_to_automation(
         row.try_get::<String, _>("description")?,
         WorkflowId::new(workflow_id).map_err(PostgresStoreError::InvalidPersistedValue)?,
         job_input_json,
-        AutomationSettings::new(
-            parse_domain_value(&status)?,
-            parse_domain_value(&trigger_kind)?,
-            interval_seconds.map(i64::from),
-        ),
+        parse_domain_value(&status)?,
     ))
 }
 
