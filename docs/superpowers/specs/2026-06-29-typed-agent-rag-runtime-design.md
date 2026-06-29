@@ -4,47 +4,50 @@
 
 Capsulet is currently a Kubernetes-native automation control plane for durable Python jobs, workflow DAGs, triggers, logs, artifacts, retries, execution pools, and operational inspection. The project has not been published yet, so the product direction can change without preserving every internal API.
 
-The current DAG model is useful for deterministic jobs, but it is not enough for AI agent behavior. A RAG agent needs typed dataflow, shared state, provider calls, validation, dynamic next-action decisions, bounded loops, and replayable traces. The new direction is to evolve Capsulet into an AI agent orchestration control plane while reusing the durable execution substrate that already exists.
+The current DAG model is useful for deterministic jobs, but it is not enough for AI agent behavior. A RAG agent needs typed dataflow, shared state, provider calls, validation, dynamic next-action decisions, bounded loops, and replayable traces. The new direction is to evolve Capsulet into an AI agent orchestration control plane with a typed hypergraph runtime as the primary execution model.
 
 ## Goals
 
-- Add a new typed `AgentDefinition` product layer for AI-native cyclic graphs.
+- Replace the current workflow-DAG-centered product model with a typed hypergraph runtime for workflows and agents.
+- Add a new typed `AgentDefinition` product layer for AI-native cyclic hypergraphs.
+- Treat current workflow DAGs as a compatibility subset of the new hypergraph model.
 - Build the first milestone around an open-loop RAG answer agent.
 - Keep Python SDK authoring as the primary v1 authoring surface.
 - Support hybrid providers: local/mock adapters for development and production bindings through configuration.
 - Require every agent run to have both budget limits and semantic termination criteria.
 - Record replayable, inspectable agent traces with state snapshots, provider metadata, validator results, and stop reasons.
-- Reuse existing durability, worker execution, cancellation, logs, artifacts, auth, and dashboard inspection where practical.
+- Reuse existing durability, worker execution, cancellation, logs, artifacts, auth, and dashboard inspection where practical, but do not preserve the old DAG abstraction as the long-term core model.
 
 ## Non-Goals
 
-- Do not replace existing workflow DAGs. Workflows remain the deterministic job orchestration model.
 - Do not build a full visual graph authoring experience in v1.
 - Do not hard-code one LLM, embedding model, vector database, reranker, validator, or memory backend into the domain model.
-- Do not implement a mathematically general hypergraph engine in the first milestone.
 - Do not make the model decide arbitrary code execution targets outside graph-declared actions.
 - Do not make enterprise governance complete in v1. The architecture should allow policy, audit, RBAC, budgets, and provider controls to deepen later.
+- Do not preserve backward compatibility for every internal workflow API. External examples and migrations can be updated because the project is unpublished.
+- Do not attempt every possible hypergraph feature in v1, such as distributed graph partitioning, graph rewriting optimizers, or automatic critical-path planning.
 
 ## Recommended Approach
 
-Introduce a typed agent graph layer above the current durable execution substrate.
+Introduce a typed hypergraph runtime as the new core execution model.
 
-The agent layer owns AI-specific semantics: node kinds, typed ports, shared agent state, planner-visible actions, provider bindings, budget policy, termination policy, and trace events. The existing platform continues to own durable storage, workers, logs, artifacts, cancellation, authentication, and operational views.
+The hypergraph layer owns node kinds, typed ports, multi-input/multi-output hyperedges, shared state transitions, planner-visible actions, provider bindings, budget policy, termination policy, and trace events. The existing platform continues to own durable storage, workers, logs, artifacts, cancellation, authentication, and operational views.
 
 This avoids two weaker alternatives:
 
-- A separate agent runtime beside workflows would duplicate scheduling, persistence, logs, cancellation, and dashboard plumbing.
+- A separate agent runtime beside workflows would duplicate scheduling, persistence, logs, cancellation, and dashboard plumbing while leaving the old DAG abstraction as a competing core.
 - Encoding agent loops inside existing DAGs would fight the acyclic graph model and make open-loop planner decisions awkward.
 
 ## Architecture
 
-Capsulet becomes an AI agent orchestration control plane, not only an automation/job runner.
+Capsulet becomes an AI agent orchestration control plane, not only an automation/job runner. The primary internal abstraction becomes a typed hypergraph. Legacy DAG workflows become one representable shape inside that model: a directed hypergraph whose hyperedges each have one source and one target and whose transition policy forbids cycles.
 
 ```text
 AgentDefinition
-  -> AgentGraph
+  -> AgentHypergraph
       -> typed nodes and ports
-      -> allowed actions and transitions
+      -> typed hyperedges
+      -> allowed actions, transitions, and cycles
       -> provider bindings
       -> memory and retrieval bindings
       -> budget policy
@@ -59,7 +62,7 @@ AgentRun
       -> next state or terminal stop
 ```
 
-The first implementation should add agents beside existing workflows. Existing workflows continue to support deterministic DAG execution. Agents handle AI state machines and open loops.
+The first implementation should move the domain toward this model rather than adding agents as an unrelated sidecar. Existing workflow definitions can be migrated or compiled into the hypergraph form, but the design target is one graph runtime that supports deterministic pipelines, typed AI dataflow, and cyclic agent behavior.
 
 ## Core Model
 
@@ -118,20 +121,29 @@ Each agent run owns structured state. Initial state fields:
 - loop counters
 - stop reason
 
-### Graph Shape
+### Hypergraph Shape
 
-V1 should use a pragmatic graph model rather than a fully general hypergraph:
+V1 should implement a real typed directed hypergraph core:
 
 ```text
-AgentGraph
+AgentHypergraph
   nodes: typed nodes
-  edges: static data dependencies
+  ports: typed node input/output ports
+  hyperedges: typed links from one or more output ports to one or more input ports or state fields
   actions: planner-visible callable nodes
   state_schema: typed shared state contract
-  transition_policy: allowed actions from each state
+  transition_policy: allowed actions, cycles, and terminal transitions
 ```
 
-This gives the useful behavior of a hypergraph because one node can read and write multiple typed state fields. It keeps the first implementation smaller and easier to validate.
+The first implementation does not need advanced graph rewriting or optimization, but it must model hyperedges directly. This matters because AI workflows often combine several inputs into one prompt, split one model response into several typed outputs, write multiple state fields from one action, or route one observation to planner, validator, memory, and trace consumers.
+
+Current workflow DAGs map into this model as a constrained subset:
+
+```text
+DAG step -> hypergraph node
+DAG dependency A -> B -> hyperedge from A.result to B.input
+DAG acyclicity -> transition policy with cycles disabled
+```
 
 ## Runtime Loop
 
@@ -149,7 +161,7 @@ termination policy decides stop or continue
 
 The planner is constrained by the graph. It can choose from registered actions, but it cannot call arbitrary code or undeclared providers.
 
-Each planner/action cycle is the durable unit of progress. If the worker dies, Capsulet resumes from the last completed trace event and state snapshot.
+Each planner/action cycle is the durable unit of progress. If the worker dies, Capsulet resumes from the last completed trace event and state snapshot. Deterministic non-agent workflows use the same runtime by selecting actions according to a static transition policy instead of an LLM planner.
 
 ## First RAG Agent
 
@@ -222,7 +234,7 @@ agent = rag_agent(
 )
 ```
 
-The SDK compiles this into an `AgentDefinition` request. The backend validates node kinds, ports, provider bindings, graph rules, budget policy, and termination policy.
+The SDK compiles this into an `AgentDefinition` request backed by the typed hypergraph model. The backend validates node kinds, ports, hyperedges, provider bindings, graph rules, budget policy, and termination policy.
 
 ## API Shape
 
@@ -238,6 +250,13 @@ Initial agent endpoints:
 - `GET /v1/agent-runs/{id}/trace`
 
 The API should keep request and response models explicit. Do not expose internal SQL rows or provider-specific SDK objects.
+
+Existing workflow endpoints should be treated as transitional. They can either compile into the hypergraph runtime or be replaced by more general graph endpoints in a later slice:
+
+- `POST /v1/graphs`
+- `GET /v1/graphs`
+- `GET /v1/graphs/{id}`
+- `POST /v1/graphs/{id}/runs`
 
 ## Dashboard Scope
 
@@ -277,6 +296,8 @@ Trace events must include enough data to replay the run at the semantic level: p
 
 Large prompts, responses, retrieved document payloads, and logs can use object storage with PostgreSQL metadata, matching the existing artifact/log boundary.
 
+Trace events should reference hypergraph coordinates where applicable: node id, port id, hyperedge id, state version, and action id.
+
 ## Failure Handling
 
 - Typed output mismatch: fail the node; allow planner recovery only if policy explicitly allows it.
@@ -294,6 +315,11 @@ Domain tests:
 
 - rejects unknown node kinds;
 - rejects invalid port wiring;
+- rejects invalid hyperedges;
+- accepts multi-source and multi-target hyperedges;
+- validates a legacy DAG as a constrained hypergraph;
+- validates an intentional cycle when transition policy permits it;
+- rejects an intentional cycle when transition policy forbids it;
 - rejects missing provider bindings;
 - rejects missing budget policy;
 - rejects missing termination policy;
@@ -331,13 +357,13 @@ Dashboard tests should cover trace rendering once the backend shape is stable.
 ## Suggested Implementation Slices
 
 1. **Domain model**
-   Add agent IDs, node kinds, typed ports, graph validation, budget policy, termination policy, run status, and trace-event value objects in `capsulet-core`.
+   Add graph and agent IDs, node kinds, typed ports, hyperedges, hypergraph validation, transition policy, budget policy, termination policy, run status, and trace-event value objects in `capsulet-core`.
 
 2. **SDK compiler**
-   Extend the Python SDK with `rag_agent`, provider references, budget types, and deterministic compilation tests.
+   Extend the Python SDK with `rag_agent`, provider references, budget types, typed hypergraph compilation, and deterministic compilation tests.
 
 3. **Persistence**
-   Add PostgreSQL tables for agent definitions, agent runs, agent state snapshots, and trace events.
+   Add PostgreSQL tables for typed graph definitions, hypergraph nodes, ports, hyperedges, agent definitions, agent runs, agent state snapshots, and trace events.
 
 4. **API**
    Add agent definition CRUD-lite, manual run creation, run detail, cancellation, and trace reads.
@@ -354,12 +380,13 @@ Dashboard tests should cover trace rendering once the backend shape is stable.
 ## Acceptance Criteria
 
 - A Python SDK RAG agent compiles into a valid `AgentDefinition`.
+- The compiled agent uses typed hypergraph nodes, ports, and hyperedges.
+- A legacy workflow DAG can be represented as a constrained typed hypergraph.
 - The API stores and returns agent definitions.
 - A manual agent run can execute through a bounded open loop with fake providers.
 - Every run has required budget and termination policy.
 - Every run records trace events and state snapshots.
 - Runs stop with explicit stop reasons.
-- Invalid graph, provider, port, budget, and termination definitions are rejected.
+- Invalid hypergraph, provider, port, budget, and termination definitions are rejected.
 - The dashboard can inspect a completed agent run trace.
-- Existing workflow DAG behavior remains available and tested.
-
+- Existing workflow behavior is either migrated to the typed hypergraph runtime or explicitly replaced by it in the implementation plan.
