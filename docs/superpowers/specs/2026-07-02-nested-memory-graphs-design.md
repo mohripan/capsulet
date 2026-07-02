@@ -25,12 +25,14 @@ This gives Capsulet multi-resolution memory, bounded retrieval, graph-native per
 - Preserve context-specific disagreement instead of flattening everything into one global truth.
 - Make summaries compact enough for retrieval while preserving traceability to inner claims and evidence.
 
-## Non-Goals
+## Future Roadmap Goals
 
-- Build a full graph query language in this milestone.
-- Build a visual graph workbench in this milestone.
-- Replace claim-level memory, evidence, or memory contracts.
-- Implement a complete enterprise policy engine. The first version stores permissions as structured policy data and enforces required presence.
+These are product goals, but they should follow the first nested memory graph implementation instead of being bundled into the initial milestone.
+
+- Build a full graph query language for traversing nested contexts, canonical entities, boundary edges, summaries, evidence, and time.
+- Build a visual graph workbench for inspecting, debugging, merging, rejecting, approving, and auditing nested graph memory.
+- Deeply integrate claim-level memory, evidence, memory contracts, nested subgraphs, canonical identity, and runtime retrieval into one coherent memory system.
+- Implement a complete enterprise policy engine for graph-native permissions, access review, retention, audit, and compliance. The first implementation stores permissions as structured policy data and enforces required presence.
 
 ## Domain Model
 
@@ -330,9 +332,9 @@ Create Sales and Engineering subgraphs. Both refer to the same canonical custome
 5. Add documentation and OpenAPI entries.
 6. Add end-to-end tests using Docker-backed PostgreSQL.
 
-## Open Decisions
+## Deferred Roadmap Work
 
-- Retrieval ranking across nested subgraphs is out of scope for this milestone.
-- Permission enforcement beyond required policy presence is out of scope for this milestone.
-- UI and graph visualization are out of scope for this milestone.
-- The first version should prioritize correctness of the memory model over query convenience.
+- Retrieval ranking across nested subgraphs.
+- Permission enforcement beyond required policy presence.
+- UI and graph visualization.
+- Query convenience features after the core memory model is correct.

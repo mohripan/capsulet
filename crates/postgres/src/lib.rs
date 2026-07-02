@@ -5,11 +5,14 @@ use std::{env, time::Duration};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use thiserror::Error;
 
+mod agents;
 mod artifacts;
 mod audit;
 mod automations;
+mod graphs;
 mod job_definitions;
 mod job_runs;
+mod memory;
 mod metrics;
 mod projects;
 mod repositories;
@@ -227,6 +230,12 @@ pub enum PostgresStoreError {
     InvalidPoolConfig(String),
     #[error("invalid workflow graph: {0}")]
     WorkflowGraph(#[from] capsulet_core::WorkflowGraphError),
+    #[error("invalid typed graph: {0}")]
+    Graph(#[from] capsulet_core::GraphError),
+    #[error("invalid memory value: {0}")]
+    Memory(#[from] capsulet_core::MemoryError),
+    #[error("invalid memory contract: {0}")]
+    MemoryContract(#[from] capsulet_core::MemoryContractError),
 }
 
 fn env_positive_u32(name: &str, default: u32) -> Result<u32, PostgresStoreError> {

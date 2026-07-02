@@ -1,0 +1,59 @@
+entity Service:
+  fields:
+    name: string
+    owner: Team
+    tier: enum[critical, standard, experimental]
+
+entity Team:
+  fields:
+    name: string
+
+relation owns:
+  from: Team
+  to: Service
+
+event IncidentOpened:
+  fields:
+    summary: string
+    opened_at: date
+
+claim_policy:
+  require_source: true
+  store_confidence: true
+  allow_contradictions: true
+  min_confidence: 0.75
+
+trust_policy:
+  source_priority:
+    - production_database
+    - github_main
+    - incident_report
+    - slack
+
+review_policy:
+  require_human_review_if:
+    - confidence < 0.8
+    - contradiction_detected == true
+
+retrieval_policy service_context:
+  seed_from:
+    - Service
+    - Team
+  expand:
+    max_hops: 3
+    prefer_edges:
+      - owns
+  include_claims:
+    status: active
+    min_confidence: 0.75
+  exclude:
+    stale: true
+    restricted: true
+
+contradiction_rule owner_conflict:
+  applies_to: Service.owner
+  if_multiple_active_values: true
+  resolve_by:
+    - highest_authority_source
+    - newest_observed_at
+  require_review: true

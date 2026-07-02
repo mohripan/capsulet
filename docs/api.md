@@ -1,6 +1,8 @@
 # API
 
-Capsulet's API exposes job definition authoring, manual job runs, workflow definition authoring, automation triggers, cancellation, status inspection, log inspection, and artifact retrieval.
+Capsulet's API exposes typed agent execution graph authoring, memory graph primitives, agent definitions, agent runs, job/tool definitions, compatibility workflow authoring, automation triggers, cancellation, status inspection, log inspection, and artifact retrieval.
+
+Phase 1 introduces the first memory graph API surface. Memory records are tenant/project scoped and claim-first: claims, events, and relationships must reference evidence.
 
 ## Run Locally
 
@@ -19,7 +21,7 @@ docker compose up -d postgres minio minio-init
 Set the API environment:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
+$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
 $env:CAPSULET_API_ADDR = "127.0.0.1:8080"
 $env:CAPSULET_EXECUTION_POOLS = "mini,large"
 $env:CAPSULET_SEED_EXAMPLES = "true"
@@ -66,6 +68,27 @@ The router currently exposes:
 | `GET`, `POST` | `/v1/job-definitions` | List or create definitions |
 | `GET`, `PUT`, `DELETE` | `/v1/job-definitions/{id}` | Read, replace, or delete a definition |
 | `GET` | `/v1/execution-pools`, `/v1/host-groups` | Read static execution configuration |
+| `GET`, `POST` | `/v1/graphs` | List or create typed agent execution graphs |
+| `GET` | `/v1/graphs/{id}` | Read one typed agent execution graph |
+| `GET`, `POST` | `/v1/memory/sources` | List or create memory sources |
+| `GET` | `/v1/memory/sources/{id}` | Read one memory source |
+| `GET`, `POST` | `/v1/memory/evidence` | List or create evidence records |
+| `GET` | `/v1/memory/evidence/{id}` | Read one evidence record |
+| `GET`, `POST` | `/v1/memory/entities` | List or create entities |
+| `GET` | `/v1/memory/entities/{id}` | Read one entity |
+| `GET`, `POST` | `/v1/memory/claims` | List or create evidence-backed claims |
+| `GET` | `/v1/memory/claims/{id}` | Read one claim |
+| `GET`, `POST` | `/v1/memory/events` | List or create evidence-backed events |
+| `GET` | `/v1/memory/events/{id}` | Read one event |
+| `GET`, `POST` | `/v1/memory/relationships` | List or create evidence-backed relationships |
+| `GET` | `/v1/memory/relationships/{id}` | Read one relationship |
+| `GET`, `POST` | `/v1/memory/contracts` | List or create memory contract DSL documents |
+| `GET` | `/v1/memory/contracts/{id}` | Read one memory contract with compiled policy summary |
+| `GET`, `POST` | `/v1/agents` | List or create agent definitions |
+| `GET` | `/v1/agents/{id}` | Read one agent definition |
+| `POST` | `/v1/agents/{id}/runs` | Start a queued agent run |
+| `GET` | `/v1/agent-runs` | List agent runs |
+| `GET` | `/v1/agent-runs/{id}` | Read one agent run and current state |
 | `GET`, `POST` | `/v1/workflows` | List or create workflow DAGs |
 | `GET`, `PUT`, `DELETE` | `/v1/workflows/{id}` | Read, replace, or delete a workflow DAG |
 | `GET`, `POST` | `/v1/automations` | List or create automations |
@@ -181,6 +204,85 @@ Cancel a queued or running run:
 ```sh
 curl -X POST http://127.0.0.1:8080/v1/jobs/runs/run_123/cancel
 ```
+
+Create a typed agent execution graph:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/graphs \
+  -H "content-type: application/json" \
+  -d '{
+    "id":"rag_graph",
+    "name":"RAG graph",
+    "nodes":[
+      {
+        "id":"normalize",
+        "name":"Normalize query",
+        "kind":"query_normalizer",
+        "ports":[
+          {"id":"normalize.input","direction":"input","value_type":"user_query"},
+          {"id":"normalize.output","direction":"output","value_type":"normalized_query"}
+        ]
+      },
+      {
+        "id":"embed",
+        "name":"Embed query",
+        "kind":"embedding",
+        "ports":[
+          {"id":"embed.input","direction":"input","value_type":"normalized_query"},
+          {"id":"embed.output","direction":"output","value_type":"embedding_vector"}
+        ]
+      }
+    ],
+    "hyperedges":[
+      {
+        "id":"normalize_to_embed",
+        "sources":[{"kind":"port","node_id":"normalize","port_id":"normalize.output"}],
+        "targets":[{"kind":"port","node_id":"embed","port_id":"embed.input"}]
+      }
+    ],
+    "transition_policy":{"mode":"static","cycles_allowed":false}
+  }'
+```
+
+Graph validation checks node IDs, port IDs, port direction, endpoint references, value types, duplicate hyperedges, and cycle policy. `transition_policy.mode` is `static` today; planner/cyclic behavior is represented in the model for later runtime slices. This graph is the execution graph, not the long-term memory graph. Memory graph APIs should use claim/entity/evidence language when they are introduced.
+
+Create an agent from a graph and start a run:
+
+```sh
+curl -X POST http://127.0.0.1:8080/v1/agents \
+  -H "content-type: application/json" \
+  -d '{
+    "id":"rag_agent",
+    "name":"RAG Agent",
+    "graph_id":"rag_graph",
+    "budget":{
+      "max_steps":16,
+      "max_tokens":16000,
+      "max_seconds":120,
+      "max_cost_micros":500000
+    },
+    "termination_conditions":["validator_pass","safety_failure","no_progress"]
+  }'
+
+curl -X POST http://127.0.0.1:8080/v1/agents/rag_agent/runs \
+  -H "content-type: application/json" \
+  -d '{"id":"agent_run_1","initial_state":{"query":"How does Capsulet work?"}}'
+```
+
+Read graph, agent, and run state:
+
+```sh
+curl http://127.0.0.1:8080/v1/graphs
+curl http://127.0.0.1:8080/v1/graphs/rag_graph
+curl http://127.0.0.1:8080/v1/agents
+curl http://127.0.0.1:8080/v1/agents/rag_agent
+curl http://127.0.0.1:8080/v1/agent-runs
+curl http://127.0.0.1:8080/v1/agent-runs/agent_run_1
+```
+
+The current API starts queued agent runs and returns their current state. The application runtime can execute agent runs and persist trace events; HTTP trace and run-control endpoints are planned next.
+
+## Compatibility workflow APIs
 
 Create a fan-out/fan-in workflow DAG:
 

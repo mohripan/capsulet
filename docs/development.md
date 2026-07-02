@@ -1,6 +1,6 @@
 # Development
 
-This guide describes the current development workflow for Capsulet.
+This guide describes the current development workflow for Capsulet. The project direction is governed AI memory. The current foundation is typed agent execution graphs; the existing job/workflow stack remains in place as deterministic tool execution and compatibility infrastructure.
 
 ## Required Tools
 
@@ -31,12 +31,12 @@ The backend workspace lives in `crates/`.
 
 Current crates:
 
-- `capsulet-core`: domain model, command/query shapes, and infrastructure ports
+- `capsulet-core`: typed execution graph, agent, workflow compatibility, and execution domain model
 - `capsulet-postgres`: PostgreSQL persistence adapter and embedded migrations
 - `capsulet-storage`: filesystem and S3-compatible object storage adapter
-- `capsulet-api`: HTTP control plane
+- `capsulet-api`: HTTP control plane for graphs, agents, runs, jobs, and compatibility workflows
 - `capsulet-worker`: job leasing and runner coordination
-- `capsulet-scheduler`: interval automation polling and workflow-DAG reconciliation
+- `capsulet-scheduler`: interval automation polling and compatibility workflow-DAG reconciliation
 - `capsulet-evaluator`: durable cron, SQL, webhook, and custom-trigger evaluation plus retention cleanup
 - `capsulet-runner`: execution boundary with stub, trusted local-process, and Kubernetes Job runners
 - `capsulet-cli`: operator and developer CLI for the HTTP API
@@ -51,7 +51,7 @@ docker compose up --build
 
 This starts:
 
-- PostgreSQL on `localhost:5432`
+- PostgreSQL on `localhost:55432`
 - MinIO on `localhost:9000`
 - MinIO console on `localhost:9001`
 - Keycloak on `localhost:18080` with realm `capsulet`
@@ -82,7 +82,7 @@ The Compose worker uses `CAPSULET_RUNNER_MODE=stub` so the full API/dashboard/jo
 The Compose database URL is:
 
 ```sh
-postgres://capsulet:capsulet@localhost:5432/capsulet
+postgres://capsulet:capsulet@localhost:55432/capsulet
 ```
 
 The Compose MinIO credentials are:
@@ -105,14 +105,14 @@ docker compose up -d postgres minio minio-init
 The persistence crate embeds migrations from `migrations/` with SQLx. To run the PostgreSQL-backed tests against the local database:
 
 ```sh
-CAPSULET_TEST_DATABASE_URL=postgres://capsulet:capsulet@localhost:5432/capsulet \
+CAPSULET_TEST_DATABASE_URL=postgres://capsulet:capsulet@localhost:55432/capsulet \
   cargo test -p capsulet-postgres
 ```
 
 On PowerShell:
 
 ```powershell
-$env:CAPSULET_TEST_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
+$env:CAPSULET_TEST_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
 cargo test -p capsulet-postgres
 ```
 
@@ -137,7 +137,7 @@ The API uses Axum and connects to PostgreSQL through `capsulet-postgres`.
 Run locally:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
+$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
 $env:CAPSULET_API_ADDR = "127.0.0.1:8080"
 $env:CAPSULET_EXECUTION_POOLS = "mini,large"
 $env:CAPSULET_SEED_EXAMPLES = "true"
@@ -147,9 +147,15 @@ $env:CAPSULET_API_TOKENS = '[{"name":"local-admin","role":"admin","token":"repla
 cargo run -p capsulet-api
 ```
 
-Available job-run endpoints:
+Important local API surfaces:
 
 - `GET /healthz`
+- `POST /v1/graphs`
+- `GET /v1/graphs`
+- `POST /v1/agents`
+- `GET /v1/agents`
+- `POST /v1/agents/{id}/runs`
+- `GET /v1/agent-runs`
 - `POST /v1/jobs/runs`
 - `GET /v1/jobs/runs`
 - `GET /v1/jobs/runs/{id}`
@@ -190,7 +196,7 @@ The worker can execute a single tick or poll continuously with the stub, local-p
 Run a success tick:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:5432/capsulet"
+$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
 $env:CAPSULET_WORKER_ID = "worker-local"
 $env:CAPSULET_STUB_RUNNER_RESULT = "success"
 cargo run -p capsulet-worker

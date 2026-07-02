@@ -1,0 +1,59 @@
+entity Customer:
+  fields:
+    name: string
+    plan: enum[free, team, enterprise]
+
+entity Issue:
+  fields:
+    summary: string
+    status: enum[open, pending, resolved]
+    customer: Customer
+
+relation has_issue:
+  from: Customer
+  to: Issue
+
+event IssueResolved:
+  fields:
+    summary: string
+    resolved_at: date
+
+claim_policy:
+  require_source: true
+  store_confidence: true
+  allow_contradictions: true
+  min_confidence: 0.70
+
+trust_policy:
+  source_priority:
+    - support_ticket
+    - crm
+    - slack
+
+review_policy:
+  require_human_review_if:
+    - confidence < 0.75
+    - contradiction_detected == true
+
+retrieval_policy customer_support:
+  seed_from:
+    - Customer
+    - Issue
+  expand:
+    max_hops: 3
+    prefer_edges:
+      - has_issue
+  include_claims:
+    status: active
+    min_confidence: 0.7
+  exclude:
+    stale: true
+    restricted: true
+
+contradiction_rule issue_status_conflict:
+  applies_to: Issue.status
+  if_multiple_active_values: true
+  resolve_by:
+    - highest_authority_source
+    - newest_observed_at
+  require_review: true

@@ -1,0 +1,59 @@
+entity Contract:
+  fields:
+    name: string
+    counterparty: Organization
+    renewal_date: date
+
+entity Organization:
+  fields:
+    name: string
+
+relation party_to:
+  from: Organization
+  to: Contract
+
+event ObligationCreated:
+  fields:
+    summary: string
+    due_at: date
+
+claim_policy:
+  require_source: true
+  store_confidence: true
+  allow_contradictions: true
+  min_confidence: 0.85
+
+trust_policy:
+  source_priority:
+    - legal_contracts
+    - amendments
+    - email
+
+review_policy:
+  require_human_review_if:
+    - confidence < 0.9
+    - relation in [legally_obligated, terminated]
+    - contradiction_detected == true
+
+retrieval_policy legal_review:
+  seed_from:
+    - Contract
+    - Organization
+  expand:
+    max_hops: 2
+    prefer_edges:
+      - party_to
+  include_claims:
+    status: active
+    min_confidence: 0.85
+  exclude:
+    stale: true
+    restricted: true
+
+contradiction_rule renewal_date_conflict:
+  applies_to: Contract.renewal_date
+  if_multiple_active_values: true
+  resolve_by:
+    - highest_authority_source
+    - newest_observed_at
+  require_review: true

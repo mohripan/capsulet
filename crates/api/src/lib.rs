@@ -4,7 +4,9 @@ mod auth;
 
 mod automations;
 mod error;
+mod graphs;
 mod http;
+mod memory;
 mod models;
 mod state;
 mod store;

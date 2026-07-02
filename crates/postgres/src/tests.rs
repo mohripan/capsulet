@@ -1,11 +1,18 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use capsulet_application::{JobRunLogRepository, JobRunRepository};
+use capsulet_application::{
+    AgentRunRecord, AgentTraceRecord, JobRunLogRepository, JobRunRepository,
+};
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
-    CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobDefinition, JobRun, JobRunId,
-    JobRunLog, JobRunTransition, TriggerKind, TriggerName, WorkflowDefinition, WorkflowId,
-    WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
+    AgentBudget, AgentDefinition, AgentId, AgentRunId, AgentRunStatus, AgentTerminationPolicy,
+    ArtifactId, ArtifactObjectKind, Authority, Automation, AutomationId, AutomationStatus,
+    AutomationTrigger, Claim, ClaimId, ClaimStatus, Confidence, CustomTriggerPlugin, Entity,
+    EntityId, Evidence, EvidenceId, ExecutionPoolName, GraphDefinition, GraphHyperedge, GraphId,
+    GraphNode, GraphPort, GraphTransitionPolicy, HyperedgeEndpoint, HyperedgeId, JobArtifact,
+    JobDefinition, JobRun, JobRunId, JobRunLog, JobRunTransition, MemoryContract, MemoryContractId,
+    MemoryScope, NodeId, NodeKind, PortDirection, PortId, PortValueType, Source, SourceId,
+    TriggerKind, TriggerName, WorkflowDefinition, WorkflowId, WorkflowStatus, WorkflowStep,
+    WorkflowStepDependency, WorkflowStepId,
 };
 
 use capsulet_core::JobRunStatus;
@@ -140,6 +147,339 @@ async fn migrates_and_persists_job_runs_when_database_is_available() {
         .expect("queued run available");
 
     assert_eq!(leased.id(), run.id());
+}
+
+fn graph_id(value: &str) -> GraphId {
+    GraphId::new(value).expect("graph id")
+}
+
+fn node_id(value: &str) -> NodeId {
+    NodeId::new(value).expect("node id")
+}
+
+fn port_id(value: &str) -> PortId {
+    PortId::new(value).expect("port id")
+}
+
+fn hyperedge_id(value: &str) -> HyperedgeId {
+    HyperedgeId::new(value).expect("hyperedge id")
+}
+
+fn sample_graph(prefix: &str) -> GraphDefinition {
+    let prompt = node_id(&format!("{prefix}_prompt"));
+    let llm = node_id(&format!("{prefix}_llm"));
+    GraphDefinition::new(
+        graph_id(&unique_id(prefix)),
+        "RAG graph",
+        vec![
+            GraphNode::new(
+                prompt.clone(),
+                "Prompt",
+                NodeKind::PromptBuilder,
+                vec![GraphPort::new(
+                    port_id("prompt.out"),
+                    PortDirection::Output,
+                    PortValueType::Prompt,
+                )],
+            ),
+            GraphNode::new(
+                llm.clone(),
+                "LLM",
+                NodeKind::Llm,
+                vec![
+                    GraphPort::new(
+                        port_id("llm.prompt"),
+                        PortDirection::Input,
+                        PortValueType::Prompt,
+                    ),
+                    GraphPort::new(
+                        port_id("llm.answer"),
+                        PortDirection::Output,
+                        PortValueType::FinalAnswer,
+                    ),
+                ],
+            ),
+        ],
+        vec![GraphHyperedge::new(
+            hyperedge_id(&format!("{prefix}_prompt_llm")),
+            vec![HyperedgeEndpoint::port(
+                prompt.clone(),
+                port_id("prompt.out"),
+            )],
+            vec![HyperedgeEndpoint::port(llm.clone(), port_id("llm.prompt"))],
+        )],
+        GraphTransitionPolicy::planner(vec![prompt, llm]).with_cycles_allowed(true),
+    )
+    .expect("valid graph")
+}
+
+#[tokio::test]
+async fn saves_and_lists_memory_claims_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+
+    let scope = MemoryScope::new("tenant_memory", unique_id("project_memory")).expect("scope");
+    let source = Source::new(
+        SourceId::new(unique_id("source_memory")).expect("source id"),
+        scope.clone(),
+        "executive_update",
+        Some("file:///updates/atlas.md".to_string()),
+        "Atlas update",
+        Authority::High,
+    )
+    .expect("source");
+    store
+        .upsert_memory_source(&source)
+        .await
+        .expect("save source");
+    let evidence = Evidence::new(
+        EvidenceId::new(unique_id("evidence_memory")).expect("evidence id"),
+        scope.clone(),
+        source.id().clone(),
+        "updates/atlas.md#L12",
+        "Project Atlas launch date moved to August 1.",
+        "2026-07-05T10:00:00Z",
+    )
+    .expect("evidence");
+    store
+        .upsert_memory_evidence(&evidence)
+        .await
+        .expect("save evidence");
+    let entity = Entity::new(
+        EntityId::new(unique_id("entity_memory")).expect("entity id"),
+        scope.clone(),
+        "Project",
+        "Project Atlas",
+        vec!["Atlas".to_string()],
+    )
+    .expect("entity");
+    store
+        .upsert_memory_entity(&entity)
+        .await
+        .expect("save entity");
+    let claim = Claim::new(
+        ClaimId::new(unique_id("claim_memory")).expect("claim id"),
+        scope.clone(),
+        entity.id().clone(),
+        "launch_date",
+        "2026-08-01",
+        vec![evidence.id().clone()],
+        Confidence::new(0.93).expect("confidence"),
+        Authority::High,
+        "2026-07-05T10:00:00Z",
+        Some("2026-07-05T00:00:00Z"),
+        None,
+    )
+    .expect("claim")
+    .with_status(ClaimStatus::Active);
+    store.upsert_memory_claim(&claim).await.expect("save claim");
+
+    let claims = store
+        .list_memory_claims(scope.tenant_id(), scope.project_id(), 10)
+        .await
+        .expect("list claims");
+
+    assert_eq!(claims[0].evidence_ids(), claim.evidence_ids());
+}
+
+#[tokio::test]
+async fn saves_and_finds_memory_contract_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+
+    let source = r"
+entity Project:
+  fields:
+    name: string
+    owner: Person
+
+entity Person:
+  fields:
+    name: string
+
+relation owns:
+  from: Person
+  to: Project
+
+claim_policy:
+  require_source: true
+  store_confidence: true
+  min_confidence: 0.8
+";
+    let contract = MemoryContract::parse_scoped(
+        MemoryContractId::new(unique_id("contract_memory")).expect("contract id"),
+        MemoryScope::new("tenant_contract", unique_id("project_contract")).expect("scope"),
+        "Project contract",
+        source,
+    )
+    .expect("contract");
+    store
+        .upsert_memory_contract(&contract)
+        .await
+        .expect("save contract");
+
+    let persisted = store
+        .find_memory_contract(contract.id())
+        .await
+        .expect("find contract")
+        .expect("contract exists");
+
+    assert_eq!(
+        persisted.compile().expect("compiled").relation_types()[0].name(),
+        "owns"
+    );
+}
+
+#[tokio::test]
+async fn saves_and_finds_graph_definition_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+    let graph = sample_graph("graph_round_trip");
+
+    store.upsert_graph(&graph).await.expect("save graph");
+    let persisted = store
+        .find_graph(graph.id())
+        .await
+        .expect("load graph")
+        .expect("graph exists");
+
+    assert_eq!(persisted.hyperedges(), graph.hyperedges());
+}
+
+#[tokio::test]
+async fn saves_and_finds_agent_definition_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+    let graph = sample_graph("agent_graph_round_trip");
+    let agent = AgentDefinition::new(
+        AgentId::new(unique_id("agent_round_trip")).expect("agent id"),
+        "Support agent",
+        graph,
+        Some(AgentBudget::new(8, 8_000, 60, 2_500).expect("budget")),
+        Some(AgentTerminationPolicy::default_rag()),
+    )
+    .expect("valid agent");
+
+    store.upsert_agent(&agent).await.expect("save agent");
+    let persisted = store
+        .find_agent(agent.id())
+        .await
+        .expect("load agent")
+        .expect("agent exists");
+
+    assert_eq!(persisted.budget().max_steps(), agent.budget().max_steps());
+}
+
+#[tokio::test]
+async fn saves_and_finds_agent_run_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+    let graph = sample_graph("agent_run_graph");
+    let agent = AgentDefinition::new(
+        AgentId::new(unique_id("agent_run_agent")).expect("agent id"),
+        "Support agent",
+        graph,
+        Some(AgentBudget::new(8, 8_000, 60, 2_500).expect("budget")),
+        Some(AgentTerminationPolicy::default_rag()),
+    )
+    .expect("valid agent");
+    store.upsert_agent(&agent).await.expect("save agent");
+    let run = AgentRunRecord {
+        id: AgentRunId::new(unique_id("agent_run")).expect("run id"),
+        agent_id: agent.id().clone(),
+        status: AgentRunStatus::Queued,
+        state_version: 0,
+        state_json: r#"{"query":"reset MFA"}"#.to_string(),
+    };
+
+    store.upsert_agent_run(&run).await.expect("save run");
+    let persisted = store
+        .find_agent_run(&run.id)
+        .await
+        .expect("load run")
+        .expect("run exists");
+
+    assert_eq!(persisted.state_json, run.state_json);
+}
+
+#[tokio::test]
+async fn saves_and_lists_agent_trace_events_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+    let graph = sample_graph("agent_trace_graph");
+    let agent = AgentDefinition::new(
+        AgentId::new(unique_id("agent_trace_agent")).expect("agent id"),
+        "Support agent",
+        graph,
+        Some(AgentBudget::new(8, 8_000, 60, 2_500).expect("budget")),
+        Some(AgentTerminationPolicy::default_rag()),
+    )
+    .expect("valid agent");
+    store.upsert_agent(&agent).await.expect("save agent");
+    let run = AgentRunRecord {
+        id: AgentRunId::new(unique_id("agent_trace_run")).expect("run id"),
+        agent_id: agent.id().clone(),
+        status: AgentRunStatus::Queued,
+        state_version: 0,
+        state_json: r#"{"query":"reset MFA"}"#.to_string(),
+    };
+    store.upsert_agent_run(&run).await.expect("save run");
+
+    store
+        .append_agent_trace_event(&AgentTraceRecord {
+            run_id: run.id.clone(),
+            sequence: 0,
+            event_type: "node_started".to_string(),
+            payload_json: r#"{"node_id":"prompt"}"#.to_string(),
+        })
+        .await
+        .expect("append first trace");
+    store
+        .append_agent_trace_event(&AgentTraceRecord {
+            run_id: run.id.clone(),
+            sequence: 1,
+            event_type: "node_completed".to_string(),
+            payload_json: r#"{"node_id":"prompt"}"#.to_string(),
+        })
+        .await
+        .expect("append second trace");
+
+    let traces = store
+        .list_agent_trace_events(&run.id)
+        .await
+        .expect("list traces");
+
+    assert_eq!(traces[1].event_type, "node_completed");
 }
 
 #[tokio::test]
@@ -506,17 +846,25 @@ async fn custom_trigger_claim_is_exclusive_when_database_is_available() {
         .expect("claim")
         .expect("due custom trigger");
     assert_eq!(claimed.trigger_name, "ready");
-    assert!(
-        store
-            .claim_custom_trigger("evaluator-b", 60)
-            .await
-            .expect("second claim")
-            .is_none()
-    );
+    assert_eq!(claimed.automation_id, automation.id().as_str());
+    let second_claim = store
+        .claim_custom_trigger("evaluator-b", 60)
+        .await
+        .expect("second claim");
+    assert!(second_claim.as_ref().is_none_or(|trigger| {
+        trigger.automation_id != claimed.automation_id
+            || trigger.trigger_name != claimed.trigger_name
+    }));
     store
         .complete_custom_trigger("evaluator-a", &claimed, 60, None, "delivery")
         .await
         .expect("complete");
+    if let Some(trigger) = second_claim {
+        store
+            .complete_custom_trigger("evaluator-b", &trigger, 60, None, "delivery")
+            .await
+            .expect("complete unrelated trigger claimed during test");
+    }
 }
 
 #[tokio::test]

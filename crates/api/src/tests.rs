@@ -4,12 +4,15 @@ use axum::{
     body::{Body, to_bytes},
     http::{Method, Request},
 };
+use capsulet_application::AgentRunRecord;
 use capsulet_core::{
-    ArtifactId, ArtifactObjectKind, Automation, AutomationId, AutomationStatus, AutomationTrigger,
-    CustomTriggerPlugin, ExecutionPoolName, JobArtifact, JobDefinition, JobDefinitionId, JobRun,
-    JobRunId, JobRunLog, JobRunStatus, JobRunTransition, WorkflowDefinition, WorkflowId,
-    WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
-    WorkflowStepRun, WorkflowStepRunId,
+    AgentDefinition, AgentId, AgentRunId, ArtifactId, ArtifactObjectKind, Automation, AutomationId,
+    AutomationStatus, AutomationTrigger, Claim, ClaimId, CustomTriggerPlugin, Entity, EntityId,
+    Event, EventId, Evidence, EvidenceId, ExecutionPoolName, GraphDefinition, GraphId, JobArtifact,
+    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus, JobRunTransition,
+    MemoryContract, MemoryContractId, Relationship, RelationshipId, Source, SourceId,
+    WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus,
+    WorkflowStep, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
 };
 use capsulet_postgres::{
     AdmissionSnapshot, NewProjectMembership, ProjectMembershipRecord, ProjectRecord, TriggerEvent,
@@ -36,6 +39,16 @@ struct FakeStore {
     trigger_plugins: Arc<Mutex<Vec<CustomTriggerPlugin>>>,
     workflow_runs: Arc<Mutex<Vec<WorkflowRun>>>,
     workflow_step_runs: Arc<Mutex<Vec<WorkflowStepRun>>>,
+    graphs: Arc<Mutex<Vec<GraphDefinition>>>,
+    agents: Arc<Mutex<Vec<AgentDefinition>>>,
+    agent_runs: Arc<Mutex<Vec<AgentRunRecord>>>,
+    memory_sources: Arc<Mutex<Vec<Source>>>,
+    memory_evidence: Arc<Mutex<Vec<Evidence>>>,
+    memory_entities: Arc<Mutex<Vec<Entity>>>,
+    memory_claims: Arc<Mutex<Vec<Claim>>>,
+    memory_events: Arc<Mutex<Vec<Event>>>,
+    memory_relationships: Arc<Mutex<Vec<Relationship>>>,
+    memory_contracts: Arc<Mutex<Vec<MemoryContract>>>,
     projects: Arc<Mutex<Vec<ProjectRecord>>>,
     project_memberships: Arc<Mutex<Vec<ProjectMembershipRecord>>>,
     ownership: Arc<Mutex<Vec<FakeOwnership>>>,
@@ -504,6 +517,376 @@ impl ApiStore for FakeStore {
             .map_err(|error| error.to_string())?
             .iter()
             .find(|workflow| workflow.id().clone() == *id)
+            .cloned())
+    }
+
+    async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error> {
+        let mut graphs = self.graphs.lock().map_err(|error| error.to_string())?;
+        graphs.retain(|existing| existing.id() != graph.id());
+        graphs.push(graph.clone());
+        Ok(())
+    }
+
+    async fn list_graphs(&self, limit: i64) -> Result<Vec<GraphDefinition>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .graphs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_graph(&self, id: &GraphId) -> Result<Option<GraphDefinition>, Self::Error> {
+        Ok(self
+            .graphs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|graph| graph.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_agent(&self, agent: &AgentDefinition) -> Result<(), Self::Error> {
+        let mut agents = self.agents.lock().map_err(|error| error.to_string())?;
+        agents.retain(|existing| existing.id() != agent.id());
+        agents.push(agent.clone());
+        Ok(())
+    }
+
+    async fn list_agents(&self, limit: i64) -> Result<Vec<AgentDefinition>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .agents
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_agent(&self, id: &AgentId) -> Result<Option<AgentDefinition>, Self::Error> {
+        Ok(self
+            .agents
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|agent| agent.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_agent_run(&self, run: &AgentRunRecord) -> Result<(), Self::Error> {
+        let mut runs = self.agent_runs.lock().map_err(|error| error.to_string())?;
+        runs.retain(|existing| existing.id != run.id);
+        runs.push(run.clone());
+        Ok(())
+    }
+
+    async fn list_agent_runs(&self, limit: i64) -> Result<Vec<AgentRunRecord>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .agent_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_agent_run(&self, id: &AgentRunId) -> Result<Option<AgentRunRecord>, Self::Error> {
+        Ok(self
+            .agent_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|run| run.id == *id)
+            .cloned())
+    }
+
+    async fn upsert_memory_source(&self, source: &Source) -> Result<(), Self::Error> {
+        let mut sources = self
+            .memory_sources
+            .lock()
+            .map_err(|error| error.to_string())?;
+        sources.retain(|existing| existing.id() != source.id());
+        sources.push(source.clone());
+        Ok(())
+    }
+
+    async fn list_memory_sources(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Source>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_sources
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|source| {
+                source.scope().tenant_id() == tenant_id && source.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_memory_source(&self, id: &SourceId) -> Result<Option<Source>, Self::Error> {
+        Ok(self
+            .memory_sources
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|source| source.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_memory_evidence(&self, evidence: &Evidence) -> Result<(), Self::Error> {
+        let mut records = self
+            .memory_evidence
+            .lock()
+            .map_err(|error| error.to_string())?;
+        records.retain(|existing| existing.id() != evidence.id());
+        records.push(evidence.clone());
+        Ok(())
+    }
+
+    async fn list_memory_evidence(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Evidence>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_evidence
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|evidence| {
+                evidence.scope().tenant_id() == tenant_id
+                    && evidence.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_memory_evidence(&self, id: &EvidenceId) -> Result<Option<Evidence>, Self::Error> {
+        Ok(self
+            .memory_evidence
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|evidence| evidence.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_memory_entity(&self, entity: &Entity) -> Result<(), Self::Error> {
+        let mut entities = self
+            .memory_entities
+            .lock()
+            .map_err(|error| error.to_string())?;
+        entities.retain(|existing| existing.id() != entity.id());
+        entities.push(entity.clone());
+        Ok(())
+    }
+
+    async fn list_memory_entities(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Entity>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_entities
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|entity| {
+                entity.scope().tenant_id() == tenant_id && entity.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_memory_entity(&self, id: &EntityId) -> Result<Option<Entity>, Self::Error> {
+        Ok(self
+            .memory_entities
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|entity| entity.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_memory_claim(&self, claim: &Claim) -> Result<(), Self::Error> {
+        let mut claims = self
+            .memory_claims
+            .lock()
+            .map_err(|error| error.to_string())?;
+        claims.retain(|existing| existing.id() != claim.id());
+        claims.push(claim.clone());
+        Ok(())
+    }
+
+    async fn list_memory_claims(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Claim>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_claims
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|claim| {
+                claim.scope().tenant_id() == tenant_id && claim.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_memory_claim(&self, id: &ClaimId) -> Result<Option<Claim>, Self::Error> {
+        Ok(self
+            .memory_claims
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|claim| claim.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_memory_event(&self, event: &Event) -> Result<(), Self::Error> {
+        let mut events = self
+            .memory_events
+            .lock()
+            .map_err(|error| error.to_string())?;
+        events.retain(|existing| existing.id() != event.id());
+        events.push(event.clone());
+        Ok(())
+    }
+
+    async fn list_memory_events(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Event>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|event| {
+                event.scope().tenant_id() == tenant_id && event.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_memory_event(&self, id: &EventId) -> Result<Option<Event>, Self::Error> {
+        Ok(self
+            .memory_events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|event| event.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_memory_relationship(
+        &self,
+        relationship: &Relationship,
+    ) -> Result<(), Self::Error> {
+        let mut relationships = self
+            .memory_relationships
+            .lock()
+            .map_err(|error| error.to_string())?;
+        relationships.retain(|existing| existing.id() != relationship.id());
+        relationships.push(relationship.clone());
+        Ok(())
+    }
+
+    async fn list_memory_relationships(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Relationship>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_relationships
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|relationship| {
+                relationship.scope().tenant_id() == tenant_id
+                    && relationship.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_memory_relationship(
+        &self,
+        id: &RelationshipId,
+    ) -> Result<Option<Relationship>, Self::Error> {
+        Ok(self
+            .memory_relationships
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|relationship| relationship.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_memory_contract(&self, contract: &MemoryContract) -> Result<(), Self::Error> {
+        let mut contracts = self
+            .memory_contracts
+            .lock()
+            .map_err(|error| error.to_string())?;
+        contracts.retain(|existing| existing.id() != contract.id());
+        contracts.push(contract.clone());
+        Ok(())
+    }
+
+    async fn list_memory_contracts(&self, limit: i64) -> Result<Vec<MemoryContract>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_contracts
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_memory_contract(
+        &self,
+        id: &MemoryContractId,
+    ) -> Result<Option<MemoryContract>, Self::Error> {
+        Ok(self
+            .memory_contracts
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|contract| contract.id() == id)
             .cloned())
     }
 
@@ -1075,6 +1458,353 @@ async fn response_json(response: axum::response::Response) -> Value {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "end-to-end memory API contract covers source, evidence, entity, and claim wiring"
+)]
+async fn creates_lists_and_reads_claim_memory() {
+    let app = authenticated_app(FakeStore::default());
+
+    let source_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/memory/sources")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "source_exec_update",
+                        "kind": "executive_update",
+                        "uri": "file:///updates/atlas.md",
+                        "title": "Atlas executive update",
+                        "authority": "high"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(source_response.status(), axum::http::StatusCode::CREATED);
+
+    let evidence_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/memory/evidence")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "evidence_exec_update",
+                        "source_id": "source_exec_update",
+                        "locator": "updates/atlas.md#L12",
+                        "excerpt": "Project Atlas launch date moved to August 1.",
+                        "observed_at": "2026-07-05T10:00:00Z"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(evidence_response.status(), axum::http::StatusCode::CREATED);
+
+    let entity_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/memory/entities")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "project_atlas",
+                        "entity_type": "Project",
+                        "name": "Project Atlas",
+                        "aliases": ["Atlas"]
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(entity_response.status(), axum::http::StatusCode::CREATED);
+
+    let claim_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/memory/claims")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "claim_launch_august",
+                        "subject_id": "project_atlas",
+                        "predicate": "launch_date",
+                        "object": "2026-08-01",
+                        "evidence_ids": ["evidence_exec_update"],
+                        "confidence": 0.93,
+                        "authority": "high",
+                        "status": "active",
+                        "observed_at": "2026-07-05T10:00:00Z",
+                        "valid_from": "2026-07-05T00:00:00Z"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(claim_response.status(), axum::http::StatusCode::CREATED);
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/memory/claims")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(list_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response_json(list_response).await["claims"][0]["evidence_ids"],
+        json!(["evidence_exec_update"])
+    );
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/memory/claims/claim_launch_august")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(get_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(response_json(get_response).await["status"], "active");
+}
+
+#[tokio::test]
+async fn creates_lists_and_reads_memory_contract() {
+    let app = authenticated_app(FakeStore::default());
+    let dsl = r"
+entity Project:
+  fields:
+    name: string
+    owner: Person
+
+entity Person:
+  fields:
+    name: string
+
+relation owns:
+  from: Person
+  to: Project
+
+claim_policy:
+  require_source: true
+  store_confidence: true
+  allow_contradictions: true
+  min_confidence: 0.8
+
+trust_policy:
+  source_priority:
+    - legal_contracts
+    - board_minutes
+";
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/memory/contracts")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "contract_project_memory",
+                        "name": "Project memory",
+                        "source": dsl
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+    let body = response_json(create_response).await;
+    assert_eq!(
+        body["compiled"]["entity_types"],
+        json!(["Project", "Person"])
+    );
+    assert_eq!(
+        body["compiled"]["claim_policy"]["min_confidence"],
+        json!(0.8)
+    );
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/memory/contracts")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(list_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response_json(list_response).await["contracts"][0]["id"],
+        "contract_project_memory"
+    );
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/memory/contracts/contract_project_memory")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(get_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response_json(get_response).await["compiled"]["relations"][0]["name"],
+        "owns"
+    );
+}
+
+fn rag_graph_request(id: &str) -> Value {
+    json!({
+        "id": id,
+        "name": "RAG Graph",
+        "nodes": [
+            {
+                "id": "normalize",
+                "name": "Normalize",
+                "kind": "query_normalizer",
+                "ports": [
+                    { "id": "normalize.input", "direction": "input", "value_type": "user_query" },
+                    { "id": "normalize.output", "direction": "output", "value_type": "normalized_query" }
+                ]
+            },
+            {
+                "id": "embed",
+                "name": "Embed",
+                "kind": "embedding",
+                "ports": [
+                    { "id": "embed.input", "direction": "input", "value_type": "normalized_query" },
+                    { "id": "embed.output", "direction": "output", "value_type": "embedding_vector" }
+                ]
+            }
+        ],
+        "hyperedges": [
+            {
+                "id": "normalize_to_embed",
+                "sources": [
+                    { "kind": "port", "node_id": "normalize", "port_id": "normalize.output", "value_type": "normalized_query" }
+                ],
+                "targets": [
+                    { "kind": "port", "node_id": "embed", "port_id": "embed.input", "value_type": "normalized_query" }
+                ]
+            }
+        ],
+        "transition_policy": {
+            "mode": "static",
+            "cycles_allowed": false
+        }
+    })
+}
+
+async fn create_graph(app: &axum::Router, id: &str) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/graphs")
+                .header("content-type", "application/json")
+                .body(Body::from(rag_graph_request(id).to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+}
+
+async fn create_agent(app: &axum::Router, id: &str, graph_id: &str) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/agents")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": id,
+                        "name": "RAG Agent",
+                        "graph_id": graph_id,
+                        "budget": {
+                            "max_steps": 8,
+                            "max_tokens": 4096,
+                            "max_seconds": 30,
+                        "max_cost_micros": 100_000
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+}
+
+#[tokio::test]
 async fn protected_routes_require_a_valid_bearer_token() {
     let app = authenticated_app(FakeStore::default());
     let response = app
@@ -1626,6 +2356,202 @@ async fn rejects_cyclic_workflow_dependencies() {
             .as_str()
             .unwrap()
             .contains("cycle")
+    );
+}
+
+#[tokio::test]
+async fn creates_and_returns_typed_agent_graph() {
+    let app = test_app(FakeStore::default());
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/graphs")
+                .header("content-type", "application/json")
+                .body(Body::from(rag_graph_request("rag_graph").to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    let body = response_json(response).await;
+    assert_eq!(body["id"], "rag_graph");
+    assert_eq!(body["nodes"][0]["kind"], "query_normalizer");
+    assert_eq!(body["transition_policy"]["mode"], "static");
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/graphs")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response_json(list_response).await["graphs"][0]["id"],
+        "rag_graph"
+    );
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/graphs/rag_graph")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response_json(get_response).await["hyperedges"][0]["targets"][0]["node_id"],
+        "embed"
+    );
+}
+
+#[tokio::test]
+async fn rejects_invalid_typed_graph_wiring() {
+    let app = test_app(FakeStore::default());
+    let mut request = rag_graph_request("bad_graph");
+    request["nodes"][1]["ports"][0]["value_type"] = json!("prompt");
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/graphs")
+                .header("content-type", "application/json")
+                .body(Body::from(request.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(response_json(response).await["code"], "validation_error");
+}
+
+#[tokio::test]
+async fn creates_and_returns_agent_definition() {
+    let app = test_app(FakeStore::default());
+    create_graph(&app, "rag_agent_graph").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/agents")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "rag_agent",
+                        "name": "RAG Agent",
+                        "graph_id": "rag_agent_graph",
+                        "budget": {
+                            "max_steps": 12,
+                            "max_tokens": 8192,
+                            "max_seconds": 60,
+                        "max_cost_micros": 250_000
+                        },
+                        "termination_conditions": ["validator_pass", "safety_failure"]
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    assert_eq!(response_json(response).await["graph_id"], "rag_agent_graph");
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/agents")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response_json(list_response).await["agents"][0]["id"],
+        "rag_agent"
+    );
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/agents/rag_agent")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = response_json(get_response).await;
+    assert_eq!(body["budget"]["max_steps"], 12);
+    assert_eq!(body["termination_conditions"][0], "validator_pass");
+}
+
+#[tokio::test]
+async fn starts_and_returns_agent_run() {
+    let app = test_app(FakeStore::default());
+    create_graph(&app, "run_graph").await;
+    create_agent(&app, "run_agent", "run_graph").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/agents/run_agent/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "agent_run_1",
+                        "initial_state": { "query": "What is Capsulet?" }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    let body = response_json(response).await;
+    assert_eq!(body["id"], "agent_run_1");
+    assert_eq!(body["agent_id"], "run_agent");
+    assert_eq!(body["status"], "queued");
+    assert_eq!(body["state_version"], 0);
+    assert_eq!(body["state"]["query"], "What is Capsulet?");
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/agent-runs")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response_json(list_response).await["agent_runs"][0]["id"],
+        "agent_run_1"
+    );
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/agent-runs/agent_run_1")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response_json(get_response).await["state"]["query"],
+        "What is Capsulet?"
     );
 }
 
