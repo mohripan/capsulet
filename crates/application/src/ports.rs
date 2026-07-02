@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use capsulet_core::{ArtifactId, JobArtifact, JobRun, JobRunId, JobRunLog};
+use capsulet_core::{
+    AgentDefinition, ArtifactId, GraphDefinition, JobArtifact, JobRun, JobRunId, JobRunLog,
+};
 
 /// Repository port for durable job run state.
 #[async_trait]
@@ -76,4 +78,40 @@ pub trait JobArtifactRepository {
         run_id: &JobRunId,
         artifact_id: &ArtifactId,
     ) -> Result<Option<JobArtifact>, Self::Error>;
+}
+
+/// Repository port for typed graph definitions.
+#[async_trait]
+pub trait GraphRepository {
+    type Error;
+
+    /// Persists a validated graph definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns the implementation-specific repository error when persistence
+    /// fails.
+    async fn save_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error>;
+}
+
+/// Repository port for agent definitions and agent run state.
+#[async_trait]
+pub trait AgentRepository {
+    type Error;
+
+    /// Persists a validated agent definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns the implementation-specific repository error when persistence
+    /// fails.
+    async fn save_agent(&self, agent: &AgentDefinition) -> Result<(), Self::Error>;
+
+    /// Persists an agent run record.
+    ///
+    /// # Errors
+    ///
+    /// Returns the implementation-specific repository error when persistence
+    /// fails.
+    async fn save_run(&self, run: &crate::agents::AgentRunRecord) -> Result<(), Self::Error>;
 }

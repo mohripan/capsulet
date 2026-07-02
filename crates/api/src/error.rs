@@ -36,6 +36,14 @@ pub(crate) enum ApiError {
     WorkflowRunNotFound(String),
     #[error("invalid workflow run transition: {0}")]
     InvalidWorkflowRunTransition(String),
+    #[error("graph not found: {0}")]
+    GraphNotFound(String),
+    #[error("agent not found: {0}")]
+    AgentNotFound(String),
+    #[error("agent run not found: {0}")]
+    AgentRunNotFound(String),
+    #[error("memory record not found: {0}")]
+    MemoryNotFound(String),
     #[error("automation not found: {0}")]
     AutomationNotFound(String),
     #[error("trigger plugin not found: {0}")]
@@ -80,6 +88,10 @@ impl ApiError {
             Self::JobDefinitionSourceNotFound(_)
             | Self::WorkflowNotFound(_)
             | Self::WorkflowRunNotFound(_)
+            | Self::GraphNotFound(_)
+            | Self::AgentNotFound(_)
+            | Self::AgentRunNotFound(_)
+            | Self::MemoryNotFound(_)
             | Self::AutomationNotFound(_)
             | Self::TriggerPluginNotFound(_)
             | Self::RunNotFound(_)
@@ -106,6 +118,10 @@ impl ApiError {
             Self::WorkflowLocked(_) => "workflow_locked",
             Self::WorkflowRunNotFound(_) => "workflow_run_not_found",
             Self::InvalidWorkflowRunTransition(_) => "invalid_workflow_run_transition",
+            Self::GraphNotFound(_) => "graph_not_found",
+            Self::AgentNotFound(_) => "agent_not_found",
+            Self::AgentRunNotFound(_) => "agent_run_not_found",
+            Self::MemoryNotFound(_) => "memory_not_found",
             Self::AutomationNotFound(_) => "automation_not_found",
             Self::TriggerPluginNotFound(_) => "trigger_plugin_not_found",
             Self::RunNotFound(_) => "job_run_not_found",

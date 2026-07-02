@@ -1,12 +1,24 @@
 # Operations
 
-## Scheduler observability
+## Agent runtime observability
+
+Agent runs persist their current state in `agent_runs`, every state version in `agent_state_snapshots`, and runtime decisions in `agent_trace_events`. Until the dedicated agent worker and HTTP trace endpoints land, operational inspection is database-level: check run status, state version progression, and trace sequence continuity for a run.
+
+Important tables:
+
+- `graph_definitions`, `graph_nodes`, `graph_ports`, and `graph_hyperedges`
+- `agent_definitions`
+- `agent_runs`
+- `agent_state_snapshots`
+- `agent_trace_events`
+
+## Compatibility scheduler observability
 
 The scheduler exposes:
 
 - `/readyz`: database readiness
-- `/metrics`: Prometheus metrics including queue and workflow advancement state from the PostgreSQL adapter
-- structured logs for polling ticks, interval automation advancement, and workflow reconciliation
+- `/metrics`: Prometheus metrics including queue and compatibility workflow advancement state from the PostgreSQL adapter
+- structured logs for polling ticks, interval automation advancement, and compatibility workflow reconciliation
 
 Operational checks:
 
@@ -16,7 +28,7 @@ curl http://127.0.0.1:8082/metrics
 docker logs capsulet-scheduler
 ```
 
-If workflow runs remain queued:
+If compatibility workflow runs remain queued:
 
 1. Confirm scheduler readiness.
 2. Confirm worker readiness.
@@ -40,7 +52,7 @@ Recommended settings:
 
 Backpressure is enforced at two layers:
 
-- API admission can reject new manual job and manual workflow-trigger submissions before they are persisted.
+- API admission can reject new manual job and manual compatibility workflow-trigger submissions before they are persisted.
 - Worker leasing enforces execution-pool concurrency and retry scheduling after work is queued.
 
 Configure API admission with:
@@ -61,7 +73,7 @@ Operators should alert on:
 
 ## Reconciliation loops
 
-The worker reattaches to deterministic Kubernetes Jobs after lease expiry. The scheduler reconciles workflow DAGs from durable run/step state and can resume failed workflow runs from completed checkpoints.
+The agent runtime persists state and trace records after each node adapter result. The worker reattaches to deterministic Kubernetes Jobs after lease expiry. The compatibility scheduler reconciles workflow DAGs from durable run/step state and can resume failed workflow runs from completed checkpoints.
 
 ## Load tests
 

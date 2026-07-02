@@ -1,12 +1,12 @@
 # Capsulet Architecture
 
-This document describes the architecture implemented in this repository. Capsulet is a Kubernetes-native automation platform for defining Python jobs, composing them into workflow DAGs, triggering workflow runs, and retaining execution state, logs, and artifacts.
+This document describes the architecture implemented in this repository. Capsulet is becoming a local-first AI memory platform. The implemented foundation is a Kubernetes-native platform for defining typed agent execution graphs, binding them to bounded agent definitions, starting durable agent runs, and retaining state snapshots, trace events, logs, and artifacts. The upcoming memory graph layer will model claims, entities, events, evidence, permissions, trust, contradictions, and time. Python jobs and workflow DAGs remain as compatibility infrastructure and deterministic execution tools for agent systems.
 
 For a shorter operator-facing overview, see [docs/architecture.md](docs/architecture.md). Architecture decisions are recorded under [docs/adr](docs/adr).
 
 ## Scope and maturity
 
-The current system provides an authenticated PostgreSQL-backed control plane, a dashboard and CLI, filesystem or S3-compatible object storage, and stub, local-process, WASI Python, and Kubernetes Job execution backends.
+The current system provides an authenticated PostgreSQL-backed control plane, typed execution-graph and agent persistence, an application-level agent runtime, a dashboard and CLI, filesystem or S3-compatible object storage, and stub, local-process, WASI Python, and Kubernetes Job execution backends.
 
 PostgreSQL is the implemented durable event and coordination channel. Kafka remains an optional future scaling path. Hostile multi-tenant workloads should configure a sandboxed Kubernetes RuntimeClass such as gVisor or Kata in addition to the enforced pod security and default-deny network policy.
 
@@ -47,15 +47,32 @@ PostgreSQL is the source of truth for definitions and execution state. Object st
 The Axum API is the synchronous control-plane boundary. It:
 
 - runs embedded SQLx migrations on startup, unless migration behavior is configured separately;
+- creates, lists, and reads typed agent execution graph definitions;
+- creates, lists, and reads agent definitions and queued agent runs;
 - creates, lists, reads, updates, and deletes job definitions;
-- creates and reads workflow definitions, including dependency edges;
+- creates and reads compatibility workflow definitions, including dependency edges;
 - manages automations, trigger definitions, and custom-trigger plugin metadata;
-- creates manual job and workflow runs;
+- creates manual job, workflow, and agent runs;
 - exposes run filtering, logs, cancellation, workflow resume/removal, and artifact download;
 - validates job input contracts, workflow graphs, trigger configuration, and condition trees;
 - exposes `/livez`, `/readyz`, `/metrics`, and the compatibility alias `/healthz`.
 
 The API is the HTTP transport adapter. Route wiring, middleware, request extraction, response models, and status-code mapping live in `capsulet-api`. Shared application commands and ports live in `capsulet-application`; some HTTP orchestration still lives in `capsulet-api` and is being moved behind application services incrementally. PostgreSQL and object storage remain concrete adapters through `capsulet-postgres` and `capsulet-storage`. Bearer authentication is fail-closed by default, viewer/operator/admin roles authorize routes, and mutation audits are durable.
+
+### Agent runtime (`capsulet-application::agent_runtime`)
+
+The first agent runtime slice lives in the application crate so it can be driven by the API, a future agent worker, or tests without depending on HTTP or SQLx. It:
+
+- validates that the run belongs to the agent and is not terminal;
+- marks queued runs running;
+- walks the graph's static order;
+- calls a pluggable `AgentNodeExecutor` for each node;
+- persists every state version through an `AgentRuntimeRepository`;
+- appends semantic trace events for node start/completion, budget stops, failures, and run success;
+- enforces step, token, and cost budgets;
+- maps validator-pass outcomes to `succeeded` and other explicit stops to `stopped`.
+
+Provider-specific LLM, embedding, vector-search, reranking, prompt, memory, and validation adapters should implement the node executor boundary rather than entering the domain model. The runtime acts on agent execution graphs; it should later call into the memory graph through explicit memory query/write adapters rather than mixing claim governance into execution-graph primitives.
 
 ### Scheduler (`capsulet-scheduler`)
 
@@ -65,6 +82,8 @@ The scheduler is a PostgreSQL polling loop. Each tick:
 2. reconciles non-terminal workflow runs;
 3. queues every DAG step whose prerequisites have succeeded;
 4. marks workflow runs succeeded, failed, timed out, or cancelled when their graph reaches a terminal outcome.
+
+The scheduler is currently a compatibility workflow component. Future automation work should create agent runs directly and use workflow DAGs only for deterministic tool jobs where they still fit.
 
 It exposes health endpoints on a separate listener (default `0.0.0.0:8082`). `/livez` checks the process; `/readyz` and `/healthz` ping PostgreSQL.
 
@@ -87,7 +106,7 @@ The `capsulet-runner` binary is only a component placeholder; execution is coord
 
 ### Dashboard (`dashboard`)
 
-The Next.js dashboard provides authenticated authoring and operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, artifacts, identity, and audit events. Browser requests go through `/api/capsulet/...`; the server-side proxy reads an HttpOnly credential cookie and forwards its bearer token to `CAPSULET_DASHBOARD_API_URL`.
+The Next.js dashboard currently provides authenticated authoring and operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, artifacts, identity, and audit events. The product direction is to add graph/agent authoring and agent-run trace views as the primary experience. Browser requests go through `/api/capsulet/...`; the server-side proxy reads an HttpOnly credential cookie and forwards its bearer token to `CAPSULET_DASHBOARD_API_URL`.
 
 ### CLI (`capsulet-cli`)
 
@@ -137,14 +156,22 @@ flowchart TD
     evaluator --> storage
 ```
 
-`capsulet-core` is the pure domain crate. It owns typed IDs, validated value objects, aggregate state, state transitions, workflow graph validation, trigger conditions, and domain errors. It intentionally does not own async repository traits, SQL rows, HTTP models, runner implementations, or process runtime logic.
+`capsulet-core` is the pure domain crate. It owns typed IDs, validated value objects, execution graph and agent aggregate state, workflow compatibility state, trigger conditions, and domain errors. It intentionally does not own async repository traits, SQL rows, HTTP models, runner implementations, or process runtime logic. Memory graph primitives should be added here as separate claim/entity/evidence concepts rather than folded into `GraphDefinition`.
 
-`capsulet-application` sits between the domain and adapters. It currently owns command/query shapes, application ports, orchestration errors, and the worker lease-and-run use case. Ports include job-run repositories, log repositories, artifact repositories, and worker execution storage. Infrastructure crates implement these ports at their boundaries rather than exposing SQL rows, object-store details, or Kubernetes types to the domain.
+`capsulet-application` sits between the domain and adapters. It currently owns command/query shapes, application ports, the agent runtime use case, orchestration errors, and the worker lease-and-run use case. Ports include graph repositories, agent repositories, agent-runtime trace/state repositories, job-run repositories, log repositories, artifact repositories, and worker execution storage. Infrastructure crates implement these ports at their boundaries rather than exposing SQL rows, object-store details, or Kubernetes types to the domain.
 
 ## Domain and persistence model
 
 ```mermaid
 erDiagram
+    GRAPH_DEFINITIONS ||--o{ GRAPH_NODES : contains
+    GRAPH_NODES ||--o{ GRAPH_PORTS : exposes
+    GRAPH_DEFINITIONS ||--o{ GRAPH_HYPEREDGES : connects
+    GRAPH_HYPEREDGES ||--o{ GRAPH_HYPEREDGE_ENDPOINTS : has
+    GRAPH_DEFINITIONS ||--o{ AGENT_DEFINITIONS : backs
+    AGENT_DEFINITIONS ||--o{ AGENT_RUNS : instantiates
+    AGENT_RUNS ||--o{ AGENT_STATE_SNAPSHOTS : records
+    AGENT_RUNS ||--o{ AGENT_TRACE_EVENTS : emits
     JOB_DEFINITIONS ||--o{ JOB_RUNS : instantiates
     JOB_RUNS ||--o{ JOB_ATTEMPTS : attempts
     JOB_RUNS ||--o| JOB_RUN_LOGS : has
@@ -222,9 +249,9 @@ stateDiagram-v2
 
 Transitions are represented by `JobRunTransition` and validated in the domain. Store updates use status/lease guards so a stale worker result cannot overwrite cancellation or another owner's state.
 
-## Workflow DAG execution
+## Compatibility workflow DAG execution
 
-A workflow contains steps plus directed dependency edges. API validation rejects duplicate edges, self-edges, references to unknown steps, and cycles.
+The legacy workflow DAG model remains for deterministic jobs and Python tool pipelines. It is no longer the product's design center, but it is still a useful compatibility shape and execution substrate for agent tools. A workflow contains steps plus directed dependency edges. API validation rejects duplicate edges, self-edges, references to unknown steps, and cycles.
 
 - If `dependencies` is omitted, the API creates a position-ordered chain for compatibility.
 - If `dependencies` is an empty array, every step is an independent root.
@@ -243,7 +270,7 @@ Before a dependent job starts, the worker loads artifacts from each successful d
 
 ## Automations and triggers
 
-An automation targets one workflow and stores enabled/disabled state, input JSON, legacy trigger settings, a set of named triggers, and a condition expression. Supported trigger-definition kinds are:
+The current automation implementation targets one compatibility workflow and stores enabled/disabled state, input JSON, legacy trigger settings, a set of named triggers, and a condition expression. Supported trigger-definition kinds are:
 
 - `manual`
 - `schedule`
@@ -252,7 +279,7 @@ An automation targets one workflow and stores enabled/disabled state, input JSON
 
 The API validates trigger names, kind-specific configuration, plugin references, input/config contracts, and condition references. It also retains compatibility fields for `manual` and fixed `interval` automations.
 
-`POST /v1/automations/{id}/trigger` starts manual workflow runs directly. The evaluator produces cron, SQL, and custom-plugin events and consumes signed webhooks; durable correlation groups are evaluated into workflow runs exactly once. The scheduler retains legacy interval compatibility and advances workflow DAGs.
+`POST /v1/automations/{id}/trigger` starts manual workflow runs directly. The evaluator produces cron, SQL, and custom-plugin events and consumes signed webhooks; durable correlation groups are evaluated into workflow runs exactly once. The scheduler retains legacy interval compatibility and advances workflow DAGs. The next automation direction is direct agent-run triggering with workflow creation kept as a compatibility path.
 
 ## Execution pools
 

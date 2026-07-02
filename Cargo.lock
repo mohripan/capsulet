@@ -360,6 +360,7 @@ dependencies = [
  "capsulet-observability",
  "capsulet-runner",
  "capsulet-storage",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
 ]

@@ -1,16 +1,20 @@
 # Capsulet
 
-Capsulet is a Kubernetes-native automation control plane for durable, script-centric workflows. It combines reusable job definitions, dependency-graph workflows, authenticated automation triggers, isolated execution, logs, artifacts, retry policies, and operational health checks behind one API, CLI, and dashboard.
+Capsulet is a local-first AI memory platform in progress. The current foundation is a Kubernetes-native control plane for durable agent execution graphs: typed graph definitions, bounded agent policies, agent runs, state snapshots, and trace events. The next major layer is the memory graph itself: claims, entities, events, evidence, permissions, trust, and time. The existing workflow/job runner stack remains as the execution substrate for deterministic tools and compatibility use cases.
 
 ![Capsulet workflow dashboard](docs/images/capsulet-dashboard.png)
 
 ## What works today
 
+- typed agent graph definitions with nodes, ports, hyperedges, transition policies, and static execution order
+- agent definitions with graph references, step/token/time/cost budgets, and termination policies
+- queued agent runs with durable state snapshots and semantic trace events
+- application-level agent runtime execution with pluggable node adapters, budget enforcement, failure handling, and validator-pass completion
 - reusable Python job definitions with JSON input schemas and retry policies
-- validated workflow DAGs with parallel roots, fan-out, and fan-in dependencies
+- compatibility workflow DAGs with parallel roots, fan-out, and fan-in dependencies
 - manual, timezone-aware cron, read-only SQL, signed webhook, and isolated custom-plugin triggers
 - bearer authentication with viewer/operator/admin authorization and durable mutation auditing
-- durable PostgreSQL job, attempt, workflow-step, log, and artifact metadata
+- durable PostgreSQL agent, graph, job, attempt, workflow-step, log, and artifact metadata
 - stub, trusted local process, WASI Python, and Kubernetes Job runners
 - S3-compatible or filesystem artifact storage
 - enforced execution-pool concurrency, cancellation, timeouts, delayed retry, and stale-lease recovery
@@ -21,18 +25,29 @@ Capsulet is a Kubernetes-native automation control plane for durable, script-cen
 - configurable artifact, log, trigger-event, and audit retention cleanup
 - Docker Compose for local use and a Helm chart for Kubernetes
 
-## How execution stays durable
+## Foundation: Agent Graphs vs Memory Graphs
 
-PostgreSQL is the source of truth. A worker atomically leases a queued job, records the attempt, and renews the lease while execution is active. If the worker disappears, the expired lease is requeued. Lease ownership is checked during heartbeat and finalization, so an old worker cannot overwrite a newer attempt.
+The new product direction is governed AI memory, not plain workflow orchestration. There are two graph layers:
 
-Every workflow node has a durable step run. Successful nodes are checkpoints: their metadata and artifacts remain complete even when another branch fails. Calling the resume endpoint removes only unsuccessful attempts and lets the scheduler reconstruct the missing runnable nodes from the saved graph state.
+- **Agent execution graph:** the implemented foundation. Nodes describe actions such as prompt building, retrieval, model inference, validation, and memory operations; ports and hyperedges describe how typed values move between nodes and run state.
+- **Memory graph:** the next product layer. It will model claims, entities, events, relationships, evidence, permissions, confidence, source authority, contradictions, and temporal validity.
+
+An agent definition binds a graph to an enterprise control envelope: max steps, tokens, runtime seconds, cost, and explicit termination conditions. An agent run carries a JSON state document. The runtime executes graph nodes through pluggable adapters, writes state snapshots after node completion, appends trace events, and stops on success, failure, or budget/termination policy.
 
 ```text
-automation -> workflow run -> ready DAG nodes -> job runs -> runner
-                    ^              |               |
-                    |              v               v
-                    +---- persisted checkpoints, logs, and artifacts
+agent graph -> agent definition -> agent run -> node adapter -> state snapshot
+                                      |              |
+                                      v              v
+                                trace events    model/tool/vector work
 ```
+
+## How execution stays durable
+
+PostgreSQL is the source of truth. Agent graph definitions, agent definitions, agent runs, state snapshots, and trace events are persisted durably. The runtime can be driven by a worker in later slices without changing the graph or run model.
+
+The existing job runner path remains durable as the lower-level execution substrate. A worker atomically leases a queued job, records the attempt, and renews the lease while execution is active. If the worker disappears, the expired lease is requeued. Lease ownership is checked during heartbeat and finalization, so an old worker cannot overwrite a newer attempt.
+
+Compatibility workflow nodes still have durable step runs. Successful nodes are checkpoints: their metadata and artifacts remain complete even when another branch fails. Calling the resume endpoint removes only unsuccessful attempts and lets the scheduler reconstruct the missing runnable nodes from the saved graph state.
 
 ## Local Docker Compose
 
@@ -62,7 +77,25 @@ Stop the stack without deleting persisted volumes:
 docker compose down
 ```
 
-## Workflow recovery API
+## Agent execution graph API
+
+Create typed graphs, bind them to agents, and start agent runs:
+
+```sh
+curl -H 'Authorization: Bearer <token>' -X POST http://127.0.0.1:8080/v1/graphs
+curl -H 'Authorization: Bearer <token>' -X POST http://127.0.0.1:8080/v1/agents
+curl -H 'Authorization: Bearer <token>' -X POST http://127.0.0.1:8080/v1/agents/<agent-id>/runs
+```
+
+Read graph, agent, and run state:
+
+```sh
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/graphs
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/agents
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/agent-runs
+```
+
+## Compatibility workflow recovery API
 
 Resume a failed or timed-out workflow run:
 
@@ -99,14 +132,14 @@ See [installation](docs/installation.md), [Helm values](docs/helm-values.md), an
 
 ```text
 crates/
-  application/  application services, use cases, and ports
+  application/  application services, agent runtime use cases, and ports
   api/          HTTP control plane
   core/         domain types, state machines, and validation rules
   postgres/     SQLx persistence and migrations
   runner/       runner contracts plus stub, process, WASI, and Kubernetes adapters
-  scheduler/    automation triggering and DAG reconciliation
+  scheduler/    compatibility automation triggering and DAG reconciliation
   evaluator/    durable trigger evaluation and retention cleanup
-  worker/       worker runtime loop, runner selection, and health endpoints
+  worker/       lower-level job runtime loop, runner selection, and health endpoints
   storage/      filesystem and S3-compatible object storage
   cli/          command-line client
 dashboard/      Next.js dashboard
@@ -119,7 +152,7 @@ migrations/     PostgreSQL schema history
 
 ### Python workflow authoring
 
-Workflows can be authored as decorated Python functions or as Python cells in the dashboard notebook. The [CSV artifact pipeline](examples/workflows/csv_pipeline.py) creates a CSV in one task, passes it to a dependent task, and downloads the transformed artifact. See the [example instructions](examples/workflows/README.md) for the end-to-end commands.
+Python workflows are still available as a compatibility authoring path and as a useful substrate for deterministic agent tools. They can be authored as decorated Python functions or as Python cells in the dashboard notebook. The [CSV artifact pipeline](examples/workflows/csv_pipeline.py) creates a CSV in one task, passes it to a dependent task, and downloads the transformed artifact. See the [example instructions](examples/workflows/README.md) for the end-to-end commands.
 
 Rust is pinned to version 1.96.0. The dashboard requires Node.js 20 or newer.
 

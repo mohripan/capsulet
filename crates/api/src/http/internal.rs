@@ -230,6 +230,60 @@ where
             get(get_workflow_editability),
         )
         .route(
+            "/v1/graphs",
+            post(crate::graphs::create_graph).get(crate::graphs::list_graphs),
+        )
+        .route("/v1/graphs/{id}", get(crate::graphs::get_graph))
+        .route(
+            "/v1/agents",
+            post(crate::graphs::create_agent).get(crate::graphs::list_agents),
+        )
+        .route("/v1/agents/{id}", get(crate::graphs::get_agent))
+        .route("/v1/agents/{id}/runs", post(crate::graphs::start_agent_run))
+        .route("/v1/agent-runs", get(crate::graphs::list_agent_runs))
+        .route("/v1/agent-runs/{id}", get(crate::graphs::get_agent_run))
+        .route(
+            "/v1/memory/sources",
+            post(crate::memory::create_source).get(crate::memory::list_sources),
+        )
+        .route("/v1/memory/sources/{id}", get(crate::memory::get_source))
+        .route(
+            "/v1/memory/evidence",
+            post(crate::memory::create_evidence).get(crate::memory::list_evidence),
+        )
+        .route("/v1/memory/evidence/{id}", get(crate::memory::get_evidence))
+        .route(
+            "/v1/memory/entities",
+            post(crate::memory::create_entity).get(crate::memory::list_entities),
+        )
+        .route("/v1/memory/entities/{id}", get(crate::memory::get_entity))
+        .route(
+            "/v1/memory/claims",
+            post(crate::memory::create_claim).get(crate::memory::list_claims),
+        )
+        .route("/v1/memory/claims/{id}", get(crate::memory::get_claim))
+        .route(
+            "/v1/memory/events",
+            post(crate::memory::create_event).get(crate::memory::list_events),
+        )
+        .route("/v1/memory/events/{id}", get(crate::memory::get_event))
+        .route(
+            "/v1/memory/relationships",
+            post(crate::memory::create_relationship).get(crate::memory::list_relationships),
+        )
+        .route(
+            "/v1/memory/relationships/{id}",
+            get(crate::memory::get_relationship),
+        )
+        .route(
+            "/v1/memory/contracts",
+            post(crate::memory::create_contract).get(crate::memory::list_contracts),
+        )
+        .route(
+            "/v1/memory/contracts/{id}",
+            get(crate::memory::get_contract),
+        )
+        .route(
             "/v1/automations",
             post(crate::automations::create_automation).get(crate::automations::list_automations),
         )

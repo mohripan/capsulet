@@ -1,4 +1,6 @@
-use capsulet_core::{ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunStatus};
+use capsulet_core::{
+    AgentId, AgentRunId, ExecutionPoolName, JobDefinitionId, JobRun, JobRunId, JobRunStatus,
+};
 
 /// Command side input for the first manual submission use case.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +37,13 @@ pub struct JobRunSummary {
     pub status: JobRunStatus,
     pub execution_pool: ExecutionPoolName,
     pub attempt_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartAgentRunCommand {
+    pub run_id: AgentRunId,
+    pub agent_id: AgentId,
+    pub initial_state_json: String,
 }
 
 impl From<&JobRun> for JobRunSummary {

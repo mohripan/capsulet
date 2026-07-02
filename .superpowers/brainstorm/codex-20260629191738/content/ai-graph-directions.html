@@ -1,0 +1,63 @@
+<h2>What Should CapSuLet Become?</h2>
+<p class="subtitle">Three possible directions for evolving from job automation DAGs into AI-native workflow orchestration.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:grid;gap:10px;padding:18px">
+        <div class="placeholder" style="height:42px">Triggers</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="placeholder" style="height:34px;flex:1">Job A</div>
+          <div class="placeholder" style="height:34px;flex:1">Job B</div>
+        </div>
+        <div class="placeholder" style="height:42px">Durable Workflow Run</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Automation Platform Plus AI Jobs</h3>
+      <p>Keep the current DAG/workflow model and add first-class LLM job templates, vector search integrations, and prompt artifacts.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px">
+        <div class="placeholder" style="height:32px">Query</div>
+        <div class="placeholder" style="height:32px">Memory</div>
+        <div class="placeholder" style="height:32px">Embed</div>
+        <div class="placeholder" style="height:32px">Retrieve</div>
+        <div class="placeholder" style="height:32px">Rerank</div>
+        <div class="placeholder" style="height:32px">Prompt</div>
+        <div class="placeholder" style="height:32px;grid-column:1 / span 2">LLM -> Validator</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. AI Pipeline Orchestrator</h3>
+      <p>Recenter the product around typed dataflow graphs for RAG, evals, model calls, transformations, and human review.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:grid;gap:8px;padding:14px">
+        <div class="placeholder" style="height:30px">State: plan</div>
+        <div style="display:flex;gap:8px">
+          <div class="placeholder" style="height:30px;flex:1">Tool</div>
+          <div class="placeholder" style="height:30px;flex:1">Observe</div>
+        </div>
+        <div class="placeholder" style="height:30px">Decide</div>
+        <div style="text-align:center;font-size:22px">↺</div>
+        <div class="placeholder" style="height:30px">Return or Escalate</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. Agent Runtime</h3>
+      <p>Make cyclic state machines the core: model calls, tool calls, observations, budgets, validators, and resumable agent loops.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>My initial read</h3>
+  <p>Option B is the strongest base: it uses the DAG durability you already built, but makes the graph typed and AI-native. Option C should be a graph mode layered on top, not the whole product on day one.</p>
+</div>

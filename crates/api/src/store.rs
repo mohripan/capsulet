@@ -1,11 +1,15 @@
 use std::fmt::Display;
 
 use async_trait::async_trait;
-use capsulet_application::{JobArtifactRepository, JobRunLogRepository, JobRunRepository};
+use capsulet_application::{
+    AgentRunRecord, JobArtifactRepository, JobRunLogRepository, JobRunRepository,
+};
 use capsulet_core::{
-    ArtifactId, Automation, AutomationId, AutomationTrigger, CustomTriggerPlugin, JobArtifact,
-    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, WorkflowDefinition, WorkflowId,
-    WorkflowRun, WorkflowRunId, WorkflowStepRun,
+    AgentDefinition, AgentId, AgentRunId, ArtifactId, Automation, AutomationId, AutomationTrigger,
+    Claim, ClaimId, CustomTriggerPlugin, Entity, EntityId, Event, EventId, Evidence, EvidenceId,
+    GraphDefinition, GraphId, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId,
+    JobRunLog, MemoryContract, MemoryContractId, Relationship, RelationshipId, Source, SourceId,
+    WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
 use capsulet_postgres::{
     AdmissionSnapshot, AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore,
@@ -149,6 +153,75 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     ) -> Result<Option<WorkflowDefinition>, Self::Error>;
     async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error>;
     async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error>;
+    async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error>;
+    async fn list_graphs(&self, limit: i64) -> Result<Vec<GraphDefinition>, Self::Error>;
+    async fn find_graph(&self, id: &GraphId) -> Result<Option<GraphDefinition>, Self::Error>;
+    async fn upsert_agent(&self, agent: &AgentDefinition) -> Result<(), Self::Error>;
+    async fn list_agents(&self, limit: i64) -> Result<Vec<AgentDefinition>, Self::Error>;
+    async fn find_agent(&self, id: &AgentId) -> Result<Option<AgentDefinition>, Self::Error>;
+    async fn upsert_agent_run(&self, run: &AgentRunRecord) -> Result<(), Self::Error>;
+    async fn list_agent_runs(&self, limit: i64) -> Result<Vec<AgentRunRecord>, Self::Error>;
+    async fn find_agent_run(&self, id: &AgentRunId) -> Result<Option<AgentRunRecord>, Self::Error>;
+    async fn upsert_memory_source(&self, source: &Source) -> Result<(), Self::Error>;
+    async fn list_memory_sources(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Source>, Self::Error>;
+    async fn find_memory_source(&self, id: &SourceId) -> Result<Option<Source>, Self::Error>;
+    async fn upsert_memory_evidence(&self, evidence: &Evidence) -> Result<(), Self::Error>;
+    async fn list_memory_evidence(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Evidence>, Self::Error>;
+    async fn find_memory_evidence(&self, id: &EvidenceId) -> Result<Option<Evidence>, Self::Error>;
+    async fn upsert_memory_entity(&self, entity: &Entity) -> Result<(), Self::Error>;
+    async fn list_memory_entities(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Entity>, Self::Error>;
+    async fn find_memory_entity(&self, id: &EntityId) -> Result<Option<Entity>, Self::Error>;
+    async fn upsert_memory_claim(&self, claim: &Claim) -> Result<(), Self::Error>;
+    async fn list_memory_claims(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Claim>, Self::Error>;
+    async fn find_memory_claim(&self, id: &ClaimId) -> Result<Option<Claim>, Self::Error>;
+    async fn upsert_memory_event(&self, event: &Event) -> Result<(), Self::Error>;
+    async fn list_memory_events(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Event>, Self::Error>;
+    async fn find_memory_event(&self, id: &EventId) -> Result<Option<Event>, Self::Error>;
+    async fn upsert_memory_relationship(
+        &self,
+        relationship: &Relationship,
+    ) -> Result<(), Self::Error>;
+    async fn list_memory_relationships(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Relationship>, Self::Error>;
+    async fn find_memory_relationship(
+        &self,
+        id: &RelationshipId,
+    ) -> Result<Option<Relationship>, Self::Error>;
+    async fn upsert_memory_contract(&self, contract: &MemoryContract) -> Result<(), Self::Error>;
+    async fn list_memory_contracts(&self, limit: i64) -> Result<Vec<MemoryContract>, Self::Error>;
+    async fn find_memory_contract(
+        &self,
+        id: &MemoryContractId,
+    ) -> Result<Option<MemoryContract>, Self::Error>;
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error>;
     async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error>;
     async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error>;
@@ -433,6 +506,168 @@ impl ApiStore for PostgresStore {
 
     async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
         self.delete_workflow(id).await
+    }
+
+    async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error> {
+        self.upsert_graph(graph).await
+    }
+
+    async fn list_graphs(&self, limit: i64) -> Result<Vec<GraphDefinition>, Self::Error> {
+        self.list_graphs(limit).await
+    }
+
+    async fn find_graph(&self, id: &GraphId) -> Result<Option<GraphDefinition>, Self::Error> {
+        self.find_graph(id).await
+    }
+
+    async fn upsert_agent(&self, agent: &AgentDefinition) -> Result<(), Self::Error> {
+        self.upsert_agent(agent).await
+    }
+
+    async fn list_agents(&self, limit: i64) -> Result<Vec<AgentDefinition>, Self::Error> {
+        self.list_agents(limit).await
+    }
+
+    async fn find_agent(&self, id: &AgentId) -> Result<Option<AgentDefinition>, Self::Error> {
+        self.find_agent(id).await
+    }
+
+    async fn upsert_agent_run(&self, run: &AgentRunRecord) -> Result<(), Self::Error> {
+        self.upsert_agent_run(run).await
+    }
+
+    async fn list_agent_runs(&self, limit: i64) -> Result<Vec<AgentRunRecord>, Self::Error> {
+        self.list_agent_runs(limit).await
+    }
+
+    async fn find_agent_run(&self, id: &AgentRunId) -> Result<Option<AgentRunRecord>, Self::Error> {
+        self.find_agent_run(id).await
+    }
+
+    async fn upsert_memory_source(&self, source: &Source) -> Result<(), Self::Error> {
+        self.upsert_memory_source(source).await
+    }
+
+    async fn list_memory_sources(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Source>, Self::Error> {
+        self.list_memory_sources(tenant_id, project_id, limit).await
+    }
+
+    async fn find_memory_source(&self, id: &SourceId) -> Result<Option<Source>, Self::Error> {
+        self.find_memory_source(id).await
+    }
+
+    async fn upsert_memory_evidence(&self, evidence: &Evidence) -> Result<(), Self::Error> {
+        self.upsert_memory_evidence(evidence).await
+    }
+
+    async fn list_memory_evidence(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Evidence>, Self::Error> {
+        self.list_memory_evidence(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn find_memory_evidence(&self, id: &EvidenceId) -> Result<Option<Evidence>, Self::Error> {
+        self.find_memory_evidence(id).await
+    }
+
+    async fn upsert_memory_entity(&self, entity: &Entity) -> Result<(), Self::Error> {
+        self.upsert_memory_entity(entity).await
+    }
+
+    async fn list_memory_entities(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Entity>, Self::Error> {
+        self.list_memory_entities(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn find_memory_entity(&self, id: &EntityId) -> Result<Option<Entity>, Self::Error> {
+        self.find_memory_entity(id).await
+    }
+
+    async fn upsert_memory_claim(&self, claim: &Claim) -> Result<(), Self::Error> {
+        self.upsert_memory_claim(claim).await
+    }
+
+    async fn list_memory_claims(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Claim>, Self::Error> {
+        self.list_memory_claims(tenant_id, project_id, limit).await
+    }
+
+    async fn find_memory_claim(&self, id: &ClaimId) -> Result<Option<Claim>, Self::Error> {
+        self.find_memory_claim(id).await
+    }
+
+    async fn upsert_memory_event(&self, event: &Event) -> Result<(), Self::Error> {
+        self.upsert_memory_event(event).await
+    }
+
+    async fn list_memory_events(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Event>, Self::Error> {
+        self.list_memory_events(tenant_id, project_id, limit).await
+    }
+
+    async fn find_memory_event(&self, id: &EventId) -> Result<Option<Event>, Self::Error> {
+        self.find_memory_event(id).await
+    }
+
+    async fn upsert_memory_relationship(
+        &self,
+        relationship: &Relationship,
+    ) -> Result<(), Self::Error> {
+        self.upsert_memory_relationship(relationship).await
+    }
+
+    async fn list_memory_relationships(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Relationship>, Self::Error> {
+        self.list_memory_relationships(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn find_memory_relationship(
+        &self,
+        id: &RelationshipId,
+    ) -> Result<Option<Relationship>, Self::Error> {
+        self.find_memory_relationship(id).await
+    }
+
+    async fn upsert_memory_contract(&self, contract: &MemoryContract) -> Result<(), Self::Error> {
+        self.upsert_memory_contract(contract).await
+    }
+
+    async fn list_memory_contracts(&self, limit: i64) -> Result<Vec<MemoryContract>, Self::Error> {
+        self.list_memory_contracts(limit).await
+    }
+
+    async fn find_memory_contract(
+        &self,
+        id: &MemoryContractId,
+    ) -> Result<Option<MemoryContract>, Self::Error> {
+        self.find_memory_contract(id).await
     }
 
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {

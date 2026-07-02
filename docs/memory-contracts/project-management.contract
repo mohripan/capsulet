@@ -1,0 +1,59 @@
+entity Project:
+  aliases:
+    - initiative
+  fields:
+    name: string
+    status: enum[planned, active, blocked, completed]
+    owner: Person
+
+entity Person:
+  fields:
+    name: string
+
+relation owns:
+  from: Person
+  to: Project
+
+event DecisionMade:
+  fields:
+    summary: string
+    decided_at: date
+
+claim_policy:
+  require_source: true
+  store_confidence: true
+  allow_contradictions: true
+  min_confidence: 0.70
+
+trust_policy:
+  source_priority:
+    - board_minutes
+    - jira
+    - slack
+
+review_policy:
+  require_human_review_if:
+    - confidence < 0.75
+    - contradiction_detected == true
+
+retrieval_policy project_status:
+  seed_from:
+    - Project
+  expand:
+    max_hops: 3
+    prefer_edges:
+      - owns
+  include_claims:
+    status: active
+    min_confidence: 0.7
+  exclude:
+    stale: true
+    restricted: true
+
+contradiction_rule project_status_conflict:
+  applies_to: Project.status
+  if_multiple_active_values: true
+  resolve_by:
+    - highest_authority_source
+    - newest_observed_at
+  require_review: true

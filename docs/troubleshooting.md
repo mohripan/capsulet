@@ -13,7 +13,7 @@ $env:CAPSULET_DATABASE_URL
 For local Docker Compose PostgreSQL, use:
 
 ```text
-postgres://capsulet:capsulet@localhost:5432/capsulet
+postgres://capsulet:capsulet@localhost:55432/capsulet
 ```
 
 If migrations fail, confirm PostgreSQL is running and reachable:

@@ -16,6 +16,7 @@ capsulet-core = { path = "../core" }
 capsulet-observability = { version = "0.1.0", path = "../observability" }
 capsulet-runner = { path = "../runner" }
 capsulet-storage = { path = "../storage" }
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 

@@ -1,0 +1,51 @@
+<h2>Typed Multilayer Agent Runtime</h2>
+<p class="subtitle">A possible enterprise-grade direction: each layer has its own graph semantics, contracts, observability, and safety controls.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Proposed Product Shape</div>
+  <div class="mockup-body">
+    <div style="display:grid;gap:12px">
+      <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center">
+        <div class="label">Layer 4</div>
+        <div class="placeholder" style="height:auto;padding:12px">
+          Agent State Machines: plan -> call model/tool -> observe -> decide -> loop -> finish/escalate
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center">
+        <div class="label">Layer 3</div>
+        <div class="placeholder" style="height:auto;padding:12px">
+          Typed AI Dataflow: query, embedding, retrieval, documents, prompt, generation, validation, evaluation
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center">
+        <div class="label">Layer 2</div>
+        <div class="placeholder" style="height:auto;padding:12px">
+          Durable Execution Graph: checkpoints, retries, leases, artifacts, deadlines, compensation, human gates
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center">
+        <div class="label">Layer 1</div>
+        <div class="placeholder" style="height:auto;padding:12px">
+          Enterprise Control Plane: projects, RBAC, audit, secrets, policy, budgets, deployment targets, observability
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="enterprise-first" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Enterprise-first foundation</h3>
+      <p>Build typed agents around governance, auditability, policy, budgets, replay, and deployment controls from the start.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="agent-builder-first" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Agent-builder-first foundation</h3>
+      <p>Build the authoring model and runtime loop first, then add governance features once the agent graph feels right.</p>
+    </div>
+  </div>
+</div>
