@@ -1,16 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  --bg: #07111f;
-  --bg-2: #0b1728;
-  --panel: #0f2034;
-  --panel-2: #122942;
-  --line: rgba(156, 189, 222, 0.17);
-  --line-strong: rgba(156, 189, 222, 0.28);
-  --text: #e8f2ff;
-  --muted: #8fa8c3;
-  --soft: #b8c9dc;
+  --bg: #07131c;
+  --bg-2: #091620;
+  --panel: #0b1822;
+  --panel-2: #0e1e2a;
+  --line: rgba(135, 157, 175, 0.18);
+  --line-strong: rgba(135, 157, 175, 0.28);
+  --text: #dcebf7;
+  --muted: #879daf;
+  --soft: #b8c8d6;
   --blue: #2496ed;
   --blue-2: #1d75c1;
-  --cyan: #20d6d2;
+  --cyan: #7ac5f7;
   --green: #4ade80;
   --amber: #f8c14a;
   --red: #fb7185;

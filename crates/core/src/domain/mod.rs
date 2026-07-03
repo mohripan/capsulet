@@ -9,6 +9,7 @@ mod job_definition;
 mod job_log;
 mod memory;
 mod memory_contract;
+mod memory_graph;
 mod parse;
 mod workflow;
 mod workflow_graph;
@@ -28,10 +29,12 @@ pub use graph::{
     GraphTransitionPolicy, HyperedgeEndpoint, NodeKind, PortDirection, PortValueType,
 };
 pub use ids::{
-    ActionId, AgentId, AgentRunId, ArtifactId, AutomationId, ClaimId, EntityId, EventId,
-    EvidenceId, GraphId, HyperedgeId, JobAttemptId, JobDefinitionId, JobRunId, MemoryContractId,
-    NodeId, ObservationId, PortId, RelationshipId, SourceId, TraceEventId, WorkflowId,
-    WorkflowRunId, WorkflowStepId, WorkflowStepRunId,
+    ActionId, AgentId, AgentRunId, ArtifactId, AutomationId, CanonicalEntityId, ClaimId,
+    EntityGraphAttachmentId, EntityId, EntityResolutionId, EventId, EvidenceId, GraphId,
+    HyperedgeId, JobAttemptId, JobDefinitionId, JobRunId, MemoryContractId, MemoryMemberId,
+    MemorySubgraphId, MemorySubgraphMemberId, NodeId, ObservationId, PortId, RelationshipId,
+    SourceId, SubgraphEdgeId, SummaryTraceId, TraceEventId, WorkflowId, WorkflowRunId,
+    WorkflowStepId, WorkflowStepRunId,
 };
 pub use job::{JobRun, JobRunStatus, JobRunTransition, StateTransitionError};
 pub use job_definition::{JobDefinition, RetryPolicy};
@@ -44,6 +47,13 @@ pub use memory_contract::{
     ClaimPolicySpec, CompiledMemoryPolicy, ContradictionRuleSpec, EntityTypeSpec, EventTypeSpec,
     FieldSpec, FieldType, MemoryContract, MemoryContractAst, MemoryContractError, RelationTypeSpec,
     RetrievalPolicySpec, ReviewPolicySpec, TrustPolicySpec,
+};
+pub use memory_graph::{
+    CanonicalEntity, EntityGraphAttachment, EntityGraphAttachmentType, EntityResolution,
+    EntityResolutionStatus, MemoryGraphError, MemoryMemberKind, MemorySubgraph,
+    MemorySubgraphActivation, MemorySubgraphMember, MemorySubgraphMemberRole, MemorySubgraphOwner,
+    MemorySubgraphOwnerKind, MemorySubgraphPermissions, MemorySubgraphStatus, SubgraphEdge,
+    SummaryTrace,
 };
 pub use parse::ParseDomainValueError;
 pub use workflow::{

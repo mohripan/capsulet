@@ -6,10 +6,12 @@ use capsulet_application::{
 };
 use capsulet_core::{
     AgentDefinition, AgentId, AgentRunId, ArtifactId, Automation, AutomationId, AutomationTrigger,
-    Claim, ClaimId, CustomTriggerPlugin, Entity, EntityId, Event, EventId, Evidence, EvidenceId,
-    GraphDefinition, GraphId, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId,
-    JobRunLog, MemoryContract, MemoryContractId, Relationship, RelationshipId, Source, SourceId,
-    WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
+    CanonicalEntity, Claim, ClaimId, CustomTriggerPlugin, Entity, EntityGraphAttachment, EntityId,
+    EntityResolution, Event, EventId, Evidence, EvidenceId, GraphDefinition, GraphId, JobArtifact,
+    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, MemoryContract, MemoryContractId,
+    MemorySubgraph, MemorySubgraphId, MemorySubgraphMember, Relationship, RelationshipId, Source,
+    SourceId, SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun,
+    WorkflowRunId, WorkflowStepRun,
 };
 use capsulet_postgres::{
     AdmissionSnapshot, AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore,
@@ -222,6 +224,46 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         id: &MemoryContractId,
     ) -> Result<Option<MemoryContract>, Self::Error>;
+    async fn upsert_memory_subgraph(&self, subgraph: &MemorySubgraph) -> Result<(), Self::Error>;
+    async fn list_memory_subgraphs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<MemorySubgraph>, Self::Error>;
+    async fn find_memory_subgraph(
+        &self,
+        id: &MemorySubgraphId,
+    ) -> Result<Option<MemorySubgraph>, Self::Error>;
+    async fn upsert_memory_subgraph_member(
+        &self,
+        member: &MemorySubgraphMember,
+    ) -> Result<(), Self::Error>;
+    async fn upsert_memory_canonical_entity(
+        &self,
+        entity: &CanonicalEntity,
+    ) -> Result<(), Self::Error>;
+    async fn list_memory_canonical_entities(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<CanonicalEntity>, Self::Error>;
+    async fn upsert_memory_entity_resolution(
+        &self,
+        resolution: &EntityResolution,
+    ) -> Result<(), Self::Error>;
+    async fn upsert_memory_subgraph_edge(&self, edge: &SubgraphEdge) -> Result<(), Self::Error>;
+    async fn upsert_memory_summary_trace(&self, trace: &SummaryTrace) -> Result<(), Self::Error>;
+    async fn list_memory_summary_traces(
+        &self,
+        subgraph_id: &MemorySubgraphId,
+        summary_claim_id: &ClaimId,
+    ) -> Result<Vec<SummaryTrace>, Self::Error>;
+    async fn upsert_memory_entity_graph_attachment(
+        &self,
+        attachment: &EntityGraphAttachment,
+    ) -> Result<(), Self::Error>;
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error>;
     async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error>;
     async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error>;
@@ -668,6 +710,82 @@ impl ApiStore for PostgresStore {
         id: &MemoryContractId,
     ) -> Result<Option<MemoryContract>, Self::Error> {
         self.find_memory_contract(id).await
+    }
+
+    async fn upsert_memory_subgraph(&self, subgraph: &MemorySubgraph) -> Result<(), Self::Error> {
+        self.upsert_memory_subgraph(subgraph).await
+    }
+
+    async fn list_memory_subgraphs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<MemorySubgraph>, Self::Error> {
+        self.list_memory_subgraphs(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn find_memory_subgraph(
+        &self,
+        id: &MemorySubgraphId,
+    ) -> Result<Option<MemorySubgraph>, Self::Error> {
+        self.find_memory_subgraph(id).await
+    }
+
+    async fn upsert_memory_subgraph_member(
+        &self,
+        member: &MemorySubgraphMember,
+    ) -> Result<(), Self::Error> {
+        self.upsert_memory_subgraph_member(member).await
+    }
+
+    async fn upsert_memory_canonical_entity(
+        &self,
+        entity: &CanonicalEntity,
+    ) -> Result<(), Self::Error> {
+        self.upsert_memory_canonical_entity(entity).await
+    }
+
+    async fn list_memory_canonical_entities(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<CanonicalEntity>, Self::Error> {
+        self.list_memory_canonical_entities(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn upsert_memory_entity_resolution(
+        &self,
+        resolution: &EntityResolution,
+    ) -> Result<(), Self::Error> {
+        self.upsert_memory_entity_resolution(resolution).await
+    }
+
+    async fn upsert_memory_subgraph_edge(&self, edge: &SubgraphEdge) -> Result<(), Self::Error> {
+        self.upsert_memory_subgraph_edge(edge).await
+    }
+
+    async fn upsert_memory_summary_trace(&self, trace: &SummaryTrace) -> Result<(), Self::Error> {
+        self.upsert_memory_summary_trace(trace).await
+    }
+
+    async fn list_memory_summary_traces(
+        &self,
+        subgraph_id: &MemorySubgraphId,
+        summary_claim_id: &ClaimId,
+    ) -> Result<Vec<SummaryTrace>, Self::Error> {
+        self.list_memory_summary_traces(subgraph_id, summary_claim_id)
+            .await
+    }
+
+    async fn upsert_memory_entity_graph_attachment(
+        &self,
+        attachment: &EntityGraphAttachment,
+    ) -> Result<(), Self::Error> {
+        self.upsert_memory_entity_graph_attachment(attachment).await
     }
 
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {

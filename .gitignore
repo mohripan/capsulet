@@ -23,11 +23,16 @@ yarn-error.log*
 pnpm-debug.log*
 next-dev.log
 next-dev.err.log
+next-dev-*.log
+api-live*.log
 test-results/
 playwright-report/
 
 # Downloaded WASI Python runtime for local integration tests
 .wasi-python/
+
+# Local agent brainstorming/mockup sessions
+.superpowers/
 
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

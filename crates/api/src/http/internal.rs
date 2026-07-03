@@ -284,6 +284,43 @@ where
             get(crate::memory::get_contract),
         )
         .route(
+            "/v1/memory/subgraphs",
+            post(crate::memory::create_subgraph).get(crate::memory::list_subgraphs),
+        )
+        .route(
+            "/v1/memory/subgraphs/{id}",
+            get(crate::memory::get_subgraph),
+        )
+        .route(
+            "/v1/memory/subgraphs/{id}/activate",
+            post(crate::memory::activate_subgraph),
+        )
+        .route(
+            "/v1/memory/subgraphs/{id}/members",
+            post(crate::memory::create_subgraph_member),
+        )
+        .route(
+            "/v1/memory/canonical-entities",
+            post(crate::memory::create_canonical_entity)
+                .get(crate::memory::list_canonical_entities),
+        )
+        .route(
+            "/v1/memory/entity-resolutions",
+            post(crate::memory::create_entity_resolution),
+        )
+        .route(
+            "/v1/memory/summary-traces",
+            post(crate::memory::create_summary_trace),
+        )
+        .route(
+            "/v1/memory/entity-graph-attachments",
+            post(crate::memory::create_entity_graph_attachment),
+        )
+        .route(
+            "/v1/memory/subgraph-edges",
+            post(crate::memory::create_subgraph_edge),
+        )
+        .route(
             "/v1/automations",
             post(crate::automations::create_automation).get(crate::automations::list_automations),
         )

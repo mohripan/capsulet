@@ -7,12 +7,14 @@ use axum::{
 use capsulet_application::AgentRunRecord;
 use capsulet_core::{
     AgentDefinition, AgentId, AgentRunId, ArtifactId, ArtifactObjectKind, Automation, AutomationId,
-    AutomationStatus, AutomationTrigger, Claim, ClaimId, CustomTriggerPlugin, Entity, EntityId,
-    Event, EventId, Evidence, EvidenceId, ExecutionPoolName, GraphDefinition, GraphId, JobArtifact,
-    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus, JobRunTransition,
-    MemoryContract, MemoryContractId, Relationship, RelationshipId, Source, SourceId,
-    WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus,
-    WorkflowStep, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
+    AutomationStatus, AutomationTrigger, CanonicalEntity, Claim, ClaimId, CustomTriggerPlugin,
+    Entity, EntityGraphAttachment, EntityId, EntityResolution, Event, EventId, Evidence,
+    EvidenceId, ExecutionPoolName, GraphDefinition, GraphId, JobArtifact, JobDefinition,
+    JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus, JobRunTransition, MemoryContract,
+    MemoryContractId, MemorySubgraph, MemorySubgraphMember, Relationship, RelationshipId, Source,
+    SourceId, SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun,
+    WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
+    WorkflowStepRun, WorkflowStepRunId,
 };
 use capsulet_postgres::{
     AdmissionSnapshot, NewProjectMembership, ProjectMembershipRecord, ProjectRecord, TriggerEvent,
@@ -49,6 +51,13 @@ struct FakeStore {
     memory_events: Arc<Mutex<Vec<Event>>>,
     memory_relationships: Arc<Mutex<Vec<Relationship>>>,
     memory_contracts: Arc<Mutex<Vec<MemoryContract>>>,
+    memory_subgraphs: Arc<Mutex<Vec<MemorySubgraph>>>,
+    memory_subgraph_members: Arc<Mutex<Vec<MemorySubgraphMember>>>,
+    memory_canonical_entities: Arc<Mutex<Vec<CanonicalEntity>>>,
+    memory_entity_resolutions: Arc<Mutex<Vec<EntityResolution>>>,
+    memory_subgraph_edges: Arc<Mutex<Vec<SubgraphEdge>>>,
+    memory_summary_traces: Arc<Mutex<Vec<SummaryTrace>>>,
+    memory_entity_graph_attachments: Arc<Mutex<Vec<EntityGraphAttachment>>>,
     projects: Arc<Mutex<Vec<ProjectRecord>>>,
     project_memberships: Arc<Mutex<Vec<ProjectMembershipRecord>>>,
     ownership: Arc<Mutex<Vec<FakeOwnership>>>,
@@ -890,6 +899,159 @@ impl ApiStore for FakeStore {
             .cloned())
     }
 
+    async fn upsert_memory_subgraph(&self, subgraph: &MemorySubgraph) -> Result<(), Self::Error> {
+        let mut subgraphs = self
+            .memory_subgraphs
+            .lock()
+            .map_err(|error| error.to_string())?;
+        subgraphs.retain(|existing| existing.id() != subgraph.id());
+        subgraphs.push(subgraph.clone());
+        Ok(())
+    }
+
+    async fn list_memory_subgraphs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<MemorySubgraph>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_subgraphs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|subgraph| {
+                subgraph.scope().tenant_id() == tenant_id
+                    && subgraph.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_memory_subgraph(
+        &self,
+        id: &capsulet_core::MemorySubgraphId,
+    ) -> Result<Option<MemorySubgraph>, Self::Error> {
+        Ok(self
+            .memory_subgraphs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|subgraph| subgraph.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_memory_subgraph_member(
+        &self,
+        member: &MemorySubgraphMember,
+    ) -> Result<(), Self::Error> {
+        let mut members = self
+            .memory_subgraph_members
+            .lock()
+            .map_err(|error| error.to_string())?;
+        members.retain(|existing| existing.id() != member.id());
+        members.push(member.clone());
+        Ok(())
+    }
+
+    async fn upsert_memory_canonical_entity(
+        &self,
+        entity: &CanonicalEntity,
+    ) -> Result<(), Self::Error> {
+        let mut entities = self
+            .memory_canonical_entities
+            .lock()
+            .map_err(|error| error.to_string())?;
+        entities.retain(|existing| existing.id() != entity.id());
+        entities.push(entity.clone());
+        Ok(())
+    }
+
+    async fn list_memory_canonical_entities(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<CanonicalEntity>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .memory_canonical_entities
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|entity| {
+                entity.scope().tenant_id() == tenant_id && entity.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn upsert_memory_entity_resolution(
+        &self,
+        resolution: &EntityResolution,
+    ) -> Result<(), Self::Error> {
+        let mut resolutions = self
+            .memory_entity_resolutions
+            .lock()
+            .map_err(|error| error.to_string())?;
+        resolutions.retain(|existing| existing.id() != resolution.id());
+        resolutions.push(resolution.clone());
+        Ok(())
+    }
+
+    async fn upsert_memory_subgraph_edge(&self, edge: &SubgraphEdge) -> Result<(), Self::Error> {
+        let mut edges = self
+            .memory_subgraph_edges
+            .lock()
+            .map_err(|error| error.to_string())?;
+        edges.retain(|existing| existing.id() != edge.id());
+        edges.push(edge.clone());
+        Ok(())
+    }
+
+    async fn upsert_memory_summary_trace(&self, trace: &SummaryTrace) -> Result<(), Self::Error> {
+        let mut traces = self
+            .memory_summary_traces
+            .lock()
+            .map_err(|error| error.to_string())?;
+        traces.retain(|existing| existing.id() != trace.id());
+        traces.push(trace.clone());
+        Ok(())
+    }
+
+    async fn list_memory_summary_traces(
+        &self,
+        subgraph_id: &capsulet_core::MemorySubgraphId,
+        summary_claim_id: &ClaimId,
+    ) -> Result<Vec<SummaryTrace>, Self::Error> {
+        Ok(self
+            .memory_summary_traces
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|trace| {
+                trace.subgraph_id() == subgraph_id && trace.summary_claim_id() == summary_claim_id
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn upsert_memory_entity_graph_attachment(
+        &self,
+        attachment: &EntityGraphAttachment,
+    ) -> Result<(), Self::Error> {
+        let mut attachments = self
+            .memory_entity_graph_attachments
+            .lock()
+            .map_err(|error| error.to_string())?;
+        attachments.retain(|existing| existing.id() != attachment.id());
+        attachments.push(attachment.clone());
+        Ok(())
+    }
+
     async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
         let mut workflows = self.workflows.lock().map_err(|error| error.to_string())?;
         let before = workflows.len();
@@ -1715,6 +1877,222 @@ trust_policy:
         response_json(get_response).await["compiled"]["relations"][0]["name"],
         "owns"
     );
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "nested memory graph API test covers the complete boundary-edge activation flow"
+)]
+async fn creates_and_activates_nested_memory_graph() {
+    let app = authenticated_app(FakeStore::default());
+    let auth = (
+        "authorization",
+        "Bearer admin-token-0123456789-abcdefghijkl",
+    );
+
+    for (uri, body) in [
+        (
+            "/v1/memory/sources",
+            json!({
+                "id": "source_nested",
+                "kind": "roadmap",
+                "title": "Nested roadmap",
+                "authority": "high"
+            }),
+        ),
+        (
+            "/v1/memory/evidence",
+            json!({
+                "id": "evidence_nested",
+                "source_id": "source_nested",
+                "locator": "roadmap.md#L1",
+                "excerpt": "Sales says August and engineering says September.",
+                "observed_at": "2026-07-02T00:00:00Z"
+            }),
+        ),
+        (
+            "/v1/memory/entities",
+            json!({
+                "id": "entity_capsulet",
+                "entity_type": "Project",
+                "name": "Capsulet",
+                "aliases": []
+            }),
+        ),
+        (
+            "/v1/memory/claims",
+            json!({
+                "id": "claim_sales_summary",
+                "subject_id": "entity_capsulet",
+                "predicate": "summary",
+                "object": "Sales and engineering disagree on target month.",
+                "evidence_ids": ["evidence_nested"],
+                "confidence": 0.9,
+                "authority": "high",
+                "status": "active",
+                "observed_at": "2026-07-02T00:00:00Z"
+            }),
+        ),
+        (
+            "/v1/memory/contracts",
+            json!({
+                "id": "contract_nested",
+                "name": "Nested contract",
+                "source": "entity Project:\n  fields:\n    name: string\n\nclaim_policy:\n  require_source: true\n  store_confidence: true\n"
+            }),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(uri)
+                    .header(auth.0, auth.1)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    }
+
+    for body in [
+        json!({
+            "id": "subgraph_sales",
+            "name": "Sales memory",
+            "description": "Sales commitments"
+        }),
+        json!({
+            "id": "subgraph_engineering",
+            "name": "Engineering memory"
+        }),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/memory/subgraphs")
+                    .header(auth.0, auth.1)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    }
+
+    for (uri, body) in [
+        (
+            "/v1/memory/subgraphs/subgraph_sales/members",
+            json!({
+                "id": "member_sales_summary",
+                "member_kind": "claim",
+                "member_id": "claim_sales_summary",
+                "role": "summary"
+            }),
+        ),
+        (
+            "/v1/memory/canonical-entities",
+            json!({
+                "id": "canonical_capsulet",
+                "entity_type": "Project",
+                "display_name": "Capsulet",
+                "aliases": []
+            }),
+        ),
+        (
+            "/v1/memory/entity-resolutions",
+            json!({
+                "id": "resolution_capsulet_sales",
+                "subgraph_id": "subgraph_sales",
+                "entity_id": "entity_capsulet",
+                "canonical_entity_id": "canonical_capsulet",
+                "confidence": 0.95,
+                "status": "confirmed",
+                "evidence_ids": ["evidence_nested"]
+            }),
+        ),
+        (
+            "/v1/memory/summary-traces",
+            json!({
+                "id": "trace_sales_summary",
+                "subgraph_id": "subgraph_sales",
+                "summary_claim_id": "claim_sales_summary",
+                "inner_claim_ids": [],
+                "evidence_ids": ["evidence_nested"]
+            }),
+        ),
+        (
+            "/v1/memory/entity-graph-attachments",
+            json!({
+                "id": "attachment_capsulet",
+                "canonical_entity_id": "canonical_capsulet",
+                "subgraph_id": "subgraph_sales",
+                "attachment_type": "primary"
+            }),
+        ),
+        (
+            "/v1/memory/subgraph-edges",
+            json!({
+                "id": "edge_sales_engineering",
+                "edge_type": "contradicts",
+                "from_subgraph_id": "subgraph_sales",
+                "to_subgraph_id": "subgraph_engineering",
+                "from_member_kind": "claim",
+                "from_member_id": "claim_sales_summary",
+                "to_member_kind": "claim",
+                "to_member_id": "claim_engineering_summary",
+                "claim_ids": ["claim_sales_summary"],
+                "evidence_ids": ["evidence_nested"]
+            }),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(uri)
+                    .header(auth.0, auth.1)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    }
+
+    let activate_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/memory/subgraphs/subgraph_sales/activate")
+                .header(auth.0, auth.1)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "owner_kind": "team",
+                        "owner_id": "sales",
+                        "contract_id": "contract_nested",
+                        "permissions": { "read": ["sales"] },
+                        "summary_claim_id": "claim_sales_summary"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(activate_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(response_json(activate_response).await["status"], "active");
 }
 
 fn rag_graph_request(id: &str) -> Value {

@@ -6,11 +6,17 @@ use capsulet_application::{
 use capsulet_core::{
     AgentBudget, AgentDefinition, AgentId, AgentRunId, AgentRunStatus, AgentTerminationPolicy,
     ArtifactId, ArtifactObjectKind, Authority, Automation, AutomationId, AutomationStatus,
-    AutomationTrigger, Claim, ClaimId, ClaimStatus, Confidence, CustomTriggerPlugin, Entity,
-    EntityId, Evidence, EvidenceId, ExecutionPoolName, GraphDefinition, GraphHyperedge, GraphId,
-    GraphNode, GraphPort, GraphTransitionPolicy, HyperedgeEndpoint, HyperedgeId, JobArtifact,
-    JobDefinition, JobRun, JobRunId, JobRunLog, JobRunTransition, MemoryContract, MemoryContractId,
-    MemoryScope, NodeId, NodeKind, PortDirection, PortId, PortValueType, Source, SourceId,
+    AutomationTrigger, CanonicalEntity, CanonicalEntityId, Claim, ClaimId, ClaimStatus, Confidence,
+    CustomTriggerPlugin, Entity, EntityGraphAttachment, EntityGraphAttachmentId,
+    EntityGraphAttachmentType, EntityId, EntityResolution, EntityResolutionId,
+    EntityResolutionStatus, Evidence, EvidenceId, ExecutionPoolName, GraphDefinition,
+    GraphHyperedge, GraphId, GraphNode, GraphPort, GraphTransitionPolicy, HyperedgeEndpoint,
+    HyperedgeId, JobArtifact, JobDefinition, JobRun, JobRunId, JobRunLog, JobRunTransition,
+    MemoryContract, MemoryContractId, MemoryMemberId, MemoryMemberKind, MemoryScope,
+    MemorySubgraph, MemorySubgraphActivation, MemorySubgraphId, MemorySubgraphMember,
+    MemorySubgraphMemberId, MemorySubgraphMemberRole, MemorySubgraphOwner, MemorySubgraphOwnerKind,
+    MemorySubgraphPermissions, MemorySubgraphStatus, NodeId, NodeKind, PortDirection, PortId,
+    PortValueType, Source, SourceId, SubgraphEdge, SubgraphEdgeId, SummaryTrace, SummaryTraceId,
     TriggerKind, TriggerName, WorkflowDefinition, WorkflowId, WorkflowStatus, WorkflowStep,
     WorkflowStepDependency, WorkflowStepId,
 };
@@ -338,6 +344,222 @@ claim_policy:
         persisted.compile().expect("compiled").relation_types()[0].name(),
         "owns"
     );
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "nested memory graph persistence test covers the full activation and boundary-edge flow"
+)]
+async fn saves_and_activates_nested_memory_graphs_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+
+    let scope = MemoryScope::new("tenant_nested", unique_id("project_nested")).expect("scope");
+    let contract = MemoryContract::parse_scoped(
+        MemoryContractId::new(unique_id("contract_nested")).expect("contract id"),
+        scope.clone(),
+        "Nested memory contract",
+        r"
+entity Project:
+  fields:
+    name: string
+
+claim_policy:
+  require_source: true
+  store_confidence: true
+",
+    )
+    .expect("contract");
+    store
+        .upsert_memory_contract(&contract)
+        .await
+        .expect("save contract");
+    let source = Source::new(
+        SourceId::new(unique_id("source_nested")).expect("source id"),
+        scope.clone(),
+        "roadmap",
+        None,
+        "Roadmap",
+        Authority::High,
+    )
+    .expect("source");
+    store.upsert_memory_source(&source).await.expect("source");
+    let evidence = Evidence::new(
+        EvidenceId::new(unique_id("evidence_nested")).expect("evidence id"),
+        scope.clone(),
+        source.id().clone(),
+        "roadmap.md#L1",
+        "Sales says August and engineering says September.",
+        "2026-07-02T00:00:00Z",
+    )
+    .expect("evidence");
+    store
+        .upsert_memory_evidence(&evidence)
+        .await
+        .expect("evidence");
+    let entity = Entity::new(
+        EntityId::new(unique_id("entity_nested")).expect("entity id"),
+        scope.clone(),
+        "Project",
+        "Capsulet",
+        Vec::new(),
+    )
+    .expect("entity");
+    store.upsert_memory_entity(&entity).await.expect("entity");
+    let summary_claim = Claim::new(
+        ClaimId::new(unique_id("claim_summary")).expect("claim id"),
+        scope.clone(),
+        entity.id().clone(),
+        "summary",
+        "Sales and engineering disagree on target month.",
+        vec![evidence.id().clone()],
+        Confidence::new(0.9).expect("confidence"),
+        Authority::High,
+        "2026-07-02T00:00:00Z",
+        None,
+        None,
+    )
+    .expect("claim")
+    .with_status(ClaimStatus::Active);
+    store
+        .upsert_memory_claim(&summary_claim)
+        .await
+        .expect("summary claim");
+
+    let sales_subgraph = MemorySubgraph::draft(
+        MemorySubgraphId::new(unique_id("subgraph_sales")).expect("subgraph id"),
+        scope.clone(),
+        None,
+        "Sales memory",
+        Some("Sales commitments"),
+    )
+    .expect("draft");
+    store
+        .upsert_memory_subgraph(&sales_subgraph)
+        .await
+        .expect("save draft");
+    let member = MemorySubgraphMember::new(
+        MemorySubgraphMemberId::new(unique_id("member_summary")).expect("member id"),
+        scope.clone(),
+        sales_subgraph.id().clone(),
+        MemoryMemberKind::Claim,
+        MemoryMemberId::new(summary_claim.id().as_str()).expect("member id"),
+        MemorySubgraphMemberRole::Summary,
+    )
+    .expect("member");
+    store
+        .upsert_memory_subgraph_member(&member)
+        .await
+        .expect("save member");
+    let canonical = CanonicalEntity::new(
+        CanonicalEntityId::new(unique_id("canonical_capsulet")).expect("canonical id"),
+        scope.clone(),
+        "Project",
+        "Capsulet",
+        Vec::new(),
+    )
+    .expect("canonical");
+    store
+        .upsert_memory_canonical_entity(&canonical)
+        .await
+        .expect("save canonical");
+    let resolution = EntityResolution::new(
+        EntityResolutionId::new(unique_id("resolution_capsulet")).expect("resolution id"),
+        scope.clone(),
+        sales_subgraph.id().clone(),
+        entity.id().clone(),
+        canonical.id().clone(),
+        Confidence::new(0.95).expect("confidence"),
+        EntityResolutionStatus::Confirmed,
+        vec![evidence.id().clone()],
+    )
+    .expect("resolution");
+    store
+        .upsert_memory_entity_resolution(&resolution)
+        .await
+        .expect("save resolution");
+    let trace = SummaryTrace::new(
+        SummaryTraceId::new(unique_id("trace_summary")).expect("trace id"),
+        scope.clone(),
+        sales_subgraph.id().clone(),
+        summary_claim.id().clone(),
+        Vec::new(),
+        vec![evidence.id().clone()],
+    )
+    .expect("trace");
+    store
+        .upsert_memory_summary_trace(&trace)
+        .await
+        .expect("save trace");
+    let activated = sales_subgraph
+        .activate(MemorySubgraphActivation::new(
+            Some(MemorySubgraphOwner::new(MemorySubgraphOwnerKind::Team, "sales").expect("owner")),
+            Some(contract.id().clone()),
+            Some(MemorySubgraphPermissions::new(r#"{"read":["sales"]}"#).expect("permissions")),
+            Some(summary_claim.id().clone()),
+            vec![trace.clone()],
+        ))
+        .expect("activate");
+    store
+        .upsert_memory_subgraph(&activated)
+        .await
+        .expect("save active");
+    let attachment = EntityGraphAttachment::new(
+        EntityGraphAttachmentId::new(unique_id("attachment_capsulet")).expect("attachment id"),
+        scope.clone(),
+        canonical.id().clone(),
+        activated.id().clone(),
+        EntityGraphAttachmentType::Primary,
+    )
+    .expect("attachment");
+    store
+        .upsert_memory_entity_graph_attachment(&attachment)
+        .await
+        .expect("save attachment");
+    let engineering_subgraph = MemorySubgraph::draft(
+        MemorySubgraphId::new(unique_id("subgraph_engineering")).expect("subgraph id"),
+        scope.clone(),
+        None,
+        "Engineering memory",
+        None,
+    )
+    .expect("engineering draft");
+    store
+        .upsert_memory_subgraph(&engineering_subgraph)
+        .await
+        .expect("save engineering");
+    let edge = SubgraphEdge::new(
+        SubgraphEdgeId::new(unique_id("edge_contradicts")).expect("edge id"),
+        scope.clone(),
+        "contradicts",
+        activated.id().clone(),
+        engineering_subgraph.id().clone(),
+        MemoryMemberKind::Claim,
+        MemoryMemberId::new(summary_claim.id().as_str()).expect("from member"),
+        MemoryMemberKind::Claim,
+        MemoryMemberId::new("claim_engineering_target").expect("to member"),
+        vec![summary_claim.id().clone()],
+        vec![evidence.id().clone()],
+    )
+    .expect("edge");
+    store
+        .upsert_memory_subgraph_edge(&edge)
+        .await
+        .expect("save edge");
+
+    let persisted = store
+        .find_memory_subgraph(activated.id())
+        .await
+        .expect("find subgraph")
+        .expect("subgraph exists");
+
+    assert_eq!(persisted.status(), MemorySubgraphStatus::Active);
 }
 
 #[tokio::test]

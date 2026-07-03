@@ -292,6 +292,153 @@ export type WorkflowStepRun = {
   status: "queued" | "running" | "removed" | "succeeded" | "failed" | "cancelled" | "timed_out" | "skipped";
 };
 
+export type MemorySubgraph = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  parent_subgraph_id: string | null;
+  name: string;
+  description: string | null;
+  owner_kind: string | null;
+  owner_id: string | null;
+  contract_id: string | null;
+  summary_claim_id: string | null;
+  permissions: Record<string, unknown> | null;
+  status: "draft" | "active" | string;
+};
+
+export type CreateMemorySubgraphRequest = {
+  id?: string;
+  parent_subgraph_id?: string;
+  name: string;
+  description?: string;
+};
+
+export type ActivateMemorySubgraphRequest = {
+  owner_kind: "user" | "team" | "service" | "organization" | string;
+  owner_id: string;
+  contract_id: string;
+  permissions: Record<string, unknown>;
+  summary_claim_id: string;
+};
+
+export type MemorySubgraphMember = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  subgraph_id: string;
+  member_kind: string;
+  member_id: string;
+  role: string;
+};
+
+export type CreateMemorySubgraphMemberRequest = {
+  id?: string;
+  member_kind: string;
+  member_id: string;
+  role: string;
+};
+
+export type CanonicalEntity = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  entity_type: string;
+  display_name: string;
+  aliases: string[];
+};
+
+export type CreateCanonicalEntityRequest = {
+  id?: string;
+  entity_type: string;
+  display_name: string;
+  aliases?: string[];
+};
+
+export type EntityResolution = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  subgraph_id: string;
+  entity_id: string;
+  canonical_entity_id: string;
+  confidence: number;
+  status: "candidate" | "confirmed" | "rejected" | string;
+  evidence_ids: string[];
+};
+
+export type CreateEntityResolutionRequest = {
+  id?: string;
+  subgraph_id: string;
+  entity_id: string;
+  canonical_entity_id: string;
+  confidence: number;
+  status: "candidate" | "confirmed" | "rejected" | string;
+  evidence_ids?: string[];
+};
+
+export type SummaryTrace = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  subgraph_id: string;
+  summary_claim_id: string;
+  inner_claim_ids: string[];
+  evidence_ids: string[];
+};
+
+export type CreateSummaryTraceRequest = {
+  id?: string;
+  subgraph_id: string;
+  summary_claim_id: string;
+  inner_claim_ids?: string[];
+  evidence_ids?: string[];
+};
+
+export type EntityGraphAttachment = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  canonical_entity_id: string;
+  subgraph_id: string;
+  attachment_type: string;
+};
+
+export type CreateEntityGraphAttachmentRequest = {
+  id?: string;
+  canonical_entity_id: string;
+  subgraph_id: string;
+  attachment_type: "primary" | "supporting" | "historical" | string;
+};
+
+export type SubgraphEdge = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  edge_type: string;
+  from_subgraph_id: string;
+  to_subgraph_id: string;
+  from_member_kind: string;
+  from_member_id: string;
+  to_member_kind: string;
+  to_member_id: string;
+  claim_ids: string[];
+  evidence_ids: string[];
+};
+
+export type CreateSubgraphEdgeRequest = {
+  id?: string;
+  edge_type: string;
+  from_subgraph_id: string;
+  to_subgraph_id: string;
+  from_member_kind: string;
+  from_member_id: string;
+  to_member_kind: string;
+  to_member_id: string;
+  claim_ids?: string[];
+  evidence_ids?: string[];
+};
+
 export class CapsuletApiError extends Error {
   constructor(
     message: string,
@@ -524,6 +671,70 @@ export async function deleteWorkflow(id: string) {
 
 export async function listAutomations() {
   return apiFetch<{ automations: Automation[] }>("/v1/automations");
+}
+
+export async function listMemorySubgraphs() {
+  return apiFetch<{ subgraphs: MemorySubgraph[] }>("/v1/memory/subgraphs");
+}
+
+export async function createMemorySubgraph(request: CreateMemorySubgraphRequest) {
+  return apiFetch<MemorySubgraph>("/v1/memory/subgraphs", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function activateMemorySubgraph(id: string, request: ActivateMemorySubgraphRequest) {
+  return apiFetch<MemorySubgraph>(`/v1/memory/subgraphs/${encodeURIComponent(id)}/activate`, {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function createMemorySubgraphMember(subgraphId: string, request: CreateMemorySubgraphMemberRequest) {
+  return apiFetch<MemorySubgraphMember>(`/v1/memory/subgraphs/${encodeURIComponent(subgraphId)}/members`, {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function listCanonicalEntities() {
+  return apiFetch<{ canonical_entities: CanonicalEntity[] }>("/v1/memory/canonical-entities");
+}
+
+export async function createCanonicalEntity(request: CreateCanonicalEntityRequest) {
+  return apiFetch<CanonicalEntity>("/v1/memory/canonical-entities", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function createEntityResolution(request: CreateEntityResolutionRequest) {
+  return apiFetch<EntityResolution>("/v1/memory/entity-resolutions", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function createSummaryTrace(request: CreateSummaryTraceRequest) {
+  return apiFetch<SummaryTrace>("/v1/memory/summary-traces", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function createEntityGraphAttachment(request: CreateEntityGraphAttachmentRequest) {
+  return apiFetch<EntityGraphAttachment>("/v1/memory/entity-graph-attachments", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function createSubgraphEdge(request: CreateSubgraphEdgeRequest) {
+  return apiFetch<SubgraphEdge>("/v1/memory/subgraph-edges", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
 }
 
 export async function createAutomation(request: AutomationRequest) {

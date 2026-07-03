@@ -84,6 +84,15 @@ The router currently exposes:
 | `GET` | `/v1/memory/relationships/{id}` | Read one relationship |
 | `GET`, `POST` | `/v1/memory/contracts` | List or create memory contract DSL documents |
 | `GET` | `/v1/memory/contracts/{id}` | Read one memory contract with compiled policy summary |
+| `GET`, `POST` | `/v1/memory/subgraphs` | List or create nested memory subgraphs |
+| `GET` | `/v1/memory/subgraphs/{id}` | Read one nested memory subgraph |
+| `POST` | `/v1/memory/subgraphs/{id}/members` | Add a memory object to a subgraph |
+| `POST` | `/v1/memory/subgraphs/{id}/activate` | Activate a subgraph after owner, schema, permissions, summary, and traceability checks |
+| `GET`, `POST` | `/v1/memory/canonical-entities` | List or create canonical shared entities |
+| `POST` | `/v1/memory/entity-resolutions` | Resolve a local entity to a canonical entity inside a subgraph |
+| `POST` | `/v1/memory/summary-traces` | Link a subgraph summary claim to inner claims or evidence |
+| `POST` | `/v1/memory/entity-graph-attachments` | Attach a nested graph to a canonical entity |
+| `POST` | `/v1/memory/subgraph-edges` | Create explicit cross-subgraph boundary edges |
 | `GET`, `POST` | `/v1/agents` | List or create agent definitions |
 | `GET` | `/v1/agents/{id}` | Read one agent definition |
 | `POST` | `/v1/agents/{id}/runs` | Start a queued agent run |

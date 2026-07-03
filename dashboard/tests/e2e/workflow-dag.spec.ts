@@ -74,10 +74,8 @@ test("locks notebooks used by queued workflow runs", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
 });
 
-test("renders overview topology from the live endpoint", async ({ page }) => {
-  const topologyResponse = page.waitForResponse((response) => response.url().endsWith("/v1/topology"));
+test("redirects the root dashboard to Memory Studio", async ({ page }) => {
   await page.goto("/");
-  expect((await topologyResponse).status()).toBe(200);
-  await expect(page.getByText("No topology endpoint exists for the overview.")).toHaveCount(0);
-  await expect(page.locator(".overviewTopologyStage").first()).toBeVisible();
+  await expect(page).toHaveURL(/\/memory$/);
+  await expect(page.getByRole("heading", { name: "Graph Workbench" })).toBeVisible();
 });

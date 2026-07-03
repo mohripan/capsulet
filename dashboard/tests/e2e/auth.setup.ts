@@ -16,7 +16,7 @@ setup("authenticate as an administrator", async ({ page }) => {
   await page.getByLabel("Username").fill(process.env.CAPSULET_E2E_USERNAME ?? "admin");
   await page.getByLabel("Password").fill(process.env.CAPSULET_E2E_PASSWORD ?? "admin");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/memory$/);
   await mkdir("playwright/.auth", { recursive: true });
   await page.context().storageState({ path: authFile });
 });

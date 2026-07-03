@@ -236,6 +236,8 @@ pub enum PostgresStoreError {
     Memory(#[from] capsulet_core::MemoryError),
     #[error("invalid memory contract: {0}")]
     MemoryContract(#[from] capsulet_core::MemoryContractError),
+    #[error("invalid memory graph: {0}")]
+    MemoryGraph(#[from] capsulet_core::MemoryGraphError),
 }
 
 fn env_positive_u32(name: &str, default: u32) -> Result<u32, PostgresStoreError> {

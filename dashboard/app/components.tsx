@@ -9,12 +9,16 @@ import {
   Bell,
   Box,
   CalendarClock,
+  CheckCheck,
   ChevronDown,
+  CircleDotDashed,
+  DatabaseZap,
   FileCode2,
   GitBranch,
-  Home,
+  Layers3,
   ListTree,
   LogOut,
+  Network,
   Plus,
   PlugZap,
   RefreshCw,
@@ -30,17 +34,26 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from
 import { listProjects, selectedProjectId, setSelectedProjectId, type Project } from "./lib/api";
 
 const nav: Array<[LucideIcon, string, string]> = [
-  [Home, "Overview", "/"],
+  [Network, "Graph Workbench", "/memory"],
+  [Layers3, "Subgraphs", "/memory/subgraphs"],
+  [CircleDotDashed, "Claims", "/memory/traces"],
+  [DatabaseZap, "Entities", "/memory/entities"],
+  [CheckCheck, "Contradictions", "/memory/edges"],
+  [FileCode2, "Schema Studio", "/memory/contracts"],
+  [Activity, "Agent Sessions", "/runs"],
+  [Route, "Retrieval Policies", "/workflows"],
+  [ListTree, "Evaluations", "/logs"],
+  [ShieldCheck, "Security", "/security"],
+  [Settings, "Settings", "/settings"]
+];
+
+const legacyNav: Array<[LucideIcon, string, string]> = [
   [Workflow, "Automations", "/automations"],
   [PlugZap, "Trigger Plugins", "/trigger-plugins"],
   [GitBranch, "Workflows", "/workflows"],
   [FileCode2, "Job Definitions", "/job-definitions"],
-  [Activity, "Runs", "/runs"],
-  [ListTree, "Live Logs", "/logs"],
-  [Route, "Execution Pools", "/execution-pools"],
   [Archive, "Artifacts", "/artifacts"],
-  [ShieldCheck, "Security", "/security"],
-  [Settings, "Settings", "/settings"]
+  [Route, "Execution Pools", "/execution-pools"]
 ];
 
 export function DashboardShell({
@@ -76,56 +89,92 @@ export function DashboardShell({
   }, []);
 
   return (
-    <main className="shell">
-      <aside className="sidebar" aria-label="Primary">
-        <Link className="brand" href="/">
-          <div className="brandMark">
+    <main className="min-h-screen bg-capsulet-bg text-capsulet-text">
+      <div className="grid min-h-screen grid-cols-[252px_minmax(0,1fr)] max-lg:grid-cols-1">
+      <aside className="border-r border-capsulet-line bg-[#091620] px-3.5 py-4 max-lg:hidden" aria-label="Primary">
+        <Link className="mb-6 flex items-center gap-2.5 rounded-md px-2" href="/memory">
+          <div className="grid size-8 place-items-center rounded-md bg-docker-500 text-sm font-black text-white">
             <Box size={22} aria-hidden="true" />
           </div>
-          <div>
-            <strong>Capsulet</strong>
-            <span>Automation control plane</span>
+          <div className="min-w-0">
+            <strong className="block text-sm text-slate-50">Capsulet</strong>
+            <span className="block truncate text-xs text-capsulet-muted">Memory operating system</span>
           </div>
         </Link>
 
-        <nav className="navList">
+        <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-capsulet-muted">Memory</div>
+        <nav className="flex flex-col gap-0.5">
           {nav.map(([Icon, label, href]) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
-              <Link className={active ? "navItem active" : "navItem"} href={href} key={href}>
+              <Link
+                className={
+                  active
+                    ? "flex items-center gap-2 rounded-md bg-docker-800 px-2.5 py-2 text-sm font-semibold text-docker-100"
+                    : "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-slate-300 hover:bg-[#0e1e2a] hover:text-white"
+                }
+                href={href}
+                key={href}
+              >
                 <Icon size={18} aria-hidden="true" />
-                <span>{label}</span>
+                <span className="truncate">{label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="clusterPanel">
-          <div className="clusterHeader">
+        <div className="mt-6 mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-capsulet-muted">Legacy ops</div>
+        <nav className="flex flex-col gap-0.5">
+          {legacyNav.map(([Icon, label, href]) => {
+            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            return (
+              <Link
+                className={
+                  active
+                    ? "flex items-center gap-2 rounded-md bg-[#102131] px-2.5 py-2 text-sm font-semibold text-slate-100"
+                    : "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-slate-400 hover:bg-[#0e1e2a] hover:text-white"
+                }
+                href={href}
+                key={href}
+              >
+                <Icon size={17} aria-hidden="true" />
+                <span className="truncate">{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="mt-6 rounded-md border border-capsulet-subtle bg-capsulet-canvas p-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
             <Server size={17} aria-hidden="true" />
-            <span>kind-capsulet</span>
+            Local memory stack
           </div>
-          <div className="clusterMeta">
-            <span>Kubernetes 1.30</span>
-            <span>capsulet ns</span>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-capsulet-muted">
+            <span>private models</span>
+            <span>governed graph</span>
           </div>
-          <div className="clusterHealth">
-            <span />
-            Control plane healthy
+          <div className="mt-3 flex items-center gap-2 text-xs text-docker-200">
+            <span className="size-2 rounded-full bg-docker-500" />
+            Runtime connected
           </div>
         </div>
       </aside>
 
-      <section className="workspace">
-        <header className="topbar">
-          <div className="search">
+      <section className="min-w-0 bg-capsulet-bg">
+        <header className="flex h-[58px] items-center justify-between gap-4 border-b border-capsulet-line bg-capsulet-shell px-4">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-capsulet-line bg-capsulet-bg px-3 py-2 text-capsulet-muted md:max-w-[520px]">
             <Search size={18} aria-hidden="true" />
-            <input aria-label="Search" placeholder="Search automations, runs, artifacts" />
+            <input
+              aria-label="Search"
+              className="min-w-0 flex-1 bg-transparent text-sm text-capsulet-text outline-none placeholder:text-capsulet-muted"
+              placeholder="Search claims, entities, subgraphs, evidence"
+            />
           </div>
-          <div className="topbarActions">
-            <label className="projectSelector">
+          <div className="flex shrink-0 items-center gap-2">
+            <label className="hidden items-center gap-2 text-xs text-capsulet-muted md:flex">
               <span>Project</span>
               <select
+                className="rounded-md border border-capsulet-line bg-capsulet-bg px-2 py-1.5 text-sm text-capsulet-text outline-none"
                 value={activeProject}
                 onChange={(event) => {
                   setActiveProject(event.target.value);
@@ -138,19 +187,19 @@ export function DashboardShell({
                 )) : <option value="">No project</option>}
               </select>
             </label>
-            <button className="iconButton" title="Refresh">
+            <button className="grid size-9 place-items-center rounded-md border border-capsulet-line bg-capsulet-panel text-capsulet-muted hover:text-white" title="Refresh">
               <RefreshCw size={18} aria-hidden="true" />
             </button>
-            <button className="iconButton" title="Notifications">
+            <button className="grid size-9 place-items-center rounded-md border border-capsulet-line bg-capsulet-panel text-capsulet-muted hover:text-white" title="Notifications">
               <Bell size={18} aria-hidden="true" />
             </button>
             <form action="/api/auth/logout" method="post">
-              <button className="iconButton" title="Sign out" type="submit">
+              <button className="grid size-9 place-items-center rounded-md border border-capsulet-line bg-capsulet-panel text-capsulet-muted hover:text-white" title="Sign out" type="submit">
                 <LogOut size={18} aria-hidden="true" />
               </button>
             </form>
             {actionLabel && actionHref ? (
-              <Link className="primaryAction" href={actionHref}>
+              <Link className="inline-flex items-center gap-2 rounded-md bg-docker-500 px-3 py-2 text-sm font-semibold text-white hover:bg-docker-600" href={actionHref}>
                 <Plus size={18} aria-hidden="true" />
                 {actionLabel}
               </Link>
@@ -159,6 +208,7 @@ export function DashboardShell({
         </header>
         {children}
       </section>
+      </div>
     </main>
   );
 }

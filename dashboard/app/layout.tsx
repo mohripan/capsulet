@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Capsulet Dashboard",
-  description: "Kubernetes-native automation and job execution dashboard"
+  title: "Capsulet Memory Studio",
+  description: "Local-first governed graph memory platform for private AI agents"
 };
 
 export default function RootLayout({
