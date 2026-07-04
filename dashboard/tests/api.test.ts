@@ -3,16 +3,23 @@ import { describe, it } from "node:test";
 
 import {
   CapsuletApiError,
+  approveReviewClaim,
   activateMemorySubgraph,
   capsuletStreamUrl,
+  createIngestionConnector,
   createCanonicalEntity,
   createMemorySubgraph,
   createSubgraphEdge,
   formatBytes,
   getErrorMessage,
   isTerminalStatus,
+  listIngestionConnectors,
+  listIngestionRuns,
+  listReviewClaims,
   listCanonicalEntities,
-  listMemorySubgraphs
+  listMemorySubgraphs,
+  rejectReviewClaim,
+  runIngestionConnector
 } from "../app/lib/api";
 
 describe("dashboard API helpers", () => {
@@ -200,6 +207,142 @@ describe("dashboard API helpers", () => {
       claim_ids: ["claim_sales", "claim_eng"],
       evidence_ids: []
     });
+  });
+
+  it("calls connector ingestion endpoints with local text payloads", async () => {
+    const calls: Array<{ path: string; init: RequestInit | undefined }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      calls.push({ path: String(input), init });
+      if (String(input).endsWith("/runs") && init?.method === "POST") {
+        return jsonResponse({
+          run: {
+            id: "ingestion_run_project_notes",
+            tenant_id: "tenant",
+            project_id: "project",
+            connector_id: "connector_project_notes",
+            status: "succeeded",
+            error: null,
+            source_count: 1,
+            evidence_count: 2,
+            entity_count: 1,
+            claim_count: 2,
+            event_count: 0,
+            relationship_count: 0
+          },
+          outputs: {
+            sources: ["source_1"],
+            evidence: ["evidence_1"],
+            entities: ["entity_1"],
+            claims: ["claim_1", "claim_2"],
+            events: [],
+            relationships: []
+          }
+        }, 201);
+      }
+      if (init?.method === "POST") {
+        return jsonResponse({
+          id: "connector_project_notes",
+          tenant_id: "tenant",
+          project_id: "project",
+          name: "Project notes",
+          kind: "local_text",
+          enabled: true,
+          config: {
+            title: "Project Atlas Notes",
+            content_type: "text/markdown",
+            uri: "local://project-atlas.md",
+            authority: "high"
+          }
+        }, 201);
+      }
+      if (String(input).endsWith("/runs")) {
+        return jsonResponse({ runs: [] });
+      }
+      return jsonResponse({ connectors: [] });
+    };
+
+    try {
+      await listIngestionConnectors();
+      await createIngestionConnector({
+        id: "connector_project_notes",
+        name: "Project notes",
+        kind: "local_text",
+        enabled: true,
+        config: {
+          title: "Project Atlas Notes",
+          content: "# Project Atlas",
+          content_type: "text/markdown",
+          uri: "local://project-atlas.md",
+          authority: "high"
+        }
+      });
+      await runIngestionConnector("connector_project_notes");
+      await listIngestionRuns();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(calls[0].path, "/api/capsulet/v1/ingestion/connectors");
+    assert.equal(calls[1].path, "/api/capsulet/v1/ingestion/connectors");
+    assert.equal(calls[1].init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(calls[1].init?.body)), {
+      id: "connector_project_notes",
+      name: "Project notes",
+      kind: "local_text",
+      enabled: true,
+      config: {
+        title: "Project Atlas Notes",
+        content: "# Project Atlas",
+        content_type: "text/markdown",
+        uri: "local://project-atlas.md",
+        authority: "high"
+      }
+    });
+    assert.equal(calls[2].path, "/api/capsulet/v1/ingestion/connectors/connector_project_notes/runs");
+    assert.equal(calls[2].init?.method, "POST");
+    assert.equal(calls[3].path, "/api/capsulet/v1/ingestion/runs");
+  });
+
+  it("calls ingestion review queue endpoints", async () => {
+    const calls: Array<{ path: string; init: RequestInit | undefined }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      calls.push({ path: String(input), init });
+      return jsonResponse({
+        claims: [
+          {
+            id: "claim_project_blocked",
+            tenant_id: "tenant",
+            project_id: "project",
+            subject_id: "entity_project",
+            predicate: "blocked_by",
+            object: "Legal Review",
+            evidence_ids: ["evidence_1"],
+            confidence: 0.55,
+            authority: "high",
+            status: init?.method === "POST" ? "active" : "candidate",
+            observed_at: "ingestion",
+            valid_from: null,
+            valid_until: null
+          }
+        ]
+      });
+    };
+
+    try {
+      await listReviewClaims("candidate");
+      await approveReviewClaim("claim_project_blocked");
+      await rejectReviewClaim("claim_project_blocked");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(calls[0].path, "/api/capsulet/v1/ingestion/review/claims?status=candidate");
+    assert.equal(calls[1].path, "/api/capsulet/v1/ingestion/review/claims/claim_project_blocked/approve");
+    assert.equal(calls[1].init?.method, "POST");
+    assert.equal(calls[2].path, "/api/capsulet/v1/ingestion/review/claims/claim_project_blocked/reject");
+    assert.equal(calls[2].init?.method, "POST");
   });
 });
 

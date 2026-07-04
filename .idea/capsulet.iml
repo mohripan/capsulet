@@ -15,6 +15,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/application/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/observability/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/runner/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/core/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

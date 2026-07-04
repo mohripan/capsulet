@@ -317,6 +317,32 @@ where
             post(crate::memory::create_entity_graph_attachment),
         )
         .route(
+            "/v1/ingestion/connectors",
+            post(crate::ingestion::create_connector).get(crate::ingestion::list_connectors),
+        )
+        .route(
+            "/v1/ingestion/connectors/{id}",
+            get(crate::ingestion::get_connector),
+        )
+        .route(
+            "/v1/ingestion/connectors/{id}/runs",
+            post(crate::ingestion::run_connector),
+        )
+        .route("/v1/ingestion/runs", get(crate::ingestion::list_runs))
+        .route("/v1/ingestion/runs/{id}", get(crate::ingestion::get_run))
+        .route(
+            "/v1/ingestion/review/claims",
+            get(crate::ingestion::list_review_claims),
+        )
+        .route(
+            "/v1/ingestion/review/claims/{id}/approve",
+            post(crate::ingestion::approve_review_claim),
+        )
+        .route(
+            "/v1/ingestion/review/claims/{id}/reject",
+            post(crate::ingestion::reject_review_claim),
+        )
+        .route(
             "/v1/memory/subgraph-edges",
             post(crate::memory::create_subgraph_edge),
         )

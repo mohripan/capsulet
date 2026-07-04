@@ -10,6 +10,7 @@ mod artifacts;
 mod audit;
 mod automations;
 mod graphs;
+mod ingestion;
 mod job_definitions;
 mod job_runs;
 mod memory;
@@ -238,6 +239,8 @@ pub enum PostgresStoreError {
     MemoryContract(#[from] capsulet_core::MemoryContractError),
     #[error("invalid memory graph: {0}")]
     MemoryGraph(#[from] capsulet_core::MemoryGraphError),
+    #[error("invalid ingestion value: {0}")]
+    Ingestion(#[from] capsulet_core::IngestionError),
 }
 
 fn env_positive_u32(name: &str, default: u32) -> Result<u32, PostgresStoreError> {

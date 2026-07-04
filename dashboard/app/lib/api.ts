@@ -439,6 +439,80 @@ export type CreateSubgraphEdgeRequest = {
   evidence_ids?: string[];
 };
 
+export type IngestionConnector = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  name: string;
+  kind: "local_text" | string;
+  enabled: boolean;
+  config: {
+    title: string;
+    content_type: string;
+    uri: string | null;
+    authority: "low" | "medium" | "high" | string;
+  };
+};
+
+export type CreateIngestionConnectorRequest = {
+  id?: string;
+  name: string;
+  kind: "local_text";
+  enabled?: boolean;
+  config: {
+    title: string;
+    content: string;
+    content_type: "text/plain" | "text/markdown" | "application/json" | string;
+    uri?: string;
+    authority: "low" | "medium" | "high";
+  };
+};
+
+export type IngestionRun = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  connector_id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | string;
+  error: string | null;
+  source_count: number;
+  evidence_count: number;
+  entity_count: number;
+  claim_count: number;
+  event_count: number;
+  relationship_count: number;
+};
+
+export type IngestionRunOutputs = {
+  sources: string[];
+  evidence: string[];
+  entities: string[];
+  claims: string[];
+  events: string[];
+  relationships: string[];
+};
+
+export type IngestionRunWithOutputs = {
+  run: IngestionRun;
+  outputs: IngestionRunOutputs;
+};
+
+export type ReviewClaim = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  subject_id: string;
+  predicate: string;
+  object: string;
+  evidence_ids: string[];
+  confidence: number;
+  authority: "low" | "medium" | "high" | string;
+  status: "candidate" | "active" | "rejected" | string;
+  observed_at: string;
+  valid_from: string | null;
+  valid_until: string | null;
+};
+
 export class CapsuletApiError extends Error {
   constructor(
     message: string,
@@ -734,6 +808,47 @@ export async function createSubgraphEdge(request: CreateSubgraphEdgeRequest) {
   return apiFetch<SubgraphEdge>("/v1/memory/subgraph-edges", {
     method: "POST",
     body: JSON.stringify(request)
+  });
+}
+
+export async function listIngestionConnectors() {
+  return apiFetch<{ connectors: IngestionConnector[] }>("/v1/ingestion/connectors");
+}
+
+export async function createIngestionConnector(request: CreateIngestionConnectorRequest) {
+  return apiFetch<IngestionConnector>("/v1/ingestion/connectors", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function runIngestionConnector(id: string) {
+  return apiFetch<IngestionRunWithOutputs>(`/v1/ingestion/connectors/${encodeURIComponent(id)}/runs`, {
+    method: "POST",
+    body: "{}"
+  });
+}
+
+export async function listIngestionRuns() {
+  return apiFetch<{ runs: IngestionRun[] }>("/v1/ingestion/runs");
+}
+
+export async function listReviewClaims(status?: "candidate" | "active" | "rejected") {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiFetch<{ claims: ReviewClaim[] }>(`/v1/ingestion/review/claims${query}`);
+}
+
+export async function approveReviewClaim(id: string) {
+  return apiFetch<ReviewClaim>(`/v1/ingestion/review/claims/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+    body: "{}"
+  });
+}
+
+export async function rejectReviewClaim(id: string) {
+  return apiFetch<ReviewClaim>(`/v1/ingestion/review/claims/${encodeURIComponent(id)}/reject`, {
+    method: "POST",
+    body: "{}"
   });
 }
 

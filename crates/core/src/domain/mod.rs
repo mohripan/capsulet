@@ -4,6 +4,7 @@ mod automation;
 mod execution_pool;
 mod graph;
 mod ids;
+mod ingestion;
 mod job;
 mod job_definition;
 mod job_log;
@@ -31,10 +32,15 @@ pub use graph::{
 pub use ids::{
     ActionId, AgentId, AgentRunId, ArtifactId, AutomationId, CanonicalEntityId, ClaimId,
     EntityGraphAttachmentId, EntityId, EntityResolutionId, EventId, EvidenceId, GraphId,
-    HyperedgeId, JobAttemptId, JobDefinitionId, JobRunId, MemoryContractId, MemoryMemberId,
-    MemorySubgraphId, MemorySubgraphMemberId, NodeId, ObservationId, PortId, RelationshipId,
-    SourceId, SubgraphEdgeId, SummaryTraceId, TraceEventId, WorkflowId, WorkflowRunId,
-    WorkflowStepId, WorkflowStepRunId,
+    HyperedgeId, IngestionConnectorId, IngestionRunId, JobAttemptId, JobDefinitionId, JobRunId,
+    MemoryContractId, MemoryMemberId, MemorySubgraphId, MemorySubgraphMemberId, NodeId,
+    ObservationId, PortId, RelationshipId, SourceId, SubgraphEdgeId, SummaryTraceId, TraceEventId,
+    WorkflowId, WorkflowRunId, WorkflowStepId, WorkflowStepRunId,
+};
+pub use ingestion::{
+    IngestionConnector, IngestionConnectorConfig, IngestionConnectorKind, IngestionError,
+    IngestionRun, IngestionRunOutput, IngestionRunOutputRecord, IngestionRunStatus,
+    run_local_text_ingestion,
 };
 pub use job::{JobRun, JobRunStatus, JobRunTransition, StateTransitionError};
 pub use job_definition::{JobDefinition, RetryPolicy};

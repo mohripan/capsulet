@@ -11,14 +11,15 @@ use capsulet_core::{
     EntityGraphAttachmentType, EntityId, EntityResolution, EntityResolutionId,
     EntityResolutionStatus, Evidence, EvidenceId, ExecutionPoolName, GraphDefinition,
     GraphHyperedge, GraphId, GraphNode, GraphPort, GraphTransitionPolicy, HyperedgeEndpoint,
-    HyperedgeId, JobArtifact, JobDefinition, JobRun, JobRunId, JobRunLog, JobRunTransition,
-    MemoryContract, MemoryContractId, MemoryMemberId, MemoryMemberKind, MemoryScope,
-    MemorySubgraph, MemorySubgraphActivation, MemorySubgraphId, MemorySubgraphMember,
-    MemorySubgraphMemberId, MemorySubgraphMemberRole, MemorySubgraphOwner, MemorySubgraphOwnerKind,
-    MemorySubgraphPermissions, MemorySubgraphStatus, NodeId, NodeKind, PortDirection, PortId,
-    PortValueType, Source, SourceId, SubgraphEdge, SubgraphEdgeId, SummaryTrace, SummaryTraceId,
-    TriggerKind, TriggerName, WorkflowDefinition, WorkflowId, WorkflowStatus, WorkflowStep,
-    WorkflowStepDependency, WorkflowStepId,
+    HyperedgeId, IngestionConnector, IngestionConnectorConfig, IngestionConnectorId,
+    IngestionConnectorKind, IngestionRun, IngestionRunId, IngestionRunOutputRecord, JobArtifact,
+    JobDefinition, JobRun, JobRunId, JobRunLog, JobRunTransition, MemoryContract, MemoryContractId,
+    MemoryMemberId, MemoryMemberKind, MemoryScope, MemorySubgraph, MemorySubgraphActivation,
+    MemorySubgraphId, MemorySubgraphMember, MemorySubgraphMemberId, MemorySubgraphMemberRole,
+    MemorySubgraphOwner, MemorySubgraphOwnerKind, MemorySubgraphPermissions, MemorySubgraphStatus,
+    NodeId, NodeKind, PortDirection, PortId, PortValueType, Source, SourceId, SubgraphEdge,
+    SubgraphEdgeId, SummaryTrace, SummaryTraceId, TriggerKind, TriggerName, WorkflowDefinition,
+    WorkflowId, WorkflowStatus, WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 
 use capsulet_core::JobRunStatus;
@@ -291,6 +292,70 @@ async fn saves_and_lists_memory_claims_when_database_is_available() {
         .expect("list claims");
 
     assert_eq!(claims[0].evidence_ids(), claim.evidence_ids());
+}
+
+#[tokio::test]
+async fn saves_ingestion_connector_run_and_outputs_when_database_is_available() {
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+
+    let scope =
+        MemoryScope::new("tenant_ingestion", unique_id("project_ingestion")).expect("scope");
+    let connector = IngestionConnector::new(
+        IngestionConnectorId::new(unique_id("connector_ingestion")).expect("connector id"),
+        scope.clone(),
+        "Project notes",
+        IngestionConnectorKind::LocalText,
+        IngestionConnectorConfig::local_text(
+            "Project Atlas Notes",
+            "- Project Atlas is blocked by Legal Review",
+            "text/markdown",
+            Some("local://project-atlas.md".to_string()),
+            Authority::High,
+        ),
+        true,
+    )
+    .expect("connector");
+    let run = IngestionRun::queued(
+        IngestionRunId::new(unique_id("ingestion_run")).expect("run id"),
+        scope.clone(),
+        connector.id().clone(),
+    )
+    .succeeded(1, 1, 1, 1);
+    let output = IngestionRunOutputRecord::new(run.id().clone(), "claim", "claim_ingestion_1")
+        .expect("output");
+
+    store
+        .upsert_ingestion_connector(&connector)
+        .await
+        .expect("save connector");
+    store.upsert_ingestion_run(&run).await.expect("save run");
+    store
+        .upsert_ingestion_run_output(&output)
+        .await
+        .expect("save output");
+
+    let connectors = store
+        .list_ingestion_connectors(scope.tenant_id(), scope.project_id(), 10)
+        .await
+        .expect("list connectors");
+    let runs = store
+        .list_ingestion_runs(scope.tenant_id(), scope.project_id(), 10)
+        .await
+        .expect("list runs");
+    let outputs = store
+        .list_ingestion_run_outputs(run.id())
+        .await
+        .expect("list outputs");
+
+    assert_eq!(connectors[0].id(), connector.id());
+    assert_eq!(runs[0].claim_count(), 1);
+    assert_eq!(outputs, vec![output]);
 }
 
 #[tokio::test]

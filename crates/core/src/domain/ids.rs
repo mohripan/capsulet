@@ -62,6 +62,8 @@ id_type!(EntityResolutionId);
 id_type!(SubgraphEdgeId);
 id_type!(SummaryTraceId);
 id_type!(EntityGraphAttachmentId);
+id_type!(IngestionConnectorId);
+id_type!(IngestionRunId);
 id_type!(NodeId);
 id_type!(PortId);
 id_type!(HyperedgeId);

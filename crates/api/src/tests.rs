@@ -9,11 +9,12 @@ use capsulet_core::{
     AgentDefinition, AgentId, AgentRunId, ArtifactId, ArtifactObjectKind, Automation, AutomationId,
     AutomationStatus, AutomationTrigger, CanonicalEntity, Claim, ClaimId, CustomTriggerPlugin,
     Entity, EntityGraphAttachment, EntityId, EntityResolution, Event, EventId, Evidence,
-    EvidenceId, ExecutionPoolName, GraphDefinition, GraphId, JobArtifact, JobDefinition,
-    JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus, JobRunTransition, MemoryContract,
-    MemoryContractId, MemorySubgraph, MemorySubgraphMember, Relationship, RelationshipId, Source,
-    SourceId, SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun,
-    WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
+    EvidenceId, ExecutionPoolName, GraphDefinition, GraphId, IngestionConnector,
+    IngestionConnectorId, IngestionRun, IngestionRunId, IngestionRunOutputRecord, JobArtifact,
+    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, JobRunStatus, JobRunTransition,
+    MemoryContract, MemoryContractId, MemorySubgraph, MemorySubgraphMember, Relationship,
+    RelationshipId, Source, SourceId, SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId,
+    WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep, WorkflowStepId,
     WorkflowStepRun, WorkflowStepRunId,
 };
 use capsulet_postgres::{
@@ -58,6 +59,9 @@ struct FakeStore {
     memory_subgraph_edges: Arc<Mutex<Vec<SubgraphEdge>>>,
     memory_summary_traces: Arc<Mutex<Vec<SummaryTrace>>>,
     memory_entity_graph_attachments: Arc<Mutex<Vec<EntityGraphAttachment>>>,
+    ingestion_connectors: Arc<Mutex<Vec<IngestionConnector>>>,
+    ingestion_runs: Arc<Mutex<Vec<IngestionRun>>>,
+    ingestion_run_outputs: Arc<Mutex<Vec<IngestionRunOutputRecord>>>,
     projects: Arc<Mutex<Vec<ProjectRecord>>>,
     project_memberships: Arc<Mutex<Vec<ProjectMembershipRecord>>>,
     ownership: Arc<Mutex<Vec<FakeOwnership>>>,
@@ -1050,6 +1054,123 @@ impl ApiStore for FakeStore {
         attachments.retain(|existing| existing.id() != attachment.id());
         attachments.push(attachment.clone());
         Ok(())
+    }
+
+    async fn upsert_ingestion_connector(
+        &self,
+        connector: &IngestionConnector,
+    ) -> Result<(), Self::Error> {
+        let mut connectors = self
+            .ingestion_connectors
+            .lock()
+            .map_err(|error| error.to_string())?;
+        connectors.retain(|existing| existing.id() != connector.id());
+        connectors.push(connector.clone());
+        Ok(())
+    }
+
+    async fn list_ingestion_connectors(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IngestionConnector>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .ingestion_connectors
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|connector| {
+                connector.scope().tenant_id() == tenant_id
+                    && connector.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_ingestion_connector(
+        &self,
+        id: &IngestionConnectorId,
+    ) -> Result<Option<IngestionConnector>, Self::Error> {
+        Ok(self
+            .ingestion_connectors
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|connector| connector.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_ingestion_run(&self, run: &IngestionRun) -> Result<(), Self::Error> {
+        let mut runs = self
+            .ingestion_runs
+            .lock()
+            .map_err(|error| error.to_string())?;
+        runs.retain(|existing| existing.id() != run.id());
+        runs.push(run.clone());
+        Ok(())
+    }
+
+    async fn list_ingestion_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IngestionRun>, Self::Error> {
+        let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        Ok(self
+            .ingestion_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|run| {
+                run.scope().tenant_id() == tenant_id && run.scope().project_id() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_ingestion_run(
+        &self,
+        id: &IngestionRunId,
+    ) -> Result<Option<IngestionRun>, Self::Error> {
+        Ok(self
+            .ingestion_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|run| run.id() == id)
+            .cloned())
+    }
+
+    async fn upsert_ingestion_run_output(
+        &self,
+        output: &IngestionRunOutputRecord,
+    ) -> Result<(), Self::Error> {
+        let mut outputs = self
+            .ingestion_run_outputs
+            .lock()
+            .map_err(|error| error.to_string())?;
+        outputs.retain(|existing| existing != output);
+        outputs.push(output.clone());
+        Ok(())
+    }
+
+    async fn list_ingestion_run_outputs(
+        &self,
+        run_id: &IngestionRunId,
+    ) -> Result<Vec<IngestionRunOutputRecord>, Self::Error> {
+        Ok(self
+            .ingestion_run_outputs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|output| output.run_id() == run_id)
+            .cloned()
+            .collect())
     }
 
     async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
@@ -2735,6 +2856,180 @@ async fn rejects_cyclic_workflow_dependencies() {
             .unwrap()
             .contains("cycle")
     );
+}
+
+#[tokio::test]
+async fn local_text_connector_run_creates_candidate_memory() {
+    let app = authenticated_app(FakeStore::default());
+    let connector_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/ingestion/connectors")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "connector_project_notes",
+                        "name": "Project notes",
+                        "kind": "local_text",
+                        "config": {
+                            "title": "Project Atlas Notes",
+                            "content": "# Project Atlas\n\n- Project Atlas is blocked by Legal Review\n- Sarah approved Project Atlas\n",
+                            "content_type": "text/markdown",
+                            "uri": "local://project-atlas.md",
+                            "authority": "high"
+                        },
+                        "enabled": true
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(connector_response.status(), axum::http::StatusCode::CREATED);
+
+    let run_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/ingestion/connectors/connector_project_notes/runs")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(run_response.status(), axum::http::StatusCode::CREATED);
+    let body = response_json(run_response).await;
+    assert_eq!(body["run"]["status"], "succeeded");
+    assert_eq!(body["run"]["source_count"], 1);
+    assert_eq!(body["run"]["claim_count"], 2);
+    assert_eq!(
+        body["outputs"]["sources"]
+            .as_array()
+            .expect("sources")
+            .len(),
+        1
+    );
+    assert!(
+        !body["outputs"]["evidence"]
+            .as_array()
+            .expect("evidence")
+            .is_empty()
+    );
+    assert_eq!(
+        body["outputs"]["claims"].as_array().expect("claims").len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn ingestion_review_queue_approves_and_rejects_candidate_claims() {
+    let app = authenticated_app(FakeStore::default());
+    let token = "Bearer admin-token-0123456789-abcdefghijkl";
+    let connector_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/ingestion/connectors")
+                .header("authorization", token)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "connector_review_notes",
+                        "name": "Review notes",
+                        "kind": "local_text",
+                        "config": {
+                            "title": "Review Notes",
+                            "content": "# Project Atlas\n\n- Project Atlas is blocked by Legal Review\n- Sarah approved Project Atlas\n",
+                            "content_type": "text/markdown",
+                            "authority": "high"
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(connector_response.status(), axum::http::StatusCode::CREATED);
+
+    let run_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/ingestion/connectors/connector_review_notes/runs")
+                .header("authorization", token)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(run_response.status(), axum::http::StatusCode::CREATED);
+
+    let review_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/ingestion/review/claims?status=candidate")
+                .header("authorization", token)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(review_response.status(), axum::http::StatusCode::OK);
+    let body = response_json(review_response).await;
+    let claims = body["claims"].as_array().expect("claims");
+    assert_eq!(claims.len(), 2);
+    assert_eq!(claims[0]["status"], "candidate");
+
+    let first_claim_id = claims[0]["id"].as_str().expect("claim id");
+    let second_claim_id = claims[1]["id"].as_str().expect("claim id");
+    let approve_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/ingestion/review/claims/{first_claim_id}/approve"
+                ))
+                .header("authorization", token)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(approve_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(response_json(approve_response).await["status"], "active");
+
+    let reject_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/ingestion/review/claims/{second_claim_id}/reject"
+                ))
+                .header("authorization", token)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(reject_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(response_json(reject_response).await["status"], "rejected");
 }
 
 #[tokio::test]

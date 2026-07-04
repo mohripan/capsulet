@@ -7,11 +7,12 @@ use capsulet_application::{
 use capsulet_core::{
     AgentDefinition, AgentId, AgentRunId, ArtifactId, Automation, AutomationId, AutomationTrigger,
     CanonicalEntity, Claim, ClaimId, CustomTriggerPlugin, Entity, EntityGraphAttachment, EntityId,
-    EntityResolution, Event, EventId, Evidence, EvidenceId, GraphDefinition, GraphId, JobArtifact,
-    JobDefinition, JobDefinitionId, JobRun, JobRunId, JobRunLog, MemoryContract, MemoryContractId,
-    MemorySubgraph, MemorySubgraphId, MemorySubgraphMember, Relationship, RelationshipId, Source,
-    SourceId, SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun,
-    WorkflowRunId, WorkflowStepRun,
+    EntityResolution, Event, EventId, Evidence, EvidenceId, GraphDefinition, GraphId,
+    IngestionConnector, IngestionConnectorId, IngestionRun, IngestionRunId,
+    IngestionRunOutputRecord, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId,
+    JobRunLog, MemoryContract, MemoryContractId, MemorySubgraph, MemorySubgraphId,
+    MemorySubgraphMember, Relationship, RelationshipId, Source, SourceId, SubgraphEdge,
+    SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
 };
 use capsulet_postgres::{
     AdmissionSnapshot, AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore,
@@ -264,6 +265,39 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         attachment: &EntityGraphAttachment,
     ) -> Result<(), Self::Error>;
+    async fn upsert_ingestion_connector(
+        &self,
+        connector: &IngestionConnector,
+    ) -> Result<(), Self::Error>;
+    async fn list_ingestion_connectors(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IngestionConnector>, Self::Error>;
+    async fn find_ingestion_connector(
+        &self,
+        id: &IngestionConnectorId,
+    ) -> Result<Option<IngestionConnector>, Self::Error>;
+    async fn upsert_ingestion_run(&self, run: &IngestionRun) -> Result<(), Self::Error>;
+    async fn list_ingestion_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IngestionRun>, Self::Error>;
+    async fn find_ingestion_run(
+        &self,
+        id: &IngestionRunId,
+    ) -> Result<Option<IngestionRun>, Self::Error>;
+    async fn upsert_ingestion_run_output(
+        &self,
+        output: &IngestionRunOutputRecord,
+    ) -> Result<(), Self::Error>;
+    async fn list_ingestion_run_outputs(
+        &self,
+        run_id: &IngestionRunId,
+    ) -> Result<Vec<IngestionRunOutputRecord>, Self::Error>;
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error>;
     async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error>;
     async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error>;
@@ -786,6 +820,64 @@ impl ApiStore for PostgresStore {
         attachment: &EntityGraphAttachment,
     ) -> Result<(), Self::Error> {
         self.upsert_memory_entity_graph_attachment(attachment).await
+    }
+
+    async fn upsert_ingestion_connector(
+        &self,
+        connector: &IngestionConnector,
+    ) -> Result<(), Self::Error> {
+        self.upsert_ingestion_connector(connector).await
+    }
+
+    async fn list_ingestion_connectors(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IngestionConnector>, Self::Error> {
+        self.list_ingestion_connectors(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn find_ingestion_connector(
+        &self,
+        id: &IngestionConnectorId,
+    ) -> Result<Option<IngestionConnector>, Self::Error> {
+        self.find_ingestion_connector(id).await
+    }
+
+    async fn upsert_ingestion_run(&self, run: &IngestionRun) -> Result<(), Self::Error> {
+        self.upsert_ingestion_run(run).await
+    }
+
+    async fn list_ingestion_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IngestionRun>, Self::Error> {
+        self.list_ingestion_runs(tenant_id, project_id, limit).await
+    }
+
+    async fn find_ingestion_run(
+        &self,
+        id: &IngestionRunId,
+    ) -> Result<Option<IngestionRun>, Self::Error> {
+        self.find_ingestion_run(id).await
+    }
+
+    async fn upsert_ingestion_run_output(
+        &self,
+        output: &IngestionRunOutputRecord,
+    ) -> Result<(), Self::Error> {
+        self.upsert_ingestion_run_output(output).await
+    }
+
+    async fn list_ingestion_run_outputs(
+        &self,
+        run_id: &IngestionRunId,
+    ) -> Result<Vec<IngestionRunOutputRecord>, Self::Error> {
+        self.list_ingestion_run_outputs(run_id).await
     }
 
     async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {

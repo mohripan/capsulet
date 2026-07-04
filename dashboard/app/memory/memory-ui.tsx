@@ -457,6 +457,7 @@ function MemoryPageFrame({ eyebrow, title, description, action, children }: { ey
       </header>
       <div className="mb-4 flex flex-wrap gap-2 border-b border-capsulet-line">
         <Tab href="/memory">Explore</Tab>
+        <Tab href="/memory/ingestion">Ingestion</Tab>
         <Tab href="/memory/subgraphs">Subgraphs</Tab>
         <Tab href="/memory/entities">Entities</Tab>
         <Tab href="/memory/edges">Boundary edges</Tab>

@@ -35,6 +35,7 @@ import { listProjects, selectedProjectId, setSelectedProjectId, type Project } f
 
 const nav: Array<[LucideIcon, string, string]> = [
   [Network, "Graph Workbench", "/memory"],
+  [PlugZap, "Ingestion", "/memory/ingestion"],
   [Layers3, "Subgraphs", "/memory/subgraphs"],
   [CircleDotDashed, "Claims", "/memory/traces"],
   [DatabaseZap, "Entities", "/memory/entities"],

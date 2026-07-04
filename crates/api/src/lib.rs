@@ -6,6 +6,7 @@ mod automations;
 mod error;
 mod graphs;
 mod http;
+mod ingestion;
 mod memory;
 mod models;
 mod state;
