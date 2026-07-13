@@ -306,7 +306,28 @@ where
         )
         .route(
             "/v1/memory/entity-resolutions",
-            post(crate::memory::create_entity_resolution),
+            post(crate::memory::create_entity_resolution)
+                .get(crate::memory::list_entity_resolutions),
+        )
+        .route(
+            "/v1/memory/entity-resolutions/{id}/confirm",
+            post(crate::memory::confirm_entity_resolution),
+        )
+        .route(
+            "/v1/memory/entity-resolutions/{id}/reject",
+            post(crate::memory::reject_entity_resolution),
+        )
+        .route(
+            "/v1/memory/conflicts",
+            get(crate::memory::list_claim_conflicts),
+        )
+        .route(
+            "/v1/memory/conflicts/{id}/resolve",
+            post(crate::memory::resolve_claim_conflict),
+        )
+        .route(
+            "/v1/memory/conflicts/{id}/dismiss",
+            post(crate::memory::dismiss_claim_conflict),
         )
         .route(
             "/v1/memory/summary-traces",

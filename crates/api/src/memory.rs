@@ -1,18 +1,18 @@
 use axum::{
     Extension, Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
 };
 use capsulet_core::{
-    Authority, CanonicalEntity, CanonicalEntityId, Claim, ClaimId, ClaimStatus,
-    CompiledMemoryPolicy, Confidence, Entity, EntityGraphAttachment, EntityGraphAttachmentId,
-    EntityGraphAttachmentType, EntityId, EntityResolution, EntityResolutionId,
-    EntityResolutionStatus, Event, EventId, Evidence, EvidenceId, MemoryContract, MemoryContractId,
-    MemoryMemberId, MemoryMemberKind, MemoryScope, MemorySubgraph, MemorySubgraphActivation,
-    MemorySubgraphId, MemorySubgraphMember, MemorySubgraphMemberId, MemorySubgraphMemberRole,
-    MemorySubgraphOwner, MemorySubgraphOwnerKind, MemorySubgraphPermissions, RelationTypeSpec,
-    Relationship, RelationshipId, RetrievalPolicySpec, Source, SourceId, SubgraphEdge,
-    SubgraphEdgeId, SummaryTrace, SummaryTraceId,
+    Authority, CanonicalEntity, CanonicalEntityId, Claim, ClaimConflict, ClaimConflictId,
+    ClaimConflictStatus, ClaimId, ClaimStatus, CompiledMemoryPolicy, Confidence, Entity,
+    EntityGraphAttachment, EntityGraphAttachmentId, EntityGraphAttachmentType, EntityId,
+    EntityResolution, EntityResolutionId, EntityResolutionStatus, Event, EventId, Evidence,
+    EvidenceId, MemoryContract, MemoryContractId, MemoryMemberId, MemoryMemberKind, MemoryScope,
+    MemorySubgraph, MemorySubgraphActivation, MemorySubgraphId, MemorySubgraphMember,
+    MemorySubgraphMemberId, MemorySubgraphMemberRole, MemorySubgraphOwner, MemorySubgraphOwnerKind,
+    MemorySubgraphPermissions, RelationTypeSpec, Relationship, RelationshipId, RetrievalPolicySpec,
+    Source, SourceId, SubgraphEdge, SubgraphEdgeId, SummaryTrace, SummaryTraceId,
 };
 use capsulet_storage::ObjectStore;
 use serde::{Deserialize, Serialize};
@@ -137,6 +137,21 @@ pub(crate) struct CreateEntityResolutionRequest {
     confidence: f64,
     status: String,
     evidence_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ListEntityResolutionsQuery {
+    status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ListClaimConflictsQuery {
+    status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ResolveClaimConflictRequest {
+    preferred_claim_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -306,6 +321,20 @@ pub(crate) struct EntityResolutionResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct ClaimConflictResponse {
+    id: String,
+    tenant_id: String,
+    project_id: String,
+    subject_id: String,
+    canonical_entity_id: Option<String>,
+    predicate: String,
+    claim_ids: Vec<String>,
+    status: String,
+    reason: String,
+    preferred_claim_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct SummaryTraceResponse {
     id: String,
     tenant_id: String,
@@ -417,6 +446,16 @@ pub(crate) struct ListMemorySubgraphsResponse {
 #[derive(Debug, Serialize)]
 pub(crate) struct ListCanonicalEntitiesResponse {
     canonical_entities: Vec<CanonicalEntityResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListEntityResolutionsResponse {
+    entity_resolutions: Vec<EntityResolutionResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ListClaimConflictsResponse {
+    conflicts: Vec<ClaimConflictResponse>,
 }
 
 pub(crate) async fn create_source<S, O>(
@@ -1190,6 +1229,241 @@ where
     ))
 }
 
+pub(crate) async fn list_entity_resolutions<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Query(query): Query<ListEntityResolutionsQuery>,
+) -> Result<Json<ListEntityResolutionsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    let status_filter = query
+        .status
+        .as_deref()
+        .map(parse_resolution_status)
+        .transpose()?;
+    let resolutions = state
+        .store
+        .list_memory_entity_resolutions(&context.tenant_id, &context.project_id, 100)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ListEntityResolutionsResponse {
+        entity_resolutions: resolutions
+            .iter()
+            .filter(|resolution| status_filter.is_none_or(|status| resolution.status() == status))
+            .map(EntityResolutionResponse::from)
+            .collect(),
+    }))
+}
+
+pub(crate) async fn confirm_entity_resolution<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<EntityResolutionResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    review_entity_resolution(
+        state,
+        headers,
+        principal,
+        id,
+        EntityResolutionStatus::Confirmed,
+    )
+    .await
+}
+
+pub(crate) async fn reject_entity_resolution<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<EntityResolutionResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    review_entity_resolution(
+        state,
+        headers,
+        principal,
+        id,
+        EntityResolutionStatus::Rejected,
+    )
+    .await
+}
+
+async fn review_entity_resolution<S, O>(
+    state: AppState<S, O>,
+    headers: HeaderMap,
+    principal: Principal,
+    id: String,
+    next_status: EntityResolutionStatus,
+) -> Result<Json<EntityResolutionResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = write_context(&headers, &principal)?;
+    let id = EntityResolutionId::new(id).map_err(ApiError::validation)?;
+    let Some(resolution) = state
+        .store
+        .find_memory_entity_resolution(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
+    };
+    if resolution.scope().tenant_id() != context.tenant_id
+        || resolution.scope().project_id() != context.project_id
+    {
+        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
+    }
+    if resolution.status() != EntityResolutionStatus::Candidate {
+        return Err(ApiError::validation(format!(
+            "entity resolution {} is not awaiting review",
+            resolution.id().as_str()
+        )));
+    }
+    let reviewed = resolution
+        .with_status(next_status)
+        .map_err(graph_validation)?;
+    state
+        .store
+        .upsert_memory_entity_resolution(&reviewed)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(EntityResolutionResponse::from(&reviewed)))
+}
+
+pub(crate) async fn list_claim_conflicts<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Query(query): Query<ListClaimConflictsQuery>,
+) -> Result<Json<ListClaimConflictsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    let status_filter = query
+        .status
+        .as_deref()
+        .map(parse_claim_conflict_status)
+        .transpose()?;
+    let conflicts = state
+        .store
+        .list_memory_claim_conflicts(&context.tenant_id, &context.project_id, 100)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ListClaimConflictsResponse {
+        conflicts: conflicts
+            .iter()
+            .filter(|conflict| status_filter.is_none_or(|status| conflict.status() == status))
+            .map(ClaimConflictResponse::from)
+            .collect(),
+    }))
+}
+
+pub(crate) async fn resolve_claim_conflict<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+    Json(request): Json<ResolveClaimConflictRequest>,
+) -> Result<Json<ClaimConflictResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = ClaimConflictId::new(id).map_err(ApiError::validation)?;
+    let preferred_claim_id =
+        ClaimId::new(request.preferred_claim_id).map_err(ApiError::validation)?;
+    review_claim_conflict(
+        &state.store,
+        &headers,
+        &principal,
+        id,
+        ClaimConflictReview::Resolve(preferred_claim_id),
+    )
+    .await
+}
+
+pub(crate) async fn dismiss_claim_conflict<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<ClaimConflictResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = ClaimConflictId::new(id).map_err(ApiError::validation)?;
+    review_claim_conflict(
+        &state.store,
+        &headers,
+        &principal,
+        id,
+        ClaimConflictReview::Dismiss,
+    )
+    .await
+}
+
+enum ClaimConflictReview {
+    Resolve(ClaimId),
+    Dismiss,
+}
+
+async fn review_claim_conflict<S>(
+    store: &S,
+    headers: &HeaderMap,
+    principal: &Principal,
+    id: ClaimConflictId,
+    review: ClaimConflictReview,
+) -> Result<Json<ClaimConflictResponse>, ApiError>
+where
+    S: ApiStore,
+{
+    let context = write_context(headers, principal)?;
+    let Some(conflict) = store
+        .find_memory_claim_conflict(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
+    };
+    if conflict.scope().tenant_id() != context.tenant_id
+        || conflict.scope().project_id() != context.project_id
+    {
+        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
+    }
+    if conflict.status() != ClaimConflictStatus::Candidate {
+        return Err(ApiError::validation(format!(
+            "claim conflict {} is not awaiting review",
+            conflict.id().as_str()
+        )));
+    }
+    let reviewed = match review {
+        ClaimConflictReview::Resolve(preferred_claim_id) => conflict
+            .with_resolution(preferred_claim_id)
+            .map_err(graph_validation)?,
+        ClaimConflictReview::Dismiss => conflict.dismissed().map_err(graph_validation)?,
+    };
+    store
+        .upsert_memory_claim_conflict(&reviewed)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(Json(ClaimConflictResponse::from(&reviewed)))
+}
+
 pub(crate) async fn create_summary_trace<S, O>(
     State(state): State<AppState<S, O>>,
     headers: HeaderMap,
@@ -1412,6 +1686,17 @@ fn parse_resolution_status(value: &str) -> Result<EntityResolutionStatus, ApiErr
     }
 }
 
+fn parse_claim_conflict_status(value: &str) -> Result<ClaimConflictStatus, ApiError> {
+    match value {
+        "candidate" => Ok(ClaimConflictStatus::Candidate),
+        "resolved" => Ok(ClaimConflictStatus::Resolved),
+        "dismissed" => Ok(ClaimConflictStatus::Dismissed),
+        value => Err(ApiError::Validation(format!(
+            "unknown claim conflict status {value}"
+        ))),
+    }
+}
+
 fn parse_attachment_type(value: &str) -> Result<EntityGraphAttachmentType, ApiError> {
     match value {
         "primary" => Ok(EntityGraphAttachmentType::Primary),
@@ -1608,6 +1893,31 @@ impl From<&EntityResolution> for EntityResolutionResponse {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
+        }
+    }
+}
+
+impl From<&ClaimConflict> for ClaimConflictResponse {
+    fn from(conflict: &ClaimConflict) -> Self {
+        Self {
+            id: conflict.id().as_str().to_string(),
+            tenant_id: conflict.scope().tenant_id().to_string(),
+            project_id: conflict.scope().project_id().to_string(),
+            subject_id: conflict.subject_id().as_str().to_string(),
+            canonical_entity_id: conflict
+                .canonical_entity_id()
+                .map(|id| id.as_str().to_string()),
+            predicate: conflict.predicate().to_string(),
+            claim_ids: conflict
+                .claim_ids()
+                .iter()
+                .map(|id| id.as_str().to_string())
+                .collect(),
+            status: conflict.status().to_string(),
+            reason: conflict.reason().to_string(),
+            preferred_claim_id: conflict
+                .preferred_claim_id()
+                .map(|id| id.as_str().to_string()),
         }
     }
 }

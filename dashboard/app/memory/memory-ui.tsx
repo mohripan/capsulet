@@ -16,24 +16,34 @@ import {
 } from "lucide-react";
 import {
   CanonicalEntity,
+  ClaimConflict,
   CreateSubgraphEdgeRequest,
+  EntityResolution,
   MemorySubgraph,
   SubgraphEdge,
   SummaryTrace,
   activateMemorySubgraph,
+  confirmEntityResolution,
   createCanonicalEntity,
   createEntityGraphAttachment,
   createMemorySubgraph,
   createSubgraphEdge,
   createSummaryTrace,
+  dismissClaimConflict,
   getErrorMessage,
   listCanonicalEntities,
-  listMemorySubgraphs
+  listClaimConflicts,
+  listEntityResolutions,
+  listMemorySubgraphs,
+  rejectEntityResolution,
+  resolveClaimConflict
 } from "../lib/api";
 
 type MemoryData = {
   subgraphs: MemorySubgraph[];
   canonicalEntities: CanonicalEntity[];
+  entityResolutions: EntityResolution[];
+  claimConflicts: ClaimConflict[];
 };
 
 const fieldClass =
@@ -45,11 +55,33 @@ const subtleButtonClass =
 
 export function MemoryWorkbenchPage() {
   const { data, errors, loading, refresh } = useMemoryData();
+  const [pendingConflict, setPendingConflict] = useState("");
+  const [message, setMessage] = useState("");
   const selected = data.subgraphs[0];
   const activeCount = data.subgraphs.filter((subgraph) => subgraph.status === "active").length;
   const draftCount = Math.max(0, data.subgraphs.length - activeCount);
   const graphNodes = data.subgraphs.length ? data.subgraphs.slice(0, 5) : demoSubgraphs;
   const entities = data.canonicalEntities.length ? data.canonicalEntities.slice(0, 4) : demoEntities;
+
+  async function reviewConflict(conflict: ClaimConflict, action: "resolve" | "dismiss") {
+    setPendingConflict(conflict.id);
+    setMessage("");
+    try {
+      if (action === "resolve") {
+        const preferredClaimId = conflict.claim_ids[conflict.claim_ids.length - 1];
+        await resolveClaimConflict(conflict.id, preferredClaimId);
+        setMessage("Conflict resolved.");
+      } else {
+        await dismissClaimConflict(conflict.id);
+        setMessage("Conflict dismissed.");
+      }
+      await refresh();
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setPendingConflict("");
+    }
+  }
 
   return (
     <MemoryPageFrame
@@ -77,10 +109,29 @@ export function MemoryWorkbenchPage() {
           </Panel>
         </div>
         <Panel title="Claim Review Inbox" meta="governance">
-          <div className="divide-y divide-capsulet-subtle px-3 py-1 text-sm">
-            <ReviewRow claim="Migration target is August" source="sales note" status="conflict" />
-            <ReviewRow claim="Engineering roadmap says September" source="roadmap" status="active" />
-            <ReviewRow claim="No committed delivery date exists" source="contract" status="preferred" />
+          <div className="grid gap-2 p-3 text-sm">
+            {data.claimConflicts.map((conflict) => (
+              <article className="rounded-md border border-capsulet-subtle bg-capsulet-canvas p-3" key={conflict.id}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <strong className="block text-slate-100">{conflict.predicate}</strong>
+                    <p className="mt-1 text-xs text-capsulet-muted">{conflict.reason}</p>
+                    <p className="mt-1 text-xs text-capsulet-muted">claims: {conflict.claim_ids.join(", ")}</p>
+                  </div>
+                  <Badge>{conflict.status}</Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button className={subtleButtonClass} disabled={pendingConflict === conflict.id} onClick={() => reviewConflict(conflict, "resolve")} type="button">
+                    <Check size={15} />Resolve
+                  </button>
+                  <button className={subtleButtonClass} disabled={pendingConflict === conflict.id} onClick={() => reviewConflict(conflict, "dismiss")} type="button">
+                    Dismiss
+                  </button>
+                </div>
+              </article>
+            ))}
+            {!data.claimConflicts.length ? <EmptyState title="No candidate conflicts" body="Approve conflicting claims to populate the governance inbox." /> : null}
+            <FormMessage message={message} />
           </div>
         </Panel>
         <Panel title="Entity Resolution" meta="canonical identity">
@@ -231,6 +282,25 @@ export function MemoryEntitiesPage() {
     }
   }
 
+  async function reviewResolution(id: string, action: "confirm" | "reject") {
+    setPending(true);
+    setMessage("");
+    try {
+      if (action === "confirm") {
+        await confirmEntityResolution(id);
+        setMessage("Entity resolution confirmed.");
+      } else {
+        await rejectEntityResolution(id);
+        setMessage("Entity resolution rejected.");
+      }
+      await refresh();
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <MemoryPageFrame eyebrow="Memory Studio" title="Entities" description="Manage shared canonical identities that can appear inside many bounded subgraphs.">
       <ErrorList errors={errors} />
@@ -259,6 +329,34 @@ export function MemoryEntitiesPage() {
               </article>
             ))}
             {!data.canonicalEntities.length ? <EmptyState title="No canonical entities" body="Create a shared identity before resolving local entities." /> : null}
+          </div>
+        </Panel>
+        <Panel title="Resolution Queue" meta={`${data.entityResolutions.length} candidates`}>
+          <div className="grid gap-2 p-3">
+            {data.entityResolutions.map((resolution) => {
+              const canonical = data.canonicalEntities.find((entity) => entity.id === resolution.canonical_entity_id);
+              return (
+                <article className="rounded-md border border-capsulet-subtle bg-capsulet-canvas p-3" key={resolution.id}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <strong className="block text-sm text-slate-100">{canonical?.display_name ?? resolution.canonical_entity_id}</strong>
+                      <p className="mt-1 text-xs text-capsulet-muted">local entity: {resolution.entity_id}</p>
+                      <p className="mt-1 text-xs text-capsulet-muted">evidence: {resolution.evidence_ids.join(", ") || "none"}</p>
+                    </div>
+                    <Badge>{Math.round(resolution.confidence * 100)}%</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button className={subtleButtonClass} disabled={pending} onClick={() => reviewResolution(resolution.id, "confirm")} type="button">
+                      <Check size={15} />Confirm
+                    </button>
+                    <button className={subtleButtonClass} disabled={pending} onClick={() => reviewResolution(resolution.id, "reject")} type="button">
+                      Reject
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+            {!data.entityResolutions.length ? <EmptyState title="No resolution candidates" body="Run ingestion after creating canonical identities to generate candidate matches." /> : null}
           </div>
         </Panel>
       </section>
@@ -412,24 +510,30 @@ retrieval_policy customer_support:
 }
 
 function useMemoryData() {
-  const [data, setData] = useState<MemoryData>({ subgraphs: [], canonicalEntities: [] });
+  const [data, setData] = useState<MemoryData>({ subgraphs: [], canonicalEntities: [], entityResolutions: [], claimConflicts: [] });
   const [errors, setErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setErrors([]);
-    const [subgraphResult, entityResult] = await Promise.allSettled([
+    const [subgraphResult, entityResult, resolutionResult, conflictResult] = await Promise.allSettled([
       listMemorySubgraphs(),
-      listCanonicalEntities()
+      listCanonicalEntities(),
+      listEntityResolutions("candidate"),
+      listClaimConflicts("candidate")
     ]);
     const nextErrors: string[] = [];
     setData({
       subgraphs: subgraphResult.status === "fulfilled" ? subgraphResult.value.subgraphs : [],
-      canonicalEntities: entityResult.status === "fulfilled" ? entityResult.value.canonical_entities : []
+      canonicalEntities: entityResult.status === "fulfilled" ? entityResult.value.canonical_entities : [],
+      entityResolutions: resolutionResult.status === "fulfilled" ? resolutionResult.value.entity_resolutions : [],
+      claimConflicts: conflictResult.status === "fulfilled" ? conflictResult.value.conflicts : []
     });
     if (subgraphResult.status === "rejected") nextErrors.push(`Subgraphs: ${getErrorMessage(subgraphResult.reason)}`);
     if (entityResult.status === "rejected") nextErrors.push(`Canonical entities: ${getErrorMessage(entityResult.reason)}`);
+    if (resolutionResult.status === "rejected") nextErrors.push(`Entity resolutions: ${getErrorMessage(resolutionResult.reason)}`);
+    if (conflictResult.status === "rejected") nextErrors.push(`Claim conflicts: ${getErrorMessage(conflictResult.reason)}`);
     setErrors(nextErrors);
     setLoading(false);
   }, []);

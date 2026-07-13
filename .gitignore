@@ -27,6 +27,7 @@ next-dev-*.log
 api-live*.log
 test-results/
 playwright-report/
+*.tsbuildinfo
 
 # Downloaded WASI Python runtime for local integration tests
 .wasi-python/

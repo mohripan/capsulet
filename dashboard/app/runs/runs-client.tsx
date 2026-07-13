@@ -79,16 +79,7 @@ export default function RunsClient() {
     }
   }, [filterEndAt, filterStartAt, filterState, filterText, sortDirection, sortKey]);
 
-  useEffect(() => {
-    void refreshAuthoringData();
-  }, []);
-
-  useEffect(() => {
-    setRunPage(1);
-    void refresh();
-  }, [refresh]);
-
-  async function refreshAuthoringData() {
+  const refreshAuthoringData = useCallback(async function refreshAuthoringData() {
     try {
       const [definitionsResponse, poolsResponse] = await Promise.all([listJobDefinitions(), listExecutionPools()]);
       setJobDefinitions(definitionsResponse.job_definitions);
@@ -100,7 +91,16 @@ export default function RunsClient() {
     } catch (err) {
       setSubmissionError(getErrorMessage(err));
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void refreshAuthoringData();
+  }, [refreshAuthoringData]);
+
+  useEffect(() => {
+    setRunPage(1);
+    void refresh();
+  }, [refresh]);
 
   const counts = useMemo(() => {
     return runs.reduce<Record<string, number>>((acc, run) => {

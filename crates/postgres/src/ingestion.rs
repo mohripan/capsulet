@@ -9,6 +9,11 @@ use sqlx::Row;
 use crate::{PostgresStore, PostgresStoreError};
 
 impl PostgresStore {
+    /// Inserts or updates an ingestion connector.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `PostgreSQL` rejects or cannot execute the query.
     pub async fn upsert_ingestion_connector(
         &self,
         connector: &IngestionConnector,
@@ -40,6 +45,12 @@ impl PostgresStore {
         Ok(())
     }
 
+    /// Lists ingestion connectors for a tenant/project scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `PostgreSQL` cannot execute the query or a persisted row cannot be
+    /// rehydrated into a domain connector.
     pub async fn list_ingestion_connectors(
         &self,
         tenant_id: &str,
@@ -63,6 +74,12 @@ impl PostgresStore {
         rows.iter().map(row_to_ingestion_connector).collect()
     }
 
+    /// Finds one ingestion connector by identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `PostgreSQL` cannot execute the query or the persisted row cannot be
+    /// rehydrated into a domain connector.
     pub async fn find_ingestion_connector(
         &self,
         id: &IngestionConnectorId,
@@ -80,6 +97,12 @@ impl PostgresStore {
         row.as_ref().map(row_to_ingestion_connector).transpose()
     }
 
+    /// Inserts or updates an ingestion run snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when counters cannot be converted for storage or `PostgreSQL` rejects or
+    /// cannot execute the query.
     pub async fn upsert_ingestion_run(&self, run: &IngestionRun) -> Result<(), PostgresStoreError> {
         sqlx::query(
             r"
@@ -144,6 +167,12 @@ impl PostgresStore {
         Ok(())
     }
 
+    /// Lists ingestion runs for a tenant/project scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `PostgreSQL` cannot execute the query or a persisted row cannot be
+    /// rehydrated into a domain run.
     pub async fn list_ingestion_runs(
         &self,
         tenant_id: &str,
@@ -170,6 +199,12 @@ impl PostgresStore {
         rows.iter().map(row_to_ingestion_run).collect()
     }
 
+    /// Finds one ingestion run by identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `PostgreSQL` cannot execute the query or the persisted row cannot be
+    /// rehydrated into a domain run.
     pub async fn find_ingestion_run(
         &self,
         id: &IngestionRunId,
@@ -190,6 +225,11 @@ impl PostgresStore {
         row.as_ref().map(row_to_ingestion_run).transpose()
     }
 
+    /// Inserts an ingestion run output reference.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `PostgreSQL` rejects or cannot execute the query.
     pub async fn upsert_ingestion_run_output(
         &self,
         output: &IngestionRunOutputRecord,
@@ -209,6 +249,12 @@ impl PostgresStore {
         Ok(())
     }
 
+    /// Lists generated memory references for an ingestion run.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `PostgreSQL` cannot execute the query or a persisted row cannot be
+    /// rehydrated into a domain output record.
     pub async fn list_ingestion_run_outputs(
         &self,
         run_id: &IngestionRunId,

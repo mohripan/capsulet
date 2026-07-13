@@ -1,6 +1,6 @@
 # Capsulet
 
-Capsulet is a local-first AI memory platform in progress. The current foundation is a Kubernetes-native control plane for durable agent execution graphs: typed graph definitions, bounded agent policies, agent runs, state snapshots, and trace events. The next major layer is the memory graph itself: claims, entities, events, evidence, permissions, trust, and time. The existing workflow/job runner stack remains as the execution substrate for deterministic tools and compatibility use cases.
+Capsulet is a local-first AI memory platform in progress. It turns documents, conversations, code, and tools into governed graph memory for private AI agents. The implemented foundation now includes typed agent execution graphs plus a claim-first memory substrate: sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identity, review queues, and contradiction handling. The workflow/job runner stack remains as the deterministic execution substrate for tools and compatibility use cases.
 
 ![Capsulet workflow dashboard](docs/images/capsulet-dashboard.png)
 
@@ -10,6 +10,10 @@ Capsulet is a local-first AI memory platform in progress. The current foundation
 - agent definitions with graph references, step/token/time/cost budgets, and termination policies
 - queued agent runs with durable state snapshots and semantic trace events
 - application-level agent runtime execution with pluggable node adapters, budget enforcement, failure handling, and validator-pass completion
+- claim-first memory records for sources, evidence, entities, claims, events, relationships, and contract DSL summaries
+- nested memory subgraphs with owner, schema, permissions, summary-claim, summary-trace, membership, activation, canonical entity, graph attachment, and explicit cross-subgraph edge primitives
+- deterministic local ingestion that proposes candidate claims and evidence-backed memory from uploaded text
+- human review queues for candidate claims, entity-resolution proposals, and conflicting active claims
 - reusable Python job definitions with JSON input schemas and retry policies
 - compatibility workflow DAGs with parallel roots, fan-out, and fan-in dependencies
 - manual, timezone-aware cron, read-only SQL, signed webhook, and isolated custom-plugin triggers
@@ -25,12 +29,12 @@ Capsulet is a local-first AI memory platform in progress. The current foundation
 - configurable artifact, log, trigger-event, and audit retention cleanup
 - Docker Compose for local use and a Helm chart for Kubernetes
 
-## Foundation: Agent Graphs vs Memory Graphs
+## Foundation: Agent Graphs and Memory Graphs
 
-The new product direction is governed AI memory, not plain workflow orchestration. There are two graph layers:
+Capsulet is centered on governed AI memory, not plain workflow orchestration. There are two graph layers:
 
 - **Agent execution graph:** the implemented foundation. Nodes describe actions such as prompt building, retrieval, model inference, validation, and memory operations; ports and hyperedges describe how typed values move between nodes and run state.
-- **Memory graph:** the next product layer. It will model claims, entities, events, relationships, evidence, permissions, confidence, source authority, contradictions, and temporal validity.
+- **Memory graph:** the governed knowledge layer. It models claims, entities, events, relationships, evidence, permissions, confidence, source authority, contradictions, temporal validity, and nested memory contexts.
 
 An agent definition binds a graph to an enterprise control envelope: max steps, tokens, runtime seconds, cost, and explicit termination conditions. An agent run carries a JSON state document. The runtime executes graph nodes through pluggable adapters, writes state snapshots after node completion, appends trace events, and stops on success, failure, or budget/termination policy.
 
@@ -38,7 +42,16 @@ An agent definition binds a graph to an enterprise control envelope: max steps, 
 agent graph -> agent definition -> agent run -> node adapter -> state snapshot
                                       |              |
                                       v              v
-                                trace events    model/tool/vector work
+                               trace events    model/tool/vector work
+```
+
+The memory graph is claim-first. A claim records what was said, who or what it is about, where it came from, when it was observed or valid, its confidence, and its review state. Nested subgraphs provide bounded memory contexts for teams, projects, customers, incidents, or personal modules. Each active subgraph must have an owner, schema, permissions, summary claim, and traceability from that summary back to inner claims or evidence. Canonical entities connect local entities across subgraphs without erasing context-specific disagreement.
+
+```text
+raw text -> source/evidence -> candidate claims -> review -> active memory
+                                           |             |
+                                           v             v
+                                  entity resolution   conflict inbox
 ```
 
 ## How execution stays durable
@@ -94,6 +107,20 @@ curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/graphs
 curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/agents
 curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/agent-runs
 ```
+
+## Memory Studio API
+
+Memory APIs are tenant/project scoped and claim-first. They support direct authoring, deterministic ingestion, review, and nested graph governance:
+
+```sh
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/sources
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/claims
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/ingestion/review/claims?status=candidate
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/entity-resolutions?status=proposed
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/conflicts?status=candidate
+```
+
+The dashboard Memory Studio exposes ingestion, claim review, entity resolution, nested graph activation, and the conflict inbox as the first product surface for governing memory before agents consume it.
 
 ## Compatibility workflow recovery API
 

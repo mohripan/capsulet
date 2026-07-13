@@ -6,13 +6,14 @@ use capsulet_application::{
 };
 use capsulet_core::{
     AgentDefinition, AgentId, AgentRunId, ArtifactId, Automation, AutomationId, AutomationTrigger,
-    CanonicalEntity, Claim, ClaimId, CustomTriggerPlugin, Entity, EntityGraphAttachment, EntityId,
-    EntityResolution, Event, EventId, Evidence, EvidenceId, GraphDefinition, GraphId,
-    IngestionConnector, IngestionConnectorId, IngestionRun, IngestionRunId,
-    IngestionRunOutputRecord, JobArtifact, JobDefinition, JobDefinitionId, JobRun, JobRunId,
-    JobRunLog, MemoryContract, MemoryContractId, MemorySubgraph, MemorySubgraphId,
-    MemorySubgraphMember, Relationship, RelationshipId, Source, SourceId, SubgraphEdge,
-    SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId, WorkflowStepRun,
+    CanonicalEntity, Claim, ClaimConflict, ClaimConflictId, ClaimId, CustomTriggerPlugin, Entity,
+    EntityGraphAttachment, EntityId, EntityResolution, EntityResolutionId, Event, EventId,
+    Evidence, EvidenceId, GraphDefinition, GraphId, IngestionConnector, IngestionConnectorId,
+    IngestionRun, IngestionRunId, IngestionRunOutputRecord, JobArtifact, JobDefinition,
+    JobDefinitionId, JobRun, JobRunId, JobRunLog, MemoryContract, MemoryContractId, MemorySubgraph,
+    MemorySubgraphId, MemorySubgraphMember, Relationship, RelationshipId, Source, SourceId,
+    SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId,
+    WorkflowStepRun,
 };
 use capsulet_postgres::{
     AdmissionSnapshot, AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore,
@@ -197,6 +198,20 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         limit: i64,
     ) -> Result<Vec<Claim>, Self::Error>;
     async fn find_memory_claim(&self, id: &ClaimId) -> Result<Option<Claim>, Self::Error>;
+    async fn upsert_memory_claim_conflict(
+        &self,
+        conflict: &ClaimConflict,
+    ) -> Result<(), Self::Error>;
+    async fn list_memory_claim_conflicts(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<ClaimConflict>, Self::Error>;
+    async fn find_memory_claim_conflict(
+        &self,
+        id: &ClaimConflictId,
+    ) -> Result<Option<ClaimConflict>, Self::Error>;
     async fn upsert_memory_event(&self, event: &Event) -> Result<(), Self::Error>;
     async fn list_memory_events(
         &self,
@@ -254,6 +269,16 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         resolution: &EntityResolution,
     ) -> Result<(), Self::Error>;
+    async fn list_memory_entity_resolutions(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<EntityResolution>, Self::Error>;
+    async fn find_memory_entity_resolution(
+        &self,
+        id: &EntityResolutionId,
+    ) -> Result<Option<EntityResolution>, Self::Error>;
     async fn upsert_memory_subgraph_edge(&self, edge: &SubgraphEdge) -> Result<(), Self::Error>;
     async fn upsert_memory_summary_trace(&self, trace: &SummaryTrace) -> Result<(), Self::Error>;
     async fn list_memory_summary_traces(
@@ -690,6 +715,30 @@ impl ApiStore for PostgresStore {
         self.find_memory_claim(id).await
     }
 
+    async fn upsert_memory_claim_conflict(
+        &self,
+        conflict: &ClaimConflict,
+    ) -> Result<(), Self::Error> {
+        self.upsert_memory_claim_conflict(conflict).await
+    }
+
+    async fn list_memory_claim_conflicts(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<ClaimConflict>, Self::Error> {
+        self.list_memory_claim_conflicts(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn find_memory_claim_conflict(
+        &self,
+        id: &ClaimConflictId,
+    ) -> Result<Option<ClaimConflict>, Self::Error> {
+        self.find_memory_claim_conflict(id).await
+    }
+
     async fn upsert_memory_event(&self, event: &Event) -> Result<(), Self::Error> {
         self.upsert_memory_event(event).await
     }
@@ -796,6 +845,23 @@ impl ApiStore for PostgresStore {
         resolution: &EntityResolution,
     ) -> Result<(), Self::Error> {
         self.upsert_memory_entity_resolution(resolution).await
+    }
+
+    async fn list_memory_entity_resolutions(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<EntityResolution>, Self::Error> {
+        self.list_memory_entity_resolutions(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn find_memory_entity_resolution(
+        &self,
+        id: &EntityResolutionId,
+    ) -> Result<Option<EntityResolution>, Self::Error> {
+        self.find_memory_entity_resolution(id).await
     }
 
     async fn upsert_memory_subgraph_edge(&self, edge: &SubgraphEdge) -> Result<(), Self::Error> {

@@ -4,8 +4,9 @@
 )]
 
 use capsulet_core::{
-    Authority, CanonicalEntity, CanonicalEntityId, Claim, ClaimId, ClaimStatus, Confidence, Entity,
-    EntityGraphAttachment, EntityGraphAttachmentType, EntityId, EntityResolution,
+    Authority, CanonicalEntity, CanonicalEntityId, Claim, ClaimConflict, ClaimConflictId,
+    ClaimConflictStatus, ClaimId, ClaimStatus, Confidence, Entity, EntityGraphAttachment,
+    EntityGraphAttachmentType, EntityId, EntityResolution, EntityResolutionId,
     EntityResolutionStatus, Event, EventId, Evidence, EvidenceId, MemoryContract, MemoryContractId,
     MemoryMemberId, MemoryMemberKind, MemoryScope, MemorySubgraph, MemorySubgraphId,
     MemorySubgraphMember, MemorySubgraphMemberRole, MemorySubgraphOwner, MemorySubgraphOwnerKind,
@@ -302,6 +303,95 @@ impl PostgresStore {
         .fetch_optional(&self.pool)
         .await?;
         row.as_ref().map(row_to_claim).transpose()
+    }
+
+    pub async fn upsert_memory_claim_conflict(
+        &self,
+        conflict: &ClaimConflict,
+    ) -> Result<(), PostgresStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO memory_claim_conflicts (
+                id, tenant_id, project_id, subject_id, canonical_entity_id, predicate,
+                claim_ids, status, reason, preferred_claim_id, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+            ON CONFLICT (id) DO UPDATE SET
+                tenant_id = EXCLUDED.tenant_id,
+                project_id = EXCLUDED.project_id,
+                subject_id = EXCLUDED.subject_id,
+                canonical_entity_id = EXCLUDED.canonical_entity_id,
+                predicate = EXCLUDED.predicate,
+                claim_ids = EXCLUDED.claim_ids,
+                status = EXCLUDED.status,
+                reason = EXCLUDED.reason,
+                preferred_claim_id = EXCLUDED.preferred_claim_id,
+                updated_at = now()
+            ",
+        )
+        .bind(conflict.id().as_str())
+        .bind(conflict.scope().tenant_id())
+        .bind(conflict.scope().project_id())
+        .bind(conflict.subject_id().as_str())
+        .bind(
+            conflict
+                .canonical_entity_id()
+                .map(capsulet_core::CanonicalEntityId::as_str),
+        )
+        .bind(conflict.predicate())
+        .bind(id_strings(conflict.claim_ids()))
+        .bind(conflict.status().to_string())
+        .bind(conflict.reason())
+        .bind(
+            conflict
+                .preferred_claim_id()
+                .map(capsulet_core::ClaimId::as_str),
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_memory_claim_conflicts(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<ClaimConflict>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, subject_id, canonical_entity_id, predicate,
+                   claim_ids, status, reason, preferred_claim_id
+            FROM memory_claim_conflicts
+            WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY updated_at DESC, id ASC
+            LIMIT $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_claim_conflict).collect()
+    }
+
+    pub async fn find_memory_claim_conflict(
+        &self,
+        id: &ClaimConflictId,
+    ) -> Result<Option<ClaimConflict>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, subject_id, canonical_entity_id, predicate,
+                   claim_ids, status, reason, preferred_claim_id
+            FROM memory_claim_conflicts
+            WHERE id = $1
+            ",
+        )
+        .bind(id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_claim_conflict).transpose()
     }
 
     pub async fn upsert_memory_event(&self, event: &Event) -> Result<(), PostgresStoreError> {
@@ -722,6 +812,48 @@ impl PostgresStore {
         Ok(())
     }
 
+    pub async fn list_memory_entity_resolutions(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<EntityResolution>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, subgraph_id, entity_id, canonical_entity_id,
+                   confidence, status, evidence_ids
+            FROM memory_entity_resolutions
+            WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY updated_at DESC, id ASC
+            LIMIT $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_entity_resolution).collect()
+    }
+
+    pub async fn find_memory_entity_resolution(
+        &self,
+        id: &EntityResolutionId,
+    ) -> Result<Option<EntityResolution>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, subgraph_id, entity_id, canonical_entity_id,
+                   confidence, status, evidence_ids
+            FROM memory_entity_resolutions
+            WHERE id = $1
+            ",
+        )
+        .bind(id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_entity_resolution).transpose()
+    }
+
     pub async fn upsert_memory_subgraph_edge(
         &self,
         edge: &SubgraphEdge,
@@ -914,6 +1046,29 @@ fn row_to_claim(row: &sqlx::postgres::PgRow) -> Result<Claim, PostgresStoreError
     Ok(claim.with_status(parse_claim_status(&row.try_get::<String, _>("status")?)?))
 }
 
+fn row_to_claim_conflict(row: &sqlx::postgres::PgRow) -> Result<ClaimConflict, PostgresStoreError> {
+    ClaimConflict::new(
+        ClaimConflictId::new(row.try_get::<String, _>("id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        scope(row)?,
+        EntityId::new(row.try_get::<String, _>("subject_id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        row.try_get::<Option<String>, _>("canonical_entity_id")?
+            .map(CanonicalEntityId::new)
+            .transpose()
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        row.try_get::<String, _>("predicate")?,
+        ids(row.try_get::<Vec<String>, _>("claim_ids")?)?,
+        parse_claim_conflict_status(&row.try_get::<String, _>("status")?)?,
+        row.try_get::<String, _>("reason")?,
+        row.try_get::<Option<String>, _>("preferred_claim_id")?
+            .map(ClaimId::new)
+            .transpose()
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+    )
+    .map_err(PostgresStoreError::MemoryGraph)
+}
+
 fn row_to_event(row: &sqlx::postgres::PgRow) -> Result<Event, PostgresStoreError> {
     Event::new(
         EventId::new(row.try_get::<String, _>("id")?)
@@ -1009,6 +1164,27 @@ fn row_to_canonical_entity(
     .map_err(PostgresStoreError::MemoryGraph)
 }
 
+fn row_to_entity_resolution(
+    row: &sqlx::postgres::PgRow,
+) -> Result<EntityResolution, PostgresStoreError> {
+    EntityResolution::new(
+        EntityResolutionId::new(row.try_get::<String, _>("id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        scope(row)?,
+        MemorySubgraphId::new(row.try_get::<String, _>("subgraph_id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        EntityId::new(row.try_get::<String, _>("entity_id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        CanonicalEntityId::new(row.try_get::<String, _>("canonical_entity_id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        Confidence::new(row.try_get::<f64, _>("confidence")?)
+            .map_err(PostgresStoreError::Memory)?,
+        parse_entity_resolution_status(&row.try_get::<String, _>("status")?)?,
+        ids(row.try_get::<Vec<String>, _>("evidence_ids")?)?,
+    )
+    .map_err(PostgresStoreError::MemoryGraph)
+}
+
 fn row_to_summary_trace(row: &sqlx::postgres::PgRow) -> Result<SummaryTrace, PostgresStoreError> {
     SummaryTrace::new(
         SummaryTraceId::new(row.try_get::<String, _>("id")?)
@@ -1053,6 +1229,17 @@ fn parse_claim_status(value: &str) -> Result<ClaimStatus, PostgresStoreError> {
         "expired" => Ok(ClaimStatus::Expired),
         value => Err(PostgresStoreError::InvalidPersistedValue(format!(
             "unknown claim status {value}"
+        ))),
+    }
+}
+
+fn parse_claim_conflict_status(value: &str) -> Result<ClaimConflictStatus, PostgresStoreError> {
+    match value {
+        "candidate" => Ok(ClaimConflictStatus::Candidate),
+        "resolved" => Ok(ClaimConflictStatus::Resolved),
+        "dismissed" => Ok(ClaimConflictStatus::Dismissed),
+        value => Err(PostgresStoreError::InvalidPersistedValue(format!(
+            "unknown claim conflict status {value}"
         ))),
     }
 }

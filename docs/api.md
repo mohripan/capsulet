@@ -1,8 +1,8 @@
 # API
 
-Capsulet's API exposes typed agent execution graph authoring, memory graph primitives, agent definitions, agent runs, job/tool definitions, compatibility workflow authoring, automation triggers, cancellation, status inspection, log inspection, and artifact retrieval.
+Capsulet's API exposes governed memory graph primitives, ingestion review, entity-resolution review, claim-conflict review, typed agent execution graph authoring, agent definitions, agent runs, job/tool definitions, compatibility workflow authoring, automation triggers, cancellation, status inspection, log inspection, and artifact retrieval.
 
-Phase 1 introduces the first memory graph API surface. Memory records are tenant/project scoped and claim-first: claims, events, and relationships must reference evidence.
+Memory records are tenant/project scoped and claim-first: claims, events, and relationships must reference evidence. Ingestion can propose candidate claims, reviewers approve or reject them, and approving a claim can create a conflict review item when another active claim has the same subject and predicate but a different object.
 
 ## Run Locally
 
@@ -89,7 +89,12 @@ The router currently exposes:
 | `POST` | `/v1/memory/subgraphs/{id}/members` | Add a memory object to a subgraph |
 | `POST` | `/v1/memory/subgraphs/{id}/activate` | Activate a subgraph after owner, schema, permissions, summary, and traceability checks |
 | `GET`, `POST` | `/v1/memory/canonical-entities` | List or create canonical shared entities |
-| `POST` | `/v1/memory/entity-resolutions` | Resolve a local entity to a canonical entity inside a subgraph |
+| `GET`, `POST` | `/v1/memory/entity-resolutions` | List or propose local-to-canonical entity resolutions inside a subgraph |
+| `POST` | `/v1/memory/entity-resolutions/{id}/confirm` | Confirm an entity-resolution proposal |
+| `POST` | `/v1/memory/entity-resolutions/{id}/reject` | Reject an entity-resolution proposal |
+| `GET` | `/v1/memory/conflicts` | List claim conflicts, optionally filtered by status |
+| `POST` | `/v1/memory/conflicts/{id}/resolve` | Resolve a claim conflict by choosing the preferred claim |
+| `POST` | `/v1/memory/conflicts/{id}/dismiss` | Dismiss a candidate claim conflict |
 | `POST` | `/v1/memory/summary-traces` | Link a subgraph summary claim to inner claims or evidence |
 | `POST` | `/v1/memory/entity-graph-attachments` | Attach a nested graph to a canonical entity |
 | `POST` | `/v1/memory/subgraph-edges` | Create explicit cross-subgraph boundary edges |
@@ -253,7 +258,35 @@ curl -X POST http://127.0.0.1:8080/v1/graphs \
   }'
 ```
 
-Graph validation checks node IDs, port IDs, port direction, endpoint references, value types, duplicate hyperedges, and cycle policy. `transition_policy.mode` is `static` today; planner/cyclic behavior is represented in the model for later runtime slices. This graph is the execution graph, not the long-term memory graph. Memory graph APIs should use claim/entity/evidence language when they are introduced.
+Graph validation checks node IDs, port IDs, port direction, endpoint references, value types, duplicate hyperedges, and cycle policy. `transition_policy.mode` is `static` today; planner/cyclic behavior is represented in the model for later runtime slices. This graph is the execution graph, not the long-term memory graph. Memory graph APIs use claim/entity/evidence/subgraph language and expose governance queues separately.
+
+## Memory graph review APIs
+
+List candidate claims produced by ingestion, then approve or reject one:
+
+```sh
+curl "http://127.0.0.1:8080/v1/ingestion/review/claims?status=candidate"
+curl -X POST http://127.0.0.1:8080/v1/ingestion/review/claims/claim_123/approve
+curl -X POST http://127.0.0.1:8080/v1/ingestion/review/claims/claim_123/reject
+```
+
+Approving a candidate claim promotes it to `active`. If the approved claim conflicts with another active claim for the same subject and predicate, Capsulet creates a candidate claim conflict:
+
+```sh
+curl "http://127.0.0.1:8080/v1/memory/conflicts?status=candidate"
+curl -X POST http://127.0.0.1:8080/v1/memory/conflicts/conflict_123/resolve \
+  -H "content-type: application/json" \
+  -d '{"preferred_claim_id":"claim_preferred"}'
+curl -X POST http://127.0.0.1:8080/v1/memory/conflicts/conflict_123/dismiss
+```
+
+Entity resolution maps a local entity to a canonical identity inside a nested subgraph. Proposed resolutions can be reviewed before they become confirmed identity links:
+
+```sh
+curl "http://127.0.0.1:8080/v1/memory/entity-resolutions?status=proposed"
+curl -X POST http://127.0.0.1:8080/v1/memory/entity-resolutions/resolution_123/confirm
+curl -X POST http://127.0.0.1:8080/v1/memory/entity-resolutions/resolution_123/reject
+```
 
 Create an agent from a graph and start a run:
 

@@ -4,9 +4,12 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use capsulet_core::{
-    Authority, Claim, ClaimId, ClaimStatus, IngestionConnector, IngestionConnectorConfig,
-    IngestionConnectorId, IngestionConnectorKind, IngestionRun, IngestionRunId, IngestionRunOutput,
-    IngestionRunOutputRecord, IngestionRunStatus, MemoryScope, run_local_text_ingestion,
+    Authority, CanonicalEntity, CanonicalEntityId, Claim, ClaimConflict, ClaimConflictId,
+    ClaimConflictStatus, ClaimId, ClaimStatus, Confidence, Entity, EntityResolution,
+    EntityResolutionId, EntityResolutionStatus, Evidence, IngestionConnector,
+    IngestionConnectorConfig, IngestionConnectorId, IngestionConnectorKind, IngestionRun,
+    IngestionRunId, IngestionRunOutput, IngestionRunOutputRecord, IngestionRunStatus, MemoryScope,
+    MemorySubgraph, MemorySubgraphId, Source, run_local_text_ingestion,
 };
 use capsulet_storage::ObjectStore;
 use serde::{Deserialize, Serialize};
@@ -119,6 +122,26 @@ pub(crate) struct ReviewClaimResponse {
     observed_at: String,
     valid_from: Option<String>,
     valid_until: Option<String>,
+    evidence: Vec<ReviewEvidenceResponse>,
+    sources: Vec<ReviewSourceResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ReviewEvidenceResponse {
+    id: String,
+    source_id: String,
+    locator: String,
+    excerpt: String,
+    observed_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ReviewSourceResponse {
+    id: String,
+    kind: String,
+    uri: Option<String>,
+    title: String,
+    authority: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -297,16 +320,17 @@ where
         .list_memory_claims(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
+    let mut response_claims = Vec::new();
+    for claim in claims.iter().filter(|claim| {
+        status_filter.map_or_else(
+            || reviewable_status(claim.status()),
+            |status| claim.status() == status,
+        )
+    }) {
+        response_claims.push(review_claim_response(&state.store, claim).await?);
+    }
     Ok(Json(ListReviewClaimsResponse {
-        claims: claims
-            .iter()
-            .filter(|claim| {
-                status_filter
-                    .map(|status| claim.status() == status)
-                    .unwrap_or_else(|| reviewable_status(claim.status()))
-            })
-            .map(ReviewClaimResponse::from)
-            .collect(),
+        claims: response_claims,
     }))
 }
 
@@ -374,7 +398,120 @@ where
         .upsert_memory_claim(&reviewed)
         .await
         .map_err(ApiError::store)?;
-    Ok(Json(ReviewClaimResponse::from(&reviewed)))
+    if next_status == ClaimStatus::Active {
+        detect_claim_conflicts(&state.store, &reviewed).await?;
+    }
+    Ok(Json(review_claim_response(&state.store, &reviewed).await?))
+}
+
+async fn detect_claim_conflicts<S>(store: &S, reviewed: &Claim) -> Result<(), ApiError>
+where
+    S: ApiStore,
+{
+    let claims = store
+        .list_memory_claims(
+            reviewed.scope().tenant_id(),
+            reviewed.scope().project_id(),
+            500,
+        )
+        .await
+        .map_err(ApiError::store)?;
+    let canonical_entity_id = conflict_canonical_entity_id(store, reviewed).await?;
+    for existing in claims.iter().filter(|claim| {
+        claim.id() != reviewed.id()
+            && claim.status() == ClaimStatus::Active
+            && claim.subject_id() == reviewed.subject_id()
+            && claim.predicate() == reviewed.predicate()
+            && claim.object() != reviewed.object()
+    }) {
+        let claim_ids = ordered_claim_ids(existing.id().clone(), reviewed.id().clone());
+        let conflict = ClaimConflict::new(
+            ClaimConflictId::new(format!(
+                "conflict_{}_{}_{}",
+                safe_id_part(reviewed.subject_id().as_str()),
+                safe_id_part(reviewed.predicate()),
+                safe_id_part(
+                    &claim_ids
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join("_")
+                )
+            ))
+            .map_err(ApiError::validation)?,
+            reviewed.scope().clone(),
+            reviewed.subject_id().clone(),
+            canonical_entity_id.clone(),
+            reviewed.predicate(),
+            claim_ids,
+            ClaimConflictStatus::Candidate,
+            format!("Multiple active values for {}", reviewed.predicate()),
+            None,
+        )
+        .map_err(graph_validation)?;
+        store
+            .upsert_memory_claim_conflict(&conflict)
+            .await
+            .map_err(ApiError::store)?;
+    }
+    Ok(())
+}
+
+async fn conflict_canonical_entity_id<S>(
+    store: &S,
+    claim: &Claim,
+) -> Result<Option<CanonicalEntityId>, ApiError>
+where
+    S: ApiStore,
+{
+    let resolutions = store
+        .list_memory_entity_resolutions(claim.scope().tenant_id(), claim.scope().project_id(), 500)
+        .await
+        .map_err(ApiError::store)?;
+    Ok(resolutions
+        .iter()
+        .find(|resolution| {
+            resolution.entity_id() == claim.subject_id()
+                && resolution.status() != EntityResolutionStatus::Rejected
+        })
+        .map(|resolution| resolution.canonical_entity_id().clone()))
+}
+
+fn ordered_claim_ids(first: ClaimId, second: ClaimId) -> Vec<ClaimId> {
+    let mut ids = vec![first, second];
+    ids.sort();
+    ids
+}
+
+async fn review_claim_response<S>(store: &S, claim: &Claim) -> Result<ReviewClaimResponse, ApiError>
+where
+    S: ApiStore,
+{
+    let mut evidence = Vec::new();
+    let mut sources = Vec::new();
+    for evidence_id in claim.evidence_ids() {
+        let Some(record) = store
+            .find_memory_evidence(evidence_id)
+            .await
+            .map_err(ApiError::store)?
+        else {
+            continue;
+        };
+        if let Some(source) = store
+            .find_memory_source(record.source_id())
+            .await
+            .map_err(ApiError::store)?
+            && !sources
+                .iter()
+                .any(|known: &Source| known.id() == source.id())
+        {
+            sources.push(source);
+        }
+        evidence.push(record);
+    }
+    Ok(ReviewClaimResponse::from_claim_provenance(
+        claim, &evidence, &sources,
+    ))
 }
 
 async fn persist_output<S>(store: &S, output: &IngestionRunOutput) -> Result<(), ApiError>
@@ -405,6 +542,7 @@ where
             .await
             .map_err(ApiError::store)?;
     }
+    persist_entity_resolution_candidates(store, output).await?;
     store
         .upsert_ingestion_run(output.run())
         .await
@@ -416,6 +554,140 @@ where
             .map_err(ApiError::store)?;
     }
     Ok(())
+}
+
+async fn persist_entity_resolution_candidates<S>(
+    store: &S,
+    output: &IngestionRunOutput,
+) -> Result<(), ApiError>
+where
+    S: ApiStore,
+{
+    if output.entities().is_empty() || output.evidence().is_empty() {
+        return Ok(());
+    }
+    let scope = output.run().scope();
+    let canonical_entities = store
+        .list_memory_canonical_entities(scope.tenant_id(), scope.project_id(), 100)
+        .await
+        .map_err(ApiError::store)?;
+    if canonical_entities.is_empty() {
+        return Ok(());
+    }
+    let subgraph_id = ingestion_subgraph_id(scope)?;
+    ensure_ingestion_subgraph(store, scope, &subgraph_id).await?;
+    for entity in output.entities() {
+        for canonical in &canonical_entities {
+            let Some(confidence) = resolution_confidence(entity, canonical) else {
+                continue;
+            };
+            let resolution = EntityResolution::new(
+                EntityResolutionId::new(format!(
+                    "resolution_{}_{}_{}",
+                    output.run().id().as_str(),
+                    entity.id().as_str(),
+                    canonical.id().as_str()
+                ))
+                .map_err(ApiError::validation)?,
+                scope.clone(),
+                subgraph_id.clone(),
+                entity.id().clone(),
+                canonical.id().clone(),
+                Confidence::new(confidence).map_err(memory_validation)?,
+                EntityResolutionStatus::Candidate,
+                output
+                    .evidence()
+                    .iter()
+                    .map(|evidence| evidence.id().clone())
+                    .collect(),
+            )
+            .map_err(graph_validation)?;
+            store
+                .upsert_memory_entity_resolution(&resolution)
+                .await
+                .map_err(ApiError::store)?;
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_ingestion_subgraph<S>(
+    store: &S,
+    scope: &MemoryScope,
+    subgraph_id: &MemorySubgraphId,
+) -> Result<(), ApiError>
+where
+    S: ApiStore,
+{
+    if store
+        .find_memory_subgraph(subgraph_id)
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        return Ok(());
+    }
+    let subgraph = MemorySubgraph::draft(
+        subgraph_id.clone(),
+        scope.clone(),
+        None,
+        "Global Ingestion Memory",
+        Some("Default bounded context for connector-produced memory candidates."),
+    )
+    .map_err(graph_validation)?;
+    store
+        .upsert_memory_subgraph(&subgraph)
+        .await
+        .map_err(ApiError::store)
+}
+
+fn resolution_confidence(entity: &Entity, canonical: &CanonicalEntity) -> Option<f64> {
+    let entity_names = std::iter::once(entity.name())
+        .chain(entity.aliases().iter().map(String::as_str))
+        .map(normalized_identity)
+        .collect::<Vec<_>>();
+    let canonical_names = std::iter::once(canonical.display_name())
+        .chain(canonical.aliases().iter().map(String::as_str))
+        .map(normalized_identity)
+        .collect::<Vec<_>>();
+    entity_names
+        .iter()
+        .any(|entity_name| {
+            canonical_names
+                .iter()
+                .any(|canonical_name| entity_name == canonical_name)
+        })
+        .then_some(0.92)
+}
+
+fn ingestion_subgraph_id(scope: &MemoryScope) -> Result<MemorySubgraphId, ApiError> {
+    MemorySubgraphId::new(format!(
+        "global_{}_{}",
+        safe_id_part(scope.tenant_id()),
+        safe_id_part(scope.project_id())
+    ))
+    .map_err(ApiError::validation)
+}
+
+fn safe_id_part(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn normalized_identity(value: &str) -> String {
+    value
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|character| character.to_ascii_lowercase())
+        .collect()
 }
 
 fn output_records(output: &IngestionRunOutput) -> Result<Vec<IngestionRunOutputRecord>, ApiError> {
@@ -546,7 +818,27 @@ const fn reviewable_status(status: ClaimStatus) -> bool {
     )
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "map_err supplies the owned IngestionError and this helper keeps conversions concise"
+)]
 fn ingestion_validation(error: capsulet_core::IngestionError) -> ApiError {
+    ApiError::validation(error.to_string())
+}
+
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "map_err supplies the owned MemoryError and this helper keeps conversions concise"
+)]
+fn memory_validation(error: capsulet_core::MemoryError) -> ApiError {
+    ApiError::validation(error.to_string())
+}
+
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "map_err supplies the owned MemoryGraphError and this helper keeps conversions concise"
+)]
+fn graph_validation(error: capsulet_core::MemoryGraphError) -> ApiError {
     ApiError::validation(error.to_string())
 }
 
@@ -592,8 +884,8 @@ impl From<&IngestionRun> for IngestionRunResponse {
     }
 }
 
-impl From<&Claim> for ReviewClaimResponse {
-    fn from(claim: &Claim) -> Self {
+impl ReviewClaimResponse {
+    fn from_claim_provenance(claim: &Claim, evidence: &[Evidence], sources: &[Source]) -> Self {
         Self {
             id: claim.id().as_str().to_string(),
             tenant_id: claim.scope().tenant_id().to_string(),
@@ -612,6 +904,32 @@ impl From<&Claim> for ReviewClaimResponse {
             observed_at: claim.observed_at().to_string(),
             valid_from: claim.valid_from().map(str::to_string),
             valid_until: claim.valid_until().map(str::to_string),
+            evidence: evidence.iter().map(ReviewEvidenceResponse::from).collect(),
+            sources: sources.iter().map(ReviewSourceResponse::from).collect(),
+        }
+    }
+}
+
+impl From<&Evidence> for ReviewEvidenceResponse {
+    fn from(evidence: &Evidence) -> Self {
+        Self {
+            id: evidence.id().as_str().to_string(),
+            source_id: evidence.source_id().as_str().to_string(),
+            locator: evidence.locator().to_string(),
+            excerpt: evidence.excerpt().to_string(),
+            observed_at: evidence.observed_at().to_string(),
+        }
+    }
+}
+
+impl From<&Source> for ReviewSourceResponse {
+    fn from(source: &Source) -> Self {
+        Self {
+            id: source.id().as_str().to_string(),
+            kind: source.kind().to_string(),
+            uri: source.uri().map(str::to_string),
+            title: source.title().to_string(),
+            authority: source.authority().to_string(),
         }
     }
 }

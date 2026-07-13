@@ -367,6 +367,19 @@ export type EntityResolution = {
   evidence_ids: string[];
 };
 
+export type ClaimConflict = {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  subject_id: string;
+  canonical_entity_id: string | null;
+  predicate: string;
+  claim_ids: string[];
+  status: "candidate" | "resolved" | "dismissed" | string;
+  reason: string;
+  preferred_claim_id: string | null;
+};
+
 export type CreateEntityResolutionRequest = {
   id?: string;
   subgraph_id: string;
@@ -511,6 +524,24 @@ export type ReviewClaim = {
   observed_at: string;
   valid_from: string | null;
   valid_until: string | null;
+  evidence: ReviewEvidence[];
+  sources: ReviewSource[];
+};
+
+export type ReviewEvidence = {
+  id: string;
+  source_id: string;
+  locator: string;
+  excerpt: string;
+  observed_at: string;
+};
+
+export type ReviewSource = {
+  id: string;
+  kind: string;
+  uri: string | null;
+  title: string;
+  authority: "low" | "medium" | "high" | string;
 };
 
 export class CapsuletApiError extends Error {
@@ -787,6 +818,41 @@ export async function createEntityResolution(request: CreateEntityResolutionRequ
   return apiFetch<EntityResolution>("/v1/memory/entity-resolutions", {
     method: "POST",
     body: JSON.stringify(request)
+  });
+}
+
+export async function listEntityResolutions(status?: string) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiFetch<{ entity_resolutions: EntityResolution[] }>(`/v1/memory/entity-resolutions${query}`);
+}
+
+export async function confirmEntityResolution(id: string) {
+  return apiFetch<EntityResolution>(`/v1/memory/entity-resolutions/${encodeURIComponent(id)}/confirm`, {
+    method: "POST"
+  });
+}
+
+export async function rejectEntityResolution(id: string) {
+  return apiFetch<EntityResolution>(`/v1/memory/entity-resolutions/${encodeURIComponent(id)}/reject`, {
+    method: "POST"
+  });
+}
+
+export async function listClaimConflicts(status?: string) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiFetch<{ conflicts: ClaimConflict[] }>(`/v1/memory/conflicts${query}`);
+}
+
+export async function resolveClaimConflict(id: string, preferredClaimId: string) {
+  return apiFetch<ClaimConflict>(`/v1/memory/conflicts/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ preferred_claim_id: preferredClaimId })
+  });
+}
+
+export async function dismissClaimConflict(id: string) {
+  return apiFetch<ClaimConflict>(`/v1/memory/conflicts/${encodeURIComponent(id)}/dismiss`, {
+    method: "POST"
   });
 }
 

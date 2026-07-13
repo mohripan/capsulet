@@ -1,12 +1,12 @@
 # Capsulet Architecture
 
-This document describes the architecture implemented in this repository. Capsulet is becoming a local-first AI memory platform. The implemented foundation is a Kubernetes-native platform for defining typed agent execution graphs, binding them to bounded agent definitions, starting durable agent runs, and retaining state snapshots, trace events, logs, and artifacts. The upcoming memory graph layer will model claims, entities, events, evidence, permissions, trust, contradictions, and time. Python jobs and workflow DAGs remain as compatibility infrastructure and deterministic execution tools for agent systems.
+This document describes the architecture implemented in this repository. Capsulet is a local-first AI memory platform: a governed graph memory layer for private agents that need to reason over a user's or company's own data. The implemented system combines typed agent execution graphs with a claim-first memory substrate for sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identity, review queues, and contradiction handling. Python jobs and workflow DAGs remain as compatibility infrastructure and deterministic execution tools for agent systems.
 
 For a shorter operator-facing overview, see [docs/architecture.md](docs/architecture.md). Architecture decisions are recorded under [docs/adr](docs/adr).
 
 ## Scope and maturity
 
-The current system provides an authenticated PostgreSQL-backed control plane, typed execution-graph and agent persistence, an application-level agent runtime, a dashboard and CLI, filesystem or S3-compatible object storage, and stub, local-process, WASI Python, and Kubernetes Job execution backends.
+The current system provides an authenticated PostgreSQL-backed control plane, governed memory graph persistence, typed execution-graph and agent persistence, an application-level agent runtime, a Memory Studio dashboard, filesystem or S3-compatible object storage, and stub, local-process, WASI Python, and Kubernetes Job execution backends.
 
 PostgreSQL is the implemented durable event and coordination channel. Kafka remains an optional future scaling path. Hostile multi-tenant workloads should configure a sandboxed Kubernetes RuntimeClass such as gVisor or Kata in addition to the enforced pod security and default-deny network policy.
 
@@ -47,6 +47,7 @@ PostgreSQL is the source of truth for definitions and execution state. Object st
 The Axum API is the synchronous control-plane boundary. It:
 
 - runs embedded SQLx migrations on startup, unless migration behavior is configured separately;
+- creates, lists, reviews, and governs memory sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identities, entity-resolution proposals, and claim conflicts;
 - creates, lists, and reads typed agent execution graph definitions;
 - creates, lists, and reads agent definitions and queued agent runs;
 - creates, lists, reads, updates, and deletes job definitions;
@@ -72,7 +73,7 @@ The first agent runtime slice lives in the application crate so it can be driven
 - enforces step, token, and cost budgets;
 - maps validator-pass outcomes to `succeeded` and other explicit stops to `stopped`.
 
-Provider-specific LLM, embedding, vector-search, reranking, prompt, memory, and validation adapters should implement the node executor boundary rather than entering the domain model. The runtime acts on agent execution graphs; it should later call into the memory graph through explicit memory query/write adapters rather than mixing claim governance into execution-graph primitives.
+Provider-specific LLM, embedding, vector-search, reranking, prompt, memory, and validation adapters should implement the node executor boundary rather than entering the domain model. The runtime acts on agent execution graphs and should call the memory graph through explicit memory query/write adapters rather than mixing claim governance into execution-graph primitives.
 
 ### Scheduler (`capsulet-scheduler`)
 
@@ -106,7 +107,7 @@ The `capsulet-runner` binary is only a component placeholder; execution is coord
 
 ### Dashboard (`dashboard`)
 
-The Next.js dashboard currently provides authenticated authoring and operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, artifacts, identity, and audit events. The product direction is to add graph/agent authoring and agent-run trace views as the primary experience. Browser requests go through `/api/capsulet/...`; the server-side proxy reads an HttpOnly credential cookie and forwards its bearer token to `CAPSULET_DASHBOARD_API_URL`.
+The Next.js dashboard currently provides Memory Studio views for ingestion, claim review, entity resolution, nested graph governance, and claim conflicts, alongside operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, artifacts, identity, and audit events. Graph/agent authoring and agent-run trace views are the next primary runtime surface. Browser requests go through `/api/capsulet/...`; the server-side proxy reads an HttpOnly credential cookie and forwards its bearer token to `CAPSULET_DASHBOARD_API_URL`.
 
 ### CLI (`capsulet-cli`)
 
@@ -156,7 +157,7 @@ flowchart TD
     evaluator --> storage
 ```
 
-`capsulet-core` is the pure domain crate. It owns typed IDs, validated value objects, execution graph and agent aggregate state, workflow compatibility state, trigger conditions, and domain errors. It intentionally does not own async repository traits, SQL rows, HTTP models, runner implementations, or process runtime logic. Memory graph primitives should be added here as separate claim/entity/evidence concepts rather than folded into `GraphDefinition`.
+`capsulet-core` is the pure domain crate. It owns typed IDs, validated value objects, memory graph primitives, execution graph and agent aggregate state, workflow compatibility state, trigger conditions, and domain errors. It intentionally does not own async repository traits, SQL rows, HTTP models, runner implementations, or process runtime logic. Memory graph primitives stay separate from `GraphDefinition`: execution graphs describe behavior, while memory graph records describe governed knowledge.
 
 `capsulet-application` sits between the domain and adapters. It currently owns command/query shapes, application ports, the agent runtime use case, orchestration errors, and the worker lease-and-run use case. Ports include graph repositories, agent repositories, agent-runtime trace/state repositories, job-run repositories, log repositories, artifact repositories, and worker execution storage. Infrastructure crates implement these ports at their boundaries rather than exposing SQL rows, object-store details, or Kubernetes types to the domain.
 

@@ -1,17 +1,17 @@
 # Architecture Overview
 
-Capsulet stores durable agent execution-graph control-plane state in PostgreSQL and executes graph nodes through pluggable runtime adapters. This is the foundation for the larger memory platform: the later memory graph will model claims, entities, events, evidence, permissions, trust, and time. The existing job runner stack remains as the deterministic tool/workflow substrate: the Kubernetes runner creates isolated Kubernetes Jobs, while local process and deterministic stub runners support development and tests.
+Capsulet stores durable AI memory and agent execution state in PostgreSQL. The product center is a governed, claim-first memory graph for private AI agents: sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identities, review queues, and contradiction handling. Typed agent execution graphs and the job runner stack provide the runtime substrate: graph nodes call tools, models, retrieval, validation, and memory adapters, while Kubernetes, local process, WASI Python, and stub runners execute deterministic jobs.
 
 The detailed system design and implementation boundaries are in the repository-level [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Components
 
-- **API:** Axum HTTP control plane for typed agent execution graphs, agents, agent runs, job definitions, compatibility workflow DAGs, automations and trigger metadata, health, logs, cancellation, and artifacts.
+- **API:** Axum HTTP control plane for memory graph records, ingestion review, entity resolution, claim conflicts, typed agent execution graphs, agents, agent runs, job definitions, compatibility workflow DAGs, automations and trigger metadata, health, logs, cancellation, and artifacts.
 - **Application runtime:** agent-run executor that walks graph order, calls node adapters, persists state snapshots, emits trace events, and enforces budgets and termination policies.
 - **Scheduler:** PostgreSQL polling loop that fires due legacy interval automations and advances every ready node in compatibility workflow DAGs.
 - **Worker:** lower-level job runtime that promotes retries, recovers expired leases, leases queued jobs, heartbeats active work, invokes a runner, and persists outcomes.
 - **Runner library:** stub, trusted local-process, and Kubernetes Job execution backends.
-- **PostgreSQL adapter:** SQLx persistence for graph definitions, graph nodes/ports/hyperedges, agent definitions, agent runs, state snapshots, trace events, job definitions/runs, attempts, leases/heartbeats, workflow dependency edges, automation metadata, logs, and artifact metadata.
+- **PostgreSQL adapter:** SQLx persistence for memory sources/evidence/entities/claims/events/relationships/contracts/subgraphs/canonical identity/review state, graph definitions, graph nodes/ports/hyperedges, agent definitions, agent runs, state snapshots, trace events, job definitions/runs, attempts, leases/heartbeats, workflow dependency edges, automation metadata, logs, and artifact metadata.
 - **Object storage adapter:** filesystem or S3-compatible storage for Python scripts, complete large logs, and artifact bytes.
 - **Dashboard:** Next.js UI that reaches the API through a same-origin server proxy.
 - **CLI:** HTTP client for submission and job-run operations.
@@ -35,6 +35,17 @@ flowchart LR
 
 PostgreSQL is the source of truth for metadata and state transitions. It is also the durable work queue. Object storage is not authoritative for run state; it contains bytes referenced by PostgreSQL metadata.
 
+## Memory graph lifecycle
+
+1. Connectors or direct API calls create sources and evidence records for raw text, documents, conversations, code, or tools.
+2. Ingestion proposes entities and candidate claims with evidence, confidence, authority, and review status.
+3. Reviewers approve or reject candidate claims. Approval promotes the claim to active memory and runs deterministic contradiction detection for same-subject, same-predicate, different-object claims.
+4. Entity-resolution proposals map local entities to canonical identities inside a subgraph. Reviewers confirm or reject these proposals.
+5. Nested subgraphs group memory into bounded contexts. Active subgraphs require owner, schema, permissions, a summary claim, and a summary trace back to inner claims or evidence.
+6. Explicit subgraph edges model cross-boundary relationships. Parent contexts consume child summaries by default and can expand into child graphs when retrieval needs detail.
+
+The core memory unit is the claim, not the node. A claim keeps provenance and review state, so conflicting statements can coexist until governance rules or reviewers resolve the conflict. The current conflict inbox detects conflicting active claim values during claim approval and lets an operator resolve the conflict by choosing a preferred claim or dismiss the candidate conflict.
+
 ## Agent execution graph lifecycle
 
 1. The API stores a validated typed execution graph: nodes, ports, hyperedges, transition policy, and static order.
@@ -44,7 +55,7 @@ PostgreSQL is the source of truth for metadata and state transitions. It is also
 5. Every node start, completion, stop, budget exhaustion, and failure emits a run-local trace event.
 6. The run exits as `succeeded`, `failed`, or `stopped` based on executor outcome, validator pass, or budget/termination policy.
 
-The first runtime slice executes the graph's static order. The model is intentionally typed and stateful so later planner/cyclic execution can reuse the same graph, state, trace, and budget contracts. The memory graph is separate: it will provide governed claims and evidence that execution nodes can query and update through adapters.
+The first runtime slice executes the graph's static order. The model is intentionally typed and stateful so later planner/cyclic execution can reuse the same graph, state, trace, and budget contracts. Execution graphs query and update governed memory through explicit adapters instead of embedding claim governance inside execution graph primitives.
 
 ## Job lifecycle
 

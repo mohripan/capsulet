@@ -85,6 +85,12 @@ pub struct IngestionConnector {
 }
 
 impl IngestionConnector {
+    /// Creates a connector after validating its name and connector-specific configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the connector name is empty or the configuration is invalid for
+    /// the requested connector kind.
     pub fn new(
         id: IngestionConnectorId,
         scope: MemoryScope,
@@ -319,6 +325,11 @@ pub struct IngestionRunOutputRecord {
 }
 
 impl IngestionRunOutputRecord {
+    /// Creates a persisted output reference for a generated memory item.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when either the output kind or memory identifier is empty.
     pub fn new(
         run_id: IngestionRunId,
         kind: impl Into<String>,
@@ -383,6 +394,12 @@ impl IngestionRunOutput {
     }
 }
 
+/// Runs a local-text connector and returns the generated memory graph output.
+///
+/// # Errors
+///
+/// Returns an error when the connector kind is unsupported, the connector is disabled, the
+/// connector configuration is invalid, or generated memory identifiers or records fail validation.
 pub fn run_local_text_ingestion(
     connector: &IngestionConnector,
     run: IngestionRun,

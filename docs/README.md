@@ -1,6 +1,6 @@
 # Documentation
 
-This directory contains product, architecture, operations, security, and design documentation for Capsulet.
+This directory contains product, architecture, operations, security, and design documentation for Capsulet. Current product docs should describe Capsulet as a local-first, governed AI memory platform first; compatibility workflow material is retained where it documents the deterministic tool substrate.
 
 Suggested layout:
 

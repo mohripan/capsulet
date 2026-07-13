@@ -6,19 +6,25 @@ import {
   approveReviewClaim,
   activateMemorySubgraph,
   capsuletStreamUrl,
-  createIngestionConnector,
+  confirmEntityResolution,
   createCanonicalEntity,
+  createIngestionConnector,
   createMemorySubgraph,
   createSubgraphEdge,
   formatBytes,
   getErrorMessage,
   isTerminalStatus,
+  dismissClaimConflict,
   listIngestionConnectors,
   listIngestionRuns,
   listReviewClaims,
   listCanonicalEntities,
+  listEntityResolutions,
+  listClaimConflicts,
   listMemorySubgraphs,
+  rejectEntityResolution,
   rejectReviewClaim,
+  resolveClaimConflict,
   runIngestionConnector
 } from "../app/lib/api";
 
@@ -147,6 +153,36 @@ describe("dashboard API helpers", () => {
           evidence_ids: []
         }, 201);
       }
+      if (String(input).includes("entity-resolutions") && init?.method === "POST") {
+        return jsonResponse({
+          id: "resolution_customer_a",
+          tenant_id: "tenant",
+          project_id: "project",
+          subgraph_id: "sales",
+          entity_id: "entity_customer_a",
+          canonical_entity_id: "canonical_customer_a",
+          confidence: 0.88,
+          status: String(input).endsWith("/reject") ? "rejected" : "confirmed",
+          evidence_ids: ["evidence_customer_a"]
+        });
+      }
+      if (String(input).includes("entity-resolutions")) {
+        return jsonResponse({
+          entity_resolutions: [
+            {
+              id: "resolution_customer_a",
+              tenant_id: "tenant",
+              project_id: "project",
+              subgraph_id: "sales",
+              entity_id: "entity_customer_a",
+              canonical_entity_id: "canonical_customer_a",
+              confidence: 0.88,
+              status: "candidate",
+              evidence_ids: ["evidence_customer_a"]
+            }
+          ]
+        });
+      }
       if (init?.method === "POST") {
         return jsonResponse({
           id: "canonical_customer_a",
@@ -168,6 +204,10 @@ describe("dashboard API helpers", () => {
         display_name: "Customer A",
         aliases: ["ACME"]
       });
+      const resolutions = await listEntityResolutions("candidate");
+      assert.equal(resolutions.entity_resolutions[0].status, "candidate");
+      await confirmEntityResolution("resolution_customer_a");
+      await rejectEntityResolution("resolution_customer_a");
       await createSubgraphEdge({
         id: "edge_sales_engineering",
         edge_type: "contradicts",
@@ -193,9 +233,14 @@ describe("dashboard API helpers", () => {
       display_name: "Customer A",
       aliases: ["ACME"]
     });
-    assert.equal(calls[2].path, "/api/capsulet/v1/memory/subgraph-edges");
-    assert.equal(calls[2].init?.method, "POST");
-    assert.deepEqual(JSON.parse(String(calls[2].init?.body)), {
+    assert.equal(calls[2].path, "/api/capsulet/v1/memory/entity-resolutions?status=candidate");
+    assert.equal(calls[3].path, "/api/capsulet/v1/memory/entity-resolutions/resolution_customer_a/confirm");
+    assert.equal(calls[3].init?.method, "POST");
+    assert.equal(calls[4].path, "/api/capsulet/v1/memory/entity-resolutions/resolution_customer_a/reject");
+    assert.equal(calls[4].init?.method, "POST");
+    assert.equal(calls[5].path, "/api/capsulet/v1/memory/subgraph-edges");
+    assert.equal(calls[5].init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(calls[5].init?.body)), {
       id: "edge_sales_engineering",
       edge_type: "contradicts",
       from_subgraph_id: "sales",
@@ -207,6 +252,74 @@ describe("dashboard API helpers", () => {
       claim_ids: ["claim_sales", "claim_eng"],
       evidence_ids: []
     });
+  });
+
+  it("calls claim conflict review endpoints", async () => {
+    const calls: Array<{ path: string; init: RequestInit | undefined }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      calls.push({ path: String(input), init });
+      if (String(input).endsWith("/resolve")) {
+        return jsonResponse({
+          id: "conflict_launch_date",
+          tenant_id: "tenant",
+          project_id: "project",
+          subject_id: "entity_project",
+          canonical_entity_id: null,
+          predicate: "launch_date",
+          claim_ids: ["claim_july", "claim_august"],
+          status: "resolved",
+          reason: "Multiple active values for launch_date",
+          preferred_claim_id: "claim_august"
+        });
+      }
+      if (String(input).endsWith("/dismiss")) {
+        return jsonResponse({
+          id: "conflict_launch_date",
+          tenant_id: "tenant",
+          project_id: "project",
+          subject_id: "entity_project",
+          canonical_entity_id: null,
+          predicate: "launch_date",
+          claim_ids: ["claim_july", "claim_august"],
+          status: "dismissed",
+          reason: "Multiple active values for launch_date",
+          preferred_claim_id: null
+        });
+      }
+      return jsonResponse({
+        conflicts: [
+          {
+            id: "conflict_launch_date",
+            tenant_id: "tenant",
+            project_id: "project",
+            subject_id: "entity_project",
+            canonical_entity_id: null,
+            predicate: "launch_date",
+            claim_ids: ["claim_july", "claim_august"],
+            status: "candidate",
+            reason: "Multiple active values for launch_date",
+            preferred_claim_id: null
+          }
+        ]
+      });
+    };
+
+    try {
+      const conflicts = await listClaimConflicts("candidate");
+      assert.equal(conflicts.conflicts[0].predicate, "launch_date");
+      await resolveClaimConflict("conflict_launch_date", "claim_august");
+      await dismissClaimConflict("conflict_launch_date");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(calls[0].path, "/api/capsulet/v1/memory/conflicts?status=candidate");
+    assert.equal(calls[1].path, "/api/capsulet/v1/memory/conflicts/conflict_launch_date/resolve");
+    assert.equal(calls[1].init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(calls[1].init?.body)), { preferred_claim_id: "claim_august" });
+    assert.equal(calls[2].path, "/api/capsulet/v1/memory/conflicts/conflict_launch_date/dismiss");
+    assert.equal(calls[2].init?.method, "POST");
   });
 
   it("calls connector ingestion endpoints with local text payloads", async () => {
@@ -324,14 +437,34 @@ describe("dashboard API helpers", () => {
             status: init?.method === "POST" ? "active" : "candidate",
             observed_at: "ingestion",
             valid_from: null,
-            valid_until: null
+            valid_until: null,
+            evidence: [
+              {
+                id: "evidence_1",
+                source_id: "source_1",
+                locator: "chunk:1",
+                excerpt: "Project Atlas is blocked by Legal Review",
+                observed_at: "ingestion"
+              }
+            ],
+            sources: [
+              {
+                id: "source_1",
+                kind: "local_text",
+                uri: "local://project-atlas.md",
+                title: "Project Atlas Notes",
+                authority: "high"
+              }
+            ]
           }
         ]
       });
     };
 
     try {
-      await listReviewClaims("candidate");
+      const reviewClaims = await listReviewClaims("candidate");
+      assert.equal(reviewClaims.claims[0].evidence[0].excerpt, "Project Atlas is blocked by Legal Review");
+      assert.equal(reviewClaims.claims[0].sources[0].title, "Project Atlas Notes");
       await approveReviewClaim("claim_project_blocked");
       await rejectReviewClaim("claim_project_blocked");
     } finally {

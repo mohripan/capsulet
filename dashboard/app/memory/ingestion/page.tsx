@@ -325,6 +325,30 @@ export default function MemoryIngestionPage() {
                     <span className="truncate">subject: {claim.subject_id}</span>
                     <span className="truncate md:col-span-2">evidence: {claim.evidence_ids.length ? claim.evidence_ids.join(", ") : "none"}</span>
                   </div>
+                  <div className="mt-3 grid gap-2">
+                    {claim.evidence.length === 0 ? (
+                      <div className="rounded-md border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-100">
+                        No evidence record is available for this claim.
+                      </div>
+                    ) : null}
+                    {claim.evidence.map((evidence) => {
+                      const source = claim.sources.find((source) => source.id === evidence.source_id);
+                      return (
+                        <div className="rounded-md border border-capsulet-subtle bg-capsulet-bg p-3" key={evidence.id}>
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <Badge>{evidence.locator}</Badge>
+                            <span className="text-xs text-capsulet-muted">{evidence.observed_at}</span>
+                          </div>
+                          <p className="text-sm leading-6 text-slate-100">{evidence.excerpt}</p>
+                          <div className="mt-2 grid gap-1 text-xs text-capsulet-muted md:grid-cols-2">
+                            <span className="truncate">source: {source?.title ?? evidence.source_id}</span>
+                            <span className="truncate">authority: {source?.authority ?? "unknown"}</span>
+                            <span className="truncate md:col-span-2">uri: {source?.uri ?? "inline source"}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 {claim.status === "candidate" ? (
                   <div className="flex shrink-0 gap-2">

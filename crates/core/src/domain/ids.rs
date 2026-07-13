@@ -50,6 +50,7 @@ id_type!(SourceId);
 id_type!(EvidenceId);
 id_type!(EntityId);
 id_type!(ClaimId);
+id_type!(ClaimConflictId);
 id_type!(EventId);
 id_type!(RelationshipId);
 id_type!(ObservationId);

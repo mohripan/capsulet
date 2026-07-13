@@ -30,8 +30,8 @@ pub use graph::{
     GraphTransitionPolicy, HyperedgeEndpoint, NodeKind, PortDirection, PortValueType,
 };
 pub use ids::{
-    ActionId, AgentId, AgentRunId, ArtifactId, AutomationId, CanonicalEntityId, ClaimId,
-    EntityGraphAttachmentId, EntityId, EntityResolutionId, EventId, EvidenceId, GraphId,
+    ActionId, AgentId, AgentRunId, ArtifactId, AutomationId, CanonicalEntityId, ClaimConflictId,
+    ClaimId, EntityGraphAttachmentId, EntityId, EntityResolutionId, EventId, EvidenceId, GraphId,
     HyperedgeId, IngestionConnectorId, IngestionRunId, JobAttemptId, JobDefinitionId, JobRunId,
     MemoryContractId, MemoryMemberId, MemorySubgraphId, MemorySubgraphMemberId, NodeId,
     ObservationId, PortId, RelationshipId, SourceId, SubgraphEdgeId, SummaryTraceId, TraceEventId,
@@ -55,11 +55,11 @@ pub use memory_contract::{
     RetrievalPolicySpec, ReviewPolicySpec, TrustPolicySpec,
 };
 pub use memory_graph::{
-    CanonicalEntity, EntityGraphAttachment, EntityGraphAttachmentType, EntityResolution,
-    EntityResolutionStatus, MemoryGraphError, MemoryMemberKind, MemorySubgraph,
-    MemorySubgraphActivation, MemorySubgraphMember, MemorySubgraphMemberRole, MemorySubgraphOwner,
-    MemorySubgraphOwnerKind, MemorySubgraphPermissions, MemorySubgraphStatus, SubgraphEdge,
-    SummaryTrace,
+    CanonicalEntity, ClaimConflict, ClaimConflictStatus, EntityGraphAttachment,
+    EntityGraphAttachmentType, EntityResolution, EntityResolutionStatus, MemoryGraphError,
+    MemoryMemberKind, MemorySubgraph, MemorySubgraphActivation, MemorySubgraphMember,
+    MemorySubgraphMemberRole, MemorySubgraphOwner, MemorySubgraphOwnerKind,
+    MemorySubgraphPermissions, MemorySubgraphStatus, SubgraphEdge, SummaryTrace,
 };
 pub use parse::ParseDomainValueError;
 pub use workflow::{

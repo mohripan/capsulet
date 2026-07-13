@@ -8,9 +8,9 @@ use std::fmt::{self, Display};
 use thiserror::Error;
 
 use super::{
-    CanonicalEntityId, ClaimId, Confidence, EntityGraphAttachmentId, EntityId, EntityResolutionId,
-    EvidenceId, MemoryContractId, MemoryMemberId, MemoryScope, MemorySubgraphId,
-    MemorySubgraphMemberId, SubgraphEdgeId, SummaryTraceId,
+    CanonicalEntityId, ClaimConflictId, ClaimId, Confidence, EntityGraphAttachmentId, EntityId,
+    EntityResolutionId, EvidenceId, MemoryContractId, MemoryMemberId, MemoryScope,
+    MemorySubgraphId, MemorySubgraphMemberId, SubgraphEdgeId, SummaryTraceId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -546,6 +546,163 @@ impl EntityResolution {
     pub fn evidence_ids(&self) -> &[EvidenceId] {
         &self.evidence_ids
     }
+
+    pub fn with_status(self, status: EntityResolutionStatus) -> Result<Self, MemoryGraphError> {
+        Self::new(
+            self.id,
+            self.scope,
+            self.subgraph_id,
+            self.entity_id,
+            self.canonical_entity_id,
+            self.confidence,
+            status,
+            self.evidence_ids,
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimConflictStatus {
+    Candidate,
+    Resolved,
+    Dismissed,
+}
+
+impl Display for ClaimConflictStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Candidate => "candidate",
+            Self::Resolved => "resolved",
+            Self::Dismissed => "dismissed",
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaimConflict {
+    id: ClaimConflictId,
+    scope: MemoryScope,
+    subject_id: EntityId,
+    canonical_entity_id: Option<CanonicalEntityId>,
+    predicate: String,
+    claim_ids: Vec<ClaimId>,
+    status: ClaimConflictStatus,
+    reason: String,
+    preferred_claim_id: Option<ClaimId>,
+}
+
+impl ClaimConflict {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        id: ClaimConflictId,
+        scope: MemoryScope,
+        subject_id: EntityId,
+        canonical_entity_id: Option<CanonicalEntityId>,
+        predicate: impl Into<String>,
+        claim_ids: Vec<ClaimId>,
+        status: ClaimConflictStatus,
+        reason: impl Into<String>,
+        preferred_claim_id: Option<ClaimId>,
+    ) -> Result<Self, MemoryGraphError> {
+        if claim_ids.len() < 2 {
+            return Err(MemoryGraphError::MissingConflictClaims);
+        }
+        if status == ClaimConflictStatus::Resolved {
+            let Some(preferred_claim_id) = preferred_claim_id.as_ref() else {
+                return Err(MemoryGraphError::MissingPreferredClaim);
+            };
+            if !claim_ids
+                .iter()
+                .any(|claim_id| claim_id == preferred_claim_id)
+            {
+                return Err(MemoryGraphError::PreferredClaimOutsideConflict);
+            }
+        }
+        Ok(Self {
+            id,
+            scope,
+            subject_id,
+            canonical_entity_id,
+            predicate: non_empty(predicate.into(), "conflict predicate")?,
+            claim_ids,
+            status,
+            reason: non_empty(reason.into(), "conflict reason")?,
+            preferred_claim_id,
+        })
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> &ClaimConflictId {
+        &self.id
+    }
+
+    #[must_use]
+    pub const fn scope(&self) -> &MemoryScope {
+        &self.scope
+    }
+
+    #[must_use]
+    pub const fn subject_id(&self) -> &EntityId {
+        &self.subject_id
+    }
+
+    #[must_use]
+    pub const fn canonical_entity_id(&self) -> Option<&CanonicalEntityId> {
+        self.canonical_entity_id.as_ref()
+    }
+
+    #[must_use]
+    pub fn predicate(&self) -> &str {
+        &self.predicate
+    }
+
+    #[must_use]
+    pub fn claim_ids(&self) -> &[ClaimId] {
+        &self.claim_ids
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> ClaimConflictStatus {
+        self.status
+    }
+
+    #[must_use]
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
+
+    #[must_use]
+    pub const fn preferred_claim_id(&self) -> Option<&ClaimId> {
+        self.preferred_claim_id.as_ref()
+    }
+
+    pub fn with_resolution(self, preferred_claim_id: ClaimId) -> Result<Self, MemoryGraphError> {
+        Self::new(
+            self.id,
+            self.scope,
+            self.subject_id,
+            self.canonical_entity_id,
+            self.predicate,
+            self.claim_ids,
+            ClaimConflictStatus::Resolved,
+            self.reason,
+            Some(preferred_claim_id),
+        )
+    }
+
+    pub fn dismissed(self) -> Result<Self, MemoryGraphError> {
+        Self::new(
+            self.id,
+            self.scope,
+            self.subject_id,
+            self.canonical_entity_id,
+            self.predicate,
+            self.claim_ids,
+            ClaimConflictStatus::Dismissed,
+            self.reason,
+            None,
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -805,6 +962,12 @@ pub enum MemoryGraphError {
     MissingTraceSupport,
     #[error("confirmed entity resolution requires evidence")]
     MissingEvidence,
+    #[error("claim conflict requires at least two claims")]
+    MissingConflictClaims,
+    #[error("resolved claim conflict requires a preferred claim")]
+    MissingPreferredClaim,
+    #[error("preferred claim must be part of the conflict")]
+    PreferredClaimOutsideConflict,
     #[error("subgraph edge endpoints must cross subgraph boundaries")]
     SameSubgraphBoundary,
     #[error("permissions must be a JSON object")]
