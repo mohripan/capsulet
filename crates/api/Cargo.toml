@@ -20,6 +20,8 @@ hmac.workspace = true
 jsonwebtoken.workspace = true
 capsulet-application = { path = "../application" }
 capsulet-core = { path = "../core" }
+capsulet-kernel = { path = "../kernel" }
+capsulet-proposer = { path = "../proposer" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-storage = { path = "../storage" }
 reqwest.workspace = true

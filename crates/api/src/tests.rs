@@ -2478,8 +2478,12 @@ async fn rate_limit_is_partitioned_by_client_ip() {
 #[tokio::test]
 async fn rate_limit_is_not_reset_by_presenting_a_bearer_token() {
     let app = authenticated_app(FakeStore::default());
-    for _ in 0..105 {
-        let _ = app
+    // Drain the bucket by observation rather than by a fixed count. The quota
+    // replenishes on a timer, so any hard-coded number races the clock on a slow
+    // machine and this test was flaky when it assumed 105 requests was enough.
+    let mut exhausted = false;
+    for _ in 0..2_000 {
+        let response = app
             .clone()
             .oneshot(
                 Request::builder()
@@ -2489,7 +2493,15 @@ async fn rate_limit_is_not_reset_by_presenting_a_bearer_token() {
             )
             .await
             .expect("response");
+        if response.status() == axum::http::StatusCode::TOO_MANY_REQUESTS {
+            exhausted = true;
+            break;
+        }
     }
+    assert!(
+        exhausted,
+        "rate limit never engaged for the unauthenticated path"
+    );
 
     let response = app
         .oneshot(

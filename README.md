@@ -158,6 +158,43 @@ curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/conflict
 
 The dashboard Memory Studio exposes ingestion, claim review, entity resolution, nested graph activation, and the conflict inbox as the first product surface for governing memory before agents consume it.
 
+## Verified reasoning API
+
+The first slice of the correctness architecture is implemented: stored text is
+cut into byte-exact citable spans, retrieval pins the legal evidence set, a local
+model proposes a derivation, and a deterministic kernel decides it. The response
+is a certificate, not a bare answer.
+
+Requires a local [Ollama](https://ollama.com) with a small model pulled. The
+proposer runs outside the stack on purpose — correctness does not depend on it:
+
+```sh
+ollama pull qwen2.5:1.5b
+# Ollama must accept traffic from the containers
+OLLAMA_HOST=0.0.0.0 ollama serve
+```
+
+```sh
+curl -X POST -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"text":"Acme renewed the Contoso contract on 2026-03-01. Notice is 30 days.",
+       "question":"When was the contract renewed?"}' \
+  http://127.0.0.1:8080/v1/reasoning/ask
+
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/reasoning/certificates
+```
+
+Verdicts are three-valued. **accepted** means every step was discharged
+mechanically: the cited span re-derived byte-for-byte from the stored source, and
+both endpoints of the claim appear in it. **conditional** means the derivation
+required a reading, which is recorded as a residual obligation pinned to the
+span it came from. **rejected** names the failed premise and the subsystem that
+owns the repair, so a dangling reference re-runs retrieval instead of re-prompting
+the model.
+
+Two limits are deliberate and documented: grounding is literal containment, not
+entailment, and relevance to the question is not checked at all. See
+[the design note](docs/design/correctness-architecture.md).
+
 ## Compatibility workflow recovery API
 
 Resume a failed or timed-out workflow run:

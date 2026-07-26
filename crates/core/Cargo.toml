@@ -11,6 +11,7 @@ description = "Core domain model for Capsulet."
 path = "src/lib.rs"
 
 [dependencies]
+sha2.workspace = true
 thiserror.workspace = true
 
 [lints]

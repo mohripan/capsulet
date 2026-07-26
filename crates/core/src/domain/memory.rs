@@ -167,6 +167,224 @@ impl Source {
     }
 }
 
+/// Immutable stored text of a source, addressed by the digest of its bytes.
+///
+/// Evidence spans are byte offsets into this text. Storing it separately from
+/// [`Source`] keeps the metadata mutable while the bytes a citation resolves
+/// against stay fixed: re-ingesting a changed document produces a new digest,
+/// which invalidates the spans that cited the old one rather than silently
+/// repointing them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceContent {
+    source_id: SourceId,
+    text: String,
+    content_hash: String,
+}
+
+impl SourceContent {
+    /// Creates stored source content and derives its digest from the bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MemoryError`] when the text is empty.
+    pub fn new(source_id: SourceId, text: impl Into<String>) -> Result<Self, MemoryError> {
+        let text = non_empty(text.into(), "source content")?;
+        let content_hash = content_digest(text.as_bytes());
+        Ok(Self {
+            source_id,
+            text,
+            content_hash,
+        })
+    }
+
+    #[must_use]
+    pub const fn source_id(&self) -> &SourceId {
+        &self.source_id
+    }
+
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    #[must_use]
+    pub fn content_hash(&self) -> &str {
+        &self.content_hash
+    }
+
+    #[must_use]
+    pub const fn byte_length(&self) -> usize {
+        self.text.len()
+    }
+}
+
+/// A byte range into a specific version of a source's text.
+///
+/// The digest is part of the span, not looked up at check time, so a span
+/// always names the bytes it was taken from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceSpan {
+    start: usize,
+    end: usize,
+    source_content_hash: String,
+}
+
+impl EvidenceSpan {
+    /// Creates a byte span pinned to one version of a source's text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MemoryError`] when the range is empty or inverted, or when the
+    /// digest is missing.
+    pub fn new(
+        start: usize,
+        end: usize,
+        source_content_hash: impl Into<String>,
+    ) -> Result<Self, MemoryError> {
+        if end <= start {
+            return Err(MemoryError::InvalidSpan { start, end });
+        }
+        Ok(Self {
+            start,
+            end,
+            source_content_hash: non_empty(
+                source_content_hash.into(),
+                "evidence source content hash",
+            )?,
+        })
+    }
+
+    #[must_use]
+    pub const fn start(&self) -> usize {
+        self.start
+    }
+
+    #[must_use]
+    pub const fn end(&self) -> usize {
+        self.end
+    }
+
+    #[must_use]
+    pub fn source_content_hash(&self) -> &str {
+        &self.source_content_hash
+    }
+}
+
+/// Why a citation could not be re-derived from its source.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ProvenanceError {
+    #[error("evidence {evidence_id} carries no span, so its excerpt cannot be re-derived")]
+    SpanMissing { evidence_id: String },
+    #[error("evidence {evidence_id} cites source {cited} but was checked against {actual}")]
+    SourceMismatch {
+        evidence_id: String,
+        cited: String,
+        actual: String,
+    },
+    #[error(
+        "evidence {evidence_id} was taken from source content {expected} but the stored content is {actual}"
+    )]
+    ContentChanged {
+        evidence_id: String,
+        expected: String,
+        actual: String,
+    },
+    #[error(
+        "evidence {evidence_id} spans bytes {start}..{end} but the source content is {length} bytes"
+    )]
+    SpanOutOfBounds {
+        evidence_id: String,
+        start: usize,
+        end: usize,
+        length: usize,
+    },
+    #[error("evidence {evidence_id} spans bytes {start}..{end}, which is not a character boundary")]
+    SpanNotOnCharBoundary {
+        evidence_id: String,
+        start: usize,
+        end: usize,
+    },
+    #[error("evidence {evidence_id} excerpt does not match the bytes at its span")]
+    ExcerptMismatch {
+        evidence_id: String,
+        expected: String,
+        found: String,
+    },
+}
+
+/// Re-derives an excerpt from stored source content.
+///
+/// This is the check that turns provenance from an assertion into a fact. It is
+/// deliberately total and free of I/O so the kernel can run it.
+///
+/// # Errors
+///
+/// Returns [`ProvenanceError`] when the evidence has no span, when the content
+/// has changed since the span was taken, when the range is out of bounds or off
+/// a character boundary, or when the bytes do not match the recorded excerpt.
+pub fn verify_evidence_span(
+    evidence: &Evidence,
+    content: &SourceContent,
+) -> Result<(), ProvenanceError> {
+    let evidence_id = evidence.id().as_str().to_string();
+    if evidence.source_id() != content.source_id() {
+        return Err(ProvenanceError::SourceMismatch {
+            evidence_id,
+            cited: evidence.source_id().as_str().to_string(),
+            actual: content.source_id().as_str().to_string(),
+        });
+    }
+    let Some(span) = evidence.span() else {
+        return Err(ProvenanceError::SpanMissing { evidence_id });
+    };
+    if span.source_content_hash() != content.content_hash() {
+        return Err(ProvenanceError::ContentChanged {
+            evidence_id,
+            expected: span.source_content_hash().to_string(),
+            actual: content.content_hash().to_string(),
+        });
+    }
+    let text = content.text();
+    if span.end() > text.len() {
+        return Err(ProvenanceError::SpanOutOfBounds {
+            evidence_id,
+            start: span.start(),
+            end: span.end(),
+            length: text.len(),
+        });
+    }
+    if !text.is_char_boundary(span.start()) || !text.is_char_boundary(span.end()) {
+        return Err(ProvenanceError::SpanNotOnCharBoundary {
+            evidence_id,
+            start: span.start(),
+            end: span.end(),
+        });
+    }
+    let found = &text[span.start()..span.end()];
+    if found != evidence.excerpt() {
+        return Err(ProvenanceError::ExcerptMismatch {
+            evidence_id,
+            expected: evidence.excerpt().to_string(),
+            found: found.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Hex-encoded SHA-256 of the given bytes.
+#[must_use]
+pub fn content_digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    let digest = Sha256::digest(bytes);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Evidence {
     id: EvidenceId,
@@ -175,10 +393,14 @@ pub struct Evidence {
     locator: String,
     excerpt: String,
     observed_at: String,
+    span: Option<EvidenceSpan>,
 }
 
 impl Evidence {
     /// Creates an evidence record linked to a source location or excerpt.
+    ///
+    /// Evidence created this way carries no span and therefore cannot ground a
+    /// claim in the kernel. Use [`Evidence::with_span`] for citable evidence.
     ///
     /// # Errors
     ///
@@ -198,7 +420,27 @@ impl Evidence {
             locator: non_empty(locator.into(), "evidence locator")?,
             excerpt: non_empty(excerpt.into(), "evidence excerpt")?,
             observed_at: non_empty(observed_at.into(), "observed at")?,
+            span: None,
         })
+    }
+
+    /// Attaches a byte span pinning this excerpt to a version of its source.
+    #[must_use]
+    pub fn with_span(mut self, span: EvidenceSpan) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    /// Attaches an optional span, for reconstructing records from storage.
+    #[must_use]
+    pub fn with_optional_span(mut self, span: Option<EvidenceSpan>) -> Self {
+        self.span = span;
+        self
+    }
+
+    #[must_use]
+    pub const fn span(&self) -> Option<&EvidenceSpan> {
+        self.span.as_ref()
     }
 
     #[must_use]
@@ -625,6 +867,8 @@ pub enum MemoryError {
     InvalidConfidence,
     #[error("memory claims, events, and relationships require evidence")]
     MissingEvidence,
+    #[error("evidence span {start}..{end} must be a non-empty forward range")]
+    InvalidSpan { start: usize, end: usize },
 }
 
 fn non_empty(value: String, field: &'static str) -> Result<String, MemoryError> {
@@ -632,4 +876,147 @@ fn non_empty(value: String, field: &'static str) -> Result<String, MemoryError> 
         return Err(MemoryError::EmptyField { field });
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use super::{
+        Evidence, EvidenceSpan, MemoryScope, ProvenanceError, SourceContent, verify_evidence_span,
+    };
+    use crate::domain::{EvidenceId, SourceId};
+
+    const DOC: &str = "Acme renewed the Contoso contract on 2026-03-01. Notice is 30 days.";
+
+    fn scope() -> MemoryScope {
+        MemoryScope::new("acme", "prod").expect("scope")
+    }
+
+    fn content() -> SourceContent {
+        SourceContent::new(SourceId::new("src_1").expect("source id"), DOC).expect("content")
+    }
+
+    fn cited(excerpt: &str, start: usize, end: usize, hash: &str) -> Evidence {
+        Evidence::new(
+            EvidenceId::new("ev_1").expect("evidence id"),
+            scope(),
+            SourceId::new("src_1").expect("source id"),
+            "para-1",
+            excerpt,
+            "2026-03-02T00:00:00Z",
+        )
+        .expect("evidence")
+        .with_span(EvidenceSpan::new(start, end, hash).expect("span"))
+    }
+
+    #[test]
+    fn accepts_an_excerpt_that_re_derives_from_its_source() {
+        let content = content();
+        let evidence = cited(
+            "Acme renewed the Contoso contract",
+            0,
+            33,
+            content.content_hash(),
+        );
+
+        verify_evidence_span(&evidence, &content).expect("span verifies");
+    }
+
+    #[test]
+    fn rejects_an_excerpt_that_is_not_the_bytes_at_the_span() {
+        let content = content();
+        // The span covers real text, but the excerpt claims something else — the
+        // shape a fabricated citation takes.
+        let evidence = cited(
+            "Acme terminated the Contoso contract",
+            0,
+            33,
+            content.content_hash(),
+        );
+
+        let error = verify_evidence_span(&evidence, &content).expect_err("must reject");
+
+        assert!(matches!(error, ProvenanceError::ExcerptMismatch { .. }));
+    }
+
+    #[test]
+    fn rejects_a_span_taken_from_a_different_version_of_the_source() {
+        let content = content();
+        let evidence = cited("Acme renewed the Contoso contract", 0, 33, "stale-digest");
+
+        let error = verify_evidence_span(&evidence, &content).expect_err("must reject");
+
+        assert!(matches!(error, ProvenanceError::ContentChanged { .. }));
+    }
+
+    #[test]
+    fn rejects_a_span_past_the_end_of_the_source() {
+        let content = content();
+        let evidence = cited("whatever", 0, 10_000, content.content_hash());
+
+        let error = verify_evidence_span(&evidence, &content).expect_err("must reject");
+
+        assert!(matches!(error, ProvenanceError::SpanOutOfBounds { .. }));
+    }
+
+    #[test]
+    fn rejects_evidence_that_carries_no_span() {
+        let content = content();
+        let evidence = Evidence::new(
+            EvidenceId::new("ev_1").expect("evidence id"),
+            scope(),
+            SourceId::new("src_1").expect("source id"),
+            "para-1",
+            "Acme renewed the Contoso contract",
+            "2026-03-02T00:00:00Z",
+        )
+        .expect("evidence");
+
+        let error = verify_evidence_span(&evidence, &content).expect_err("must reject");
+
+        assert!(matches!(error, ProvenanceError::SpanMissing { .. }));
+    }
+
+    #[test]
+    fn rejects_a_span_that_splits_a_character() {
+        let text = "café renewed";
+        let content =
+            SourceContent::new(SourceId::new("src_1").expect("source id"), text).expect("content");
+        // 'é' occupies bytes 3..5, so 4 lands mid-character.
+        let evidence = cited("caf?", 0, 4, content.content_hash());
+
+        let error = verify_evidence_span(&evidence, &content).expect_err("must reject");
+
+        assert!(matches!(
+            error,
+            ProvenanceError::SpanNotOnCharBoundary { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_evidence_checked_against_another_source() {
+        let other =
+            SourceContent::new(SourceId::new("src_2").expect("source id"), DOC).expect("content");
+        let evidence = cited(
+            "Acme renewed the Contoso contract",
+            0,
+            33,
+            other.content_hash(),
+        );
+
+        let error = verify_evidence_span(&evidence, &other).expect_err("must reject");
+
+        assert!(matches!(error, ProvenanceError::SourceMismatch { .. }));
+    }
+
+    #[test]
+    fn content_hash_changes_when_the_source_text_changes() {
+        let first = content();
+        let second = SourceContent::new(
+            SourceId::new("src_1").expect("source id"),
+            "Acme renewed the Contoso contract on 2026-03-02. Notice is 30 days.",
+        )
+        .expect("content");
+
+        assert_ne!(first.content_hash(), second.content_hash());
+    }
 }

@@ -224,6 +224,11 @@ where
         .route("/v1/agents/{id}/runs", post(crate::graphs::start_agent_run))
         .route("/v1/agent-runs", get(crate::graphs::list_agent_runs))
         .route("/v1/agent-runs/{id}", get(crate::graphs::get_agent_run))
+        .route("/v1/reasoning/ask", post(crate::reasoning::ask))
+        .route(
+            "/v1/reasoning/certificates",
+            get(crate::reasoning::list_certificates),
+        )
         .route(
             "/v1/memory/sources",
             post(crate::memory::create_source).get(crate::memory::list_sources),

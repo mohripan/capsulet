@@ -1,6 +1,6 @@
 //! HTTP transport boundary for the API crate.
 
-mod internal;
+pub(crate) mod internal;
 
 pub(crate) mod activity {}
 pub(crate) mod artifacts {}

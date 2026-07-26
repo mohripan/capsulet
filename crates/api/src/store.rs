@@ -11,13 +11,14 @@ use capsulet_core::{
     Evidence, EvidenceId, GraphDefinition, GraphId, IngestionConnector, IngestionConnectorId,
     IngestionRun, IngestionRunId, IngestionRunOutputRecord, JobArtifact, JobDefinition,
     JobDefinitionId, JobRun, JobRunId, JobRunLog, MemoryContract, MemoryContractId, MemorySubgraph,
-    MemorySubgraphId, MemorySubgraphMember, Relationship, RelationshipId, Source, SourceId,
-    SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun, WorkflowRunId,
-    WorkflowStepRun,
+    MemorySubgraphId, MemorySubgraphMember, Relationship, RelationshipId, Source, SourceContent,
+    SourceId, SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun,
+    WorkflowRunId, WorkflowStepRun,
 };
 use capsulet_postgres::{
-    AdmissionSnapshot, AuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore,
-    PostgresStoreError, ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, TriggerEvent,
+    AdmissionSnapshot, AuditEvent, CertificateRecord, NewProjectMembership, NewServiceAccount,
+    PostgresStore, PostgresStoreError, ProjectMembershipRecord, ProjectRecord,
+    ServiceAccountRecord, TriggerEvent,
 };
 
 /// Storage operations required by the HTTP API.
@@ -182,6 +183,30 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         limit: i64,
     ) -> Result<Vec<Evidence>, Self::Error>;
     async fn find_memory_evidence(&self, id: &EvidenceId) -> Result<Option<Evidence>, Self::Error>;
+    async fn insert_memory_source_content(
+        &self,
+        _content: &SourceContent,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn find_memory_source_content(
+        &self,
+        _source_id: &SourceId,
+        _content_hash: &str,
+    ) -> Result<Option<SourceContent>, Self::Error> {
+        Ok(None)
+    }
+    async fn insert_certificate(&self, _record: &CertificateRecord) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn list_certificates(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _limit: i64,
+    ) -> Result<Vec<CertificateRecord>, Self::Error> {
+        Ok(Vec::new())
+    }
     async fn upsert_memory_entity(&self, entity: &Entity) -> Result<(), Self::Error>;
     async fn list_memory_entities(
         &self,
@@ -660,6 +685,35 @@ impl ApiStore for PostgresStore {
 
     async fn find_memory_source(&self, id: &SourceId) -> Result<Option<Source>, Self::Error> {
         self.find_memory_source(id).await
+    }
+
+    async fn insert_memory_source_content(
+        &self,
+        content: &SourceContent,
+    ) -> Result<(), Self::Error> {
+        self.insert_memory_source_content(content).await
+    }
+
+    async fn find_memory_source_content(
+        &self,
+        source_id: &SourceId,
+        content_hash: &str,
+    ) -> Result<Option<SourceContent>, Self::Error> {
+        self.find_memory_source_content(source_id, content_hash)
+            .await
+    }
+
+    async fn insert_certificate(&self, record: &CertificateRecord) -> Result<(), Self::Error> {
+        self.insert_certificate(record).await
+    }
+
+    async fn list_certificates(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<CertificateRecord>, Self::Error> {
+        self.list_certificates(tenant_id, project_id, limit).await
     }
 
     async fn upsert_memory_evidence(&self, evidence: &Evidence) -> Result<(), Self::Error> {

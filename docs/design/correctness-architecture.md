@@ -169,6 +169,31 @@ differently named field that the kernel is structurally unable to read.
 - The choice between quaternion, complex, and real-valued embeddings is an empirical modelling
   question. The architecture must not depend on the algebra.
 
+## What the implemented kernel does and does not guarantee
+
+Stage 0 and the kernel are implemented. Two limitations surfaced in live testing
+against `qwen2.5:1.5b` and are recorded here because both are properties of the
+boundary rather than bugs to be fixed.
+
+**Grounding is checked on both endpoints, not on meaning.** `Cite` requires that
+the subject and the object of a proposition both appear literally in the cited
+span, and that the span re-derives byte-for-byte from stored source content. An
+earlier version checked only the object; asked "which company acquired Contoso?"
+the model attached the subject `Contoso` to a sentence about anniversary dates,
+purely because a matching string appeared there, and the kernel accepted it.
+Grounding both endpoints rejects that. It still does not establish that the span
+*entails* the proposition — that remains `Interpret`, and remains a residual.
+
+**Relevance is not checked at all.** Asked the same unanswerable question after
+the fix, the model returned `Dana Whitfield | is the named account owner |
+Dana Whitfield` — a correctly grounded, accurately cited fact that does not
+answer the question, and the kernel accepted it. This is correct behaviour: the
+certificate asserts that a claim is grounded in its source, not that it responds
+to the caller's question. Whether an answer is responsive is a second undecidable
+axis, and any mechanism that judged it would be a model in the verifier seat.
+Treat it the way interpretation is treated — as an explicit obligation on the
+caller or a review step — rather than something the kernel can absorb.
+
 ## Why this targets small models
 
 Three arguments, in descending order of confidence.
