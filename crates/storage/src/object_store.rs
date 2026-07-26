@@ -5,7 +5,8 @@ use std::{path::PathBuf, sync::Arc};
 use async_trait::async_trait;
 use capsulet_core::{ArtifactObjectKind, JobRunId};
 use object_store::{
-    ObjectStore as ObjectStoreBackend, aws::AmazonS3Builder, path::Path as ObjectPath,
+    ObjectStore as ObjectStoreBackend, ObjectStoreExt as _, aws::AmazonS3Builder,
+    path::Path as ObjectPath,
 };
 use thiserror::Error;
 use tokio::fs;
