@@ -334,3 +334,14 @@ The API requires configured bearer credentials unless authentication is explicit
 - support multi-file and versioned bundles.
 
 These are extension paths beyond the implemented production baseline.
+
+A larger change is planned for the agent runtime. Today node output moves between nodes as an
+opaque `state_json` string that nothing inspects, while `GraphDefinition::new` compares
+`PortValueType` discriminants across hyperedges, so the typing is checked at the ports and not on
+the values. `NodeKind::Validator` is likewise a node an author can omit, which makes validation
+opt-in rather than a guarantee. The intended evolution replaces `state_json` with typed values
+carrying references into the memory graph, turns node executors into proposers whose output the
+runtime commits only on an admitted verdict, and adds byte offsets and source content hashes to
+`Evidence` so that citations can be re-derived from their sources. See
+[docs/design/correctness-architecture.md](docs/design/correctness-architecture.md) and
+[ADR 0012](docs/adr/0012-correctness-kernel-and-proposer-checker-split.md).
