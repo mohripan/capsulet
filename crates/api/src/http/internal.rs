@@ -78,18 +78,13 @@ struct ForwardedIpOrLocalKeyExtractor;
 impl KeyExtractor for ForwardedIpOrLocalKeyExtractor {
     type Key = String;
 
+    /// Keys buckets on the client address only.
+    ///
+    /// The credential must never take part in the key: an unauthenticated caller chooses it
+    /// freely, so keying on it would hand every request a fresh bucket and leave the
+    /// authentication path — the one thing this limiter exists to protect — unthrottled.
     fn extract<T>(&self, request: &axum::http::Request<T>) -> Result<Self::Key, GovernorError> {
         let headers = request.headers();
-        if let Some(key) = headers
-            .get(header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .filter(|value| !value.is_empty())
-            .map(rate_limit_token_key)
-        {
-            return Ok(key);
-        }
-
         Ok(headers
             .get("x-forwarded-for")
             .and_then(|value| value.to_str().ok())
@@ -106,19 +101,6 @@ impl KeyExtractor for ForwardedIpOrLocalKeyExtractor {
             .unwrap_or("local")
             .to_string())
     }
-}
-
-fn rate_limit_token_key(token: &str) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-
-    let digest = token_digest(token);
-    let mut key = String::with_capacity("token:".len() + 16);
-    key.push_str("token:");
-    for byte in digest.iter().take(8) {
-        key.push(HEX[(byte >> 4) as usize] as char);
-        key.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    key
 }
 
 #[derive(Debug, Clone)]

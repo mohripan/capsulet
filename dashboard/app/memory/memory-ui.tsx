@@ -161,7 +161,10 @@ export function MemorySubgraphsPage() {
     event.preventDefault();
     setPending(true);
     setMessage("");
-    const form = new FormData(event.currentTarget);
+    // React nulls event.currentTarget once the listener returns, which for an async
+    // handler is at the first await, so the element has to be captured up front.
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     try {
       await createMemorySubgraph({
         id: optionalString(form, "id"),
@@ -169,7 +172,7 @@ export function MemorySubgraphsPage() {
         name: requiredString(form, "name"),
         description: optionalString(form, "description")
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Subgraph created.");
       await refresh();
     } catch (error) {
@@ -256,7 +259,8 @@ export function MemoryEntitiesPage() {
     event.preventDefault();
     setPending(true);
     setMessage("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     try {
       const entity = await createCanonicalEntity({
         id: optionalString(form, "id"),
@@ -272,7 +276,7 @@ export function MemoryEntitiesPage() {
           attachment_type: "primary"
         });
       }
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Canonical entity saved.");
       await refresh();
     } catch (error) {
@@ -374,7 +378,8 @@ export function MemoryEdgesPage() {
     event.preventDefault();
     setPending(true);
     setMessage("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const request: CreateSubgraphEdgeRequest = {
       id: optionalString(form, "id"),
       edge_type: requiredString(form, "edge_type"),
@@ -389,7 +394,7 @@ export function MemoryEdgesPage() {
     };
     try {
       setCreated(await createSubgraphEdge(request));
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Cross-subgraph edge created.");
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -436,7 +441,8 @@ export function MemoryTracesPage() {
     event.preventDefault();
     setPending(true);
     setMessage("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     try {
       setCreated(await createSummaryTrace({
         subgraph_id: requiredString(form, "subgraph_id"),
@@ -444,7 +450,7 @@ export function MemoryTracesPage() {
         inner_claim_ids: splitCsv(optionalString(form, "inner_claim_ids")),
         evidence_ids: splitCsv(optionalString(form, "evidence_ids"))
       }));
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Summary trace created.");
     } catch (error) {
       setMessage(getErrorMessage(error));

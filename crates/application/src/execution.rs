@@ -282,33 +282,46 @@ where
     )
     .await?;
 
-    persist_logs(store, object_store, &run, report.logs).await?;
+    let rejection = persist_report_artifacts(store, object_store, &run, report.artifacts).await?;
 
-    persist_report_artifacts(store, object_store, &run, report.artifacts).await?;
+    let mut logs = report.logs.unwrap_or_default();
+    if let Some(reason) = &rejection {
+        if !logs.is_empty() && !logs.ends_with('\n') {
+            logs.push('\n');
+        }
+        logs.push_str(reason);
+        logs.push('\n');
+    }
+    persist_logs(store, object_store, &run, Some(logs)).await?;
 
-    let (final_status, retry_delay, outcome) = match report.outcome {
-        RunOutcome::Succeeded => (
-            JobRunStatus::Succeeded,
-            None,
-            WorkerTickOutcome::RunSucceeded,
-        ),
-        RunOutcome::Cancelled => (
-            JobRunStatus::Cancelled,
-            None,
-            WorkerTickOutcome::RunCancelled,
-        ),
-        RunOutcome::Failed => retry_decision(
-            &run,
-            &execution.definition,
-            JobRunStatus::Failed,
-            WorkerTickOutcome::RunFailed,
-        ),
-        RunOutcome::TimedOut => retry_decision(
-            &run,
-            &execution.definition,
-            JobRunStatus::TimedOut,
-            WorkerTickOutcome::RunTimedOut,
-        ),
+    let (final_status, retry_delay, outcome) = if rejection.is_some() {
+        // Retrying cannot help: the job would emit the same rejected artifact again.
+        (JobRunStatus::Failed, None, WorkerTickOutcome::RunFailed)
+    } else {
+        match report.outcome {
+            RunOutcome::Succeeded => (
+                JobRunStatus::Succeeded,
+                None,
+                WorkerTickOutcome::RunSucceeded,
+            ),
+            RunOutcome::Cancelled => (
+                JobRunStatus::Cancelled,
+                None,
+                WorkerTickOutcome::RunCancelled,
+            ),
+            RunOutcome::Failed => retry_decision(
+                &run,
+                &execution.definition,
+                JobRunStatus::Failed,
+                WorkerTickOutcome::RunFailed,
+            ),
+            RunOutcome::TimedOut => retry_decision(
+                &run,
+                &execution.definition,
+                JobRunStatus::TimedOut,
+                WorkerTickOutcome::RunTimedOut,
+            ),
+        }
     };
 
     let latest = store
@@ -542,28 +555,39 @@ fn truncate_utf8(value: &str, max_bytes: usize) -> String {
     value[..end].to_string()
 }
 
+/// Persists the artifacts a job produced.
+///
+/// Artifact names come from job output, so a name the domain rejects is a job
+/// fault rather than a worker fault: it is reported as `Ok(Some(reason))` so the
+/// caller can fail the run terminally, instead of aborting the tick and leaving
+/// the run stuck in `running` to be leased and replayed forever.
 async fn persist_report_artifacts<S, O>(
     store: &S,
     object_store: &O,
     run: &JobRun,
     artifacts: Vec<capsulet_runner::CollectedArtifact>,
-) -> Result<(), WorkerError>
+) -> Result<Option<String>, WorkerError>
 where
     S: WorkerStore,
     O: ObjectStore,
 {
     for artifact in artifacts {
-        let object_key = run_object_key(run.id(), ArtifactObjectKind::Artifact, &artifact.name)
-            .map_err(WorkerError::object_store)?;
-        let size_bytes = u64::try_from(artifact.bytes.len())
-            .map_err(|_| WorkerError::InvalidArtifact("artifact is too large".to_string()))?;
-        object_store
-            .put(&object_key, artifact.bytes)
-            .await
-            .map_err(WorkerError::object_store)?;
-        let metadata = JobArtifact::new(
-            ArtifactId::new(format!("artifact_{}_{}", run.id().as_str(), artifact.name))
-                .map_err(WorkerError::InvalidArtifact)?,
+        let name = artifact.name.clone();
+        let Ok(size_bytes) = u64::try_from(artifact.bytes.len()) else {
+            return Ok(Some(rejected_artifact(&name, "artifact is too large")));
+        };
+        let object_key = match run_object_key(run.id(), ArtifactObjectKind::Artifact, &name) {
+            Ok(object_key) => object_key,
+            Err(error) => return Ok(Some(rejected_artifact(&name, &error.to_string()))),
+        };
+        let id = match ArtifactId::new(format!("artifact_{}_{name}", run.id().as_str())) {
+            Ok(id) => id,
+            Err(error) => return Ok(Some(rejected_artifact(&name, &error))),
+        };
+        // Metadata is validated before the object is written so a rejected name
+        // never leaves an orphaned object behind.
+        let metadata = match JobArtifact::new(
+            id,
             run.id().clone(),
             None,
             artifact.name,
@@ -572,15 +596,25 @@ where
             size_bytes,
             None,
             ArtifactObjectKind::Artifact,
-        )
-        .map_err(WorkerError::InvalidArtifact)?;
+        ) {
+            Ok(metadata) => metadata,
+            Err(error) => return Ok(Some(rejected_artifact(&name, &error))),
+        };
+        object_store
+            .put(metadata.object_key(), artifact.bytes)
+            .await
+            .map_err(WorkerError::object_store)?;
         store
             .save_artifact(&metadata)
             .await
             .map_err(WorkerError::store)?;
     }
 
-    Ok(())
+    Ok(None)
+}
+
+fn rejected_artifact(name: &str, reason: &str) -> String {
+    format!("capsulet: rejected artifact produced by the job: {name}: {reason}")
 }
 
 fn retry_decision(
