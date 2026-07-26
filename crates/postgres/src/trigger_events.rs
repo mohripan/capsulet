@@ -471,15 +471,25 @@ impl PostgresStore {
         input_json: &str,
         satisfied: bool,
     ) -> Result<bool, PostgresStoreError> {
+        let (workflow_snapshot, deadline_seconds) = if satisfied {
+            self.workflow_run_snapshot(workflow_id).await?
+        } else {
+            (None, None)
+        };
         let mut transaction = self.pool.begin().await?;
         let mut created = false;
         if satisfied {
             let inserted = sqlx::query(
                 r"
                 INSERT INTO workflow_runs (
-                    id, workflow_id, automation_id, input, status, current_step_position, updated_at
+                    id, workflow_id, automation_id, input, status, current_step_position,
+                    workflow_snapshot, deadline_at, tenant_id, project_id, updated_at
                 )
-                SELECT $3, $4, $1, $5::jsonb, 'queued', 0, now()
+                SELECT $3, $4, $1, $5::jsonb, 'queued', 0, $6::jsonb,
+                       CASE WHEN $7::bigint IS NULL THEN NULL ELSE now() + ($7::bigint * interval '1 second') END,
+                       COALESCE((SELECT tenant_id FROM automations WHERE id = $1), 'default'),
+                       COALESCE((SELECT project_id FROM automations WHERE id = $1), 'default'),
+                       now()
                 WHERE NOT EXISTS (
                     SELECT 1 FROM trigger_evaluations
                     WHERE automation_id = $1 AND correlation_key = $2
@@ -492,6 +502,8 @@ impl PostgresStore {
             .bind(workflow_run_id)
             .bind(workflow_id)
             .bind(input_json)
+            .bind(workflow_snapshot)
+            .bind(deadline_seconds)
             .execute(&mut *transaction)
             .await?;
             created = inserted.rows_affected() == 1;

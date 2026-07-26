@@ -68,7 +68,8 @@ export default function MemoryIngestionPage() {
     event.preventDefault();
     setSubmitting(true);
     setError("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const request: CreateIngestionConnectorRequest = {
       id: String(form.get("id") || "").trim() || undefined,
       name: String(form.get("name") || "").trim(),
@@ -84,7 +85,7 @@ export default function MemoryIngestionPage() {
     };
     try {
       await createIngestionConnector(request);
-      event.currentTarget.reset();
+      formElement.reset();
       await refresh();
     } catch (error) {
       setError(getErrorMessage(error));

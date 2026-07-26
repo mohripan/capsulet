@@ -15,7 +15,8 @@
   {{- $allowedImages = append $allowedImages $image }}
 {{- end }}
 {{- $allowedImages = uniq $allowedImages }}
-{{- $containerSelector := "has(object.metadata.labels) && 'capsulet.dev/job-run-id' in object.metadata.labels" }}
+{{- /* Must stay in sync with APP_LABEL/RUN_LABEL in crates/runner/src/internal.rs and with the execution podSelector in networkpolicy.yaml. */ -}}
+{{- $containerSelector := "has(object.metadata.labels) && 'capsulet.dev/managed-by' in object.metadata.labels && object.metadata.labels['capsulet.dev/managed-by'] == 'capsulet' && 'capsulet.dev/job-run-key' in object.metadata.labels" }}
 {{- if .Values.admissionPolicies.security.enabled }}
 ---
 apiVersion: admissionregistration.k8s.io/v1

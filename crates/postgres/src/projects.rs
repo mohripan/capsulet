@@ -296,6 +296,41 @@ fn resource_table(resource: &str) -> Option<&'static str> {
         "trigger_plugins" => Some("custom_trigger_plugins"),
         "job_runs" => Some("job_runs"),
         "workflow_runs" => Some("workflow_runs"),
+        "graphs" => Some("graph_definitions"),
+        "agents" => Some("agent_definitions"),
+        "agent_runs" => Some("agent_runs"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resource_table;
+
+    #[test]
+    fn every_scoped_api_resource_maps_to_a_table() {
+        // The graph/agent endpoints pass these names to `resource_project`, which errors out
+        // on an unmapped resource and turns every scoped request into a 500.
+        for resource in [
+            "job_definitions",
+            "workflows",
+            "automations",
+            "trigger_plugins",
+            "job_runs",
+            "workflow_runs",
+            "graphs",
+            "agents",
+            "agent_runs",
+        ] {
+            assert!(
+                resource_table(resource).is_some(),
+                "{resource} has no table mapping"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_resources_stay_unmapped() {
+        assert!(resource_table("memory_claims").is_none());
     }
 }

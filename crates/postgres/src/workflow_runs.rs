@@ -241,6 +241,29 @@ impl PostgresStore {
         ))
     }
 
+    /// Resolves the definition snapshot and deadline to pin onto a new workflow run.
+    ///
+    /// Trigger-driven run creation must pin the same snapshot the API path does, so a
+    /// later `upsert_workflow` cannot mutate the DAG of an already-executing run and the
+    /// workflow deadline is enforced regardless of who started the run.
+    pub(crate) async fn workflow_run_snapshot(
+        &self,
+        workflow_id: &str,
+    ) -> Result<(Option<Value>, Option<i64>), PostgresStoreError> {
+        let Ok(workflow_id) = WorkflowId::new(workflow_id) else {
+            return Ok((None, None));
+        };
+        let Some(workflow) = self.find_workflow(&workflow_id).await? else {
+            return Ok((None, None));
+        };
+        Ok((
+            Some(workflow_snapshot_json(&workflow)),
+            workflow
+                .deadline_seconds()
+                .and_then(|value| i64::try_from(value).ok()),
+        ))
+    }
+
     /// Lists workflow runs.
     ///
     /// # Errors
@@ -443,7 +466,8 @@ impl PostgresStore {
             return self.find_workflow_run(workflow_run_id).await;
         }
 
-        let discarded_job_run_ids = sqlx::query_scalar::<_, String>(
+        // Skipped step runs carry a NULL job_run_id, so the column must decode as optional.
+        let discarded_job_run_ids = sqlx::query_scalar::<_, Option<String>>(
             r"
             DELETE FROM workflow_step_runs
             WHERE workflow_run_id = $1
@@ -453,7 +477,10 @@ impl PostgresStore {
         )
         .bind(workflow_run_id.as_str())
         .fetch_all(&mut *tx)
-        .await?;
+        .await?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
         if !discarded_job_run_ids.is_empty() {
             sqlx::query("DELETE FROM job_runs WHERE id = ANY($1)")
@@ -462,8 +489,19 @@ impl PostgresStore {
                 .await?;
         }
 
+        // The deadline is restarted from the pinned snapshot (falling back to the live
+        // definition) because a run that timed out already has a deadline in the past.
         sqlx::query(
             r"
+            WITH resumed_deadline AS (
+                SELECT COALESCE(
+                           (wr.workflow_snapshot->>'deadline_seconds')::bigint,
+                           wd.deadline_seconds
+                       ) AS deadline_seconds
+                FROM workflow_runs wr
+                LEFT JOIN workflow_definitions wd ON wd.id = wr.workflow_id
+                WHERE wr.id = $1
+            )
             UPDATE workflow_runs
             SET status = 'running',
                 current_step_position = COALESCE((
@@ -472,6 +510,13 @@ impl PostgresStore {
                     WHERE workflow_run_id = $1 AND status = 'succeeded'
                 ), 0),
                 finished_at = NULL,
+                deadline_at = (
+                    SELECT CASE
+                        WHEN deadline_seconds IS NULL THEN NULL
+                        ELSE now() + (deadline_seconds * interval '1 second')
+                    END
+                    FROM resumed_deadline
+                ),
                 updated_at = now()
             WHERE id = $1
             ",
@@ -519,18 +564,27 @@ impl PostgresStore {
             let workflow_id: String = row.try_get("workflow_id")?;
             let interval_seconds: i32 = row.try_get("interval_seconds")?;
             let workflow_run_id = generated_store_id("workflow_run");
+            let (workflow_snapshot, deadline_seconds) =
+                self.workflow_run_snapshot(&workflow_id).await?;
             let mut tx = self.pool.begin().await?;
             sqlx::query(
                 r"
                 INSERT INTO workflow_runs (
-                    id, workflow_id, automation_id, input, status, current_step_position, updated_at
+                    id, workflow_id, automation_id, input, status, current_step_position,
+                    workflow_snapshot, deadline_at, tenant_id, project_id, updated_at
                 )
-                VALUES ($1, $2, $3, '{}'::jsonb, 'queued', 0, now())
+                SELECT $1, $2, $3, '{}'::jsonb, 'queued', 0, $4::jsonb,
+                       CASE WHEN $5::bigint IS NULL THEN NULL ELSE now() + ($5::bigint * interval '1 second') END,
+                       COALESCE((SELECT tenant_id FROM automations WHERE id = $3), 'default'),
+                       COALESCE((SELECT project_id FROM automations WHERE id = $3), 'default'),
+                       now()
                 ",
             )
             .bind(&workflow_run_id)
             .bind(&workflow_id)
             .bind(&automation_id)
+            .bind(workflow_snapshot)
+            .bind(deadline_seconds)
             .execute(&mut *tx)
             .await?;
             sqlx::query(
@@ -649,6 +703,29 @@ impl PostgresStore {
         };
         let run = row_to_workflow_run(&run_row)?;
         if run_row.try_get::<bool, _>("deadline_expired")? {
+            // Cancelling first is what stops the worker: it aborts only on a cancelled
+            // job run, so an uncancelled job would keep executing past the deadline.
+            sqlx::query(
+                r"
+                UPDATE job_runs
+                SET status = 'cancelled',
+                    lease_expires_at = NULL,
+                    heartbeat_at = NULL,
+                    retry_ready_at = NULL,
+                    updated_at = now()
+                WHERE id IN (
+                    SELECT job_run_id
+                    FROM workflow_step_runs
+                    WHERE workflow_run_id = $1
+                      AND job_run_id IS NOT NULL
+                      AND status IN ('queued', 'running')
+                )
+                  AND status IN ('queued', 'leased', 'running', 'retry_scheduled')
+                ",
+            )
+            .bind(run_id)
+            .execute(&mut *tx)
+            .await?;
             sqlx::query(
                 "UPDATE workflow_step_runs SET status = 'timed_out', updated_at = now() WHERE workflow_run_id = $1 AND status IN ('queued', 'running')",
             )

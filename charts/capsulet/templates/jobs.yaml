@@ -6,6 +6,13 @@ metadata:
   labels:
     {{- include "capsulet.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
+  annotations:
+    {{- /* A Job spec.template is immutable, so this must be recreated per release instead of patched.
+           post-install (not pre-install) so the bundled PostgreSQL exists on a fresh install;
+           pre-upgrade so the schema is migrated before the new images roll out. */}}
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: {{ .Values.migrations.backoffLimit }}
   template:
@@ -47,6 +54,12 @@ metadata:
   labels:
     {{- include "capsulet.labels" . | nindent 4 }}
     app.kubernetes.io/component: minio-bucket
+  annotations:
+    {{- /* Same immutable spec.template constraint as the migrate Job; runs after the bundled MinIO
+           workload exists because the container blocks until the endpoint answers. */}}
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: {{ .Values.minio.bucketJob.backoffLimit }}
   template:

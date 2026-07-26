@@ -3,6 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Stdio,
+    sync::OnceLock,
     time::Duration,
 };
 
@@ -19,6 +20,7 @@ use k8s_openapi::{
         },
     },
     apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::ObjectMeta},
+    chrono::Utc,
 };
 use kube::{
     Api, Client, ResourceExt,
@@ -35,12 +37,26 @@ use tokio::{
 const APP_LABEL: &str = "capsulet.dev/managed-by";
 const RUN_LABEL: &str = "capsulet.dev/job-run-key";
 const ATTEMPT_LABEL: &str = "capsulet.dev/attempt";
+const COMPONENT_LABEL: &str = "capsulet.dev/component";
+const DEFAULT_COMPONENT: &str = "worker";
 const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 300;
 const DEFAULT_JOB_TIMEOUT_SECONDS_I64: i64 = 300;
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const ARTIFACT_MARKER: &str = "CAPSULET_ARTIFACT";
 const ARTIFACT_DIR: &str = "/capsulet/artifacts";
 const INPUT_DIR: &str = "/capsulet/inputs";
+const RUNTIME_STAGE_DIR: &str = "runtime";
+/// Jobs younger than this are never reclaimed: another worker may have created
+/// one after the caller took its snapshot of the active runs.
+const ORPHAN_GRACE_SECONDS: i64 = 120;
+const MAX_ARTIFACT_NAME_BYTES: usize = 255;
+const MAX_ARTIFACT_CONTENT_TYPE_BYTES: usize = 255;
+const MAX_COLLECTED_ARTIFACT_BYTES: usize = 8 * 1024 * 1024;
+/// Ceiling on the pod log fetch so a chatty job cannot drive worker memory.
+const MAX_LOG_FETCH_BYTES: usize = 32 * 1024 * 1024;
+/// Input artifacts are inlined into a single `/bin/sh -c` argument, which Linux
+/// caps at `MAX_ARG_STRLEN` (128 KiB); the remaining headroom carries the script.
+const MAX_INLINE_INPUT_ARTIFACT_BYTES: usize = 96 * 1024;
 
 /// Execution result returned by a runner backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -339,7 +355,7 @@ impl Runner for WasmPythonRunner {
             .prefix("capsulet-wasm-python-")
             .tempdir()
             .map_err(WasmPythonRunnerError::Io)?;
-        stage_wasm_python_sandbox(sandbox.path(), execution)?;
+        stage_wasm_python_sandbox(sandbox.path(), &self.config.runtime_path, execution)?;
 
         let output = run_wasmtime_python(&self.config, sandbox.path(), execution).await?;
         let logs = combined_output_logs(&output);
@@ -437,6 +453,7 @@ fn validate_wasm_python_execution(execution: &RunExecution) -> Result<(), WasmPy
 
 fn stage_wasm_python_sandbox(
     sandbox_path: &Path,
+    runtime_path: &Path,
     execution: &RunExecution,
 ) -> Result<(), WasmPythonRunnerError> {
     let capsulet_root = sandbox_path.join("capsulet");
@@ -449,6 +466,42 @@ fn stage_wasm_python_sandbox(
     fs::write(capsulet_root.join("input.json"), execution.run.input_json())?;
     write_wasm_python_script(&workspace.join("main.py"), execution.definition.command())?;
     materialize_inputs_at(&inputs, &execution.input_artifacts)?;
+    stage_wasm_runtime(runtime_path, &staged_runtime_dir(sandbox_path))?;
+    Ok(())
+}
+
+fn staged_runtime_dir(sandbox_path: &Path) -> PathBuf {
+    sandbox_path.join(RUNTIME_STAGE_DIR)
+}
+
+/// Copies the runtime and its standard library into the per-run sandbox.
+///
+/// `wasmtime --dir` preopens grant write access, so the guest must never see the
+/// installed runtime itself: a job that appended to the stdlib there would run in
+/// every later job on this worker.
+fn stage_wasm_runtime(runtime_path: &Path, staged: &Path) -> Result<(), WasmPythonRunnerError> {
+    let source = runtime_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| {
+            WasmPythonRunnerError::RuntimeDirectoryRequired(runtime_path.display().to_string())
+        })?;
+    copy_dir_recursive(source, staged)?;
+    Ok(())
+}
+
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), std::io::Error> {
+    fs::create_dir_all(target)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let destination = target.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &destination)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), &destination)?;
+        }
+    }
     Ok(())
 }
 
@@ -492,13 +545,10 @@ fn wasmtime_command_spec(
         .file_name()
         .and_then(std::ffi::OsStr::to_str)
         .ok_or(WasmPythonRunnerError::NonUtf8Path)?;
-    let current_dir = config
-        .runtime_path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .map(Path::to_path_buf);
     Ok(WasmtimeCommandSpec {
-        current_dir,
+        // `--dir .` resolves against the process directory, which is the sandbox
+        // copy of the runtime rather than the installed one.
+        current_dir: Some(staged_runtime_dir(sandbox_path)),
         parts: vec![
             config.wasmtime_bin.clone(),
             "--dir".to_string(),
@@ -944,7 +994,8 @@ impl KubernetesRunner {
         Ok(Self::new(client, namespace, log_limit_bytes))
     }
 
-    /// Deletes Capsulet-managed Kubernetes Jobs whose run id is no longer active in storage.
+    /// Deletes Kubernetes Jobs created by this component whose run id is no longer
+    /// active in storage.
     ///
     /// # Errors
     ///
@@ -959,7 +1010,10 @@ impl KubernetesRunner {
             .collect::<BTreeSet<_>>();
         let jobs: Api<Job> = Api::namespaced(self.client.clone(), &self.namespace);
         let list = jobs
-            .list(&ListParams::default().labels(&format!("{APP_LABEL}=capsulet")))
+            .list(&ListParams::default().labels(&format!(
+                "{APP_LABEL}=capsulet,{COMPONENT_LABEL}={}",
+                component_label_value()
+            )))
             .await?;
         let delete_params = DeleteParams {
             propagation_policy: Some(kube::api::PropagationPolicy::Background),
@@ -977,7 +1031,7 @@ impl KubernetesRunner {
             let Some(run_label) = labels.get(RUN_LABEL) else {
                 continue;
             };
-            if active_labels.contains(run_label) {
+            if active_labels.contains(run_label) || job_within_grace_period(&job) {
                 continue;
             }
             jobs.delete(&name, &delete_params).await?;
@@ -1006,6 +1060,7 @@ impl Runner for KubernetesRunner {
         let jobs: Api<Job> = Api::namespaced(self.client.clone(), &self.namespace);
         let pods: Api<Pod> = Api::namespaced(self.client.clone(), &self.namespace);
         validate_execution_policy(execution).map_err(KubernetesRunnerError::Policy)?;
+        validate_input_artifact_budget(&execution.input_artifacts)?;
         let job = build_job(execution, &self.namespace);
         let job_name = job
             .metadata
@@ -1033,6 +1088,7 @@ impl Runner for KubernetesRunner {
         .await?;
         let logs = self.collect_logs(execution).await?;
         let (logs, artifacts) = split_artifact_markers(logs);
+        let logs = logs.map(|logs| truncate_utf8(&logs, self.log_limit_bytes));
 
         Ok(match outcome {
             RunOutcome::Succeeded => RunReport::succeeded_with_artifacts(logs, artifacts),
@@ -1076,13 +1132,39 @@ impl KubernetesRunner {
                 &pod_name,
                 &LogParams {
                     container: Some("main".to_string()),
+                    limit_bytes: Some(log_fetch_limit(self.log_limit_bytes)),
                     ..LogParams::default()
                 },
             )
             .await?;
 
-        Ok(Some(truncate_utf8(&logs, self.log_limit_bytes)))
+        // Artifacts are multiplexed into this stream, so the log budget is applied
+        // only after the markers have been split out.
+        Ok(Some(logs))
     }
+}
+
+fn log_fetch_limit(log_limit_bytes: usize) -> i64 {
+    i64::try_from(log_limit_bytes.saturating_add(MAX_LOG_FETCH_BYTES)).unwrap_or(i64::MAX)
+}
+
+fn validate_input_artifact_budget(
+    artifacts: &[InputArtifact],
+) -> Result<(), KubernetesRunnerError> {
+    let encoded_bytes = artifacts.iter().fold(0_usize, |total, artifact| {
+        total.saturating_add(base64_encoded_len(artifact.bytes.len()))
+    });
+    if encoded_bytes > MAX_INLINE_INPUT_ARTIFACT_BYTES {
+        return Err(KubernetesRunnerError::InputArtifactsTooLarge {
+            encoded_bytes,
+            limit_bytes: MAX_INLINE_INPUT_ARTIFACT_BYTES,
+        });
+    }
+    Ok(())
+}
+
+const fn base64_encoded_len(bytes: usize) -> usize {
+    bytes.div_ceil(3).saturating_mul(4)
 }
 
 async fn wait_for_job(
@@ -1167,6 +1249,10 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
     let run_key = run_label_value(execution.run.id());
     let mut labels = BTreeMap::new();
     labels.insert(APP_LABEL.to_string(), "capsulet".to_string());
+    labels.insert(
+        COMPONENT_LABEL.to_string(),
+        component_label_value().to_string(),
+    );
     labels.insert(RUN_LABEL.to_string(), run_key);
     labels.insert(
         ATTEMPT_LABEL.to_string(),
@@ -1429,21 +1515,33 @@ fn split_artifact_markers(logs: Option<String>) -> (Option<String>, Vec<Collecte
     let Some(logs) = logs else {
         return (None, Vec::new());
     };
-    let mut cleaned = Vec::new();
+    let mut cleaned: Vec<String> = Vec::new();
     let mut artifacts = Vec::new();
-    for line in logs.lines() {
+    // A payload cut mid-line can still decode as base64, so the unterminated last
+    // line is never trusted as a complete artifact.
+    let unterminated_line = if logs.ends_with('\n') {
+        0
+    } else {
+        logs.lines().count()
+    };
+    for (index, line) in logs.lines().enumerate() {
         let parts = line.splitn(4, '\t').collect::<Vec<_>>();
         if parts.len() == 4 && parts[0] == ARTIFACT_MARKER {
-            if let Ok(bytes) = BASE64.decode(parts[3]) {
-                artifacts.push(CollectedArtifact {
-                    name: parts[1].to_string(),
-                    content_type: parts[2].to_string(),
-                    bytes,
-                });
+            let parsed = if index + 1 == unterminated_line {
+                Err(format!(
+                    "artifact {} was cut off by the log limit",
+                    describe_untrusted(parts[1])
+                ))
+            } else {
+                parse_artifact_marker(parts[1], parts[2], parts[3])
+            };
+            match parsed {
+                Ok(artifact) => artifacts.push(artifact),
+                Err(reason) => cleaned.push(format!("capsulet: dropped artifact marker: {reason}")),
             }
             continue;
         }
-        cleaned.push(line);
+        cleaned.push(line.to_string());
     }
     let cleaned = cleaned.join("\n");
     if cleaned.is_empty() {
@@ -1451,6 +1549,61 @@ fn split_artifact_markers(logs: Option<String>) -> (Option<String>, Vec<Collecte
     } else {
         (Some(format!("{cleaned}\n")), artifacts)
     }
+}
+
+/// Builds an artifact from one marker line.
+///
+/// The marker shares stdout with the job's own program, so every field is
+/// untrusted: the name has to survive being turned into an object storage key
+/// and an artifact record, and a payload cut short by the log budget must be
+/// reported instead of persisted as a complete artifact.
+fn parse_artifact_marker(
+    name: &str,
+    content_type: &str,
+    encoded: &str,
+) -> Result<CollectedArtifact, String> {
+    if name.is_empty() || name.len() > MAX_ARTIFACT_NAME_BYTES {
+        return Err(format!(
+            "name '{}' must be between 1 and {MAX_ARTIFACT_NAME_BYTES} bytes",
+            describe_untrusted(name)
+        ));
+    }
+    if name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.chars().any(char::is_control)
+        || name.trim().is_empty()
+    {
+        return Err(format!(
+            "name '{}' is not a plain file name",
+            describe_untrusted(name)
+        ));
+    }
+    if content_type.is_empty()
+        || content_type.len() > MAX_ARTIFACT_CONTENT_TYPE_BYTES
+        || content_type.chars().any(char::is_control)
+    {
+        return Err(format!("artifact {name} has an unusable content type"));
+    }
+    let bytes = BASE64
+        .decode(encoded)
+        .map_err(|_| format!("artifact {name} payload is not valid base64"))?;
+    if bytes.len() > MAX_COLLECTED_ARTIFACT_BYTES {
+        return Err(format!(
+            "artifact {name} is {} bytes which exceeds the {MAX_COLLECTED_ARTIFACT_BYTES} byte limit",
+            bytes.len()
+        ));
+    }
+    Ok(CollectedArtifact {
+        name: name.to_string(),
+        content_type: content_type.to_string(),
+        bytes,
+    })
+}
+
+fn describe_untrusted(value: &str) -> String {
+    value.escape_default().take(64).collect()
 }
 
 fn reset_artifact_dir() -> Result<(), std::io::Error> {
@@ -1526,6 +1679,37 @@ fn run_label_value(run_id: &JobRunId) -> String {
     sanitize_kubernetes_segment(run_id.as_str(), 63)
 }
 
+/// Identity of the process rendering a Job, so that a reconciler only reclaims
+/// Jobs its own component created. The evaluator runs custom trigger plugins
+/// through the same renderer, but their runs are never persisted and would
+/// otherwise look orphaned to the worker.
+fn component_label_value() -> &'static str {
+    static COMPONENT: OnceLock<String> = OnceLock::new();
+    COMPONENT.get_or_init(|| {
+        let name = std::env::var("CAPSULET_COMPONENT")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                std::env::current_exe().ok().and_then(|path| {
+                    path.file_stem()
+                        .and_then(std::ffi::OsStr::to_str)
+                        .map(str::to_string)
+                })
+            })
+            .unwrap_or_else(|| DEFAULT_COMPONENT.to_string());
+        sanitize_kubernetes_segment(&name, 63)
+    })
+}
+
+fn job_within_grace_period(job: &Job) -> bool {
+    job.metadata
+        .creation_timestamp
+        .as_ref()
+        .is_some_and(|created| {
+            Utc::now().signed_duration_since(created.0).num_seconds() < ORPHAN_GRACE_SECONDS
+        })
+}
+
 fn sanitize_kubernetes_segment(value: &str, max_len: usize) -> String {
     let mut output = String::new();
     for character in value.chars() {
@@ -1579,6 +1763,13 @@ pub enum KubernetesRunnerError {
     Policy(String),
     #[error("cancellation check failed: {0}")]
     CancellationCheck(String),
+    #[error(
+        "input artifacts need {encoded_bytes} encoded bytes in the job command, which exceeds the {limit_bytes} byte limit"
+    )]
+    InputArtifactsTooLarge {
+        encoded_bytes: usize,
+        limit_bytes: usize,
+    },
 }
 
 /// WASI Python runner error.
@@ -1592,6 +1783,8 @@ pub enum WasmPythonRunnerError {
     InvalidCommand,
     #[error("wasmtime command path is not valid UTF-8")]
     NonUtf8Path,
+    #[error("WASI Python runtime path {0} must include a directory component")]
+    RuntimeDirectoryRequired(String),
     #[error("wasmtime failed to run Python script: {0}")]
     Io(#[from] std::io::Error),
     #[error("WASI Python execution timed out for process {process_id:?}")]
@@ -1605,3 +1798,85 @@ pub enum WasmPythonRunnerError {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod untrusted_input_tests {
+    use super::{
+        CollectedArtifact, InputArtifact, MAX_INLINE_INPUT_ARTIFACT_BYTES, split_artifact_markers,
+        validate_input_artifact_budget,
+    };
+    use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+
+    fn marker(name: &str, payload: &str) -> String {
+        format!(
+            "CAPSULET_ARTIFACT\t{name}\ttext/plain\t{}\n",
+            BASE64.encode(payload)
+        )
+    }
+
+    #[test]
+    fn rejects_artifact_names_that_are_not_plain_file_names() {
+        for name in ["..", ".", "reports/out.txt", "a\\b.txt", "", "a\u{7}b"] {
+            let (logs, artifacts) = split_artifact_markers(Some(marker(name, "hi")));
+
+            assert!(artifacts.is_empty(), "{name} should be rejected");
+            assert!(
+                logs.unwrap_or_default().contains("dropped artifact marker"),
+                "{name} rejection should be reported in the logs"
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_plain_artifact_names() {
+        let (_, artifacts) = split_artifact_markers(Some(marker("report.txt", "hi")));
+
+        assert_eq!(
+            artifacts,
+            vec![CollectedArtifact {
+                name: "report.txt".to_string(),
+                content_type: "text/plain".to_string(),
+                bytes: b"hi".to_vec(),
+            }]
+        );
+    }
+
+    #[test]
+    fn drops_artifact_whose_payload_lost_its_line_terminator() {
+        let complete = marker("report.txt", "hello world");
+        let cut = complete.trim_end_matches('\n');
+
+        let (logs, artifacts) = split_artifact_markers(Some(cut.to_string()));
+
+        assert!(artifacts.is_empty());
+        assert!(
+            logs.unwrap_or_default()
+                .contains("cut off by the log limit")
+        );
+    }
+
+    #[test]
+    fn rejects_input_artifacts_that_overflow_the_job_command() {
+        let artifacts = vec![InputArtifact {
+            producer_step_id: "generate".to_string(),
+            name: "big.csv".to_string(),
+            bytes: vec![0; MAX_INLINE_INPUT_ARTIFACT_BYTES],
+        }];
+
+        let error =
+            validate_input_artifact_budget(&artifacts).expect_err("oversized inputs are rejected");
+
+        assert!(error.to_string().contains("exceeds"), "{error}");
+    }
+
+    #[test]
+    fn accepts_input_artifacts_within_the_job_command_budget() {
+        let artifacts = vec![InputArtifact {
+            producer_step_id: "generate".to_string(),
+            name: "small.csv".to_string(),
+            bytes: vec![0; 1024],
+        }];
+
+        assert!(validate_input_artifact_budget(&artifacts).is_ok());
+    }
+}

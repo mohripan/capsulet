@@ -12,6 +12,11 @@ impl JobRunRepository for PostgresStore {
     type Error = PostgresStoreError;
 
     async fn save(&self, run: &JobRun) -> Result<(), Self::Error> {
+        // The conflict branch is guarded because this statement serves both the
+        // create path and the worker's leased -> running write. A terminal run must
+        // never be revived (a cancellation racing the worker would otherwise leave a
+        // `running` row with no lease, which no recovery query can reclaim), and a
+        // run that is already in flight must never be reset back to `queued`.
         sqlx::query(
             r"
             INSERT INTO job_runs (
@@ -30,6 +35,8 @@ impl JobRunRepository for PostgresStore {
                 input = EXCLUDED.input,
                 attempt_count = EXCLUDED.attempt_count,
                 updated_at = now()
+            WHERE job_runs.status NOT IN ('succeeded', 'failed', 'cancelled', 'timed_out')
+              AND (job_runs.status = 'queued' OR EXCLUDED.status <> 'queued')
             ",
         )
         .bind(run.id().as_str())

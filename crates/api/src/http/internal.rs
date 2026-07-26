@@ -78,18 +78,13 @@ struct ForwardedIpOrLocalKeyExtractor;
 impl KeyExtractor for ForwardedIpOrLocalKeyExtractor {
     type Key = String;
 
+    /// Keys buckets on the client address only.
+    ///
+    /// The credential must never take part in the key: an unauthenticated caller chooses it
+    /// freely, so keying on it would hand every request a fresh bucket and leave the
+    /// authentication path — the one thing this limiter exists to protect — unthrottled.
     fn extract<T>(&self, request: &axum::http::Request<T>) -> Result<Self::Key, GovernorError> {
         let headers = request.headers();
-        if let Some(key) = headers
-            .get(header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .filter(|value| !value.is_empty())
-            .map(rate_limit_token_key)
-        {
-            return Ok(key);
-        }
-
         Ok(headers
             .get("x-forwarded-for")
             .and_then(|value| value.to_str().ok())
@@ -106,19 +101,6 @@ impl KeyExtractor for ForwardedIpOrLocalKeyExtractor {
             .unwrap_or("local")
             .to_string())
     }
-}
-
-fn rate_limit_token_key(token: &str) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-
-    let digest = token_digest(token);
-    let mut key = String::with_capacity("token:".len() + 16);
-    key.push_str("token:");
-    for byte in digest.iter().take(8) {
-        key.push(HEX[(byte >> 4) as usize] as char);
-        key.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    key
 }
 
 #[derive(Debug, Clone)]
@@ -1356,6 +1338,26 @@ where
 {
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, "project_operator")?;
+    // The check has to precede `build_python_job_definition`, which writes the script bundle
+    // under a key derived from the requested id.
+    if let Some(requested_id) = request.id.as_deref() {
+        let definition_id =
+            JobDefinitionId::new(requested_id.to_string()).map_err(ApiError::validation)?;
+        if state
+            .store
+            .job_definition_exists(&definition_id)
+            .await
+            .map_err(ApiError::store)?
+        {
+            require_resource_project(
+                &state.store,
+                "job_definitions",
+                definition_id.as_str(),
+                &context,
+            )
+            .await?;
+        }
+    }
     let definition = build_python_job_definition(&state, request).await?;
     state
         .store
@@ -1637,6 +1639,17 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, "project_operator")?;
     let workflow = build_workflow(&state, request).await?;
+    // The id may come from the request body, and the upsert conflicts on the id alone.
+    if state
+        .store
+        .find_workflow(workflow.id())
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        require_resource_project(&state.store, "workflows", workflow.id().as_str(), &context)
+            .await?;
+    }
     require_workflow_step_projects(&state.store, &workflow, &context).await?;
     state
         .store
@@ -2769,7 +2782,22 @@ where
     }
 
     let run_id = match request.run_id {
-        Some(value) => JobRunId::new(value).map_err(ApiError::validation)?,
+        Some(value) => {
+            let run_id = JobRunId::new(value).map_err(ApiError::validation)?;
+            // A caller-chosen id may collide with an existing run; without this the upsert
+            // would overwrite it and `assign_resource_project` would re-own it.
+            if state
+                .store
+                .find_run(&run_id)
+                .await
+                .map_err(ApiError::store)?
+                .is_some()
+            {
+                require_resource_project(&state.store, "job_runs", run_id.as_str(), &context)
+                    .await?;
+            }
+            run_id
+        }
         None => JobRunId::new(generated_run_id()).map_err(ApiError::validation)?,
     };
     let (job_definition_id, bundle_metadata) = if let Some(script) = request.python_script {
@@ -3306,5 +3334,43 @@ mod rate_limit_tests {
         // Regression guard: passing the rate straight to `per_second` produced a
         // 50_000 ms interval, i.e. one request per 50 seconds after the burst.
         assert!(replenish_period_millis(DEFAULT_RATE_LIMIT_PER_SECOND) < 1_000);
+    }
+}
+
+#[cfg(test)]
+mod rate_limit_key_tests {
+    use axum::http::Request;
+    use tower_governor::key_extractor::KeyExtractor;
+
+    use super::ForwardedIpOrLocalKeyExtractor;
+
+    fn key(headers: &[(&str, &str)]) -> String {
+        let mut builder = Request::builder();
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let request = builder.body(()).expect("request builds");
+        ForwardedIpOrLocalKeyExtractor
+            .extract(&request)
+            .expect("key extraction never fails")
+    }
+
+    #[test]
+    fn rotating_the_bearer_token_does_not_move_the_caller_to_a_new_bucket() {
+        let first = key(&[
+            ("authorization", "Bearer aaaaaaaaaaaaaaaa"),
+            ("x-forwarded-for", "203.0.113.7"),
+        ]);
+        let second = key(&[
+            ("authorization", "Bearer bbbbbbbbbbbbbbbb"),
+            ("x-forwarded-for", "203.0.113.7"),
+        ]);
+        assert_eq!(first, second);
+        assert_eq!(first, "203.0.113.7");
+    }
+
+    #[test]
+    fn credentials_alone_never_produce_a_bucket() {
+        assert_eq!(key(&[("authorization", "Bearer cst_secret")]), "local");
     }
 }

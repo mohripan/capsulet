@@ -2476,7 +2476,7 @@ async fn rate_limit_is_partitioned_by_client_ip() {
 }
 
 #[tokio::test]
-async fn rate_limit_uses_bearer_token_before_local_fallback() {
+async fn rate_limit_is_not_reset_by_presenting_a_bearer_token() {
     let app = authenticated_app(FakeStore::default());
     for _ in 0..105 {
         let _ = app
@@ -2505,7 +2505,9 @@ async fn rate_limit_uses_bearer_token_before_local_fallback() {
         .await
         .expect("response");
 
-    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    // Keying on the credential would put this request in a fresh bucket, so an attacker
+    // rotating tokens would never be throttled on the authentication path.
+    assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
 }
 
 #[tokio::test]
