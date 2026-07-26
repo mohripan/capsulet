@@ -2732,6 +2732,58 @@ async fn viewer_cannot_submit_work_but_operator_can() {
 }
 
 #[tokio::test]
+async fn reusing_a_run_id_conflicts_instead_of_overwriting_the_existing_run() {
+    let app = authenticated_app(FakeStore::with_definition("dup_job"));
+    let submit = |input: &str| {
+        let body = json!({
+            "job_definition_id": "dup_job",
+            "execution_pool": "mini",
+            "run_id": "chosen-run-id",
+            "input": { "marker": input }
+        })
+        .to_string();
+        app.clone().oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/jobs/runs")
+                .header("content-type", "application/json")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::from(body))
+                .expect("request"),
+        )
+    };
+
+    assert_eq!(submit("first").await.expect("response").status(), 201);
+
+    let second = submit("second").await.expect("response");
+    assert_eq!(second.status(), 409);
+
+    let run = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs/runs/chosen-run-id")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body: Value = serde_json::from_slice(
+        &to_bytes(run.into_body(), usize::MAX)
+            .await
+            .expect("body bytes"),
+    )
+    .expect("json");
+    assert_eq!(body["input"]["marker"], "first");
+}
+
+#[tokio::test]
 async fn current_principal_reports_authenticated_identity() {
     let response = authenticated_app(FakeStore::default())
         .oneshot(

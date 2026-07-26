@@ -2784,8 +2784,10 @@ where
     let run_id = match request.run_id {
         Some(value) => {
             let run_id = JobRunId::new(value).map_err(ApiError::validation)?;
-            // A caller-chosen id may collide with an existing run; without this the upsert
-            // would overwrite it and `assign_resource_project` would re-own it.
+            // A caller-chosen id may collide with an existing run. The write below is an
+            // upsert, so without this a create would overwrite that run's status and input
+            // and `assign_resource_project` would hand it to the caller's project. Creating
+            // is never allowed to mutate an existing run, even one the caller owns.
             if state
                 .store
                 .find_run(&run_id)
@@ -2795,6 +2797,7 @@ where
             {
                 require_resource_project(&state.store, "job_runs", run_id.as_str(), &context)
                     .await?;
+                return Err(ApiError::RunAlreadyExists(run_id.as_str().to_string()));
             }
             run_id
         }
