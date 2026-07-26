@@ -78,18 +78,13 @@ struct ForwardedIpOrLocalKeyExtractor;
 impl KeyExtractor for ForwardedIpOrLocalKeyExtractor {
     type Key = String;
 
+    /// Keys buckets on the client address only.
+    ///
+    /// The credential must never take part in the key: an unauthenticated caller chooses it
+    /// freely, so keying on it would hand every request a fresh bucket and leave the
+    /// authentication path — the one thing this limiter exists to protect — unthrottled.
     fn extract<T>(&self, request: &axum::http::Request<T>) -> Result<Self::Key, GovernorError> {
         let headers = request.headers();
-        if let Some(key) = headers
-            .get(header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .filter(|value| !value.is_empty())
-            .map(rate_limit_token_key)
-        {
-            return Ok(key);
-        }
-
         Ok(headers
             .get("x-forwarded-for")
             .and_then(|value| value.to_str().ok())
@@ -106,19 +101,6 @@ impl KeyExtractor for ForwardedIpOrLocalKeyExtractor {
             .unwrap_or("local")
             .to_string())
     }
-}
-
-fn rate_limit_token_key(token: &str) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-
-    let digest = token_digest(token);
-    let mut key = String::with_capacity("token:".len() + 16);
-    key.push_str("token:");
-    for byte in digest.iter().take(8) {
-        key.push(HEX[(byte >> 4) as usize] as char);
-        key.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    key
 }
 
 #[derive(Debug, Clone)]
@@ -170,10 +152,10 @@ where
     let rate_limit = Arc::new(
         GovernorConfigBuilder::default()
             .key_extractor(ForwardedIpOrLocalKeyExtractor)
-            .per_second(env_u64(
+            .per_millisecond(replenish_period_millis(env_u64(
                 "CAPSULET_API_RATE_LIMIT_PER_SECOND",
                 DEFAULT_RATE_LIMIT_PER_SECOND,
-            ))
+            )))
             .burst_size(env_u32(
                 "CAPSULET_API_RATE_LIMIT_BURST",
                 DEFAULT_RATE_LIMIT_BURST,
@@ -1038,6 +1020,16 @@ fn required_scope(method: &Method, path: &str) -> &'static str {
         return "automations:write";
     }
     "system:write"
+}
+
+/// Converts a requests-per-second budget into the quota replenish interval that
+/// `tower_governor` expects.
+///
+/// `GovernorConfigBuilder::per_second` takes the number of *seconds between* single-cell
+/// replenishments, not a per-second request budget, so passing the configured rate straight
+/// through throttles callers to one request every `rate` seconds once the burst is spent.
+fn replenish_period_millis(requests_per_second: u64) -> u64 {
+    (1_000 / requests_per_second.max(1)).max(1)
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -3270,4 +3262,31 @@ pub(crate) fn generated_id(prefix: &str) -> String {
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_millis());
     format!("{prefix}_{millis}")
+}
+
+#[cfg(test)]
+mod rate_limit_tests {
+    use super::{DEFAULT_RATE_LIMIT_PER_SECOND, replenish_period_millis};
+
+    #[test]
+    fn converts_requests_per_second_into_replenish_interval() {
+        assert_eq!(replenish_period_millis(50), 20);
+        assert_eq!(replenish_period_millis(1), 1_000);
+        assert_eq!(replenish_period_millis(1_000), 1);
+    }
+
+    #[test]
+    fn clamps_degenerate_rates_to_a_non_zero_interval() {
+        // `per_millisecond(0)` is rejected by tower_governor, and a zero rate would
+        // otherwise divide by zero.
+        assert_eq!(replenish_period_millis(0), 1_000);
+        assert_eq!(replenish_period_millis(u64::MAX), 1);
+    }
+
+    #[test]
+    fn default_rate_replenishes_far_faster_than_once_per_configured_second() {
+        // Regression guard: passing the rate straight to `per_second` produced a
+        // 50_000 ms interval, i.e. one request per 50 seconds after the burst.
+        assert!(replenish_period_millis(DEFAULT_RATE_LIMIT_PER_SECOND) < 1_000);
+    }
 }

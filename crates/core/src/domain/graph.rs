@@ -324,6 +324,7 @@ pub struct GraphDefinition {
     hyperedges: Vec<GraphHyperedge>,
     transition_policy: GraphTransitionPolicy,
     static_order: Vec<NodeId>,
+    has_cycles: bool,
 }
 
 impl GraphDefinition {
@@ -344,14 +345,15 @@ impl GraphDefinition {
         let node_edges =
             Self::validate_hyperedges(&index, &hyperedges, transition_policy.cycles_allowed())?;
         Self::validate_transition_policy(&index, &transition_policy)?;
-        let static_order = static_order(index.node_ids(), &node_edges);
+        let ordering = static_order(index.node_ids(), &node_edges);
         Ok(Self {
             id,
             name: name.into(),
             nodes,
             hyperedges,
             transition_policy,
-            static_order,
+            static_order: ordering.order,
+            has_cycles: !ordering.acyclic,
         })
     }
 
@@ -502,9 +504,24 @@ impl GraphDefinition {
         &self.transition_policy
     }
 
+    /// Execution plan listing every node of the graph exactly once.
+    ///
+    /// For an acyclic graph this is a topological order. When the transition
+    /// policy allows cycles, nodes that no acyclic prefix can release are
+    /// entered at the lowest remaining node id; the plan therefore covers the
+    /// whole graph and a caller can never mistake a truncated prefix for a
+    /// complete run. Use [`Self::has_cycles`] to tell the two cases apart.
     #[must_use]
     pub fn static_order(&self) -> &[NodeId] {
         &self.static_order
+    }
+
+    /// Reports whether the graph contains a cycle.
+    ///
+    /// Only graphs whose transition policy allows cycles can return `true`.
+    #[must_use]
+    pub const fn has_cycles(&self) -> bool {
+        self.has_cycles
     }
 }
 
@@ -583,14 +600,25 @@ fn contains_cycle<'a>(
     node_ids: impl Iterator<Item = &'a NodeId>,
     edges: &BTreeMap<NodeId, Vec<NodeId>>,
 ) -> bool {
-    let node_ids = node_ids.collect::<Vec<_>>();
-    static_order(node_ids.iter().copied(), edges).len() != node_ids.len()
+    !static_order(node_ids, edges).acyclic
 }
 
+struct StaticOrder {
+    order: Vec<NodeId>,
+    acyclic: bool,
+}
+
+/// Orders every node exactly once, resolving dependencies first.
+///
+/// A plain Kahn sort stalls on a cycle and yields a truncated prefix. Silently
+/// dropping the stalled nodes would hand the runtime a plan that skips part of
+/// the graph while still looking complete, so once only mutually dependent
+/// nodes remain the lowest remaining node id is released to break the deadlock
+/// and `acyclic` records that this happened.
 fn static_order<'a>(
     node_ids: impl Iterator<Item = &'a NodeId>,
     edges: &BTreeMap<NodeId, Vec<NodeId>>,
-) -> Vec<NodeId> {
+) -> StaticOrder {
     let mut incoming = node_ids
         .map(|id| (id.clone(), 0usize))
         .collect::<BTreeMap<_, _>>();
@@ -601,26 +629,36 @@ fn static_order<'a>(
             }
         }
     }
-    let mut ready = incoming
-        .iter()
-        .filter_map(|(id, count)| (*count == 0).then_some(id.clone()))
-        .collect::<BTreeSet<_>>();
+    let mut ready = BTreeSet::new();
+    let mut blocked = BTreeSet::new();
+    for (id, count) in &incoming {
+        if *count == 0 {
+            ready.insert(id.clone());
+        } else {
+            blocked.insert(id.clone());
+        }
+    }
     let mut order = Vec::with_capacity(incoming.len());
-    while let Some(id) = ready.pop_first() {
-        order.push(id.clone());
+    let mut acyclic = true;
+    while let Some(id) = ready
+        .pop_first()
+        .or_else(|| blocked.pop_first().inspect(|_| acyclic = false))
+    {
+        incoming.remove(&id);
         if let Some(targets) = edges.get(&id) {
             for target in targets {
                 let Some(count) = incoming.get_mut(target) else {
                     continue;
                 };
                 *count -= 1;
-                if *count == 0 {
+                if *count == 0 && blocked.remove(target) {
                     ready.insert(target.clone());
                 }
             }
         }
+        order.push(id);
     }
-    order
+    StaticOrder { order, acyclic }
 }
 
 fn workflow_dependency_to_hyperedge(
@@ -638,4 +676,141 @@ fn workflow_dependency_to_hyperedge(
             PortId::new(format!("{to}.input"))?,
         )],
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node_id(value: &str) -> NodeId {
+        NodeId::new(value).expect("valid node id")
+    }
+
+    fn port_id(value: &str) -> PortId {
+        PortId::new(value).expect("valid port id")
+    }
+
+    fn node(name: &str) -> GraphNode {
+        GraphNode::new(
+            node_id(name),
+            name,
+            NodeKind::Job,
+            vec![
+                GraphPort::new(
+                    port_id(&format!("{name}.in")),
+                    PortDirection::Input,
+                    PortValueType::Json,
+                ),
+                GraphPort::new(
+                    port_id(&format!("{name}.out")),
+                    PortDirection::Output,
+                    PortValueType::Json,
+                ),
+            ],
+        )
+    }
+
+    fn edge(from: &str, to: &str) -> GraphHyperedge {
+        GraphHyperedge::new(
+            HyperedgeId::new(format!("{from}-to-{to}")).expect("valid hyperedge id"),
+            vec![HyperedgeEndpoint::port(
+                node_id(from),
+                port_id(&format!("{from}.out")),
+            )],
+            vec![HyperedgeEndpoint::port(
+                node_id(to),
+                port_id(&format!("{to}.in")),
+            )],
+        )
+    }
+
+    fn graph(
+        names: &[&str],
+        edges: Vec<GraphHyperedge>,
+        policy: GraphTransitionPolicy,
+    ) -> Result<GraphDefinition, GraphError> {
+        GraphDefinition::new(
+            GraphId::new("graph").expect("valid graph id"),
+            "Graph",
+            names.iter().copied().map(node).collect(),
+            edges,
+            policy,
+        )
+    }
+
+    fn ordered(graph: &GraphDefinition) -> Vec<&str> {
+        graph.static_order().iter().map(NodeId::as_str).collect()
+    }
+
+    fn cyclic() -> GraphTransitionPolicy {
+        GraphTransitionPolicy::static_acyclic().with_cycles_allowed(true)
+    }
+
+    #[test]
+    fn static_order_covers_every_node_of_a_pure_cycle() {
+        let graph = graph(
+            &["retrieve", "rerank"],
+            vec![edge("retrieve", "rerank"), edge("rerank", "retrieve")],
+            cyclic(),
+        )
+        .expect("cycles are allowed");
+
+        assert!(graph.has_cycles());
+        assert_eq!(ordered(&graph), ["rerank", "retrieve"]);
+    }
+
+    #[test]
+    fn static_order_covers_nodes_behind_a_cycle() {
+        let graph = graph(
+            &["start", "a", "b"],
+            vec![edge("start", "a"), edge("a", "b"), edge("b", "a")],
+            cyclic(),
+        )
+        .expect("cycles are allowed");
+
+        assert!(graph.has_cycles());
+        assert_eq!(ordered(&graph), ["start", "a", "b"]);
+    }
+
+    #[test]
+    fn static_order_of_an_acyclic_graph_is_topological() {
+        let graph = graph(
+            &["c", "a", "b"],
+            vec![edge("a", "b"), edge("b", "c")],
+            cyclic(),
+        )
+        .expect("valid graph");
+
+        assert!(!graph.has_cycles());
+        assert_eq!(ordered(&graph), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn cycle_is_still_rejected_when_the_policy_forbids_it() {
+        let result = graph(
+            &["a", "b"],
+            vec![edge("a", "b"), edge("b", "a")],
+            GraphTransitionPolicy::static_acyclic(),
+        );
+
+        assert!(matches!(result, Err(GraphError::CycleForbidden)));
+    }
+
+    #[test]
+    fn disconnected_cycles_are_all_ordered() {
+        let graph = graph(
+            &["a", "b", "c", "d"],
+            vec![
+                edge("a", "b"),
+                edge("b", "a"),
+                edge("c", "d"),
+                edge("d", "c"),
+            ],
+            cyclic(),
+        )
+        .expect("cycles are allowed");
+
+        assert!(graph.has_cycles());
+        assert_eq!(ordered(&graph), ["a", "b", "c", "d"]);
+    }
 }

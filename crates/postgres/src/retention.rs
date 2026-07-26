@@ -13,6 +13,11 @@ pub struct RetentionCandidate {
 impl PostgresStore {
     /// Lists terminal runs whose retained objects are ready for cleanup.
     ///
+    /// Object keys still referenced by a live `job_definitions.bundle_object_key` are
+    /// omitted: ad-hoc script runs register their bundle both as a `job_artifacts` row
+    /// and as the derived definition's bundle, and the object store holds the only copy
+    /// of that source. The run is still returned so its metadata is reclaimed.
+    ///
     /// # Errors
     ///
     /// Returns [`PostgresStoreError`] when the query or row decoding fails.
@@ -35,7 +40,13 @@ impl PostgresStore {
             )
             SELECT candidate.id AS job_run_id, artifact.object_key
             FROM candidates candidate
-            LEFT JOIN job_artifacts artifact ON artifact.job_run_id = candidate.id
+            LEFT JOIN job_artifacts artifact
+              ON artifact.job_run_id = candidate.id
+             AND NOT EXISTS (
+                 SELECT 1
+                 FROM job_definitions definition
+                 WHERE definition.bundle_object_key = artifact.object_key
+             )
             ORDER BY candidate.updated_at, candidate.id, artifact.id
             ",
         )
