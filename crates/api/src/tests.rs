@@ -2476,10 +2476,14 @@ async fn rate_limit_is_partitioned_by_client_ip() {
 }
 
 #[tokio::test]
-async fn rate_limit_uses_bearer_token_before_local_fallback() {
+async fn rate_limit_is_not_reset_by_presenting_a_bearer_token() {
     let app = authenticated_app(FakeStore::default());
-    for _ in 0..105 {
-        let _ = app
+    // Drain the bucket by observation rather than by a fixed count. The quota
+    // replenishes on a timer, so any hard-coded number races the clock on a slow
+    // machine and this test was flaky when it assumed 105 requests was enough.
+    let mut exhausted = false;
+    for _ in 0..2_000 {
+        let response = app
             .clone()
             .oneshot(
                 Request::builder()
@@ -2489,7 +2493,15 @@ async fn rate_limit_uses_bearer_token_before_local_fallback() {
             )
             .await
             .expect("response");
+        if response.status() == axum::http::StatusCode::TOO_MANY_REQUESTS {
+            exhausted = true;
+            break;
+        }
     }
+    assert!(
+        exhausted,
+        "rate limit never engaged for the unauthenticated path"
+    );
 
     let response = app
         .oneshot(
@@ -2505,7 +2517,9 @@ async fn rate_limit_uses_bearer_token_before_local_fallback() {
         .await
         .expect("response");
 
-    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    // Keying on the credential would put this request in a fresh bucket, so an attacker
+    // rotating tokens would never be throttled on the authentication path.
+    assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
 }
 
 #[tokio::test]
@@ -2727,6 +2741,58 @@ async fn viewer_cannot_submit_work_but_operator_can() {
         .await
         .expect("response");
     assert_eq!(operator_response.status(), 201);
+}
+
+#[tokio::test]
+async fn reusing_a_run_id_conflicts_instead_of_overwriting_the_existing_run() {
+    let app = authenticated_app(FakeStore::with_definition("dup_job"));
+    let submit = |input: &str| {
+        let body = json!({
+            "job_definition_id": "dup_job",
+            "execution_pool": "mini",
+            "run_id": "chosen-run-id",
+            "input": { "marker": input }
+        })
+        .to_string();
+        app.clone().oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/jobs/runs")
+                .header("content-type", "application/json")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::from(body))
+                .expect("request"),
+        )
+    };
+
+    assert_eq!(submit("first").await.expect("response").status(), 201);
+
+    let second = submit("second").await.expect("response");
+    assert_eq!(second.status(), 409);
+
+    let run = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs/runs/chosen-run-id")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body: Value = serde_json::from_slice(
+        &to_bytes(run.into_body(), usize::MAX)
+            .await
+            .expect("body bytes"),
+    )
+    .expect("json");
+    assert_eq!(body["input"]["marker"], "first");
 }
 
 #[tokio::test]

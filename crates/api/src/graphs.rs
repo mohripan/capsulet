@@ -34,6 +34,16 @@ where
     let context = project_context(&headers, &principal)?;
     let id = request.id.clone().unwrap_or_else(|| generated_id("graph"));
     let graph = request.into_graph(id)?;
+    // The id may come from the request body, and the upsert conflicts on the id alone.
+    if state
+        .store
+        .find_graph(graph.id())
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        require_resource_project(&state.store, "graphs", graph.id().as_str(), &context).await?;
+    }
     state
         .store
         .upsert_graph(&graph)
@@ -45,19 +55,29 @@ where
 
 pub(crate) async fn list_graphs<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListGraphsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let graphs = state
         .store
         .list_graphs(100)
         .await
         .map_err(ApiError::store)?;
-    Ok(Json(ListGraphsResponse {
-        graphs: graphs.iter().map(GraphResponse::from).collect(),
-    }))
+    let mut scoped = Vec::new();
+    for graph in &graphs {
+        if require_resource_project(&state.store, "graphs", graph.id().as_str(), &context)
+            .await
+            .is_ok()
+        {
+            scoped.push(GraphResponse::from(graph));
+        }
+    }
+    Ok(Json(ListGraphsResponse { graphs: scoped }))
 }
 
 pub(crate) async fn get_graph<S, O>(
@@ -111,6 +131,15 @@ where
         )?),
     )
     .map_err(|error| ApiError::Validation(error.to_string()))?;
+    if state
+        .store
+        .find_agent(agent.id())
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        require_resource_project(&state.store, "agents", agent.id().as_str(), &context).await?;
+    }
     state
         .store
         .upsert_agent(&agent)
@@ -122,19 +151,29 @@ where
 
 pub(crate) async fn list_agents<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListAgentsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let agents = state
         .store
         .list_agents(100)
         .await
         .map_err(ApiError::store)?;
-    Ok(Json(ListAgentsResponse {
-        agents: agents.iter().map(AgentResponse::from).collect(),
-    }))
+    let mut scoped = Vec::new();
+    for agent in &agents {
+        if require_resource_project(&state.store, "agents", agent.id().as_str(), &context)
+            .await
+            .is_ok()
+        {
+            scoped.push(AgentResponse::from(agent));
+        }
+    }
+    Ok(Json(ListAgentsResponse { agents: scoped }))
 }
 
 pub(crate) async fn get_agent<S, O>(
@@ -186,6 +225,15 @@ where
             .unwrap_or_else(|| generated_id("agent_run")),
     )
     .map_err(ApiError::validation)?;
+    if state
+        .store
+        .find_agent_run(&run_id)
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        require_resource_project(&state.store, "agent_runs", run_id.as_str(), &context).await?;
+    }
     let state_json = to_string(&request.initial_state)
         .map_err(|error| ApiError::Validation(error.to_string()))?;
     let command = StartAgentRunCommand {
@@ -205,38 +253,50 @@ where
         .upsert_agent_run(&record)
         .await
         .map_err(ApiError::store)?;
+    assign_resource_project(&state.store, "agent_runs", record.id.as_str(), &context).await?;
     Ok((StatusCode::CREATED, Json(AgentRunResponse::new(&record)?)))
 }
 
 pub(crate) async fn list_agent_runs<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListAgentRunsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let runs = state
         .store
         .list_agent_runs(100)
         .await
         .map_err(ApiError::store)?;
-    Ok(Json(ListAgentRunsResponse {
-        agent_runs: runs
-            .iter()
-            .map(AgentRunResponse::new)
-            .collect::<Result<Vec<_>, _>>()?,
-    }))
+    let mut scoped = Vec::new();
+    for run in &runs {
+        if require_resource_project(&state.store, "agent_runs", run.id.as_str(), &context)
+            .await
+            .is_ok()
+        {
+            scoped.push(AgentRunResponse::new(run)?);
+        }
+    }
+    Ok(Json(ListAgentRunsResponse { agent_runs: scoped }))
 }
 
 pub(crate) async fn get_agent_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<AgentRunResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = AgentRunId::new(id).map_err(ApiError::validation)?;
+    require_resource_project(&state.store, "agent_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
         .find_agent_run(&id)

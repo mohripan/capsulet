@@ -15,6 +15,7 @@ Current docs:
 - [Installation](installation.md)
 - [Architecture](architecture.md)
 - [Detailed repository architecture](../ARCHITECTURE.md)
+- [Correctness architecture](design/correctness-architecture.md) — proposed direction, not implemented
 - [API](api.md)
 - [Helm values](helm-values.md)
 - [Persistence](persistence.md)

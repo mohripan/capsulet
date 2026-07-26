@@ -46,8 +46,9 @@ pub use job::{JobRun, JobRunStatus, JobRunTransition, StateTransitionError};
 pub use job_definition::{JobDefinition, RetryPolicy};
 pub use job_log::JobRunLog;
 pub use memory::{
-    Authority, Claim, ClaimStatus, Confidence, Entity, Event, Evidence, MemoryError, MemoryScope,
-    Observation, Relationship, Source,
+    Authority, Claim, ClaimStatus, Confidence, Entity, Event, Evidence, EvidenceSpan, MemoryError,
+    MemoryScope, Observation, ProvenanceError, Relationship, Source, SourceContent, content_digest,
+    verify_evidence_span,
 };
 pub use memory_contract::{
     ClaimPolicySpec, CompiledMemoryPolicy, ContradictionRuleSpec, EntityTypeSpec, EventTypeSpec,

@@ -54,6 +54,42 @@ raw text -> source/evidence -> candidate claims -> review -> active memory
                                   entity resolution   conflict inbox
 ```
 
+## Where this is going
+
+Nothing in this section is implemented. It is the direction the project is taking, recorded so
+that the reason behind upcoming changes is legible. The full design is in
+[docs/design/correctness-architecture.md](docs/design/correctness-architecture.md) and the
+decision is [ADR 0012](docs/adr/0012-correctness-kernel-and-proposer-checker-split.md).
+
+The goal is not to replace frontier models. It is to make a small model good enough for complex
+work, by making correctness a property of the system rather than of the model. Small models are
+poor at long chains and roughly adequate at single hops, so the plan is to only ever ask for a
+single hop and move composition somewhere it can be made correct by construction.
+
+That requires being precise about what can be checked. Whether an id exists, whether a claim is
+active, whether a quoted string is byte-identical to the span it cites, whether arithmetic
+recomputes, whether two intervals overlap, whether a predicate is declared with that arity —
+all of these are mechanically decidable with no model in the loop. Whether a passage *means* what
+a claim says it means is not, and no amount of architecture changes that.
+
+So the boundary becomes the product. A node returns a proposal rather than a value; a
+deterministic kernel with no learned component decides it and emits a certificate; and the
+verdict is three-valued. **Accepted** means every step was discharged mechanically. **Conditional**
+means the result is sound given a set of named readings, each pinned to a span. **Rejected** names
+the failed premise and the subsystem that owns the repair. Capsulet does not verify meaning today
+either — the difference is that it would stop implying otherwise, and report per answer exactly
+what was verified and what was assumed.
+
+Learned components stay on the proposer side of that line. Knowledge graph embeddings are
+well suited to generating retrieval candidates and ordering search, and unsuited to deciding
+truth; an embedding score never appears in a certificate.
+
+```text
+proposer -> kernel (deterministic) -> certificate
+            no model, no network       verdict + discharged steps
+            no I/O beyond the store    + residual obligations
+```
+
 ## How execution stays durable
 
 PostgreSQL is the source of truth. Agent graph definitions, agent definitions, agent runs, state snapshots, and trace events are persisted durably. The runtime can be driven by a worker in later slices without changing the graph or run model.
@@ -121,6 +157,43 @@ curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/conflict
 ```
 
 The dashboard Memory Studio exposes ingestion, claim review, entity resolution, nested graph activation, and the conflict inbox as the first product surface for governing memory before agents consume it.
+
+## Verified reasoning API
+
+The first slice of the correctness architecture is implemented: stored text is
+cut into byte-exact citable spans, retrieval pins the legal evidence set, a local
+model proposes a derivation, and a deterministic kernel decides it. The response
+is a certificate, not a bare answer.
+
+Requires a local [Ollama](https://ollama.com) with a small model pulled. The
+proposer runs outside the stack on purpose — correctness does not depend on it:
+
+```sh
+ollama pull qwen2.5:1.5b
+# Ollama must accept traffic from the containers
+OLLAMA_HOST=0.0.0.0 ollama serve
+```
+
+```sh
+curl -X POST -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"text":"Acme renewed the Contoso contract on 2026-03-01. Notice is 30 days.",
+       "question":"When was the contract renewed?"}' \
+  http://127.0.0.1:8080/v1/reasoning/ask
+
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/reasoning/certificates
+```
+
+Verdicts are three-valued. **accepted** means every step was discharged
+mechanically: the cited span re-derived byte-for-byte from the stored source, and
+both endpoints of the claim appear in it. **conditional** means the derivation
+required a reading, which is recorded as a residual obligation pinned to the
+span it came from. **rejected** names the failed premise and the subsystem that
+owns the repair, so a dangling reference re-runs retrieval instead of re-prompting
+the model.
+
+Two limits are deliberate and documented: grounding is literal containment, not
+entailment, and relevance to the question is not checked at all. See
+[the design note](docs/design/correctness-architecture.md).
 
 ## Compatibility workflow recovery API
 
@@ -200,6 +273,7 @@ Database integration tests run when `CAPSULET_TEST_DATABASE_URL` is set. Full lo
 ## Documentation
 
 - [Architecture](ARCHITECTURE.md)
+- [Correctness architecture (direction)](docs/design/correctness-architecture.md)
 - [API](docs/api.md)
 - [Development](docs/development.md)
 - [Installation](docs/installation.md)

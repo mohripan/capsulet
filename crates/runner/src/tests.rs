@@ -310,9 +310,11 @@ fn renders_wasmtime_command_with_sandbox_preopen_before_runtime() {
     let spec =
         super::wasmtime_command_spec(&config, std::path::Path::new("sandbox")).expect("command");
 
+    // `--dir .` grants write access to the process directory, so it must resolve to the
+    // per-run copy of the runtime rather than the installed one the host shares.
     assert_eq!(
         spec.current_dir.as_deref(),
-        Some(std::path::Path::new("runtime"))
+        Some(std::path::Path::new("sandbox").join("runtime").as_path())
     );
     assert_eq!(spec.parts[0], "wasmtime");
     assert_eq!(&spec.parts[1..3], ["--dir", "."]);

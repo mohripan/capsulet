@@ -41,6 +41,22 @@ where
     require_project_role(&context, "project_operator")?;
     let build = build_automation(&state, request).await?;
     let automation = build.automation;
+    // The id may come from the request body, and the upsert conflicts on the id alone.
+    if state
+        .store
+        .find_automation(automation.id())
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        require_resource_project(
+            &state.store,
+            "automations",
+            automation.id().as_str(),
+            &context,
+        )
+        .await?;
+    }
     require_resource_project(
         &state.store,
         "workflows",
@@ -709,6 +725,15 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, "project_operator")?;
     let plugin = build_trigger_plugin(request)?;
+    if state
+        .store
+        .find_custom_trigger_plugin(plugin.id())
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        require_resource_project(&state.store, "trigger_plugins", plugin.id(), &context).await?;
+    }
     state
         .store
         .upsert_custom_trigger_plugin(&plugin)

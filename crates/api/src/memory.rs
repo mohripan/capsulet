@@ -479,6 +479,15 @@ where
         parse_authority(&request.authority)?,
     )
     .map_err(memory_validation)?;
+    // The id may come from the request body, and the upsert conflicts on the id alone.
+    if let Some(existing) = state
+        .store
+        .find_memory_source(source.id())
+        .await
+        .map_err(ApiError::store)?
+    {
+        require_scope(existing.scope(), &context, source.id().as_str())?;
+    }
     state
         .store
         .upsert_memory_source(&source)
@@ -509,12 +518,15 @@ where
 
 pub(crate) async fn get_source<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<SourceResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = SourceId::new(id).map_err(ApiError::validation)?;
     let Some(source) = state
         .store
@@ -524,6 +536,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(source.scope(), &context, id.as_str())?;
     Ok(Json(SourceResponse::from(&source)))
 }
 
@@ -548,6 +561,14 @@ where
         request.observed_at,
     )
     .map_err(memory_validation)?;
+    if let Some(existing) = state
+        .store
+        .find_memory_evidence(evidence.id())
+        .await
+        .map_err(ApiError::store)?
+    {
+        require_scope(existing.scope(), &context, evidence.id().as_str())?;
+    }
     state
         .store
         .upsert_memory_evidence(&evidence)
@@ -578,12 +599,15 @@ where
 
 pub(crate) async fn get_evidence<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<EvidenceResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = EvidenceId::new(id).map_err(ApiError::validation)?;
     let Some(evidence) = state
         .store
@@ -593,6 +617,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(evidence.scope(), &context, id.as_str())?;
     Ok(Json(EvidenceResponse::from(&evidence)))
 }
 
@@ -616,6 +641,14 @@ where
         request.aliases,
     )
     .map_err(memory_validation)?;
+    if let Some(existing) = state
+        .store
+        .find_memory_entity(entity.id())
+        .await
+        .map_err(ApiError::store)?
+    {
+        require_scope(existing.scope(), &context, entity.id().as_str())?;
+    }
     state
         .store
         .upsert_memory_entity(&entity)
@@ -646,12 +679,15 @@ where
 
 pub(crate) async fn get_entity<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<EntityResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = EntityId::new(id).map_err(ApiError::validation)?;
     let Some(entity) = state
         .store
@@ -661,6 +697,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(entity.scope(), &context, id.as_str())?;
     Ok(Json(EntityResponse::from(&entity)))
 }
 
@@ -699,6 +736,14 @@ where
         Some(status) => parse_claim_status(&status)?,
         None => ClaimStatus::Candidate,
     });
+    if let Some(existing) = state
+        .store
+        .find_memory_claim(claim.id())
+        .await
+        .map_err(ApiError::store)?
+    {
+        require_scope(existing.scope(), &context, claim.id().as_str())?;
+    }
     state
         .store
         .upsert_memory_claim(&claim)
@@ -729,12 +774,15 @@ where
 
 pub(crate) async fn get_claim<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<ClaimResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = ClaimId::new(id).map_err(ApiError::validation)?;
     let Some(claim) = state
         .store
@@ -744,6 +792,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(claim.scope(), &context, id.as_str())?;
     Ok(Json(ClaimResponse::from(&claim)))
 }
 
@@ -778,6 +827,14 @@ where
             .map_err(ApiError::validation)?,
     )
     .map_err(memory_validation)?;
+    if let Some(existing) = state
+        .store
+        .find_memory_event(event.id())
+        .await
+        .map_err(ApiError::store)?
+    {
+        require_scope(existing.scope(), &context, event.id().as_str())?;
+    }
     state
         .store
         .upsert_memory_event(&event)
@@ -808,12 +865,15 @@ where
 
 pub(crate) async fn get_event<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<EventResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = EventId::new(id).map_err(ApiError::validation)?;
     let Some(event) = state
         .store
@@ -823,6 +883,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(event.scope(), &context, id.as_str())?;
     Ok(Json(EventResponse::from(&event)))
 }
 
@@ -852,6 +913,14 @@ where
             .map_err(ApiError::validation)?,
     )
     .map_err(memory_validation)?;
+    if let Some(existing) = state
+        .store
+        .find_memory_relationship(relationship.id())
+        .await
+        .map_err(ApiError::store)?
+    {
+        require_scope(existing.scope(), &context, relationship.id().as_str())?;
+    }
     state
         .store
         .upsert_memory_relationship(&relationship)
@@ -888,12 +957,15 @@ where
 
 pub(crate) async fn get_relationship<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<RelationshipResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = RelationshipId::new(id).map_err(ApiError::validation)?;
     let Some(relationship) = state
         .store
@@ -903,6 +975,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(relationship.scope(), &context, id.as_str())?;
     Ok(Json(RelationshipResponse::from(&relationship)))
 }
 
@@ -926,6 +999,14 @@ where
     )
     .map_err(contract_validation)?;
     contract.compile().map_err(contract_validation)?;
+    if let Some(existing) = state
+        .store
+        .find_memory_contract(contract.id())
+        .await
+        .map_err(ApiError::store)?
+    {
+        require_scope(existing.scope(), &context, contract.id().as_str())?;
+    }
     state
         .store
         .upsert_memory_contract(&contract)
@@ -939,11 +1020,14 @@ where
 
 pub(crate) async fn list_contracts<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListMemoryContractsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let contracts = state
         .store
         .list_memory_contracts(100)
@@ -952,6 +1036,7 @@ where
     Ok(Json(ListMemoryContractsResponse {
         contracts: contracts
             .iter()
+            .filter(|contract| in_scope(contract.scope(), &context))
             .map(MemoryContractResponse::new)
             .collect::<Result<Vec<_>, _>>()?,
     }))
@@ -959,12 +1044,15 @@ where
 
 pub(crate) async fn get_contract<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<MemoryContractResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = MemoryContractId::new(id).map_err(ApiError::validation)?;
     let Some(contract) = state
         .store
@@ -974,6 +1062,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(contract.scope(), &context, id.as_str())?;
     Ok(Json(MemoryContractResponse::new(&contract)?))
 }
 
@@ -1001,6 +1090,14 @@ where
         request.description.as_deref(),
     )
     .map_err(graph_validation)?;
+    if let Some(existing) = state
+        .store
+        .find_memory_subgraph(subgraph.id())
+        .await
+        .map_err(ApiError::store)?
+    {
+        require_scope(existing.scope(), &context, subgraph.id().as_str())?;
+    }
     state
         .store
         .upsert_memory_subgraph(&subgraph)
@@ -1034,12 +1131,15 @@ where
 
 pub(crate) async fn get_subgraph<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<MemorySubgraphResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = MemorySubgraphId::new(id).map_err(ApiError::validation)?;
     let Some(subgraph) = state
         .store
@@ -1049,6 +1149,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(subgraph.scope(), &context, id.as_str())?;
     Ok(Json(MemorySubgraphResponse::from(&subgraph)))
 }
 
@@ -1063,7 +1164,7 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
-    let _context = write_context(&headers, &principal)?;
+    let context = write_context(&headers, &principal)?;
     let id = MemorySubgraphId::new(id).map_err(ApiError::validation)?;
     let summary_claim_id = ClaimId::new(request.summary_claim_id).map_err(ApiError::validation)?;
     let traces = state
@@ -1079,6 +1180,7 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    require_scope(subgraph.scope(), &context, id.as_str())?;
     let activated = subgraph
         .activate(MemorySubgraphActivation::new(
             Some(
@@ -1590,6 +1692,20 @@ fn write_context(headers: &HeaderMap, principal: &Principal) -> Result<ProjectCo
 fn scope(context: &ProjectContext) -> Result<MemoryScope, ApiError> {
     MemoryScope::new(context.tenant_id.clone(), context.project_id.clone())
         .map_err(memory_validation)
+}
+
+fn in_scope(scope: &MemoryScope, context: &ProjectContext) -> bool {
+    scope.tenant_id() == context.tenant_id && scope.project_id() == context.project_id
+}
+
+/// Memory ids share one global namespace, so a record loaded by id may belong to any tenant.
+/// Out-of-scope records report as missing rather than forbidden so the id space stays opaque.
+fn require_scope(scope: &MemoryScope, context: &ProjectContext, id: &str) -> Result<(), ApiError> {
+    if in_scope(scope, context) {
+        Ok(())
+    } else {
+        Err(ApiError::MemoryNotFound(id.to_string()))
+    }
 }
 
 #[expect(

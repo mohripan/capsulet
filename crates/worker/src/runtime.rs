@@ -18,7 +18,7 @@ use capsulet_runner::{
 use capsulet_storage::ConfiguredObjectStore;
 use tokio::{
     sync::{
-        Semaphore,
+        OwnedSemaphorePermit, Semaphore,
         mpsc::{self, error::TrySendError},
     },
     task::JoinSet,
@@ -424,6 +424,14 @@ where
     let mut consecutive_failures: u32 = 0;
     let semaphore = Arc::new(Semaphore::new(max_concurrent_runs));
     let (slot_tx, mut slot_rx) = mpsc::channel(max_concurrent_runs);
+    let context = RunTaskContext {
+        store,
+        object_store,
+        pools,
+        worker_id,
+        lease_seconds,
+        runner: &runner,
+    };
 
     loop {
         while accepting {
@@ -445,33 +453,7 @@ where
             }
         }
 
-        while let Ok(permit) = slot_rx.try_recv() {
-            let task_store = store.clone();
-            let task_object_store = object_store.clone();
-            let task_pools = pools.clone();
-            let task_worker_id = worker_id.to_string();
-            let task_runner = runner.clone();
-            let span = observability::tracing::info_span!(
-                "worker.run_task",
-                worker.id = %task_worker_id,
-                lease.seconds = lease_seconds,
-            );
-            tasks.spawn(
-                async move {
-                    let _permit = permit;
-                    execute_one_queued_run(
-                        &task_store,
-                        &task_runner,
-                        &task_object_store,
-                        &task_pools,
-                        &task_worker_id,
-                        lease_seconds,
-                    )
-                    .await
-                }
-                .instrument(span),
-            );
-        }
+        spawn_claimed_slots(&mut slot_rx, &mut tasks, &context);
 
         if tasks.is_empty() {
             return Ok(());
@@ -491,56 +473,111 @@ where
                 let Some(result) = result else {
                     return Ok(());
                 };
-                match result {
-                    Ok(Ok(crate::WorkerTickOutcome::NoRunAvailable)) => {
-                        consecutive_failures = 0;
-                        accepting = false;
-                        observability::record_service_tick(
-                            "worker",
-                            crate::WorkerTickOutcome::NoRunAvailable.as_str(),
-                            started.elapsed(),
-                        );
-                        observability::tracing::info!(
-                            outcome = "NoRunAvailable",
-                            "worker tick outcome"
-                        );
-                    }
-                    Ok(Ok(outcome)) => {
-                        consecutive_failures = 0;
-                        observability::record_service_tick(
-                            "worker",
-                            outcome.as_str(),
-                            started.elapsed(),
-                        );
-                        observability::tracing::info!(?outcome, "worker tick outcome");
-                    }
-                    Ok(Err(error)) => {
-                        if is_fatal_worker_error(&error) {
-                            return Err(anyhow!(error));
-                        }
-                        consecutive_failures += 1;
-                        observability::record_service_tick(
-                            "worker",
-                            "run_error",
-                            started.elapsed(),
-                        );
-                        observability::tracing::error!(
-                            %error,
-                            consecutive_failures,
-                            "worker run failed; sibling runs continue"
-                        );
-                        if consecutive_failures >= MAX_CONSECUTIVE_RUN_FAILURES {
-                            accepting = false;
-                            observability::tracing::warn!(
-                                consecutive_failures,
-                                "worker stopped claiming runs after repeated failures"
-                            );
-                        }
-                    }
-                    Err(error) => return Err(error).context("worker task join failed"),
-                }
+                accepting =
+                    accepting && absorb_run_result(result, started, &mut consecutive_failures)?;
             }
         }
+    }
+}
+
+/// Spawns one run task per slot that has already been granted a concurrency permit.
+///
+/// Each task owns its permit for its whole lifetime, so the slot is only returned to the
+/// semaphore once the run finishes.
+/// The per-worker inputs every spawned run task needs, none of which vary between runs.
+struct RunTaskContext<'a, R> {
+    store: &'a PostgresStore,
+    object_store: &'a ConfiguredObjectStore,
+    pools: &'a ExecutionPoolsConfig,
+    worker_id: &'a str,
+    lease_seconds: i64,
+    runner: &'a R,
+}
+
+fn spawn_claimed_slots<R>(
+    slot_rx: &mut mpsc::Receiver<OwnedSemaphorePermit>,
+    tasks: &mut JoinSet<Result<crate::WorkerTickOutcome, WorkerError>>,
+    context: &RunTaskContext<'_, R>,
+) where
+    R: Runner,
+{
+    while let Ok(permit) = slot_rx.try_recv() {
+        let task_store = context.store.clone();
+        let task_object_store = context.object_store.clone();
+        let task_pools = context.pools.clone();
+        let task_worker_id = context.worker_id.to_string();
+        let task_runner = context.runner.clone();
+        let lease_seconds = context.lease_seconds;
+        let span = observability::tracing::info_span!(
+            "worker.run_task",
+            worker.id = %task_worker_id,
+            lease.seconds = lease_seconds,
+        );
+        tasks.spawn(
+            async move {
+                let _permit = permit;
+                execute_one_queued_run(
+                    &task_store,
+                    &task_runner,
+                    &task_object_store,
+                    &task_pools,
+                    &task_worker_id,
+                    lease_seconds,
+                )
+                .await
+            }
+            .instrument(span),
+        );
+    }
+}
+
+/// Folds one finished run task into the drain loop's state.
+///
+/// Returns `false` when the worker should stop claiming further runs — either because the
+/// queue is empty or because too many runs have failed in a row.
+fn absorb_run_result(
+    result: Result<Result<crate::WorkerTickOutcome, WorkerError>, tokio::task::JoinError>,
+    started: std::time::Instant,
+    consecutive_failures: &mut u32,
+) -> anyhow::Result<bool> {
+    match result {
+        Ok(Ok(crate::WorkerTickOutcome::NoRunAvailable)) => {
+            *consecutive_failures = 0;
+            observability::record_service_tick(
+                "worker",
+                crate::WorkerTickOutcome::NoRunAvailable.as_str(),
+                started.elapsed(),
+            );
+            observability::tracing::info!(outcome = "NoRunAvailable", "worker tick outcome");
+            Ok(false)
+        }
+        Ok(Ok(outcome)) => {
+            *consecutive_failures = 0;
+            observability::record_service_tick("worker", outcome.as_str(), started.elapsed());
+            observability::tracing::info!(?outcome, "worker tick outcome");
+            Ok(true)
+        }
+        Ok(Err(error)) => {
+            if is_fatal_worker_error(&error) {
+                return Err(anyhow!(error));
+            }
+            *consecutive_failures += 1;
+            observability::record_service_tick("worker", "run_error", started.elapsed());
+            observability::tracing::error!(
+                %error,
+                consecutive_failures = *consecutive_failures,
+                "worker run failed; sibling runs continue"
+            );
+            if *consecutive_failures >= MAX_CONSECUTIVE_RUN_FAILURES {
+                observability::tracing::warn!(
+                    consecutive_failures = *consecutive_failures,
+                    "worker stopped claiming runs after repeated failures"
+                );
+                return Ok(false);
+            }
+            Ok(true)
+        }
+        Err(error) => Err(error).context("worker task join failed"),
     }
 }
 

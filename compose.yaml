@@ -113,6 +113,12 @@ services:
       CAPSULET_OBJECT_STORAGE_PATH_STYLE: "true"
       CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID: capsulet
       CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY: capsuletpassword
+      # The proposer runs outside the stack: correctness does not depend on it,
+      # so it stays a replaceable box the kernel checks rather than a service.
+      CAPSULET_OLLAMA_URL: http://host.docker.internal:11434
+      CAPSULET_OLLAMA_MODEL: qwen2.5:1.5b
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
     healthcheck:

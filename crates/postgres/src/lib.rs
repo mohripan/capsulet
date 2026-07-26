@@ -9,6 +9,7 @@ mod agents;
 mod artifacts;
 mod audit;
 mod automations;
+mod certificates;
 mod graphs;
 mod ingestion;
 mod job_definitions;
@@ -27,6 +28,7 @@ mod workflows;
 
 pub use artifacts::UpstreamArtifact;
 pub use audit::AuditEvent;
+pub use certificates::CertificateRecord;
 pub use projects::{NewProjectMembership, ProjectMembershipRecord, ProjectRecord};
 pub use retention::RetentionCandidate;
 pub use service_accounts::{NewServiceAccount, ServiceAccountRecord};

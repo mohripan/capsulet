@@ -9,6 +9,7 @@ mod http;
 mod ingestion;
 mod memory;
 mod models;
+mod reasoning;
 mod state;
 mod store;
 mod webhooks;

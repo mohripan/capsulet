@@ -7,11 +7,11 @@ use capsulet_core::{
     Authority, CanonicalEntity, CanonicalEntityId, Claim, ClaimConflict, ClaimConflictId,
     ClaimConflictStatus, ClaimId, ClaimStatus, Confidence, Entity, EntityGraphAttachment,
     EntityGraphAttachmentType, EntityId, EntityResolution, EntityResolutionId,
-    EntityResolutionStatus, Event, EventId, Evidence, EvidenceId, MemoryContract, MemoryContractId,
-    MemoryMemberId, MemoryMemberKind, MemoryScope, MemorySubgraph, MemorySubgraphId,
-    MemorySubgraphMember, MemorySubgraphMemberRole, MemorySubgraphOwner, MemorySubgraphOwnerKind,
-    MemorySubgraphPermissions, MemorySubgraphStatus, Relationship, RelationshipId, Source,
-    SourceId, SubgraphEdge, SummaryTrace, SummaryTraceId,
+    EntityResolutionStatus, Event, EventId, Evidence, EvidenceId, EvidenceSpan, MemoryContract,
+    MemoryContractId, MemoryMemberId, MemoryMemberKind, MemoryScope, MemorySubgraph,
+    MemorySubgraphId, MemorySubgraphMember, MemorySubgraphMemberRole, MemorySubgraphOwner,
+    MemorySubgraphOwnerKind, MemorySubgraphPermissions, MemorySubgraphStatus, Relationship,
+    RelationshipId, Source, SourceContent, SourceId, SubgraphEdge, SummaryTrace, SummaryTraceId,
 };
 use serde_json::Value;
 use sqlx::Row;
@@ -20,18 +20,18 @@ use crate::{PostgresStore, PostgresStoreError};
 
 impl PostgresStore {
     pub async fn upsert_memory_source(&self, source: &Source) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_sources (id, tenant_id, project_id, kind, uri, title, authority, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 kind = EXCLUDED.kind,
                 uri = EXCLUDED.uri,
                 title = EXCLUDED.title,
                 authority = EXCLUDED.authority,
                 updated_at = now()
+            WHERE memory_sources.tenant_id = EXCLUDED.tenant_id
+              AND memory_sources.project_id = EXCLUDED.project_id
             ",
         )
         .bind(source.id().as_str())
@@ -43,7 +43,7 @@ impl PostgresStore {
         .bind(source.authority().to_string())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_sources", source.id().as_str())
     }
 
     pub async fn list_memory_sources(
@@ -90,18 +90,21 @@ impl PostgresStore {
         &self,
         evidence: &Evidence,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
-            INSERT INTO memory_evidence (id, tenant_id, project_id, source_id, locator, excerpt, observed_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+            INSERT INTO memory_evidence (id, tenant_id, project_id, source_id, locator, excerpt, observed_at, span_start, span_end, source_content_hash, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 source_id = EXCLUDED.source_id,
                 locator = EXCLUDED.locator,
                 excerpt = EXCLUDED.excerpt,
                 observed_at = EXCLUDED.observed_at,
+                span_start = EXCLUDED.span_start,
+                span_end = EXCLUDED.span_end,
+                source_content_hash = EXCLUDED.source_content_hash,
                 updated_at = now()
+            WHERE memory_evidence.tenant_id = EXCLUDED.tenant_id
+              AND memory_evidence.project_id = EXCLUDED.project_id
             ",
         )
         .bind(evidence.id().as_str())
@@ -111,9 +114,90 @@ impl PostgresStore {
         .bind(evidence.locator())
         .bind(evidence.excerpt())
         .bind(evidence.observed_at())
+        .bind(evidence.span().map(|span| i64::try_from(span.start()).unwrap_or(i64::MAX)))
+        .bind(evidence.span().map(|span| i64::try_from(span.end()).unwrap_or(i64::MAX)))
+        .bind(evidence.span().map(EvidenceSpan::source_content_hash))
+        .execute(&self.pool)
+        .await?;
+        scope_guard(&result, "memory_evidence", evidence.id().as_str())
+    }
+
+    /// Stores the immutable text a source's spans resolve against.
+    ///
+    /// Content is keyed by its own digest, so re-storing identical text is a
+    /// no-op and storing changed text adds a version rather than replacing one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the insert fails.
+    pub async fn insert_memory_source_content(
+        &self,
+        content: &SourceContent,
+    ) -> Result<(), PostgresStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO memory_source_contents (source_id, content_hash, content, byte_length)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (source_id, content_hash) DO NOTHING
+            ",
+        )
+        .bind(content.source_id().as_str())
+        .bind(content.content_hash())
+        .bind(content.text())
+        .bind(i64::try_from(content.byte_length()).unwrap_or(i64::MAX))
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Loads one stored version of a source's text by its digest.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the query fails or the stored row
+    /// cannot be reconstructed.
+    pub async fn find_memory_source_content(
+        &self,
+        source_id: &SourceId,
+        content_hash: &str,
+    ) -> Result<Option<SourceContent>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT source_id, content
+            FROM memory_source_contents
+            WHERE source_id = $1 AND content_hash = $2
+            ",
+        )
+        .bind(source_id.as_str())
+        .bind(content_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_source_content).transpose()
+    }
+
+    /// Loads the most recently stored version of a source's text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the query fails or the stored row
+    /// cannot be reconstructed.
+    pub async fn find_latest_memory_source_content(
+        &self,
+        source_id: &SourceId,
+    ) -> Result<Option<SourceContent>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT source_id, content
+            FROM memory_source_contents
+            WHERE source_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+            ",
+        )
+        .bind(source_id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_source_content).transpose()
     }
 
     pub async fn list_memory_evidence(
@@ -124,7 +208,7 @@ impl PostgresStore {
     ) -> Result<Vec<Evidence>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, tenant_id, project_id, source_id, locator, excerpt, observed_at
+            SELECT id, tenant_id, project_id, source_id, locator, excerpt, observed_at, span_start, span_end, source_content_hash
             FROM memory_evidence
             WHERE tenant_id = $1 AND project_id = $2
             ORDER BY updated_at DESC, id ASC
@@ -145,7 +229,7 @@ impl PostgresStore {
     ) -> Result<Option<Evidence>, PostgresStoreError> {
         let row = sqlx::query(
             r"
-            SELECT id, tenant_id, project_id, source_id, locator, excerpt, observed_at
+            SELECT id, tenant_id, project_id, source_id, locator, excerpt, observed_at, span_start, span_end, source_content_hash
             FROM memory_evidence
             WHERE id = $1
             ",
@@ -157,17 +241,17 @@ impl PostgresStore {
     }
 
     pub async fn upsert_memory_entity(&self, entity: &Entity) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_entities (id, tenant_id, project_id, entity_type, name, aliases, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 entity_type = EXCLUDED.entity_type,
                 name = EXCLUDED.name,
                 aliases = EXCLUDED.aliases,
                 updated_at = now()
+            WHERE memory_entities.tenant_id = EXCLUDED.tenant_id
+              AND memory_entities.project_id = EXCLUDED.project_id
             ",
         )
         .bind(entity.id().as_str())
@@ -178,7 +262,7 @@ impl PostgresStore {
         .bind(entity.aliases())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_entities", entity.id().as_str())
     }
 
     pub async fn list_memory_entities(
@@ -222,7 +306,7 @@ impl PostgresStore {
     }
 
     pub async fn upsert_memory_claim(&self, claim: &Claim) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_claims (
                 id, tenant_id, project_id, subject_id, predicate, object, evidence_ids,
@@ -230,8 +314,6 @@ impl PostgresStore {
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 subject_id = EXCLUDED.subject_id,
                 predicate = EXCLUDED.predicate,
                 object = EXCLUDED.object,
@@ -243,6 +325,8 @@ impl PostgresStore {
                 valid_from = EXCLUDED.valid_from,
                 valid_until = EXCLUDED.valid_until,
                 updated_at = now()
+            WHERE memory_claims.tenant_id = EXCLUDED.tenant_id
+              AND memory_claims.project_id = EXCLUDED.project_id
             ",
         )
         .bind(claim.id().as_str())
@@ -260,7 +344,7 @@ impl PostgresStore {
         .bind(claim.valid_until())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_claims", claim.id().as_str())
     }
 
     pub async fn list_memory_claims(
@@ -309,7 +393,7 @@ impl PostgresStore {
         &self,
         conflict: &ClaimConflict,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_claim_conflicts (
                 id, tenant_id, project_id, subject_id, canonical_entity_id, predicate,
@@ -317,8 +401,6 @@ impl PostgresStore {
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 subject_id = EXCLUDED.subject_id,
                 canonical_entity_id = EXCLUDED.canonical_entity_id,
                 predicate = EXCLUDED.predicate,
@@ -327,6 +409,8 @@ impl PostgresStore {
                 reason = EXCLUDED.reason,
                 preferred_claim_id = EXCLUDED.preferred_claim_id,
                 updated_at = now()
+            WHERE memory_claim_conflicts.tenant_id = EXCLUDED.tenant_id
+              AND memory_claim_conflicts.project_id = EXCLUDED.project_id
             ",
         )
         .bind(conflict.id().as_str())
@@ -349,7 +433,7 @@ impl PostgresStore {
         )
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_claim_conflicts", conflict.id().as_str())
     }
 
     pub async fn list_memory_claim_conflicts(
@@ -395,20 +479,20 @@ impl PostgresStore {
     }
 
     pub async fn upsert_memory_event(&self, event: &Event) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_events (
                 id, tenant_id, project_id, event_type, occurred_at, entity_ids, evidence_ids, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 event_type = EXCLUDED.event_type,
                 occurred_at = EXCLUDED.occurred_at,
                 entity_ids = EXCLUDED.entity_ids,
                 evidence_ids = EXCLUDED.evidence_ids,
                 updated_at = now()
+            WHERE memory_events.tenant_id = EXCLUDED.tenant_id
+              AND memory_events.project_id = EXCLUDED.project_id
             ",
         )
         .bind(event.id().as_str())
@@ -420,7 +504,7 @@ impl PostgresStore {
         .bind(id_strings(event.evidence_ids()))
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_events", event.id().as_str())
     }
 
     pub async fn list_memory_events(
@@ -467,20 +551,20 @@ impl PostgresStore {
         &self,
         relationship: &Relationship,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_relationships (
                 id, tenant_id, project_id, relationship_type, from_entity_id, to_entity_id, evidence_ids, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 relationship_type = EXCLUDED.relationship_type,
                 from_entity_id = EXCLUDED.from_entity_id,
                 to_entity_id = EXCLUDED.to_entity_id,
                 evidence_ids = EXCLUDED.evidence_ids,
                 updated_at = now()
+            WHERE memory_relationships.tenant_id = EXCLUDED.tenant_id
+              AND memory_relationships.project_id = EXCLUDED.project_id
             ",
         )
         .bind(relationship.id().as_str())
@@ -492,7 +576,7 @@ impl PostgresStore {
         .bind(id_strings(relationship.evidence_ids()))
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_relationships", relationship.id().as_str())
     }
 
     pub async fn list_memory_relationships(
@@ -539,16 +623,16 @@ impl PostgresStore {
         &self,
         contract: &MemoryContract,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_contracts (id, tenant_id, project_id, name, source, updated_at)
             VALUES ($1, $2, $3, $4, $5, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 name = EXCLUDED.name,
                 source = EXCLUDED.source,
                 updated_at = now()
+            WHERE memory_contracts.tenant_id = EXCLUDED.tenant_id
+              AND memory_contracts.project_id = EXCLUDED.project_id
             ",
         )
         .bind(contract.id().as_str())
@@ -558,7 +642,7 @@ impl PostgresStore {
         .bind(contract.source())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_contracts", contract.id().as_str())
     }
 
     pub async fn list_memory_contracts(
@@ -609,7 +693,7 @@ impl PostgresStore {
             .map(|permissions| serde_json::from_str::<Value>(permissions.as_json()))
             .transpose()
             .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_subgraphs (
                 id, tenant_id, project_id, parent_subgraph_id, name, description, owner_kind,
@@ -617,8 +701,6 @@ impl PostgresStore {
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 parent_subgraph_id = EXCLUDED.parent_subgraph_id,
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
@@ -629,6 +711,8 @@ impl PostgresStore {
                 permissions = EXCLUDED.permissions,
                 status = EXCLUDED.status,
                 updated_at = now()
+            WHERE memory_subgraphs.tenant_id = EXCLUDED.tenant_id
+              AND memory_subgraphs.project_id = EXCLUDED.project_id
             ",
         )
         .bind(subgraph.id().as_str())
@@ -645,7 +729,7 @@ impl PostgresStore {
         .bind(subgraph.status().to_string())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_subgraphs", subgraph.id().as_str())
     }
 
     pub async fn list_memory_subgraphs(
@@ -694,20 +778,20 @@ impl PostgresStore {
         &self,
         member: &MemorySubgraphMember,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_subgraph_members (
                 id, tenant_id, project_id, subgraph_id, member_kind, member_id, role, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 subgraph_id = EXCLUDED.subgraph_id,
                 member_kind = EXCLUDED.member_kind,
                 member_id = EXCLUDED.member_id,
                 role = EXCLUDED.role,
                 updated_at = now()
+            WHERE memory_subgraph_members.tenant_id = EXCLUDED.tenant_id
+              AND memory_subgraph_members.project_id = EXCLUDED.project_id
             ",
         )
         .bind(member.id().as_str())
@@ -719,26 +803,26 @@ impl PostgresStore {
         .bind(member.role().to_string())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_subgraph_members", member.id().as_str())
     }
 
     pub async fn upsert_memory_canonical_entity(
         &self,
         entity: &CanonicalEntity,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_canonical_entities (
                 id, tenant_id, project_id, entity_type, display_name, aliases, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 entity_type = EXCLUDED.entity_type,
                 display_name = EXCLUDED.display_name,
                 aliases = EXCLUDED.aliases,
                 updated_at = now()
+            WHERE memory_canonical_entities.tenant_id = EXCLUDED.tenant_id
+              AND memory_canonical_entities.project_id = EXCLUDED.project_id
             ",
         )
         .bind(entity.id().as_str())
@@ -749,7 +833,7 @@ impl PostgresStore {
         .bind(entity.aliases())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_canonical_entities", entity.id().as_str())
     }
 
     pub async fn list_memory_canonical_entities(
@@ -779,7 +863,7 @@ impl PostgresStore {
         &self,
         resolution: &EntityResolution,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_entity_resolutions (
                 id, tenant_id, project_id, subgraph_id, entity_id, canonical_entity_id,
@@ -787,8 +871,6 @@ impl PostgresStore {
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 subgraph_id = EXCLUDED.subgraph_id,
                 entity_id = EXCLUDED.entity_id,
                 canonical_entity_id = EXCLUDED.canonical_entity_id,
@@ -796,6 +878,8 @@ impl PostgresStore {
                 status = EXCLUDED.status,
                 evidence_ids = EXCLUDED.evidence_ids,
                 updated_at = now()
+            WHERE memory_entity_resolutions.tenant_id = EXCLUDED.tenant_id
+              AND memory_entity_resolutions.project_id = EXCLUDED.project_id
             ",
         )
         .bind(resolution.id().as_str())
@@ -809,7 +893,11 @@ impl PostgresStore {
         .bind(id_strings(resolution.evidence_ids()))
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(
+            &result,
+            "memory_entity_resolutions",
+            resolution.id().as_str(),
+        )
     }
 
     pub async fn list_memory_entity_resolutions(
@@ -858,7 +946,7 @@ impl PostgresStore {
         &self,
         edge: &SubgraphEdge,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_subgraph_edges (
                 id, tenant_id, project_id, edge_type, from_subgraph_id, to_subgraph_id,
@@ -867,8 +955,6 @@ impl PostgresStore {
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 edge_type = EXCLUDED.edge_type,
                 from_subgraph_id = EXCLUDED.from_subgraph_id,
                 to_subgraph_id = EXCLUDED.to_subgraph_id,
@@ -879,6 +965,8 @@ impl PostgresStore {
                 claim_ids = EXCLUDED.claim_ids,
                 evidence_ids = EXCLUDED.evidence_ids,
                 updated_at = now()
+            WHERE memory_subgraph_edges.tenant_id = EXCLUDED.tenant_id
+              AND memory_subgraph_edges.project_id = EXCLUDED.project_id
             ",
         )
         .bind(edge.id().as_str())
@@ -895,26 +983,26 @@ impl PostgresStore {
         .bind(id_strings(edge.evidence_ids()))
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_subgraph_edges", edge.id().as_str())
     }
 
     pub async fn upsert_memory_summary_trace(
         &self,
         trace: &SummaryTrace,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_summary_traces (
                 id, tenant_id, project_id, subgraph_id, summary_claim_id, inner_claim_ids, evidence_ids
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 subgraph_id = EXCLUDED.subgraph_id,
                 summary_claim_id = EXCLUDED.summary_claim_id,
                 inner_claim_ids = EXCLUDED.inner_claim_ids,
                 evidence_ids = EXCLUDED.evidence_ids
+            WHERE memory_summary_traces.tenant_id = EXCLUDED.tenant_id
+              AND memory_summary_traces.project_id = EXCLUDED.project_id
             ",
         )
         .bind(trace.id().as_str())
@@ -926,7 +1014,7 @@ impl PostgresStore {
         .bind(id_strings(trace.evidence_ids()))
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(&result, "memory_summary_traces", trace.id().as_str())
     }
 
     pub async fn list_memory_summary_traces(
@@ -953,19 +1041,19 @@ impl PostgresStore {
         &self,
         attachment: &EntityGraphAttachment,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO memory_entity_graph_attachments (
                 id, tenant_id, project_id, canonical_entity_id, subgraph_id, attachment_type, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 canonical_entity_id = EXCLUDED.canonical_entity_id,
                 subgraph_id = EXCLUDED.subgraph_id,
                 attachment_type = EXCLUDED.attachment_type,
                 updated_at = now()
+            WHERE memory_entity_graph_attachments.tenant_id = EXCLUDED.tenant_id
+              AND memory_entity_graph_attachments.project_id = EXCLUDED.project_id
             ",
         )
         .bind(attachment.id().as_str())
@@ -976,8 +1064,28 @@ impl PostgresStore {
         .bind(attachment.attachment_type().to_string())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        scope_guard(
+            &result,
+            "memory_entity_graph_attachments",
+            attachment.id().as_str(),
+        )
     }
+}
+
+/// Memory ids are globally unique, so an upsert can name a row owned by another tenant. The
+/// scoped `ON CONFLICT ... WHERE` clause skips that row instead of taking it over, which shows
+/// up here as an untouched row.
+fn scope_guard(
+    result: &sqlx::postgres::PgQueryResult,
+    table: &str,
+    id: &str,
+) -> Result<(), PostgresStoreError> {
+    if result.rows_affected() == 0 {
+        return Err(PostgresStoreError::InvalidPersistedValue(format!(
+            "{table} row {id} belongs to a different tenant or project"
+        )));
+    }
+    Ok(())
 }
 
 fn row_to_source(row: &sqlx::postgres::PgRow) -> Result<Source, PostgresStoreError> {
@@ -994,7 +1102,7 @@ fn row_to_source(row: &sqlx::postgres::PgRow) -> Result<Source, PostgresStoreErr
 }
 
 fn row_to_evidence(row: &sqlx::postgres::PgRow) -> Result<Evidence, PostgresStoreError> {
-    Evidence::new(
+    let evidence = Evidence::new(
         EvidenceId::new(row.try_get::<String, _>("id")?)
             .map_err(PostgresStoreError::InvalidPersistedValue)?,
         scope(row)?,
@@ -1003,6 +1111,40 @@ fn row_to_evidence(row: &sqlx::postgres::PgRow) -> Result<Evidence, PostgresStor
         row.try_get::<String, _>("locator")?,
         row.try_get::<String, _>("excerpt")?,
         row.try_get::<String, _>("observed_at")?,
+    )
+    .map_err(PostgresStoreError::Memory)?;
+    Ok(evidence.with_optional_span(row_to_evidence_span(row)?))
+}
+
+/// Reads the optional span columns. A check constraint keeps the three columns
+/// all-present or all-absent, so a partial span means the row was written around
+/// the schema and is treated as no span rather than a guess.
+fn row_to_evidence_span(
+    row: &sqlx::postgres::PgRow,
+) -> Result<Option<EvidenceSpan>, PostgresStoreError> {
+    let (Some(start), Some(end), Some(hash)) = (
+        row.try_get::<Option<i64>, _>("span_start")?,
+        row.try_get::<Option<i64>, _>("span_end")?,
+        row.try_get::<Option<String>, _>("source_content_hash")?,
+    ) else {
+        return Ok(None);
+    };
+    let start = usize::try_from(start).map_err(|_| {
+        PostgresStoreError::InvalidPersistedValue(format!("evidence span start {start} is invalid"))
+    })?;
+    let end = usize::try_from(end).map_err(|_| {
+        PostgresStoreError::InvalidPersistedValue(format!("evidence span end {end} is invalid"))
+    })?;
+    EvidenceSpan::new(start, end, hash)
+        .map(Some)
+        .map_err(PostgresStoreError::Memory)
+}
+
+fn row_to_source_content(row: &sqlx::postgres::PgRow) -> Result<SourceContent, PostgresStoreError> {
+    SourceContent::new(
+        SourceId::new(row.try_get::<String, _>("source_id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        row.try_get::<String, _>("content")?,
     )
     .map_err(PostgresStoreError::Memory)
 }

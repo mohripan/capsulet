@@ -224,6 +224,11 @@ where
         .route("/v1/agents/{id}/runs", post(crate::graphs::start_agent_run))
         .route("/v1/agent-runs", get(crate::graphs::list_agent_runs))
         .route("/v1/agent-runs/{id}", get(crate::graphs::get_agent_run))
+        .route("/v1/reasoning/ask", post(crate::reasoning::ask))
+        .route(
+            "/v1/reasoning/certificates",
+            get(crate::reasoning::list_certificates),
+        )
         .route(
             "/v1/memory/sources",
             post(crate::memory::create_source).get(crate::memory::list_sources),
@@ -1338,6 +1343,26 @@ where
 {
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, "project_operator")?;
+    // The check has to precede `build_python_job_definition`, which writes the script bundle
+    // under a key derived from the requested id.
+    if let Some(requested_id) = request.id.as_deref() {
+        let definition_id =
+            JobDefinitionId::new(requested_id.to_string()).map_err(ApiError::validation)?;
+        if state
+            .store
+            .job_definition_exists(&definition_id)
+            .await
+            .map_err(ApiError::store)?
+        {
+            require_resource_project(
+                &state.store,
+                "job_definitions",
+                definition_id.as_str(),
+                &context,
+            )
+            .await?;
+        }
+    }
     let definition = build_python_job_definition(&state, request).await?;
     state
         .store
@@ -1619,6 +1644,17 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, "project_operator")?;
     let workflow = build_workflow(&state, request).await?;
+    // The id may come from the request body, and the upsert conflicts on the id alone.
+    if state
+        .store
+        .find_workflow(workflow.id())
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        require_resource_project(&state.store, "workflows", workflow.id().as_str(), &context)
+            .await?;
+    }
     require_workflow_step_projects(&state.store, &workflow, &context).await?;
     state
         .store
@@ -2751,7 +2787,25 @@ where
     }
 
     let run_id = match request.run_id {
-        Some(value) => JobRunId::new(value).map_err(ApiError::validation)?,
+        Some(value) => {
+            let run_id = JobRunId::new(value).map_err(ApiError::validation)?;
+            // A caller-chosen id may collide with an existing run. The write below is an
+            // upsert, so without this a create would overwrite that run's status and input
+            // and `assign_resource_project` would hand it to the caller's project. Creating
+            // is never allowed to mutate an existing run, even one the caller owns.
+            if state
+                .store
+                .find_run(&run_id)
+                .await
+                .map_err(ApiError::store)?
+                .is_some()
+            {
+                require_resource_project(&state.store, "job_runs", run_id.as_str(), &context)
+                    .await?;
+                return Err(ApiError::RunAlreadyExists(run_id.as_str().to_string()));
+            }
+            run_id
+        }
         None => JobRunId::new(generated_run_id()).map_err(ApiError::validation)?,
     };
     let (job_definition_id, bundle_metadata) = if let Some(script) = request.python_script {
@@ -3288,5 +3342,43 @@ mod rate_limit_tests {
         // Regression guard: passing the rate straight to `per_second` produced a
         // 50_000 ms interval, i.e. one request per 50 seconds after the burst.
         assert!(replenish_period_millis(DEFAULT_RATE_LIMIT_PER_SECOND) < 1_000);
+    }
+}
+
+#[cfg(test)]
+mod rate_limit_key_tests {
+    use axum::http::Request;
+    use tower_governor::key_extractor::KeyExtractor;
+
+    use super::ForwardedIpOrLocalKeyExtractor;
+
+    fn key(headers: &[(&str, &str)]) -> String {
+        let mut builder = Request::builder();
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let request = builder.body(()).expect("request builds");
+        ForwardedIpOrLocalKeyExtractor
+            .extract(&request)
+            .expect("key extraction never fails")
+    }
+
+    #[test]
+    fn rotating_the_bearer_token_does_not_move_the_caller_to_a_new_bucket() {
+        let first = key(&[
+            ("authorization", "Bearer aaaaaaaaaaaaaaaa"),
+            ("x-forwarded-for", "203.0.113.7"),
+        ]);
+        let second = key(&[
+            ("authorization", "Bearer bbbbbbbbbbbbbbbb"),
+            ("x-forwarded-for", "203.0.113.7"),
+        ]);
+        assert_eq!(first, second);
+        assert_eq!(first, "203.0.113.7");
+    }
+
+    #[test]
+    fn credentials_alone_never_produce_a_bucket() {
+        assert_eq!(key(&[("authorization", "Bearer cst_secret")]), "local");
     }
 }

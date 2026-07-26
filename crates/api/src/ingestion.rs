@@ -197,12 +197,15 @@ where
 
 pub(crate) async fn get_connector<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<IngestionConnectorResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = IngestionConnectorId::new(id).map_err(ApiError::validation)?;
     let Some(connector) = state
         .store
@@ -212,6 +215,11 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    if connector.scope().tenant_id() != context.tenant_id
+        || connector.scope().project_id() != context.project_id
+    {
+        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
+    }
     Ok(Json(IngestionConnectorResponse::from(&connector)))
 }
 
@@ -273,12 +281,15 @@ where
 
 pub(crate) async fn get_run<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<IngestionRunWithOutputsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let id = IngestionRunId::new(id).map_err(ApiError::validation)?;
     let Some(run) = state
         .store
@@ -288,6 +299,11 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    if run.scope().tenant_id() != context.tenant_id
+        || run.scope().project_id() != context.project_id
+    {
+        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
+    }
     let outputs = state
         .store
         .list_ingestion_run_outputs(&id)
