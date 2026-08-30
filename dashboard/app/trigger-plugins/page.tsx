@@ -175,3 +175,4 @@ export default function TriggerPluginsPage() {
     </DashboardShell>
   );
 }
+// capsulet-claims: CAP-AUTOMATION-001, CAP-DASHBOARD-001

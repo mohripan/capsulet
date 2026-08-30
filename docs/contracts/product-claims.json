@@ -1,52 +1,168 @@
 {
   "schema_version": 1,
   "public_surfaces": [
-    { "path": "README.md", "category": "root-docs", "marker_required": false },
-    { "path": "ARCHITECTURE.md", "category": "root-docs", "marker_required": false },
-    { "path": "docs/README.md", "category": "product-docs", "marker_required": false },
-    { "path": "docs/api.md", "category": "product-docs", "marker_required": false },
-    { "path": "docs/architecture.md", "category": "product-docs", "marker_required": false },
-    { "path": "docs/development.md", "category": "product-docs", "marker_required": false },
-    { "path": "docs/installation.md", "category": "product-docs", "marker_required": false },
-    { "path": "docs/operations.md", "category": "operations", "marker_required": false },
-    { "path": "docs/operations/backup-restore-dr.md", "category": "operations", "marker_required": false },
-    { "path": "docs/operations/observability.md", "category": "operations", "marker_required": false },
-    { "path": "docs/security.md", "category": "security", "marker_required": false },
-    { "path": "docs/security/secrets-rotation.md", "category": "security", "marker_required": false },
-    { "path": "sdk/python/README.md", "category": "sdk", "marker_required": false },
-    { "path": "dashboard/README.md", "category": "dashboard", "marker_required": false },
-    { "path": "dashboard/app/layout.tsx", "category": "dashboard", "marker_required": false },
-    { "path": "dashboard/app/page.tsx", "category": "dashboard", "marker_required": false },
-    { "path": "dashboard/app/settings/page.tsx", "category": "dashboard", "marker_required": false },
-    { "path": "examples/send-email/README.md", "category": "example", "marker_required": false },
-    { "path": "examples/workflows/README.md", "category": "example", "marker_required": false },
-    { "path": "charts/capsulet/Chart.yaml", "category": "package-metadata", "marker_required": false },
-    { "path": "charts/capsulet/values.yaml", "category": "package-metadata", "marker_required": false },
-    { "path": "charts/capsulet/values.schema.json", "category": "package-metadata", "marker_required": false },
-    { "path": "crates/api/openapi.json", "category": "served-openapi", "marker_required": false }
+    { "path": "README.md", "category": "root-docs", "marker_required": true },
+    { "path": "ARCHITECTURE.md", "category": "root-docs", "marker_required": true },
+    { "path": "docs/README.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/api.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/architecture.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/dashboard-streaming.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/development.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/helm-values.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/installation.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/local-kubernetes-runner.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/minikube-smoke.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/operations.md", "category": "operations", "marker_required": true },
+    { "path": "docs/operations/backup-restore-dr.md", "category": "operations", "marker_required": true },
+    { "path": "docs/operations/observability.md", "category": "operations", "marker_required": true },
+    { "path": "docs/persistence.md", "category": "product-docs", "marker_required": true },
+    { "path": "docs/security.md", "category": "security", "marker_required": true },
+    { "path": "docs/security/secrets-rotation.md", "category": "security", "marker_required": true },
+    { "path": "docs/troubleshooting.md", "category": "operations", "marker_required": true },
+    { "path": "docs/worker-runner.md", "category": "product-docs", "marker_required": true },
+    { "path": "sdk/python/README.md", "category": "sdk", "marker_required": true },
+    { "path": "dashboard/README.md", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/artifacts/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/automations/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/components.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/execution-pools/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/job-definitions/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/layout.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/login/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/logs/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/layout.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/memory-ui.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/runs/[id]/run-detail-client.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/runs/runs-client.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/security/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/settings/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/trigger-plugins/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/workflows/new/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/workflows/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/mock-data.ts", "category": "dashboard", "marker_required": true },
+    { "path": "examples/send-email/README.md", "category": "example", "marker_required": true },
+    { "path": "examples/workflows/README.md", "category": "example", "marker_required": true },
+    { "path": "charts/capsulet/Chart.yaml", "category": "package-metadata", "marker_required": true },
+    { "path": "charts/capsulet/values.yaml", "category": "package-metadata", "marker_required": true },
+    { "path": "charts/capsulet/values.schema.json", "category": "package-metadata", "marker_required": true },
+    { "path": "crates/api/openapi.json", "category": "served-openapi", "marker_required": true }
   ],
   "claims": [
     {
-      "id": "CAP-PRODUCT-001",
-      "kind": "positioning",
-      "maturity": "planned",
-      "area": "Product identity",
+      "id": "CAP-PRODUCT-001", "kind": "positioning", "maturity": "planned", "area": "Product identity",
       "statement": "Capsulet is a correctness-first AI-agent workflow platform for building and operating workflows whose important outputs can be inspected, checked, and governed.",
-      "public_surfaces": [
-        "README.md", "ARCHITECTURE.md", "docs/README.md", "docs/api.md", "docs/architecture.md",
-        "docs/development.md", "docs/installation.md", "docs/operations.md",
-        "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/security.md",
-        "docs/security/secrets-rotation.md", "sdk/python/README.md", "dashboard/README.md",
-        "dashboard/app/layout.tsx", "dashboard/app/page.tsx", "dashboard/app/settings/page.tsx",
-        "examples/send-email/README.md", "examples/workflows/README.md", "charts/capsulet/Chart.yaml",
-        "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json", "crates/api/openapi.json"
-      ],
-      "evidence": [
-        {
-          "type": "specification",
-          "path": "docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md"
-        }
-      ]
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/README.md", "docs/architecture.md", "docs/development.md", "docs/installation.md", "dashboard/README.md", "dashboard/app/layout.tsx", "dashboard/app/page.tsx", "charts/capsulet/Chart.yaml", "charts/capsulet/values.schema.json"],
+      "evidence": [{ "type": "specification", "path": "docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md" }]
+    },
+    {
+      "id": "CAP-CORRECTNESS-001", "kind": "capability", "maturity": "implemented", "area": "Correctness kernel",
+      "statement": "The deterministic kernel checks pinned proposals and emits accepted, conditional, or rejected certificates without calling a model or network.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md"],
+      "evidence": [{ "type": "test", "path": "crates/kernel/src/tests.rs", "command": "cargo test -p capsulet-kernel --locked", "selector": "accepts_a_citation_that_re_derives_and_contains_its_object" }]
+    },
+    {
+      "id": "CAP-CORRECTNESS-002", "kind": "limitation", "maturity": "implemented", "area": "Correctness kernel",
+      "statement": "Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md"],
+      "evidence": [{ "type": "source", "path": "crates/api/src/reasoning.rs" }]
+    },
+    {
+      "id": "CAP-GRAPH-001", "kind": "capability", "maturity": "implemented", "area": "Graphs and agents",
+      "statement": "Capsulet validates typed agent graph definitions with nodes, ports, hyperedges, transition policy, budgets, and deterministic static ordering.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "dashboard/app/components.tsx"],
+      "evidence": [{ "type": "test", "path": "crates/core/tests/typed_hypergraph.rs", "command": "cargo test -p capsulet-core --test typed_hypergraph --locked", "selector": "graph_definition_returns_deterministic_static_order" }]
+    },
+    {
+      "id": "CAP-AGENT-001", "kind": "capability", "maturity": "experimental", "area": "Graphs and agents",
+      "statement": "Agent definitions and queued agent runs, opaque JSON state snapshots, and semantic trace events can be persisted and exercised through the application runtime.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/operations.md", "docs/persistence.md", "dashboard/app/components.tsx"],
+      "evidence": [{ "type": "test", "path": "crates/application/tests/agents.rs", "command": "cargo test -p capsulet-application --test agents --locked", "selector": "agent_service_starts_queued_run_with_initial_state" }]
+    },
+    {
+      "id": "CAP-AGENT-002", "kind": "limitation", "maturity": "implemented", "area": "Graphs and agents",
+      "statement": "There is no production dedicated agent or graph worker; creating an agent run persists queued work but does not independently execute it.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/operations.md", "docs/persistence.md"],
+      "evidence": [{ "type": "source", "path": "crates/application/src/agent_runtime.rs" }]
+    },
+    {
+      "id": "CAP-MEMORY-001", "kind": "capability", "maturity": "experimental", "area": "Governed memory",
+      "statement": "Governed memory models sources, evidence, entities, claims, conflicts, contracts, ingestion review, nested subgraphs, and provenance as a major subsystem.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/persistence.md", "dashboard/README.md", "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx", "dashboard/app/memory/page.tsx", "dashboard/app/page.tsx"],
+      "evidence": [{ "type": "test", "path": "crates/core/tests/memory_core.rs", "command": "cargo test -p capsulet-core --test memory_core --locked", "selector": "claim_new_rejects_claim_without_evidence" }]
+    },
+    {
+      "id": "CAP-JOB-001", "kind": "capability", "maturity": "implemented", "area": "Jobs and runners",
+      "statement": "The job worker leases queued work, renews ownership, executes through stub, process, WASI Python, or Kubernetes adapters, and stores logs and artifacts.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/installation.md", "docs/local-kubernetes-runner.md", "docs/minikube-smoke.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/troubleshooting.md", "docs/worker-runner.md", "dashboard/README.md", "dashboard/app/artifacts/page.tsx", "dashboard/app/execution-pools/page.tsx", "dashboard/app/job-definitions/page.tsx", "dashboard/app/logs/page.tsx", "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/runs-client.tsx", "examples/send-email/README.md", "charts/capsulet/values.yaml"],
+      "evidence": [{ "type": "test", "path": "crates/worker/src/tests.rs", "command": "cargo test -p capsulet-worker --locked", "selector": "renews_lease_while_runner_is_active" }]
+    },
+    {
+      "id": "CAP-WORKFLOW-001", "kind": "compatibility", "maturity": "implemented", "area": "Workflow compatibility",
+      "statement": "Compatibility workflow DAGs support validated dependencies, parallel roots, fan-out/fan-in scheduling, durable step state, cancellation, and checkpoint resume.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/persistence.md", "docs/troubleshooting.md", "sdk/python/README.md", "dashboard/README.md", "dashboard/app/automations/page.tsx", "dashboard/app/components.tsx", "dashboard/app/workflows/new/page.tsx", "dashboard/app/workflows/page.tsx", "examples/workflows/README.md"],
+      "evidence": [{ "type": "test", "path": "crates/api/src/tests.rs", "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies", "selector": "creates_and_returns_workflow_dag_dependencies" }]
+    },
+    {
+      "id": "CAP-AUTOMATION-001", "kind": "capability", "maturity": "experimental", "area": "Automations",
+      "statement": "Automations can consume manual, cron, read-only SQL, signed webhook, and isolated custom-plugin triggers to create compatibility workflow runs.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/operations.md", "docs/operations/observability.md", "docs/persistence.md", "docs/security.md", "docs/troubleshooting.md", "dashboard/README.md", "dashboard/app/automations/page.tsx", "dashboard/app/trigger-plugins/page.tsx"],
+      "evidence": [{ "type": "test", "path": "crates/api/src/webhooks.rs", "command": "cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering", "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering" }]
+    },
+    {
+      "id": "CAP-IAM-001", "kind": "capability", "maturity": "experimental", "area": "Identity and IAM",
+      "statement": "Bearer and OIDC authentication, roles/scopes, project selection, memberships, service accounts, and durable mutation audits exist, with known ownership inconsistencies on newer resources.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/development.md", "docs/installation.md", "docs/operations/backup-restore-dr.md", "docs/security.md", "docs/security/secrets-rotation.md", "docs/troubleshooting.md", "dashboard/README.md", "dashboard/app/login/page.tsx", "dashboard/app/security/page.tsx", "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json"],
+      "evidence": [{ "type": "test", "path": "crates/api/src/auth.rs", "command": "cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens", "selector": "authenticates_configured_roles_without_exposing_tokens" }]
+    },
+    {
+      "id": "CAP-PERSISTENCE-001", "kind": "capability", "maturity": "experimental", "area": "Persistence and storage",
+      "statement": "PostgreSQL stores control-plane and execution metadata, while filesystem or S3-compatible object storage stores scripts, large logs, and artifacts.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/development.md", "docs/helm-values.md", "docs/installation.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/persistence.md", "docs/security.md", "docs/security/secrets-rotation.md", "docs/troubleshooting.md", "docs/worker-runner.md", "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json"],
+      "evidence": [{ "type": "source", "path": "migrations/20260529170000_initial_persistence.sql" }]
+    },
+    {
+      "id": "CAP-DASHBOARD-001", "kind": "capability", "maturity": "experimental", "area": "Dashboard and SDK",
+      "statement": "The Next.js dashboard provides authenticated operational and governed-memory views backed by handwritten API calls.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/installation.md", "dashboard/README.md", "dashboard/app/artifacts/page.tsx", "dashboard/app/automations/page.tsx", "dashboard/app/components.tsx", "dashboard/app/execution-pools/page.tsx", "dashboard/app/job-definitions/page.tsx", "dashboard/app/layout.tsx", "dashboard/app/login/page.tsx", "dashboard/app/logs/page.tsx", "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx", "dashboard/app/memory/page.tsx", "dashboard/app/page.tsx", "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/runs-client.tsx", "dashboard/app/security/page.tsx", "dashboard/app/trigger-plugins/page.tsx", "dashboard/app/workflows/new/page.tsx", "dashboard/app/workflows/page.tsx"],
+      "evidence": [{ "type": "test", "path": "dashboard/tests/api.test.ts", "command": "npm test --prefix dashboard", "selector": "calls nested memory subgraph endpoints" }]
+    },
+    {
+      "id": "CAP-DASHBOARD-002", "kind": "limitation", "maturity": "implemented", "area": "Dashboard and SDK",
+      "statement": "Some dashboard overview data, settings, and future controls are demonstrative or static and are not implemented runtime behavior.",
+      "public_surfaces": ["dashboard/README.md", "dashboard/app/page.tsx", "dashboard/app/settings/page.tsx", "dashboard/app/mock-data.ts"],
+      "evidence": [{ "type": "source", "path": "dashboard/app/mock-data.ts" }]
+    },
+    {
+      "id": "CAP-SDK-001", "kind": "compatibility", "maturity": "implemented", "area": "Dashboard and SDK",
+      "statement": "The experimental Python SDK compiles decorated Python functions into compatibility workflow and job API payloads.",
+      "public_surfaces": ["README.md", "docs/development.md", "sdk/python/README.md", "examples/workflows/README.md"],
+      "evidence": [{ "type": "test", "path": "sdk/python/tests/test_workflow.py", "command": "python -m unittest discover -s sdk/python/tests -v", "selector": "test_infers_dependency_and_compiles_artifact_path" }]
+    },
+    {
+      "id": "CAP-OBSERVABILITY-001", "kind": "capability", "maturity": "experimental", "area": "Observability and operations",
+      "statement": "Services expose health, readiness, Prometheus metrics, structured logs, and starter dashboards and alerts for current execution paths.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/helm-values.md", "docs/installation.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/troubleshooting.md", "dashboard/app/components.tsx", "dashboard/app/logs/page.tsx", "charts/capsulet/values.yaml"],
+      "evidence": [{ "type": "test", "path": "crates/application/tests/execution_contracts.rs", "command": "cargo test -p capsulet-application --test execution_contracts --locked", "selector": "worker_tick_outcome_has_stable_metric_names" }]
+    },
+    {
+      "id": "CAP-SECURITY-001", "kind": "limitation", "maturity": "implemented", "area": "Security and isolation",
+      "statement": "Capsulet constrains execution but does not claim a complete sandbox for hostile code; production isolation depends on operator-selected Kubernetes controls and runtime classes.",
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/helm-values.md", "docs/installation.md", "docs/local-kubernetes-runner.md", "docs/security.md", "docs/security/secrets-rotation.md", "docs/troubleshooting.md", "docs/worker-runner.md", "dashboard/app/security/page.tsx", "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json"],
+      "evidence": [{ "type": "source", "path": "crates/runner/src/internal.rs" }]
+    },
+    {
+      "id": "CAP-HELM-001", "kind": "capability", "maturity": "experimental", "area": "Helm and self-hosting",
+      "statement": "An alpha-readiness Helm chart installs the current control plane, execution services, dashboard, and optional bundled dependencies, but is not yet a public-alpha distribution.",
+      "public_surfaces": ["README.md", "docs/development.md", "docs/helm-values.md", "docs/installation.md", "docs/local-kubernetes-runner.md", "docs/minikube-smoke.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/security.md", "docs/security/secrets-rotation.md", "docs/troubleshooting.md", "docs/worker-runner.md", "charts/capsulet/Chart.yaml", "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json"],
+      "evidence": [{ "type": "source", "path": "charts/capsulet/templates/deployments.yaml" }]
+    },
+    {
+      "id": "CAP-OPENAPI-001", "kind": "limitation", "maturity": "implemented", "area": "HTTP API",
+      "statement": "The current handwritten OpenAPI document is incomplete and is not yet an exact contract for the running HTTP API.",
+      "public_surfaces": ["docs/api.md", "crates/api/openapi.json"],
+      "evidence": [{ "type": "source", "path": "scripts/check-openapi.ps1" }]
     }
   ]
 }

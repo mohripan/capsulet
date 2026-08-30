@@ -1,3 +1,4 @@
+# capsulet-claims: CAP-PRODUCT-001, CAP-HELM-001
 apiVersion: v2
 name: capsulet
 description: Kubernetes-native automation platform and sandboxed job runner

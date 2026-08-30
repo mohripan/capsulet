@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-WORKFLOW-001, CAP-SDK-001 -->
 # Capsulet Python SDK
 
 Define Python tasks with decorators, infer dependencies from function calls, and deploy the resulting workflow to Capsulet.

@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-JOB-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Local Kubernetes Runner
 
 Capsulet can execute and control built-in Python job definitions as real Kubernetes Jobs in minikube.

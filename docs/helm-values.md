@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Helm Values
 
 This document summarizes the current Helm values. The authoritative defaults live in `charts/capsulet/values.yaml`.

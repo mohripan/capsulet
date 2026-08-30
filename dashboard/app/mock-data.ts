@@ -209,3 +209,4 @@ export const timeline = [
   ["10:42:24", "kubernetes.job.created", "capsulet-run-9ac41"],
   ["10:42:31", "artifact.upload.started", "input-bundle.tar.gz"]
 ];
+// capsulet-claims: CAP-DASHBOARD-002

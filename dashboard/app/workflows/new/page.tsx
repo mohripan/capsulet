@@ -253,3 +253,4 @@ function WorkflowNotebookContent() {
 export default function NewWorkflowPage() {
   return <Suspense fallback={<div className="emptyState">Loading notebook…</div>}><WorkflowNotebookContent /></Suspense>;
 }
+// capsulet-claims: CAP-WORKFLOW-001, CAP-DASHBOARD-001

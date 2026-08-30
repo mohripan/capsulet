@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
 # Development
 
 This guide describes the current development workflow for Capsulet. The project direction is governed AI memory. The current foundation is typed agent execution graphs; the existing job/workflow stack remains in place as deterministic tool execution and compatibility infrastructure.

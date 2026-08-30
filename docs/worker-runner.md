@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-JOB-001, CAP-PERSISTENCE-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Worker and Runner
 
 The worker leases queued runs, executes them through a runner boundary, persists final state, and publishes bundles, large logs, and artifacts through object storage.

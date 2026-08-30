@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-JOB-001 -->
 # Send Email Example
 
 This example is a Capsulet job definition script for an hourly email automation.

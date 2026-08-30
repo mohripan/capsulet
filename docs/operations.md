@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-AGENT-001, CAP-AGENT-002, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
 # Operations
 
 ## Agent runtime observability

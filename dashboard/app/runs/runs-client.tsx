@@ -340,3 +340,4 @@ function Pagination({ page, total, onPage }: { page: number; total: number; onPa
     </div>
   );
 }
+// capsulet-claims: CAP-JOB-001, CAP-DASHBOARD-001

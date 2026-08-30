@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Security
 
 Capsulet has two authentication paths:

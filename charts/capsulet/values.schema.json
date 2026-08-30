@@ -1,4 +1,5 @@
 {
+  "$comment": "capsulet-claims: CAP-PRODUCT-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-SECURITY-001, CAP-HELM-001",
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {

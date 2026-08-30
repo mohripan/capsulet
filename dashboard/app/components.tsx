@@ -503,3 +503,4 @@ function highlightPython(value: string) {
 function escapeHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+// capsulet-claims: CAP-GRAPH-001, CAP-AGENT-001, CAP-WORKFLOW-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001

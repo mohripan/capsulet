@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a local-first AI memory platform: a governed graph memory layer for private agents that need to reason over a user's or company's own data. The implemented system combines typed agent execution graphs with a claim-first memory substrate for sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identity, review queues, and contradiction handling. Python jobs and workflow DAGs remain as compatibility infrastructure and deterministic execution tools for agent systems.

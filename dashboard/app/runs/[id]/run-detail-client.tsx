@@ -193,3 +193,4 @@ export default function RunDetailClient({ id }: { id: string }) {
     </DashboardShell>
   );
 }
+// capsulet-claims: CAP-JOB-001, CAP-DASHBOARD-001

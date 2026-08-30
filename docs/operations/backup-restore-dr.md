@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-JOB-001, CAP-WORKFLOW-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
 # Backup, Restore, and DR Runbook
 
 Capsulet production deployments should use external PostgreSQL and external S3-compatible object storage. The bundled chart dependencies are for development and small trials.

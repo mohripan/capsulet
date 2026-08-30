@@ -17,3 +17,4 @@ export default function RootLayout({
     </html>
   );
 }
+// capsulet-claims: CAP-PRODUCT-001, CAP-DASHBOARD-001

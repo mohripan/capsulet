@@ -111,3 +111,4 @@ function Setting({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+// capsulet-claims: CAP-JOB-001, CAP-DASHBOARD-001

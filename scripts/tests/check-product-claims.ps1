@@ -45,6 +45,37 @@ function Assert-Check {
 
 Assert-Check -Name "valid registry" -Registry (Join-Path $fixtures "valid-claims.json") -ShouldSucceed $true
 
+$expectedPublicSurfaces = @(
+    "README.md", "ARCHITECTURE.md",
+    "docs/README.md", "docs/api.md", "docs/architecture.md", "docs/dashboard-streaming.md",
+    "docs/development.md", "docs/helm-values.md", "docs/installation.md",
+    "docs/local-kubernetes-runner.md", "docs/minikube-smoke.md", "docs/operations.md",
+    "docs/operations/backup-restore-dr.md", "docs/operations/observability.md",
+    "docs/persistence.md", "docs/security.md", "docs/security/secrets-rotation.md",
+    "docs/troubleshooting.md", "docs/worker-runner.md",
+    "sdk/python/README.md", "dashboard/README.md",
+    "dashboard/app/artifacts/page.tsx", "dashboard/app/automations/page.tsx",
+    "dashboard/app/components.tsx", "dashboard/app/execution-pools/page.tsx",
+    "dashboard/app/job-definitions/page.tsx", "dashboard/app/layout.tsx",
+    "dashboard/app/login/page.tsx", "dashboard/app/logs/page.tsx",
+    "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx",
+    "dashboard/app/memory/page.tsx", "dashboard/app/page.tsx",
+    "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/runs-client.tsx",
+    "dashboard/app/security/page.tsx", "dashboard/app/settings/page.tsx",
+    "dashboard/app/trigger-plugins/page.tsx", "dashboard/app/workflows/new/page.tsx",
+    "dashboard/app/workflows/page.tsx", "dashboard/app/mock-data.ts",
+    "examples/send-email/README.md", "examples/workflows/README.md",
+    "charts/capsulet/Chart.yaml", "charts/capsulet/values.yaml",
+    "charts/capsulet/values.schema.json", "crates/api/openapi.json"
+)
+$mainRegistry = Get-Content -LiteralPath (Join-Path $repositoryRoot "docs\contracts\product-claims.json") -Raw | ConvertFrom-Json
+$declaredPublicSurfaces = @($mainRegistry.public_surfaces | ForEach-Object path)
+foreach ($expectedSurface in $expectedPublicSurfaces) {
+    if ($declaredPublicSurfaces -notcontains $expectedSurface) {
+        $failures.Add("main registry is missing public surface '$expectedSurface'")
+    }
+}
+
 $invalidCases = @(
     @{ File = "duplicate-ids.json"; Message = "duplicate claim ID" },
     @{ File = "unknown-maturity.json"; Message = "invalid maturity" },
@@ -53,6 +84,7 @@ $invalidCases = @(
     @{ File = "missing-evidence.json"; Message = "requires executable test evidence" },
     @{ File = "invalid-selector.json"; Message = "test selector was not found" },
     @{ File = "unmarked-surface.json"; Message = "missing claim marker" },
+    @{ File = "unregistered-surface.json"; Message = "unregistered public surface" },
     @{ File = "implemented-guarantee-without-test.json"; Message = "requires executable test evidence" }
 )
 

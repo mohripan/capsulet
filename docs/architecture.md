@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001 -->
 # Architecture Overview
 
 Capsulet stores durable AI memory and agent execution state in PostgreSQL. The product center is a governed, claim-first memory graph for private AI agents: sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identities, review queues, and contradiction handling. Typed agent execution graphs and the job runner stack provide the runtime substrate: graph nodes call tools, models, retrieval, validation, and memory adapters, while Kubernetes, local process, WASI Python, and stub runners execute deterministic jobs.

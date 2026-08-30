@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-JOB-001, CAP-HELM-001 -->
 # Minikube Smoke Guide
 
 This guide verifies the Kubernetes runner path with local images.

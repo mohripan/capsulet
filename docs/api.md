@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001 -->
 # API
 
 Capsulet's API exposes governed memory graph primitives, ingestion review, entity-resolution review, claim-conflict review, typed agent execution graph authoring, agent definitions, agent runs, job/tool definitions, compatibility workflow authoring, automation triggers, cancellation, status inspection, log inspection, and artifact retrieval.

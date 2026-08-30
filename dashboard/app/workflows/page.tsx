@@ -109,3 +109,4 @@ function WorkflowsContent() {
 export default function WorkflowsPage() {
   return <Suspense fallback={<div className="emptyState">Loading workflows…</div>}><WorkflowsContent /></Suspense>;
 }
+// capsulet-claims: CAP-WORKFLOW-001, CAP-DASHBOARD-001

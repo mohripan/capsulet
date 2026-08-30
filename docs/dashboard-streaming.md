@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-JOB-001, CAP-WORKFLOW-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001 -->
 # Dashboard Streaming
 
 Capsulet dashboard pages use server-sent events for live refresh triggers instead of client-side short polling.

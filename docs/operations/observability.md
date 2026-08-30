@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
 # Observability
 
 Capsulet services emit JSON logs and Prometheus metrics by default. Distributed tracing is enabled when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.

@@ -26,7 +26,7 @@ foreach ($areaGroup in $areaGroups) {
     $lines.Add("")
 }
 
-$rendered = ($lines -join "`n") + "`n"
+$rendered = ($lines -join "`n").TrimEnd() + "`n"
 if ($OutputPath) {
     [System.IO.File]::WriteAllText($OutputPath, $rendered, [System.Text.UTF8Encoding]::new($false))
 }

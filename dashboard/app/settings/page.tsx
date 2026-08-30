@@ -63,3 +63,4 @@ function Setting({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+// capsulet-claims: CAP-DASHBOARD-002

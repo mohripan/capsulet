@@ -810,3 +810,4 @@ const demoEntities: CanonicalEntity[] = [
     aliases: ["atlas-migration", "enterprise migration"]
   }
 ];
+// capsulet-claims: CAP-MEMORY-001, CAP-DASHBOARD-001

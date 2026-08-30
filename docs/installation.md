@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-JOB-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Installation
 
 Capsulet can be installed locally with Helm as a self-contained public-alpha stack. The default chart renders:

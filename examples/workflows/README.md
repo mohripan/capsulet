@@ -1,3 +1,4 @@
+<!-- capsulet-claims: CAP-WORKFLOW-001, CAP-SDK-001 -->
 # Python workflow examples
 
 The CSV example uses Python decorators to infer a two-step DAG. The first task writes `customers.csv`; the worker stages that file for the dependent task, which writes `customer-summary.csv`.

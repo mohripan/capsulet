@@ -891,3 +891,4 @@ function Pagination({ page, total, onPage }: { page: number; total: number; onPa
     </div>
   );
 }
+// capsulet-claims: CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-DASHBOARD-001
