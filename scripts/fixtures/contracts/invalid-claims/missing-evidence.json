@@ -1,0 +1,1 @@
+{"schema_version":1,"public_surfaces":[{"path":"AGENTS.md","category":"root-docs","marker_required":false}],"claims":[{"id":"CAP-TEST-001","kind":"capability","maturity":"implemented","area":"Test","statement":"No evidence","public_surfaces":["AGENTS.md"],"evidence":[]}]}

@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "public_surfaces": [
+    { "path": "README.md", "category": "root-docs", "marker_required": false },
+    { "path": "ARCHITECTURE.md", "category": "root-docs", "marker_required": false },
+    { "path": "docs/README.md", "category": "product-docs", "marker_required": false },
+    { "path": "docs/api.md", "category": "product-docs", "marker_required": false },
+    { "path": "docs/architecture.md", "category": "product-docs", "marker_required": false },
+    { "path": "docs/development.md", "category": "product-docs", "marker_required": false },
+    { "path": "docs/installation.md", "category": "product-docs", "marker_required": false },
+    { "path": "docs/operations.md", "category": "operations", "marker_required": false },
+    { "path": "docs/operations/backup-restore-dr.md", "category": "operations", "marker_required": false },
+    { "path": "docs/operations/observability.md", "category": "operations", "marker_required": false },
+    { "path": "docs/security.md", "category": "security", "marker_required": false },
+    { "path": "docs/security/secrets-rotation.md", "category": "security", "marker_required": false },
+    { "path": "sdk/python/README.md", "category": "sdk", "marker_required": false },
+    { "path": "dashboard/README.md", "category": "dashboard", "marker_required": false },
+    { "path": "dashboard/app/layout.tsx", "category": "dashboard", "marker_required": false },
+    { "path": "dashboard/app/page.tsx", "category": "dashboard", "marker_required": false },
+    { "path": "dashboard/app/settings/page.tsx", "category": "dashboard", "marker_required": false },
+    { "path": "examples/send-email/README.md", "category": "example", "marker_required": false },
+    { "path": "examples/workflows/README.md", "category": "example", "marker_required": false },
+    { "path": "charts/capsulet/Chart.yaml", "category": "package-metadata", "marker_required": false },
+    { "path": "charts/capsulet/values.yaml", "category": "package-metadata", "marker_required": false },
+    { "path": "charts/capsulet/values.schema.json", "category": "package-metadata", "marker_required": false },
+    { "path": "crates/api/openapi.json", "category": "served-openapi", "marker_required": false }
+  ],
+  "claims": [
+    {
+      "id": "CAP-PRODUCT-001",
+      "kind": "positioning",
+      "maturity": "planned",
+      "area": "Product identity",
+      "statement": "Capsulet is a correctness-first AI-agent workflow platform for building and operating workflows whose important outputs can be inspected, checked, and governed.",
+      "public_surfaces": [
+        "README.md", "ARCHITECTURE.md", "docs/README.md", "docs/api.md", "docs/architecture.md",
+        "docs/development.md", "docs/installation.md", "docs/operations.md",
+        "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/security.md",
+        "docs/security/secrets-rotation.md", "sdk/python/README.md", "dashboard/README.md",
+        "dashboard/app/layout.tsx", "dashboard/app/page.tsx", "dashboard/app/settings/page.tsx",
+        "examples/send-email/README.md", "examples/workflows/README.md", "charts/capsulet/Chart.yaml",
+        "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json", "crates/api/openapi.json"
+      ],
+      "evidence": [
+        {
+          "type": "specification",
+          "path": "docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md"
+        }
+      ]
+    }
+  ]
+}

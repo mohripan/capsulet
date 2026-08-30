@@ -1,0 +1,1 @@
+{"schema_version":1,"public_surfaces":[{"path":"AGENTS.md","category":"root-docs","marker_required":false}],"claims":[{"id":"CAP-TEST-001","kind":"limitation","maturity":"implemented","area":"Test","statement":"Missing file","public_surfaces":["AGENTS.md"],"evidence":[{"type":"source","path":"does/not/exist.md"}]}]}
