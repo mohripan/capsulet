@@ -1,10 +1,14 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
 experimental agent and governed-memory resources, and a narrow deterministic correctness-kernel
 slice. The handwritten OpenAPI document is incomplete until the generated-contract tasks in M0 are
 complete; runtime route behavior is authoritative in the meantime.
+
+Execution `status` fields and correctness `verdict` fields are independent. Clients must not infer
+`accepted` from `succeeded`, `completed`, or an HTTP 2xx response. The current and target
+vocabularies are defined in the [lifecycle and assurance contract](contracts/lifecycle-and-assurance.md).
 
 Memory records are tenant/project scoped and claim-first: claims, events, and relationships must reference evidence. Ingestion can propose candidate claims, reviewers approve or reject them, and approving a claim can create a conflict review item when another active claim has the same subject and predicate but a different object.
 

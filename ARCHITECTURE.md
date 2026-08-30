@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -23,6 +23,17 @@ self-hosting, and operational integrations.
 protected-boundary admission, generated clients, and the public-alpha release gate.
 
 PostgreSQL is the implemented durable event and coordination channel. Kafka remains an optional future scaling path. Hostile multi-tenant workloads should configure a sandboxed Kubernetes RuntimeClass such as gVisor or Kata in addition to the enforced pod security and default-deny network policy.
+
+## Execution status is not assurance
+
+Run status answers whether work is queued, active, waiting, completed, failed, or cancelled.
+Assurance answers whether a separately executed correctness policy left the result unverified,
+accepted, conditional, or rejected. A successful job, workflow, ingestion, or agent run does not
+become verified by success. The exact current-enum mapping and transition ownership are defined in
+[the lifecycle contract](docs/contracts/lifecycle-and-assurance.md).
+
+The current kernel only emits `accepted`, `conditional`, or `rejected` after it runs. Platform
+`unverified` means it did not run; it is not another kernel result.
 
 ## System context
 

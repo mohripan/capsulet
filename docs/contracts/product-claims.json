@@ -163,6 +163,12 @@
       "statement": "The current handwritten OpenAPI document is incomplete and is not yet an exact contract for the running HTTP API.",
       "public_surfaces": ["docs/api.md", "crates/api/openapi.json"],
       "evidence": [{ "type": "source", "path": "scripts/check-openapi.ps1" }]
+    },
+    {
+      "id": "CAP-LIFECYCLE-001", "kind": "compatibility", "maturity": "implemented", "area": "Lifecycle and assurance",
+      "statement": "Execution status and assurance verdict are independent; every current persisted status is explicitly mapped without treating successful execution as verified output.",
+      "public_surfaces": ["ARCHITECTURE.md", "docs/api.md", "docs/architecture.md"],
+      "evidence": [{ "type": "test", "path": "scripts/tests/check-product-claims.ps1", "command": "pwsh ./scripts/tests/check-product-claims.ps1", "selector": "invalidLifecycleCases" }]
     }
   ]
 }

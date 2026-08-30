@@ -10,12 +10,14 @@ $failures = [System.Collections.Generic.List[string]]::new()
 function Invoke-ClaimCheck {
     param(
         [Parameter(Mandatory = $true)][string]$RegistryPath,
-        [string]$GeneratedPath
+        [string]$GeneratedPath,
+        [string]$LifecyclePath
     )
 
     try {
         $arguments = @{ RegistryPath = $RegistryPath }
         if ($GeneratedPath) { $arguments.GeneratedPath = $GeneratedPath }
+        if ($LifecyclePath) { $arguments.LifecyclePath = $LifecyclePath }
         $captured = & $checker @arguments 2>&1 | Out-String
         return @{ Succeeded = $true; Output = $captured }
     }
@@ -30,10 +32,11 @@ function Assert-Check {
         [Parameter(Mandatory = $true)][string]$Registry,
         [Parameter(Mandatory = $true)][bool]$ShouldSucceed,
         [string]$ExpectedMessage,
-        [string]$GeneratedPath
+        [string]$GeneratedPath,
+        [string]$LifecyclePath
     )
 
-    $result = Invoke-ClaimCheck -RegistryPath $Registry -GeneratedPath $GeneratedPath
+    $result = Invoke-ClaimCheck -RegistryPath $Registry -GeneratedPath $GeneratedPath -LifecyclePath $LifecyclePath
     if ($result.Succeeded -ne $ShouldSucceed) {
         $failures.Add("$Name`: expected success=$ShouldSucceed, got success=$($result.Succeeded). $($result.Output)")
         return
@@ -110,6 +113,19 @@ foreach ($case in $invalidCases) {
         -ExpectedMessage $case.Message
 }
 
+$invalidLifecycleCases = @(
+    @{ File = "collapsed-execution-assurance.json"; Message = "execution and assurance vocabularies overlap" },
+    @{ File = "undocumented-persisted-status.json"; Message = "status inventory differs from source enum" },
+    @{ File = "invalid-transition-reference.json"; Message = "transition references unknown status" }
+)
+foreach ($case in $invalidLifecycleCases) {
+    Assert-Check -Name $case.File `
+        -Registry (Join-Path $fixtures "valid-claims.json") `
+        -LifecyclePath (Join-Path $fixtures "invalid-lifecycle\$($case.File)") `
+        -ShouldSucceed $false `
+        -ExpectedMessage $case.Message
+}
+
 $temporaryMarkdown = Join-Path ([System.IO.Path]::GetTempPath()) "capsulet-stale-product-claims-$PID.md"
 try {
     Set-Content -LiteralPath $temporaryMarkdown -Value "stale" -NoNewline
@@ -127,4 +143,4 @@ if ($failures.Count -gt 0) {
     throw ($failures -join [Environment]::NewLine)
 }
 
-Write-Host "Product claim contract tests passed ($($invalidCases.Count + 2) cases)."
+Write-Host "Product claim contract tests passed ($($invalidCases.Count + $invalidLifecycleCases.Count + 2) cases)."

@@ -8,6 +8,11 @@ unified IR, platform assurance, protected-boundary admission, and release roadma
 extracted from this design are recorded in
 [ADR 0012](../adr/0012-correctness-kernel-and-proposer-checker-split.md).
 
+The implemented kernel remains three-valued because it only returns after checking a proposal.
+The target platform adds `unverified` outside the kernel to mean that the correctness plane did not
+run. Execution success and assurance are independent; runtime-wide admission and trust propagation
+remain planned. See [Lifecycle and assurance](../contracts/lifecycle-and-assurance.md).
+
 ## Problem
 
 Capsulet's goal is not to replace frontier models. It is to make a small model good enough to

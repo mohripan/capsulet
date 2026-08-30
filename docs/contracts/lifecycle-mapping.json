@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "target_execution_statuses": ["queued", "running", "waiting", "completed", "failed", "cancelled"],
+  "platform_assurance_verdicts": ["unverified", "accepted", "conditional", "rejected"],
+  "kernel_verdicts": ["accepted", "conditional", "rejected"],
+  "lifecycles": [
+    {
+      "name": "job_run", "category": "execution", "source_path": "crates/core/src/domain/job.rs", "source_enum": "JobRunStatus",
+      "statuses": [
+        { "name": "queued", "target": "queued", "terminal": false, "retryable": false, "cancellable": true, "owner": "API and worker" },
+        { "name": "leased", "target": "running", "terminal": false, "retryable": false, "cancellable": true, "owner": "worker", "debt": "Lease ownership is an execution detail collapsed into target running." },
+        { "name": "running", "target": "running", "terminal": false, "retryable": false, "cancellable": true, "owner": "worker" },
+        { "name": "succeeded", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "lease-owning worker" },
+        { "name": "failed", "target": "failed", "terminal": true, "retryable": true, "cancellable": false, "owner": "lease-owning worker" },
+        { "name": "cancelled", "target": "cancelled", "terminal": true, "retryable": false, "cancellable": false, "owner": "API" },
+        { "name": "timed_out", "target": "failed", "terminal": true, "retryable": true, "cancellable": false, "owner": "lease-owning worker", "debt": "Target failed loses the timeout reason; M2/M3 events must retain it." },
+        { "name": "retry_scheduled", "target": "waiting", "terminal": false, "retryable": true, "cancellable": true, "owner": "worker" }
+      ],
+      "transitions": [
+        { "from": "queued", "to": "leased", "owner": "worker lease" },
+        { "from": "leased", "to": "running", "owner": "worker" },
+        { "from": "leased", "to": "queued", "owner": "lease recovery" },
+        { "from": "leased", "to": "cancelled", "owner": "API" },
+        { "from": "running", "to": "succeeded", "owner": "lease-owning worker" },
+        { "from": "running", "to": "failed", "owner": "lease-owning worker" },
+        { "from": "running", "to": "timed_out", "owner": "lease-owning worker" },
+        { "from": "running", "to": "retry_scheduled", "owner": "lease-owning worker" },
+        { "from": "running", "to": "cancelled", "owner": "API" },
+        { "from": "retry_scheduled", "to": "queued", "owner": "worker retry promotion" }
+      ]
+    },
+    {
+      "name": "workflow_definition", "category": "configuration", "source_path": "crates/core/src/domain/workflow.rs", "source_enum": "WorkflowStatus",
+      "statuses": [
+        { "name": "draft", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "API" },
+        { "name": "enabled", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "API" },
+        { "name": "disabled", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "API" }
+      ],
+      "transitions": [
+        { "from": "draft", "to": "enabled", "owner": "API" }, { "from": "draft", "to": "disabled", "owner": "API" },
+        { "from": "enabled", "to": "disabled", "owner": "API" }, { "from": "disabled", "to": "enabled", "owner": "API" }
+      ]
+    },
+    {
+      "name": "workflow_run", "category": "execution", "source_path": "crates/core/src/domain/workflow.rs", "source_enum": "WorkflowRunStatus",
+      "statuses": [
+        { "name": "queued", "target": "queued", "terminal": false, "retryable": false, "cancellable": false, "owner": "API and scheduler" },
+        { "name": "running", "target": "running", "terminal": false, "retryable": false, "cancellable": true, "owner": "scheduler" },
+        { "name": "removed", "target": "cancelled", "terminal": true, "retryable": false, "cancellable": false, "owner": "API", "debt": "Removed is visibility/retention intent, not cancellation; the target mapping is lossy." },
+        { "name": "succeeded", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "scheduler" },
+        { "name": "failed", "target": "failed", "terminal": true, "retryable": true, "cancellable": false, "owner": "scheduler" },
+        { "name": "cancelled", "target": "cancelled", "terminal": true, "retryable": false, "cancellable": false, "owner": "API and scheduler" },
+        { "name": "timed_out", "target": "failed", "terminal": true, "retryable": true, "cancellable": false, "owner": "scheduler", "debt": "Target failed loses timeout reason." },
+        { "name": "skipped", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "scheduler", "debt": "Target completed loses whether dependency policy skipped work." }
+      ],
+      "transitions": [
+        { "from": "queued", "to": "running", "owner": "scheduler" }, { "from": "queued", "to": "removed", "owner": "API" },
+        { "from": "running", "to": "succeeded", "owner": "scheduler" }, { "from": "running", "to": "failed", "owner": "scheduler" },
+        { "from": "running", "to": "cancelled", "owner": "API and scheduler" }, { "from": "running", "to": "timed_out", "owner": "scheduler" },
+        { "from": "failed", "to": "running", "owner": "API resume" }, { "from": "timed_out", "to": "running", "owner": "API resume" }
+      ]
+    },
+    {
+      "name": "workflow_step_run", "category": "execution", "source_path": "crates/core/src/domain/workflow.rs", "source_enum": "WorkflowRunStatus",
+      "statuses": [
+        { "name": "queued", "target": "queued", "terminal": false, "retryable": false, "cancellable": true, "owner": "scheduler" },
+        { "name": "running", "target": "running", "terminal": false, "retryable": false, "cancellable": true, "owner": "worker and scheduler" },
+        { "name": "removed", "target": "cancelled", "terminal": true, "retryable": false, "cancellable": false, "owner": "scheduler", "debt": "Shared enum exposes a status not normally used for steps." },
+        { "name": "succeeded", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "scheduler" },
+        { "name": "failed", "target": "failed", "terminal": true, "retryable": true, "cancellable": false, "owner": "scheduler" },
+        { "name": "cancelled", "target": "cancelled", "terminal": true, "retryable": false, "cancellable": false, "owner": "scheduler" },
+        { "name": "timed_out", "target": "failed", "terminal": true, "retryable": true, "cancellable": false, "owner": "scheduler", "debt": "Target failed loses timeout reason." },
+        { "name": "skipped", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "scheduler", "debt": "Target completed loses skipped execution." }
+      ],
+      "transitions": [
+        { "from": "queued", "to": "running", "owner": "scheduler" }, { "from": "queued", "to": "skipped", "owner": "scheduler" },
+        { "from": "running", "to": "succeeded", "owner": "scheduler" }, { "from": "running", "to": "failed", "owner": "scheduler" },
+        { "from": "running", "to": "cancelled", "owner": "scheduler" }, { "from": "running", "to": "timed_out", "owner": "scheduler" }
+      ]
+    },
+    {
+      "name": "agent_run", "category": "execution", "source_path": "crates/core/src/domain/agent.rs", "source_enum": "AgentRunStatus",
+      "statuses": [
+        { "name": "queued", "target": "queued", "terminal": false, "retryable": false, "cancellable": true, "owner": "API" },
+        { "name": "running", "target": "running", "terminal": false, "retryable": false, "cancellable": true, "owner": "application agent runtime" },
+        { "name": "succeeded", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "application agent runtime" },
+        { "name": "failed", "target": "failed", "terminal": true, "retryable": false, "cancellable": false, "owner": "application agent runtime" },
+        { "name": "cancelled", "target": "cancelled", "terminal": true, "retryable": false, "cancellable": false, "owner": "API" },
+        { "name": "stopped", "target": "failed", "terminal": true, "retryable": false, "cancellable": false, "owner": "application agent runtime", "debt": "Stopped conflates budget, termination policy, and human escalation reasons." }
+      ],
+      "transitions": [
+        { "from": "queued", "to": "running", "owner": "application agent runtime" }, { "from": "queued", "to": "cancelled", "owner": "API" },
+        { "from": "running", "to": "succeeded", "owner": "application agent runtime" }, { "from": "running", "to": "failed", "owner": "application agent runtime" },
+        { "from": "running", "to": "cancelled", "owner": "API" }, { "from": "running", "to": "stopped", "owner": "application agent runtime" }
+      ]
+    },
+    {
+      "name": "automation", "category": "configuration", "source_path": "crates/core/src/domain/automation.rs", "source_enum": "AutomationStatus",
+      "statuses": [
+        { "name": "enabled", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "API" },
+        { "name": "disabled", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "API" }
+      ],
+      "transitions": [{ "from": "enabled", "to": "disabled", "owner": "API" }, { "from": "disabled", "to": "enabled", "owner": "API" }]
+    },
+    {
+      "name": "ingestion_run", "category": "execution", "source_path": "crates/core/src/domain/ingestion.rs", "source_enum": "IngestionRunStatus",
+      "statuses": [
+        { "name": "queued", "target": "queued", "terminal": false, "retryable": false, "cancellable": false, "owner": "API" },
+        { "name": "running", "target": "running", "terminal": false, "retryable": false, "cancellable": false, "owner": "ingestion service" },
+        { "name": "succeeded", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "ingestion service" },
+        { "name": "failed", "target": "failed", "terminal": true, "retryable": false, "cancellable": false, "owner": "ingestion service" }
+      ],
+      "transitions": [{ "from": "queued", "to": "running", "owner": "ingestion service" }, { "from": "running", "to": "succeeded", "owner": "ingestion service" }, { "from": "running", "to": "failed", "owner": "ingestion service" }]
+    },
+    {
+      "name": "memory_claim", "category": "review", "source_path": "crates/core/src/domain/memory.rs", "source_enum": "ClaimStatus",
+      "statuses": [
+        { "name": "candidate", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "ingestion and API" },
+        { "name": "active", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "reviewer" },
+        { "name": "rejected", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "reviewer" },
+        { "name": "superseded", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "memory governance" },
+        { "name": "contradicted", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "memory governance" },
+        { "name": "expired", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "memory governance" }
+      ],
+      "transitions": [
+        { "from": "candidate", "to": "active", "owner": "reviewer" }, { "from": "candidate", "to": "rejected", "owner": "reviewer" },
+        { "from": "active", "to": "superseded", "owner": "memory governance" }, { "from": "active", "to": "contradicted", "owner": "memory governance" },
+        { "from": "active", "to": "expired", "owner": "memory governance" }
+      ]
+    },
+    {
+      "name": "memory_subgraph", "category": "configuration", "source_path": "crates/core/src/domain/memory_graph.rs", "source_enum": "MemorySubgraphStatus",
+      "statuses": [
+        { "name": "draft", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "API" },
+        { "name": "active", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "API after invariant checks" },
+        { "name": "archived", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "API" }
+      ],
+      "transitions": [{ "from": "draft", "to": "active", "owner": "API" }, { "from": "active", "to": "archived", "owner": "API" }]
+    },
+    {
+      "name": "entity_resolution", "category": "review", "source_path": "crates/core/src/domain/memory_graph.rs", "source_enum": "EntityResolutionStatus",
+      "statuses": [
+        { "name": "candidate", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "ingestion" },
+        { "name": "confirmed", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "reviewer" },
+        { "name": "rejected", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "reviewer" }
+      ],
+      "transitions": [{ "from": "candidate", "to": "confirmed", "owner": "reviewer" }, { "from": "candidate", "to": "rejected", "owner": "reviewer" }]
+    },
+    {
+      "name": "claim_conflict", "category": "review", "source_path": "crates/core/src/domain/memory_graph.rs", "source_enum": "ClaimConflictStatus",
+      "statuses": [
+        { "name": "candidate", "target": null, "terminal": false, "retryable": false, "cancellable": false, "owner": "memory governance" },
+        { "name": "resolved", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "reviewer" },
+        { "name": "dismissed", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "reviewer" }
+      ],
+      "transitions": [{ "from": "candidate", "to": "resolved", "owner": "reviewer" }, { "from": "candidate", "to": "dismissed", "owner": "reviewer" }]
+    },
+    {
+      "name": "kernel_verdict", "category": "assurance", "source_path": "crates/kernel/src/certificate.rs", "source_enum": "Verdict",
+      "statuses": [
+        { "name": "accepted", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "deterministic kernel" },
+        { "name": "conditional", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "deterministic kernel" },
+        { "name": "rejected", "target": null, "terminal": true, "retryable": false, "cancellable": false, "owner": "deterministic kernel" }
+      ],
+      "transitions": []
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capsulet.dev/contracts/lifecycle-mapping.schema.json",
+  "title": "Capsulet lifecycle and assurance mapping",
+  "type": "object",
+  "required": ["schema_version", "target_execution_statuses", "platform_assurance_verdicts", "kernel_verdicts", "lifecycles"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "target_execution_statuses": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "platform_assurance_verdicts": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "kernel_verdicts": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "lifecycles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "category", "source_path", "source_enum", "statuses", "transitions"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "category": { "enum": ["execution", "configuration", "review", "assurance"] },
+          "source_path": { "type": "string", "minLength": 1 },
+          "source_enum": { "type": "string", "minLength": 1 },
+          "statuses": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name", "target", "terminal", "retryable", "cancellable", "owner"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "target": { "type": ["string", "null"] },
+                "terminal": { "type": "boolean" },
+                "retryable": { "type": "boolean" },
+                "cancellable": { "type": "boolean" },
+                "owner": { "type": "string", "minLength": 1 },
+                "debt": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["from", "to", "owner"],
+              "additionalProperties": false,
+              "properties": {
+                "from": { "type": "string", "minLength": 1 },
+                "to": { "type": "string", "minLength": 1 },
+                "owner": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"schema_version":1,"target_execution_statuses":["queued","running","waiting","completed","failed","cancelled","accepted"],"platform_assurance_verdicts":["unverified","accepted","conditional","rejected"],"kernel_verdicts":["accepted","conditional","rejected"],"lifecycles":[]}

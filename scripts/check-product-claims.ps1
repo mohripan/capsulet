@@ -1,6 +1,7 @@
 param(
     [string]$RegistryPath = (Join-Path $PSScriptRoot "..\docs\contracts\product-claims.json"),
-    [string]$GeneratedPath
+    [string]$GeneratedPath,
+    [string]$LifecyclePath
 )
 
 Set-StrictMode -Version Latest
@@ -8,6 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $defaultRegistry = (Join-Path $repositoryRoot "docs\contracts\product-claims.json")
+$defaultLifecycle = (Join-Path $repositoryRoot "docs\contracts\lifecycle-mapping.json")
 $schemaPath = Join-Path $repositoryRoot "docs\contracts\product-claims.schema.json"
 $registryFullPath = (Resolve-Path -LiteralPath $RegistryPath).Path
 $raw = Get-Content -LiteralPath $registryFullPath -Raw
@@ -89,6 +91,87 @@ foreach ($surface in $registry.public_surfaces) {
         foreach ($claim in $surfaceClaims) {
             if (-not $surfaceContent.Contains([string]$claim.id)) {
                 throw "public surface '$($surface.path)' is missing claim marker '$($claim.id)'"
+            }
+        }
+    }
+}
+
+if (-not $PSBoundParameters.ContainsKey("LifecyclePath") -and $registryFullPath -eq $defaultRegistry) {
+    $LifecyclePath = $defaultLifecycle
+}
+if ($LifecyclePath) {
+    $lifecycleFullPath = (Resolve-Path -LiteralPath $LifecyclePath).Path
+    $lifecycleRaw = Get-Content -LiteralPath $lifecycleFullPath -Raw
+    $lifecycleSchemaPath = Join-Path $repositoryRoot "docs\contracts\lifecycle-mapping.schema.json"
+    if ($testJson -and (Test-Path -LiteralPath $lifecycleSchemaPath)) {
+        $lifecycleSchemaValid = $lifecycleRaw | Test-Json -SchemaFile $lifecycleSchemaPath -ErrorAction SilentlyContinue
+        if (-not $lifecycleSchemaValid) { throw "lifecycle mapping does not satisfy lifecycle-mapping.schema.json" }
+    }
+
+    $lifecycle = $lifecycleRaw | ConvertFrom-Json
+    $requiredExecution = @("queued", "running", "waiting", "completed", "failed", "cancelled")
+    $requiredAssurance = @("unverified", "accepted", "conditional", "rejected")
+    $requiredKernel = @("accepted", "conditional", "rejected")
+
+    function Assert-ExactSet {
+        param([string]$Label, [object[]]$Actual, [string[]]$Expected)
+        $actualValues = @($Actual | ForEach-Object { [string]$_ } | Sort-Object -Unique)
+        $expectedValues = @($Expected | Sort-Object -Unique)
+        if (($actualValues -join "|") -cne ($expectedValues -join "|")) {
+            throw "$Label differs from the required vocabulary (actual: $($actualValues -join ', '))"
+        }
+    }
+
+    $overlap = @($lifecycle.target_execution_statuses | Where-Object { @($lifecycle.platform_assurance_verdicts) -contains $_ })
+    if ($overlap.Count -gt 0) {
+        throw "execution and assurance vocabularies overlap: $($overlap -join ', ')"
+    }
+    Assert-ExactSet "target execution statuses" @($lifecycle.target_execution_statuses) $requiredExecution
+    Assert-ExactSet "platform assurance verdicts" @($lifecycle.platform_assurance_verdicts) $requiredAssurance
+    Assert-ExactSet "kernel verdicts" @($lifecycle.kernel_verdicts) $requiredKernel
+    if (@($lifecycle.kernel_verdicts) -contains "unverified") {
+        throw "unverified is a platform assurance state, not a kernel verdict"
+    }
+
+    $lifecycleNames = @($lifecycle.lifecycles | ForEach-Object name)
+    $duplicateLifecycle = $lifecycleNames | Group-Object | Where-Object Count -gt 1 | Select-Object -First 1
+    if ($duplicateLifecycle) { throw "duplicate lifecycle '$($duplicateLifecycle.Name)'" }
+
+    foreach ($item in $lifecycle.lifecycles) {
+        $sourcePath = Join-Path $repositoryRoot $item.source_path
+        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+            throw "lifecycle '$($item.name)' source path does not exist: $($item.source_path)"
+        }
+        $sourceContent = Get-Content -LiteralPath $sourcePath -Raw
+        $enumPattern = "(?s)pub\s+enum\s+$([regex]::Escape([string]$item.source_enum))\s*\{(?<body>.*?)\}"
+        $enumMatch = [regex]::Match($sourceContent, $enumPattern)
+        if (-not $enumMatch.Success) {
+            throw "lifecycle '$($item.name)' source enum '$($item.source_enum)' was not found"
+        }
+        $sourceStatuses = @(
+            $enumMatch.Groups["body"].Value -split "`n" |
+                ForEach-Object { $_.Trim().TrimEnd(',') } |
+                Where-Object { $_ -match '^[A-Z][A-Za-z0-9_]*$' } |
+                ForEach-Object { [regex]::Replace($_, '(?<!^)([A-Z])', '_$1').ToLowerInvariant() }
+        )
+        $documentedStatuses = @($item.statuses | ForEach-Object name)
+        $sourceSet = @($sourceStatuses | Sort-Object -Unique)
+        $documentedSet = @($documentedStatuses | Sort-Object -Unique)
+        if (($sourceSet -join "|") -cne ($documentedSet -join "|")) {
+            throw "lifecycle '$($item.name)' status inventory differs from source enum '$($item.source_enum)' (source: $($sourceSet -join ', '); documented: $($documentedSet -join ', '))"
+        }
+
+        foreach ($status in $item.statuses) {
+            if ($item.category -eq "execution" -and $null -eq $status.target) {
+                throw "execution status '$($item.name).$($status.name)' must map to a target execution status"
+            }
+            if ($null -ne $status.target -and $requiredExecution -notcontains $status.target) {
+                throw "status '$($item.name).$($status.name)' maps to unknown target '$($status.target)'"
+            }
+        }
+        foreach ($transition in $item.transitions) {
+            if ($documentedStatuses -notcontains $transition.from -or $documentedStatuses -notcontains $transition.to) {
+                throw "lifecycle '$($item.name)' transition references unknown status '$($transition.from) -> $($transition.to)'"
             }
         }
     }

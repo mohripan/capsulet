@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001 -->
 # Architecture Overview
 
 Capsulet is a correctness-first AI-agent workflow platform with three layers. The implemented
@@ -9,6 +9,11 @@ admission-controlled effects, and the unified IR remain planned.
 
 Governed memory is a major subsystem for sources, evidence, entities, claims, relationships,
 contracts, nested contexts, review queues, and conflicts; it is not the complete product identity.
+
+Execution state and assurance verdict are separate. Current successful run states never imply an
+`accepted` verdict; missing correctness-plane execution is `unverified`. See the
+[lifecycle and assurance contract](contracts/lifecycle-and-assurance.md) for the enum inventory and
+lossy mappings to the target lifecycle.
 
 The detailed system design and implementation boundaries are in the repository-level [ARCHITECTURE.md](../ARCHITECTURE.md).
 

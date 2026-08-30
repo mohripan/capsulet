@@ -61,6 +61,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-JOB-001` | implemented | capability | The job worker leases queued work, renews ownership, executes through stub, process, WASI Python, or Kubernetes adapters, and stores logs and artifacts. |
 
+## Lifecycle and assurance
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-LIFECYCLE-001` | implemented | compatibility | Execution status and assurance verdict are independent; every current persisted status is explicitly mapped without treating successful execution as verified output. |
+
 ## Observability and operations
 
 | ID | Maturity | Kind | Claim |
