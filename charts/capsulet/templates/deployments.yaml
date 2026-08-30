@@ -107,6 +107,10 @@ spec:
               value: "0.0.0.0:8082"
             {{- end }}
             {{- if eq $name "worker" }}
+            - name: CAPSULET_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: CAPSULET_RUNNER_MODE
               value: {{ $root.Values.worker.runner.mode | quote }}
             - name: CAPSULET_EXECUTION_NAMESPACE

@@ -22,7 +22,7 @@ Capsulet is a local-first AI memory platform in progress. It turns documents, co
 - stub, trusted local process, WASI Python, and Kubernetes Job runners
 - S3-compatible or filesystem artifact storage
 - enforced execution-pool concurrency, cancellation, timeouts, delayed retry, and stale-lease recovery
-- owner-bound worker heartbeats that prevent stale workers from finalizing reassigned work
+- owner-bound worker heartbeats and finalization that fence stale workers after lease adoption
 - workflow resume from successful step checkpoints after failure or timeout
 - Kubernetes Job reattachment after worker failure
 - API, worker, scheduler, and evaluator health and Prometheus metrics endpoints
@@ -94,7 +94,7 @@ proposer -> kernel (deterministic) -> certificate
 
 PostgreSQL is the source of truth. Agent graph definitions, agent definitions, agent runs, state snapshots, and trace events are persisted durably. The runtime can be driven by a worker in later slices without changing the graph or run model.
 
-The existing job runner path remains durable as the lower-level execution substrate. A worker atomically leases a queued job, records the attempt, and renews the lease while execution is active. If the worker disappears, the expired lease is requeued. Lease ownership is checked during heartbeat and finalization, so an old worker cannot overwrite a newer attempt.
+The existing job runner path remains durable as the lower-level execution substrate. A worker atomically leases a queued job, records the attempt, and renews the lease while execution is active. After lease expiry, non-reattachable work is requeued; Kubernetes work can be adopted by another worker without incrementing the attempt count. Heartbeat and finalization both require the current lease owner, so the previous worker cannot commit a result after adoption. See [ADR 0013](docs/adr/0013-owner-bound-finalization-for-adoptable-job-attempts.md).
 
 Compatibility workflow nodes still have durable step runs. Successful nodes are checkpoints: their metadata and artifacts remain complete even when another branch fails. Calling the resume endpoint removes only unsuccessful attempts and lets the scheduler reconstruct the missing runnable nodes from the saved graph state.
 

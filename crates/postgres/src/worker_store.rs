@@ -53,10 +53,11 @@ impl WorkerStore for PostgresStore {
         &self,
         id: &capsulet_core::JobRunId,
         attempt_count: u32,
+        worker_id: &str,
         status: capsulet_core::JobRunStatus,
         retry_delay_seconds: Option<u64>,
     ) -> Result<Option<JobRun>, Self::Error> {
-        self.finish_running_attempt(id, attempt_count, status, retry_delay_seconds)
+        self.finish_running_attempt(id, attempt_count, worker_id, status, retry_delay_seconds)
             .await
     }
 

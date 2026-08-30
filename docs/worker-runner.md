@@ -210,6 +210,15 @@ While a runner is active, the worker refreshes `heartbeat_at` and extends `lease
 
 At the beginning of each tick, the worker requeues expired `leased` runs. For an expired running Kubernetes attempt, a replacement worker atomically adopts the lease and reattaches to the deterministic run/attempt Job after validating its ownership labels. No new attempt or replacement Job is created. Non-reattachable runners requeue the run and retain at-least-once behavior.
 
+Adoption changes `lease_owner` but deliberately preserves `attempt_count`. Finalization is therefore
+guarded by run ID, attempt count, `status = running`, and the finalizing worker's lease-owner ID in
+one PostgreSQL update. If another worker has adopted the attempt, the stale worker updates no row.
+This ownership rule applies to terminal results and retry scheduling.
+
+`CAPSULET_WORKER_ID` must be unique among concurrently active workers. Helm supplies the pod name
+through the Kubernetes downward API; manually launched replicas must set distinct values. See
+[ADR 0013](adr/0013-owner-bound-finalization-for-adoptable-job-attempts.md).
+
 ## Health Endpoints
 
 The worker starts a health listener at `CAPSULET_WORKER_HEALTH_ADDR` (default `0.0.0.0:8081`):

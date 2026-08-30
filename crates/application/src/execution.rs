@@ -67,10 +67,12 @@ pub trait WorkerStore: Clone + Send + Sync + 'static {
 
     async fn find_run(&self, id: &capsulet_core::JobRunId) -> Result<Option<JobRun>, Self::Error>;
 
+    /// Finishes an attempt only while the calling worker still owns its lease.
     async fn finish_running_attempt(
         &self,
         id: &capsulet_core::JobRunId,
         attempt_count: u32,
+        worker_id: &str,
         status: JobRunStatus,
         retry_delay_seconds: Option<u64>,
     ) -> Result<Option<JobRun>, Self::Error>;
@@ -325,7 +327,13 @@ where
     };
 
     let latest = store
-        .finish_running_attempt(run.id(), run.attempt_count(), final_status, retry_delay)
+        .finish_running_attempt(
+            run.id(),
+            run.attempt_count(),
+            worker_id,
+            final_status,
+            retry_delay,
+        )
         .await
         .map_err(WorkerError::store)?;
     store

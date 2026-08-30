@@ -42,7 +42,7 @@ Workers are horizontally scalable when they share the same database and object s
 
 Recommended settings:
 
-- unique `CAPSULET_WORKER_ID` per replica
+- unique `CAPSULET_WORKER_ID` per replica (Helm derives this from the pod name)
 - `CAPSULET_WORKER_LOOP=true`
 - `CAPSULET_WORKER_POLL_SECONDS=1-5`
 - pool concurrency sized to Kubernetes cluster capacity

@@ -932,6 +932,80 @@ async fn expired_running_lease_is_adopted_without_new_attempt_when_database_is_a
 }
 
 #[tokio::test]
+async fn stale_worker_cannot_finalize_attempt_adopted_by_another_worker_when_database_is_available()
+{
+    let Some(database_url) = database_url() else {
+        return;
+    };
+    let store = PostgresStore::connect(&database_url)
+        .await
+        .expect("connect");
+    store.migrate().await.expect("migrate");
+    let definition = JobDefinition::hello_python();
+    store
+        .upsert_job_definition(&definition)
+        .await
+        .expect("definition");
+    let pool = unique_id("finalize_owner_pool");
+    let run = JobRun::new(
+        JobRunId::new(unique_id("finalize_owner_run")).expect("run id"),
+        definition.id().clone(),
+        ExecutionPoolName::new(pool.clone()).expect("pool"),
+    );
+    store.save(&run).await.expect("save");
+
+    let mut running = store
+        .lease_next_queued_run_with_pool_limits("worker-a", 60, &[(pool.clone(), 1)])
+        .await
+        .expect("lease")
+        .expect("run");
+    running
+        .apply(JobRunTransition::StartAttempt)
+        .expect("start");
+    store.save(&running).await.expect("save running");
+    sqlx::query("UPDATE job_runs SET lease_expires_at = now() - interval '1 second' WHERE id = $1")
+        .bind(running.id().as_str())
+        .execute(store.pool())
+        .await
+        .expect("expire lease");
+
+    store
+        .recover_expired_leases_for_runner(true)
+        .await
+        .expect("recover");
+    let adopted = store
+        .lease_next_queued_run_with_pool_limits_and_reattach("worker-b", 60, &[(pool, 1)], true)
+        .await
+        .expect("adopt")
+        .expect("running run");
+
+    let stale_finish = store
+        .finish_running_attempt(
+            running.id(),
+            running.attempt_count(),
+            "worker-a",
+            JobRunStatus::Succeeded,
+            None,
+        )
+        .await
+        .expect("reject stale finalization");
+    assert!(stale_finish.is_none());
+
+    let current_finish = store
+        .finish_running_attempt(
+            adopted.id(),
+            adopted.attempt_count(),
+            "worker-b",
+            JobRunStatus::Succeeded,
+            None,
+        )
+        .await
+        .expect("finalize adopted attempt")
+        .expect("worker-b still owns the attempt");
+    assert_eq!(current_finish.status(), JobRunStatus::Succeeded);
+}
+
+#[tokio::test]
 async fn finds_job_definition_when_database_is_available() {
     let Some(database_url) = database_url() else {
         return;

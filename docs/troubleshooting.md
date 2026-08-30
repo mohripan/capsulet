@@ -71,7 +71,7 @@ The worker recovers expired non-terminal leases before leasing new work. Start a
 cargo run -p capsulet-worker
 ```
 
-While execution is healthy, the worker updates `heartbeat_at` and extends the lease. Check worker logs and PostgreSQL readiness if heartbeats stop. If the run was already executing in Kubernetes, the current worker does not reattach to the existing Kubernetes Job; recovery may create replacement work after the lease expires.
+While execution is healthy, the worker updates `heartbeat_at` and extends the lease. Check worker logs and PostgreSQL readiness if heartbeats stop. For Kubernetes runners, another worker adopts an expired `running` lease and reattaches to the deterministic Job for the same attempt. Other runner modes requeue expired work for at-least-once execution. Finalization succeeds only for the current `lease_owner`; verify that manually launched replicas have distinct `CAPSULET_WORKER_ID` values. Helm assigns the pod name automatically.
 
 ## Kubernetes Jobs Do Not Start
 

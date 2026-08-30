@@ -107,6 +107,7 @@ impl WorkerStore for FakeStore {
         &self,
         id: &capsulet_core::JobRunId,
         attempt_count: u32,
+        _worker_id: &str,
         status: capsulet_core::JobRunStatus,
         _retry_delay_seconds: Option<u64>,
     ) -> Result<Option<JobRun>, Self::Error> {

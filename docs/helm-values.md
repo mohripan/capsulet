@@ -41,6 +41,10 @@ Each component supports:
 - `image.repositorySuffix`
 - `resources`
 
+Worker pods receive a unique `CAPSULET_WORKER_ID` from their pod name. Lease heartbeats and
+finalization use this identity to reject results from a worker after another replica adopts its
+expired lease.
+
 API and dashboard also expose service settings.
 
 Dashboard API configuration:

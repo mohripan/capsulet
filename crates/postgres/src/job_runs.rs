@@ -290,7 +290,7 @@ impl PostgresStore {
         self.find_by_id(id).await
     }
 
-    /// Finishes a running attempt only if no newer state has replaced it.
+    /// Finishes a running attempt only if the calling worker still owns it.
     ///
     /// # Errors
     ///
@@ -299,6 +299,7 @@ impl PostgresStore {
         &self,
         id: &JobRunId,
         attempt_count: u32,
+        worker_id: &str,
         status: JobRunStatus,
         retry_delay_seconds: Option<u64>,
     ) -> Result<Option<JobRun>, PostgresStoreError> {
@@ -309,14 +310,15 @@ impl PostgresStore {
             r"
             UPDATE job_runs
             SET
-                status = $3,
+                status = $4,
                 lease_owner = NULL,
                 lease_expires_at = NULL,
                 heartbeat_at = NULL,
-                retry_ready_at = now() + ($4 * interval '1 second'),
+                retry_ready_at = now() + ($5 * interval '1 second'),
                 updated_at = now()
             WHERE id = $1
               AND attempt_count = $2
+              AND lease_owner = $3
               AND status = 'running'
             RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count, created_at::text AS created_at
             "
@@ -324,7 +326,7 @@ impl PostgresStore {
             r"
             UPDATE job_runs
             SET
-                status = $3,
+                status = $4,
                 lease_owner = NULL,
                 lease_expires_at = NULL,
                 heartbeat_at = NULL,
@@ -332,6 +334,7 @@ impl PostgresStore {
                 updated_at = now()
             WHERE id = $1
               AND attempt_count = $2
+              AND lease_owner = $3
               AND status = 'running'
             RETURNING id, job_definition_id, status, execution_pool, input::text AS input, attempt_count, created_at::text AS created_at
             "
@@ -340,6 +343,7 @@ impl PostgresStore {
         let mut query = sqlx::query(query)
             .bind(id.as_str())
             .bind(i32::try_from(attempt_count).map_err(|_| PostgresStoreError::AttemptOverflow)?)
+            .bind(worker_id)
             .bind(status_value);
         if let Some(delay) = retry_delay_seconds {
             query = query.bind(i32::try_from(delay).map_err(|_| {

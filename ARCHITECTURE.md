@@ -90,9 +90,9 @@ It exposes health endpoints on a separate listener (default `0.0.0.0:8082`). `/l
 
 ### Worker (`capsulet-worker`)
 
-The worker is the job-run runtime. Environment parsing, polling, runner selection, and health endpoints live in `capsulet-worker`; the lease-and-run use case lives in `capsulet-application::execution`. Before leasing work it promotes ready retries and recovers expired leases. It then leases the oldest queued run with `FOR UPDATE SKIP LOCKED`, creates an attempt, executes through a runner, persists logs and artifacts, and commits a guarded terminal or retry state.
+The worker is the job-run runtime. Environment parsing, polling, runner selection, and health endpoints live in `capsulet-worker`; the lease-and-run use case lives in `capsulet-application::execution`. Before leasing work it promotes ready retries and recovers expired leases. It then leases the oldest queued run with `FOR UPDATE SKIP LOCKED` or adopts an expired reattachable attempt, executes through a runner, persists logs and artifacts, and commits an owner-guarded terminal or retry state.
 
-For long-running work, a heartbeat task refreshes `heartbeat_at` and extends `lease_expires_at`. The worker health listener defaults to `0.0.0.0:8081`; readiness depends on PostgreSQL.
+For long-running work, a heartbeat task refreshes `heartbeat_at` and extends `lease_expires_at` only while `lease_owner` matches the worker. Finalization uses the same ownership check. The worker health listener defaults to `0.0.0.0:8081`; readiness depends on PostgreSQL.
 
 ### Runner library (`capsulet-runner`)
 
@@ -209,7 +209,7 @@ sequenceDiagram
     Client->>API: POST /v1/jobs/runs
     API->>DB: validate definition/pool and insert queued run
     Worker->>DB: promote retries and recover expired leases
-    Worker->>DB: lease queued run and create attempt
+    Worker->>DB: lease queued run or adopt expired running attempt
     loop while execution is active
         Worker->>DB: heartbeat lease
     end
@@ -218,7 +218,8 @@ sequenceDiagram
     Runner->>Kube: create/watch/delete Job (Kubernetes mode)
     Runner-->>Worker: outcome, logs, artifacts
     Worker->>Store: upload large log and artifact bytes
-    Worker->>DB: save metadata and guarded final state
+    Worker->>DB: save metadata
+    Worker->>DB: finalize if run, attempt, status, and lease owner match
     Client->>API: read status/logs/artifacts
 ```
 
@@ -232,7 +233,8 @@ stateDiagram-v2
     queued --> leased: worker lease
     leased --> running: attempt starts
     leased --> queued: expired lease recovery
-    running --> queued: expired lease recovery
+    running --> queued: expired lease (non-reattachable runner)
+    running --> running: expired lease adoption (reattachable runner)
     running --> succeeded
     running --> failed
     running --> timed_out
@@ -248,7 +250,7 @@ stateDiagram-v2
     cancelled --> [*]
 ```
 
-Transitions are represented by `JobRunTransition` and validated in the domain. Store updates use status/lease guards so a stale worker result cannot overwrite cancellation or another owner's state.
+Transitions are represented by `JobRunTransition` and validated in the domain. A finalization update must match the run ID, attempt count, `running` status, and current `lease_owner`. Attempt count alone is insufficient because Kubernetes adoption preserves the existing attempt. The owner predicate prevents a stale worker result from overwriting cancellation or another owner's state; see [ADR 0013](docs/adr/0013-owner-bound-finalization-for-adoptable-job-attempts.md).
 
 ## Compatibility workflow DAG execution
 
@@ -311,12 +313,12 @@ The worker service account can create, watch, and delete Kubernetes Jobs and ins
 - PostgreSQL is the durable queue; workers coordinate with row locks and leases.
 - API admission can reject manual job submissions and manual workflow triggers before persistence when configured queue-depth caps are reached.
 - Workers periodically heartbeat active runs and extend leases.
-- Expired `leased` and `running` rows are requeued.
+- Expired `leased` rows are requeued. Expired `running` rows are requeued for non-reattachable runners or adopted in place for Kubernetes reattachment.
 - API, scheduler, and worker expose liveness/readiness endpoints; readiness checks PostgreSQL.
 - Compose and Helm configure restart policies/probes for long-running services.
 - Retry policy is fixed delay per job definition; cancellation is terminal.
 
-Recovery is at-least-once. Kubernetes Job names and labels encode the run and attempt; after lease expiry a replacement worker adopts the same attempt, validates the existing Job identity, and resumes watching it.
+Recovery is at-least-once. Kubernetes Job names and labels encode the run and attempt; after lease expiry a replacement worker adopts the same attempt, validates the existing Job identity, and resumes watching it. Adoption changes `lease_owner` without changing `attempt_count`, and only that owner may heartbeat or finalize. Worker IDs must be unique among active replicas; Helm derives them from pod names.
 
 ## Security boundaries
 
