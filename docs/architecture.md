@@ -1,7 +1,14 @@
 <!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001 -->
 # Architecture Overview
 
-Capsulet stores durable AI memory and agent execution state in PostgreSQL. The product center is a governed, claim-first memory graph for private AI agents: sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identities, review queues, and contradiction handling. Typed agent execution graphs and the job runner stack provide the runtime substrate: graph nodes call tools, models, retrieval, validation, and memory adapters, while Kubernetes, local process, WASI Python, and stub runners execute deterministic jobs.
+Capsulet is a correctness-first AI-agent workflow platform with three layers. The implemented
+workflow engine runs durable jobs and compatibility DAGs. The experimental agent platform stores
+typed static graphs, agent definitions, traces, budgets, and governed memory. The correctness plane
+has an implemented deterministic kernel/certificate slice, while runtime-wide assurance,
+admission-controlled effects, and the unified IR remain planned.
+
+Governed memory is a major subsystem for sources, evidence, entities, claims, relationships,
+contracts, nested contexts, review queues, and conflicts; it is not the complete product identity.
 
 The detailed system design and implementation boundaries are in the repository-level [ARCHITECTURE.md](../ARCHITECTURE.md).
 

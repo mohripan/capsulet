@@ -76,6 +76,21 @@ foreach ($expectedSurface in $expectedPublicSurfaces) {
     }
 }
 
+$forbiddenPublicPhrases = @(
+    "Capsulet is a local-first AI memory platform",
+    "governed AI memory platform first",
+    "Kubernetes-native automation platform and sandboxed job runner",
+    "public-alpha stack"
+)
+foreach ($surface in $mainRegistry.public_surfaces) {
+    $surfaceContent = Get-Content -LiteralPath (Join-Path $repositoryRoot $surface.path) -Raw
+    foreach ($phrase in $forbiddenPublicPhrases) {
+        if ($surfaceContent.Contains($phrase)) {
+            $failures.Add("public surface '$($surface.path)' contains superseded product language '$phrase'")
+        }
+    }
+}
+
 $invalidCases = @(
     @{ File = "duplicate-ids.json"; Message = "duplicate claim ID" },
     @{ File = "unknown-maturity.json"; Message = "invalid maturity" },

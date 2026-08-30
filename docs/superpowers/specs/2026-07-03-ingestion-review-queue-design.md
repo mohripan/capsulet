@@ -1,5 +1,8 @@
 # Ingestion Review Queue Design
 
+> **Implemented subsystem design.** Review queues remain governed-memory infrastructure under the
+> correctness-first product constitution.
+
 ## Status
 
 Approved for implementation.

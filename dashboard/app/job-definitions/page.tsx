@@ -179,7 +179,7 @@ export default function JobDefinitionsPage() {
       <PageHeader
         eyebrow="Authoring"
         title="Create reusable Python job definitions"
-        description="Define scripts once, then submit them directly or compose them into workflows in the next MVP slice."
+        description="Define deterministic tool scripts, then submit them directly or compose them into implemented compatibility workflows."
       />
 
       <section className="contentGrid">

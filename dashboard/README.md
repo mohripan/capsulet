@@ -1,7 +1,10 @@
 <!-- capsulet-claims: CAP-PRODUCT-001, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-DASHBOARD-001, CAP-DASHBOARD-002 -->
 # Capsulet Dashboard
 
-This is a Next.js dashboard for Capsulet. The dashboard is connected to the live API for authentication, job definitions, workflows, automations, run detail, cancellation, logs, artifact listing, artifact download, identity, and audit events.
+This experimental Next.js dashboard covers the current workflow engine, agent-platform subsystems,
+and operations. Its API transport is handwritten. Settings and fallback overview data are visibly
+demonstrative; graph execution, assurance, and certificate views planned by the constitution are
+not yet implemented.
 
 ## Requirements
 

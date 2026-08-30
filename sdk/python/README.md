@@ -1,7 +1,9 @@
 <!-- capsulet-claims: CAP-WORKFLOW-001, CAP-SDK-001 -->
 # Capsulet Python SDK
 
-Define Python tasks with decorators, infer dependencies from function calls, and deploy the resulting workflow to Capsulet.
+**Experimental compatibility SDK.** Define Python tasks with decorators, infer dependencies from
+function calls, and deploy the resulting compatibility workflow to Capsulet. This authoring layer
+does not yet target the planned unified verified-computation IR, and its transport is handwritten.
 
 ```python
 from capsulet import CapsuletClient, task, workflow

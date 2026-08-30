@@ -1,5 +1,9 @@
 # Typed Agent RAG Runtime Design
 
+> **Superseded as product direction.** Retained as project history and for its typed hypergraph,
+> budget, provider, and tracing work. The 2026-08-30 correctness-first platform constitution wins
+> where this design permits opaque state, static-only execution, or optional correctness.
+
 ## Context
 
 Capsulet is currently a Kubernetes-native automation control plane for durable Python jobs, workflow DAGs, triggers, logs, artifacts, retries, execution pools, and operational inspection. The project has not been published yet, so the product direction can change without preserving every internal API.

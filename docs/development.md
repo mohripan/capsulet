@@ -1,7 +1,10 @@
 <!-- capsulet-claims: CAP-PRODUCT-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
 # Development
 
-This guide describes the current development workflow for Capsulet. The project direction is governed AI memory. The current foundation is typed agent execution graphs; the existing job/workflow stack remains in place as deterministic tool execution and compatibility infrastructure.
+This guide covers development of Capsulet's three layers: the implemented compatibility workflow
+engine, the experimental agent platform (including governed memory), and the correctness plane.
+Only the deterministic kernel slice of the correctness plane is implemented today; the unified IR
+and runtime-wide enforcement remain planned.
 
 ## Required Tools
 

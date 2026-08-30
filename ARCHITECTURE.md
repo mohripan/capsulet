@@ -1,13 +1,26 @@
 <!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001 -->
 # Capsulet Architecture
 
-This document describes the architecture implemented in this repository. Capsulet is a local-first AI memory platform: a governed graph memory layer for private agents that need to reason over a user's or company's own data. The implemented system combines typed agent execution graphs with a claim-first memory substrate for sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identity, review queues, and contradiction handling. Python jobs and workflow DAGs remain as compatibility infrastructure and deterministic execution tools for agent systems.
+This document describes the architecture implemented in this repository. Capsulet is a
+correctness-first AI-agent workflow platform. Its current workflow engine provides durable jobs,
+runners, and compatibility DAGs; its experimental agent platform provides typed static graphs and
+governed memory; and its correctness plane currently provides a deterministic kernel slice rather
+than runtime-wide admission. The target architecture and precedence rules are defined by the
+[product constitution](docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md).
 
 For a shorter operator-facing overview, see [docs/architecture.md](docs/architecture.md). Architecture decisions are recorded under [docs/adr](docs/adr).
 
 ## Scope and maturity
 
-The current system provides an authenticated PostgreSQL-backed control plane, governed memory graph persistence, typed execution-graph and agent persistence, an application-level agent runtime, a Memory Studio dashboard, filesystem or S3-compatible object storage, and stub, local-process, WASI Python, and Kubernetes Job execution backends.
+**Implemented now:** an authenticated PostgreSQL-backed control plane, deterministic job execution,
+compatibility workflow DAGs, governed-memory records, typed graph/agent definitions, a testable
+application agent runtime, dashboard, object storage, and runner adapters.
+
+**Experimental:** agent and memory APIs, automations, the handwritten dashboard and SDK, Helm
+self-hosting, and operational integrations.
+
+**Planned:** one trust-typed workflow IR, a dedicated durable graph worker, platform assurance and
+protected-boundary admission, generated clients, and the public-alpha release gate.
 
 PostgreSQL is the implemented durable event and coordination channel. Kafka remains an optional future scaling path. Hostile multi-tenant workloads should configure a sandboxed Kubernetes RuntimeClass such as gVisor or Kata in addition to the enforced pod security and default-deny network policy.
 

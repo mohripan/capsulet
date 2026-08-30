@@ -1,6 +1,10 @@
 <!-- capsulet-claims: CAP-AGENT-001, CAP-AGENT-002, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
 # Operations
 
+This guide operates the implemented workflow/job services and experimental agent, automation, and
+Helm surfaces. It does not imply that the planned durable graph worker or runtime-wide correctness
+admission exists.
+
 ## Agent runtime observability
 
 Agent runs persist their current state in `agent_runs`, every state version in `agent_state_snapshots`, and runtime decisions in `agent_trace_events`. Until the dedicated agent worker and HTTP trace endpoints land, operational inspection is database-level: check run status, state version progression, and trace sequence continuity for a run.

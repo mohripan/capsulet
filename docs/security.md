@@ -1,6 +1,10 @@
 <!-- capsulet-claims: CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Security
 
+**Current maturity:** authentication and several execution constraints are implemented; project IAM
+coverage and Helm bootstrap remain experimental. Capsulet does not claim a complete hostile-code
+sandbox, and the planned correctness plane is not a security boundary.
+
 Capsulet has two authentication paths:
 
 - OIDC JWT bearer tokens from Keycloak for human dashboard users.

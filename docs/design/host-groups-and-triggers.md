@@ -1,5 +1,9 @@
 # Host Groups and Trigger Model
 
+> Implemented compatibility design. Host groups/execution pools and workflow-targeting triggers
+> remain useful infrastructure, but the correctness-first product constitution now defines the
+> product direction and future automations target the unified workflow IR.
+
 ## Product Direction
 
 Capsulet should present host groups as the user-facing routing concept. A host group is a named set of eligible execution hosts. A host may be a Kubernetes node, a Kubernetes-backed runner target, or a future external agent such as an EC2 instance.

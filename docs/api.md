@@ -1,7 +1,10 @@
 <!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001 -->
 # API
 
-Capsulet's API exposes governed memory graph primitives, ingestion review, entity-resolution review, claim-conflict review, typed agent execution graph authoring, agent definitions, agent runs, job/tool definitions, compatibility workflow authoring, automation triggers, cancellation, status inspection, log inspection, and artifact retrieval.
+Capsulet's current experimental API spans the implemented compatibility workflow engine,
+experimental agent and governed-memory resources, and a narrow deterministic correctness-kernel
+slice. The handwritten OpenAPI document is incomplete until the generated-contract tasks in M0 are
+complete; runtime route behavior is authoritative in the meantime.
 
 Memory records are tenant/project scoped and claim-first: claims, events, and relationships must reference evidence. Ingestion can propose candidate claims, reviewers approve or reject them, and approving a claim can create a conflict review item when another active claim has the same subject and predicate but a different object.
 

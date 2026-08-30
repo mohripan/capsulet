@@ -7,9 +7,9 @@ export default function SettingsPage() {
   return (
     <DashboardShell actionLabel="Save changes">
       <PageHeader
-        eyebrow="Configuration"
-        title="Configure platform defaults"
-        description="Set the defaults that will eventually map to Helm values, API-managed resources, and operator policies."
+        eyebrow="Planned · Demonstration only"
+        title="Platform settings preview"
+        description="These static examples do not save configuration. Future settings will map to versioned operator policies and API-managed resources."
       />
 
       <section className="contentGrid">

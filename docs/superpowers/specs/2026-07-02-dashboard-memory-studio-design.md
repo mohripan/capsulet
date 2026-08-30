@@ -1,5 +1,9 @@
 # Capsulet Dashboard Memory Studio Design
 
+> **Implemented subsystem design.** Memory Studio remains an experimental governed-memory surface;
+> it is not Capsulet's complete product identity. The correctness-first constitution defines the
+> broader dashboard direction.
+
 ## Status
 
 Approved direction for implementation planning.

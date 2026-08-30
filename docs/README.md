@@ -1,7 +1,14 @@
 <!-- capsulet-claims: CAP-PRODUCT-001 -->
 # Documentation
 
-This directory contains product, architecture, operations, security, and design documentation for Capsulet. Current product docs should describe Capsulet as a local-first, governed AI memory platform first; compatibility workflow material is retained where it documents the deterministic tool substrate.
+Capsulet is a correctness-first AI-agent workflow platform. This directory contains its current
+product, architecture, operations, security, contract, and historical design documentation.
+
+Use [Public contracts](contracts/README.md) for claim maturity and evidence, and the
+[product constitution](superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md)
+for target direction. Current behavior has three explicit layers: an implemented compatibility
+workflow engine, an experimental agent platform (including governed memory), and an implemented
+kernel slice within a broader planned correctness plane.
 
 Suggested layout:
 
@@ -9,6 +16,7 @@ Suggested layout:
 - `design/`: focused design notes before implementation
 - `operations/`: installation, upgrades, observability, and troubleshooting
 - `security/`: sandboxing, threat model, and hardening guidance
+- `contracts/`: normative claim, lifecycle, stability, migration, and SDK policies
 
 Current docs:
 
@@ -16,7 +24,8 @@ Current docs:
 - [Installation](installation.md)
 - [Architecture](architecture.md)
 - [Detailed repository architecture](../ARCHITECTURE.md)
-- [Correctness architecture](design/correctness-architecture.md) — proposed direction, not implemented
+- [Correctness architecture](design/correctness-architecture.md) — partially implemented historical
+  foundation; superseded by the constitution where they conflict
 - [API](api.md)
 - [Helm values](helm-values.md)
 - [Persistence](persistence.md)

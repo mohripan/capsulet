@@ -37,7 +37,7 @@ export default function LoginPage() {
       <section className="loginCard" aria-labelledby="login-title">
         <div className="loginBrand">
           <span className="brandMark"><Box size={22} aria-hidden="true" /></span>
-          <div><strong>Capsulet</strong><span>Automation control plane</span></div>
+          <div><strong>Capsulet</strong><span>Correctness-first agent workflows</span></div>
         </div>
         <div className="loginIntro">
           <span className="loginEyebrow"><KeyRound size={15} aria-hidden="true" /> Restricted console</span>

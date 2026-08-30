@@ -1,5 +1,8 @@
 # Nested Memory Graphs Design
 
+> **Implemented subsystem design.** Nested memory graphs remain part of governed memory, which the
+> correctness-first constitution treats as one major subsystem of the agent platform.
+
 Date: 2026-07-02
 
 ## Purpose

@@ -92,7 +92,7 @@ export function MemoryWorkbenchPage() {
     >
       <ErrorList errors={errors} />
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1.55fr)_380px]">
-        <Panel className="min-h-[470px]" title="Nested Memory Graph" meta={selected ? selected.id : "sample topology"}>
+        <Panel className="min-h-[470px]" title="Nested Memory Graph" meta={selected ? selected.id : "demonstration topology"}>
           <GraphCanvas subgraphs={graphNodes} entities={entities} />
         </Panel>
         <div className="grid content-start gap-3">

@@ -1,7 +1,15 @@
 <!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Capsulet
 
-Capsulet is a local-first AI memory platform in progress. It turns documents, conversations, code, and tools into governed graph memory for private AI agents. The implemented foundation now includes typed agent execution graphs plus a claim-first memory substrate: sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identity, review queues, and contradiction handling. The workflow/job runner stack remains as the deterministic execution substrate for tools and compatibility use cases.
+Capsulet is a correctness-first AI-agent workflow platform for building and operating workflows
+whose important outputs can be inspected, checked, and governed.
+
+The product has three layers: an implemented workflow/job engine for deterministic execution and
+compatibility, an experimental agent platform with typed graphs and governed memory, and a
+correctness plane whose deterministic kernel is implemented but whose runtime-wide admission and
+assurance model is planned. See the
+[product constitution](docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md)
+and the [public claim registry](docs/contracts/product-claims.md) for the authoritative boundaries.
 
 ![Capsulet workflow dashboard](docs/images/capsulet-dashboard.png)
 
@@ -30,12 +38,22 @@ Capsulet is a local-first AI memory platform in progress. It turns documents, co
 - configurable artifact, log, trigger-event, and audit retention cleanup
 - Docker Compose for local use and a Helm chart for Kubernetes
 
-## Foundation: Agent Graphs and Memory Graphs
+## Product layers
 
-Capsulet is centered on governed AI memory, not plain workflow orchestration. There are two graph layers:
+Capsulet is organized as three cooperating layers:
 
-- **Agent execution graph:** the implemented foundation. Nodes describe actions such as prompt building, retrieval, model inference, validation, and memory operations; ports and hyperedges describe how typed values move between nodes and run state.
-- **Memory graph:** the governed knowledge layer. It models claims, entities, events, relationships, evidence, permissions, confidence, source authority, contradictions, temporal validity, and nested memory contexts.
+- **Workflow engine (implemented compatibility infrastructure):** durable jobs, runners, workflow
+  DAGs, triggers, retries, cancellation, logs, and artifacts.
+- **Agent platform (experimental):** typed agent definitions and static execution graphs, budgets,
+  opaque JSON state snapshots, traces, and governed-memory adapters. There is not yet a dedicated
+  production agent worker.
+- **Correctness plane (implemented kernel slice; planned platform enforcement):** proposals,
+  deterministic checks, evidence, residual obligations, and certificates. Runtime-wide protected
+  boundary admission and the unified verified-computation IR are not implemented yet.
+
+Governed memory is a major agent-platform subsystem, not Capsulet's complete identity. It models
+claims, entities, events, relationships, evidence, permissions, source authority, contradictions,
+review state, and nested contexts.
 
 An agent definition binds a graph to an enterprise control envelope: max steps, tokens, runtime seconds, cost, and explicit termination conditions. An agent run carries a JSON state document. The runtime executes graph nodes through pluggable adapters, writes state snapshots after node completion, appends trace events, and stops on success, failure, or budget/termination policy.
 
@@ -55,12 +73,15 @@ raw text -> source/evidence -> candidate claims -> review -> active memory
                                   entity resolution   conflict inbox
 ```
 
-## Where this is going
+## Correctness direction and current boundary
 
-Nothing in this section is implemented. It is the direction the project is taking, recorded so
-that the reason behind upcoming changes is legible. The full design is in
-[docs/design/correctness-architecture.md](docs/design/correctness-architecture.md) and the
-decision is [ADR 0012](docs/adr/0012-correctness-kernel-and-proposer-checker-split.md).
+The deterministic three-valued kernel and a narrow reasoning/certificate API slice are implemented.
+The four-valued platform assurance model, trust-typed workflow IR, universal admission checks, and
+durable looping graph worker are planned. The full direction is in the
+[product constitution](docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md);
+the narrower proposer/checker foundation remains in
+[docs/design/correctness-architecture.md](docs/design/correctness-architecture.md) and
+[ADR 0012](docs/adr/0012-correctness-kernel-and-proposer-checker-split.md).
 
 The goal is not to replace frontier models. It is to make a small model good enough for complex
 work, by making correctness a property of the system rather than of the model. Small models are

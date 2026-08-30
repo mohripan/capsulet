@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposal. Nothing in this document is implemented. It describes the direction the project is
-taking and the order in which it should be built. Decisions extracted from it are recorded in
+Partially implemented historical foundation. The deterministic kernel, proposer boundary, and a
+narrow certificate API slice exist. The product constitution supersedes this document for the
+unified IR, platform assurance, protected-boundary admission, and release roadmap. Decisions
+extracted from this design are recorded in
 [ADR 0012](../adr/0012-correctness-kernel-and-proposer-checker-split.md).
 
 ## Problem

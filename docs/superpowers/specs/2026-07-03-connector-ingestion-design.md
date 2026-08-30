@@ -1,5 +1,8 @@
 # Connector Ingestion Design
 
+> **Implemented subsystem design.** Connector ingestion remains governed-memory infrastructure
+> under the correctness-first product constitution.
+
 ## Status
 
 Approved direction for implementation planning.

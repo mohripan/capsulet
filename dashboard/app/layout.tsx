@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Capsulet Memory Studio",
-  description: "Local-first governed graph memory platform for private AI agents"
+  title: "Capsulet",
+  description: "Correctness-first AI-agent workflow platform"
 };
 
 export default function RootLayout({
