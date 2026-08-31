@@ -21,7 +21,9 @@
     { "path": "docs/troubleshooting.md", "category": "operations", "marker_required": true },
     { "path": "docs/worker-runner.md", "category": "product-docs", "marker_required": true },
     { "path": "sdk/python/README.md", "category": "sdk", "marker_required": true },
+    { "path": "sdk/python/pyproject.toml", "category": "sdk", "marker_required": true },
     { "path": "dashboard/README.md", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/package.json", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/artifacts/page.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/automations/page.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/components.tsx", "category": "dashboard", "marker_required": true },
@@ -33,8 +35,16 @@
     { "path": "dashboard/app/memory/layout.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/memory/memory-ui.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/memory/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/contracts/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/edges/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/entities/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/ingestion/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/subgraphs/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/memory/traces/page.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/page.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/runs/[id]/page.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/runs/[id]/run-detail-client.tsx", "category": "dashboard", "marker_required": true },
+    { "path": "dashboard/app/runs/page.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/runs/runs-client.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/security/page.tsx", "category": "dashboard", "marker_required": true },
     { "path": "dashboard/app/settings/page.tsx", "category": "dashboard", "marker_required": true },
@@ -49,6 +59,21 @@
     { "path": "charts/capsulet/values.schema.json", "category": "package-metadata", "marker_required": true },
     { "path": "crates/api/openapi.json", "category": "served-openapi", "marker_required": true }
   ],
+  "test_manifest": [
+    { "command": "cargo test -p capsulet-kernel --locked", "tests": [{ "path": "crates/kernel/src/tests.rs", "selector": "accepts_a_citation_that_re_derives_and_contains_its_object" }] },
+    { "command": "cargo test -p capsulet-core --test typed_hypergraph --locked", "tests": [{ "path": "crates/core/tests/typed_hypergraph.rs", "selector": "graph_definition_returns_deterministic_static_order" }] },
+    { "command": "cargo test -p capsulet-application --test agents --locked", "tests": [{ "path": "crates/application/tests/agents.rs", "selector": "agent_service_starts_queued_run_with_initial_state" }] },
+    { "command": "cargo test -p capsulet-core --test memory_core --locked", "tests": [{ "path": "crates/core/tests/memory_core.rs", "selector": "claim_new_rejects_claim_without_evidence" }] },
+    { "command": "cargo test -p capsulet-worker --locked", "tests": [{ "path": "crates/worker/src/tests.rs", "selector": "renews_lease_while_runner_is_active" }] },
+    { "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies", "tests": [{ "path": "crates/api/src/tests.rs", "selector": "creates_and_returns_workflow_dag_dependencies" }] },
+    { "command": "cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering", "tests": [{ "path": "crates/api/src/webhooks.rs", "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering" }] },
+    { "command": "cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens", "tests": [{ "path": "crates/api/src/auth.rs", "selector": "authenticates_configured_roles_without_exposing_tokens" }] },
+    { "command": "npm test --prefix dashboard", "tests": [{ "path": "dashboard/tests/api.test.ts", "selector": "calls nested memory subgraph endpoints" }] },
+    { "command": "python -m unittest discover -s sdk/python/tests -v", "tests": [{ "path": "sdk/python/tests/test_workflow.py", "selector": "test_infers_dependency_and_compiles_artifact_path" }] },
+    { "command": "cargo test -p capsulet-application --test execution_contracts --locked", "tests": [{ "path": "crates/application/tests/execution_contracts.rs", "selector": "worker_tick_outcome_has_stable_metric_names" }] },
+    { "command": "cargo test -p capsulet-api --test openapi_contract --locked", "tests": [{ "path": "crates/api/tests/openapi_contract.rs", "selector": "generated_openapi_should_match_every_runtime_endpoint" }] },
+    { "command": "pwsh ./scripts/tests/check-product-claims.ps1", "tests": [{ "path": "scripts/tests/check-product-claims.ps1", "selector": "invalidLifecycleCases" }] }
+  ],
   "claims": [
     {
       "id": "CAP-PRODUCT-001", "kind": "positioning", "maturity": "planned", "area": "Product identity",
@@ -58,8 +83,9 @@
     },
     {
       "id": "CAP-CORRECTNESS-001", "kind": "capability", "maturity": "implemented", "area": "Correctness kernel",
-      "statement": "The deterministic kernel checks pinned proposals and emits accepted, conditional, or rejected certificates without calling a model or network.",
+      "statement": "The deterministic kernel accepts a pinned citation when it re-derives and contains the cited proposition.",
       "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md"],
+      "verification": [{ "assertion": "accepted-citation", "evidence_selectors": ["accepts_a_citation_that_re_derives_and_contains_its_object"] }],
       "evidence": [{ "type": "test", "path": "crates/kernel/src/tests.rs", "command": "cargo test -p capsulet-kernel --locked", "selector": "accepts_a_citation_that_re_derives_and_contains_its_object" }]
     },
     {
@@ -70,8 +96,9 @@
     },
     {
       "id": "CAP-GRAPH-001", "kind": "capability", "maturity": "implemented", "area": "Graphs and agents",
-      "statement": "Capsulet validates typed agent graph definitions with nodes, ports, hyperedges, transition policy, budgets, and deterministic static ordering.",
+      "statement": "Capsulet returns a deterministic static order for valid acyclic typed agent graph definitions.",
       "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "dashboard/app/components.tsx"],
+      "verification": [{ "assertion": "deterministic-static-order", "evidence_selectors": ["graph_definition_returns_deterministic_static_order"] }],
       "evidence": [{ "type": "test", "path": "crates/core/tests/typed_hypergraph.rs", "command": "cargo test -p capsulet-core --test typed_hypergraph --locked", "selector": "graph_definition_returns_deterministic_static_order" }]
     },
     {
@@ -89,18 +116,18 @@
     {
       "id": "CAP-MEMORY-001", "kind": "capability", "maturity": "experimental", "area": "Governed memory",
       "statement": "Governed memory models sources, evidence, entities, claims, conflicts, contracts, ingestion review, nested subgraphs, and provenance as a major subsystem.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/persistence.md", "dashboard/README.md", "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx", "dashboard/app/memory/page.tsx", "dashboard/app/page.tsx"],
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/persistence.md", "dashboard/README.md", "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx", "dashboard/app/memory/page.tsx", "dashboard/app/memory/contracts/page.tsx", "dashboard/app/memory/edges/page.tsx", "dashboard/app/memory/entities/page.tsx", "dashboard/app/memory/ingestion/page.tsx", "dashboard/app/memory/subgraphs/page.tsx", "dashboard/app/memory/traces/page.tsx", "dashboard/app/page.tsx"],
       "evidence": [{ "type": "test", "path": "crates/core/tests/memory_core.rs", "command": "cargo test -p capsulet-core --test memory_core --locked", "selector": "claim_new_rejects_claim_without_evidence" }]
     },
     {
-      "id": "CAP-JOB-001", "kind": "capability", "maturity": "implemented", "area": "Jobs and runners",
+      "id": "CAP-JOB-001", "kind": "capability", "maturity": "experimental", "area": "Jobs and runners",
       "statement": "The job worker leases queued work, renews ownership, executes through stub, process, WASI Python, or Kubernetes adapters, and stores logs and artifacts.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/installation.md", "docs/local-kubernetes-runner.md", "docs/minikube-smoke.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/troubleshooting.md", "docs/worker-runner.md", "dashboard/README.md", "dashboard/app/artifacts/page.tsx", "dashboard/app/execution-pools/page.tsx", "dashboard/app/job-definitions/page.tsx", "dashboard/app/logs/page.tsx", "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/runs-client.tsx", "examples/send-email/README.md", "charts/capsulet/values.yaml"],
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/installation.md", "docs/local-kubernetes-runner.md", "docs/minikube-smoke.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/troubleshooting.md", "docs/worker-runner.md", "dashboard/README.md", "dashboard/app/artifacts/page.tsx", "dashboard/app/execution-pools/page.tsx", "dashboard/app/job-definitions/page.tsx", "dashboard/app/logs/page.tsx", "dashboard/app/runs/[id]/page.tsx", "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/page.tsx", "dashboard/app/runs/runs-client.tsx", "examples/send-email/README.md", "charts/capsulet/values.yaml"],
       "evidence": [{ "type": "test", "path": "crates/worker/src/tests.rs", "command": "cargo test -p capsulet-worker --locked", "selector": "renews_lease_while_runner_is_active" }]
     },
     {
       "id": "CAP-WORKFLOW-001", "kind": "compatibility", "maturity": "implemented", "area": "Workflow compatibility",
-      "statement": "Compatibility workflow DAGs support validated dependencies, parallel roots, fan-out/fan-in scheduling, durable step state, cancellation, and checkpoint resume.",
+      "statement": "Compatibility workflow DAG creation validates and returns declared step dependencies.",
       "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/persistence.md", "docs/troubleshooting.md", "sdk/python/README.md", "dashboard/README.md", "dashboard/app/automations/page.tsx", "dashboard/app/components.tsx", "dashboard/app/workflows/new/page.tsx", "dashboard/app/workflows/page.tsx", "examples/workflows/README.md"],
       "evidence": [{ "type": "test", "path": "crates/api/src/tests.rs", "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies", "selector": "creates_and_returns_workflow_dag_dependencies" }, { "type": "decision", "path": "docs/adr/0014-correctness-first-agent-workflow-product.md" }]
     },
@@ -125,7 +152,7 @@
     {
       "id": "CAP-DASHBOARD-001", "kind": "capability", "maturity": "experimental", "area": "Dashboard and SDK",
       "statement": "The Next.js dashboard provides authenticated operational and governed-memory views backed by handwritten API calls.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/installation.md", "dashboard/README.md", "dashboard/app/artifacts/page.tsx", "dashboard/app/automations/page.tsx", "dashboard/app/components.tsx", "dashboard/app/execution-pools/page.tsx", "dashboard/app/job-definitions/page.tsx", "dashboard/app/layout.tsx", "dashboard/app/login/page.tsx", "dashboard/app/logs/page.tsx", "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx", "dashboard/app/memory/page.tsx", "dashboard/app/page.tsx", "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/runs-client.tsx", "dashboard/app/security/page.tsx", "dashboard/app/trigger-plugins/page.tsx", "dashboard/app/workflows/new/page.tsx", "dashboard/app/workflows/page.tsx"],
+      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/installation.md", "dashboard/README.md", "dashboard/package.json", "dashboard/app/artifacts/page.tsx", "dashboard/app/automations/page.tsx", "dashboard/app/components.tsx", "dashboard/app/execution-pools/page.tsx", "dashboard/app/job-definitions/page.tsx", "dashboard/app/layout.tsx", "dashboard/app/login/page.tsx", "dashboard/app/logs/page.tsx", "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx", "dashboard/app/memory/page.tsx", "dashboard/app/memory/contracts/page.tsx", "dashboard/app/memory/edges/page.tsx", "dashboard/app/memory/entities/page.tsx", "dashboard/app/memory/ingestion/page.tsx", "dashboard/app/memory/subgraphs/page.tsx", "dashboard/app/memory/traces/page.tsx", "dashboard/app/page.tsx", "dashboard/app/runs/[id]/page.tsx", "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/page.tsx", "dashboard/app/runs/runs-client.tsx", "dashboard/app/security/page.tsx", "dashboard/app/trigger-plugins/page.tsx", "dashboard/app/workflows/new/page.tsx", "dashboard/app/workflows/page.tsx"],
       "evidence": [{ "type": "test", "path": "dashboard/tests/api.test.ts", "command": "npm test --prefix dashboard", "selector": "calls nested memory subgraph endpoints" }]
     },
     {
@@ -137,7 +164,7 @@
     {
       "id": "CAP-SDK-001", "kind": "compatibility", "maturity": "implemented", "area": "Dashboard and SDK",
       "statement": "The experimental Python SDK compiles decorated Python functions into compatibility workflow and job API payloads.",
-      "public_surfaces": ["README.md", "docs/development.md", "sdk/python/README.md", "examples/workflows/README.md"],
+      "public_surfaces": ["README.md", "docs/development.md", "sdk/python/README.md", "sdk/python/pyproject.toml", "examples/workflows/README.md"],
       "evidence": [{ "type": "test", "path": "sdk/python/tests/test_workflow.py", "command": "python -m unittest discover -s sdk/python/tests -v", "selector": "test_infers_dependency_and_compiles_artifact_path" }, { "type": "decision", "path": "docs/adr/0016-public-contract-stability-and-versioning.md" }]
     },
     {
@@ -159,7 +186,7 @@
       "evidence": [{ "type": "source", "path": "charts/capsulet/templates/deployments.yaml" }]
     },
     {
-      "id": "CAP-OPENAPI-001", "kind": "capability", "maturity": "implemented", "area": "HTTP API",
+      "id": "CAP-OPENAPI-001", "kind": "capability", "maturity": "experimental", "area": "HTTP API",
       "statement": "The OpenAPI 3.1 document is generated from shared endpoint metadata, exactly matches all runtime method/path declarations, and is checked for deterministic drift.",
       "public_surfaces": ["docs/api.md", "crates/api/openapi.json"],
       "evidence": [{ "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "generated_openapi_should_match_every_runtime_endpoint" }, { "type": "decision", "path": "docs/adr/0015-code-generated-openapi-contract.md" }]

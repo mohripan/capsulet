@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "exclude": [
+    ".git/**",
+    "target/**",
+    "dashboard/node_modules/**",
+    "dashboard/.next/**",
+    "docs/adr/**",
+    "docs/contracts/**",
+    "docs/design/**",
+    "docs/superpowers/**"
+  ],
+  "rules": [
+    { "category": "root-docs", "include": ["README.md", "ARCHITECTURE.md"], "exclude": [] },
+    { "category": "operations", "include": ["docs/operations.md", "docs/operations/*.md", "docs/troubleshooting.md"], "exclude": [] },
+    { "category": "security", "include": ["docs/security.md", "docs/security/*.md"], "exclude": [] },
+    { "category": "product-docs", "include": ["docs/*.md"], "exclude": ["docs/operations.md", "docs/security.md", "docs/troubleshooting.md"] },
+    { "category": "sdk", "include": ["sdk/*/README.md", "sdk/*/pyproject.toml"], "exclude": [] },
+    {
+      "category": "dashboard",
+      "include": [
+        "dashboard/README.md",
+        "dashboard/package.json",
+        "dashboard/app/**/page.tsx",
+        "dashboard/app/**/layout.tsx",
+        "dashboard/app/components.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/runs/*/*-client.tsx",
+        "dashboard/app/runs/*-client.tsx",
+        "dashboard/app/mock-data.ts"
+      ],
+      "exclude": ["dashboard/app/api/**"]
+    },
+    { "category": "example", "include": ["examples/**/README.md"], "exclude": [] },
+    { "category": "package-metadata", "include": ["charts/*/Chart.yaml", "charts/*/values.yaml", "charts/*/values.schema.json"], "exclude": [] },
+    { "category": "served-openapi", "include": ["crates/api/openapi.json"], "exclude": [] }
+  ]
+}

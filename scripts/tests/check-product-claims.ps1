@@ -22,7 +22,7 @@ function Invoke-ClaimCheck {
         return @{ Succeeded = $true; Output = $captured }
     }
     catch {
-        return @{ Succeeded = $false; Output = ($_ | Out-String) }
+        return @{ Succeeded = $false; Output = $_.Exception.Message }
     }
 }
 
@@ -41,44 +41,17 @@ function Assert-Check {
         $failures.Add("$Name`: expected success=$ShouldSucceed, got success=$($result.Succeeded). $($result.Output)")
         return
     }
-    if ($ExpectedMessage -and $result.Output -notmatch [regex]::Escape($ExpectedMessage)) {
+    $normalizedOutput = [regex]::Replace($result.Output, '\x1B\[[0-?]*[ -/]*[@-~]', '')
+    $normalizedOutput = [regex]::Replace($normalizedOutput, '\s+', ' ')
+    $normalizedExpected = [regex]::Replace($ExpectedMessage, '\s+', ' ')
+    if ($ExpectedMessage -and -not $normalizedOutput.Contains($normalizedExpected)) {
         $failures.Add("$Name`: expected diagnostic '$ExpectedMessage'. Output: $($result.Output)")
     }
 }
 
 Assert-Check -Name "valid registry" -Registry (Join-Path $fixtures "valid-claims.json") -ShouldSucceed $true
 
-$expectedPublicSurfaces = @(
-    "README.md", "ARCHITECTURE.md",
-    "docs/README.md", "docs/api.md", "docs/architecture.md", "docs/dashboard-streaming.md",
-    "docs/development.md", "docs/helm-values.md", "docs/installation.md",
-    "docs/local-kubernetes-runner.md", "docs/minikube-smoke.md", "docs/operations.md",
-    "docs/operations/backup-restore-dr.md", "docs/operations/observability.md",
-    "docs/persistence.md", "docs/security.md", "docs/security/secrets-rotation.md",
-    "docs/troubleshooting.md", "docs/worker-runner.md",
-    "sdk/python/README.md", "dashboard/README.md",
-    "dashboard/app/artifacts/page.tsx", "dashboard/app/automations/page.tsx",
-    "dashboard/app/components.tsx", "dashboard/app/execution-pools/page.tsx",
-    "dashboard/app/job-definitions/page.tsx", "dashboard/app/layout.tsx",
-    "dashboard/app/login/page.tsx", "dashboard/app/logs/page.tsx",
-    "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx",
-    "dashboard/app/memory/page.tsx", "dashboard/app/page.tsx",
-    "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/runs-client.tsx",
-    "dashboard/app/security/page.tsx", "dashboard/app/settings/page.tsx",
-    "dashboard/app/trigger-plugins/page.tsx", "dashboard/app/workflows/new/page.tsx",
-    "dashboard/app/workflows/page.tsx", "dashboard/app/mock-data.ts",
-    "examples/send-email/README.md", "examples/workflows/README.md",
-    "charts/capsulet/Chart.yaml", "charts/capsulet/values.yaml",
-    "charts/capsulet/values.schema.json", "crates/api/openapi.json"
-)
 $mainRegistry = Get-Content -LiteralPath (Join-Path $repositoryRoot "docs\contracts\product-claims.json") -Raw | ConvertFrom-Json
-$declaredPublicSurfaces = @($mainRegistry.public_surfaces | ForEach-Object path)
-foreach ($expectedSurface in $expectedPublicSurfaces) {
-    if ($declaredPublicSurfaces -notcontains $expectedSurface) {
-        $failures.Add("main registry is missing public surface '$expectedSurface'")
-    }
-}
-
 $forbiddenPublicPhrases = @(
     "Capsulet is a local-first AI memory platform",
     "governed AI memory platform first",
@@ -104,7 +77,10 @@ $invalidCases = @(
     @{ File = "unmarked-surface.json"; Message = "missing claim marker" },
     @{ File = "unregistered-surface.json"; Message = "unregistered public surface" },
     @{ File = "missing-accepted-adr.json"; Message = "requires evidence from an accepted ADR" },
-    @{ File = "implemented-guarantee-without-test.json"; Message = "requires executable test evidence" }
+    @{ File = "implemented-guarantee-without-test.json"; Message = "requires executable test evidence" },
+    @{ File = "compound-claim-partial-evidence.json"; Message = "verification assertion 'adapter-kubernetes' has no executable test evidence" },
+    @{ File = "selector-not-executed.json"; Message = "test selector was not executed" },
+    @{ File = "command-does-not-select-test.json"; Message = "evidence command was not collected" }
 )
 
 foreach ($case in $invalidCases) {
@@ -127,6 +103,21 @@ foreach ($case in $invalidLifecycleCases) {
         -ExpectedMessage $case.Message
 }
 
+$temporaryPageDirectory = Join-Path $repositoryRoot "dashboard\app\__contract-test__"
+$temporaryPage = Join-Path $temporaryPageDirectory "page.tsx"
+try {
+    New-Item -ItemType Directory -Path $temporaryPageDirectory -Force | Out-Null
+    Set-Content -LiteralPath $temporaryPage -Value "export default function ContractTestPage() { return null }" -NoNewline
+    Assert-Check -Name "new dashboard page requires registration" `
+        -Registry (Join-Path $repositoryRoot "docs\contracts\product-claims.json") `
+        -ShouldSucceed $false `
+        -ExpectedMessage "discovered public surface 'dashboard/app/__contract-test__/page.tsx' is not registered"
+}
+finally {
+    Remove-Item -LiteralPath $temporaryPage -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $temporaryPageDirectory -Force -ErrorAction SilentlyContinue
+}
+
 $temporaryMarkdown = Join-Path ([System.IO.Path]::GetTempPath()) "capsulet-stale-product-claims-$PID.md"
 try {
     Set-Content -LiteralPath $temporaryMarkdown -Value "stale" -NoNewline
@@ -144,4 +135,4 @@ if ($failures.Count -gt 0) {
     throw ($failures -join [Environment]::NewLine)
 }
 
-Write-Host "Product claim contract tests passed ($($invalidCases.Count + $invalidLifecycleCases.Count + 2) cases)."
+Write-Host "Product claim contract tests passed ($($invalidCases.Count + $invalidLifecycleCases.Count + 3) cases)."

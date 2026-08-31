@@ -11,11 +11,12 @@
       "id": "CAP-TEST-001",
       "kind": "capability",
       "maturity": "implemented",
-      "area": "Contract tooling",
-      "statement": "The valid fixture has executable evidence.",
+      "area": "Test",
+      "statement": "The worker executes process and Kubernetes adapters.",
       "public_surfaces": ["AGENTS.md"],
       "verification": [
-        { "assertion": "fixture-executes", "evidence_selectors": ["Agent Instructions"] }
+        { "assertion": "adapter-process", "evidence_selectors": ["Agent Instructions"] },
+        { "assertion": "adapter-kubernetes", "evidence_selectors": [] }
       ],
       "evidence": [
         { "type": "test", "path": "AGENTS.md", "command": "fixture-only", "selector": "Agent Instructions" }

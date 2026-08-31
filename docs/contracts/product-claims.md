@@ -12,7 +12,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel checks pinned proposals and emits accepted, conditional, or rejected certificates without calling a model or network. |
+| `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when it re-derives and contains the cited proposition. |
 | `CAP-CORRECTNESS-002` | implemented | limitation | Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance. |
 
 ## Dashboard and SDK
@@ -35,7 +35,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-AGENT-001` | experimental | capability | Agent definitions and queued agent runs, opaque JSON state snapshots, and semantic trace events can be persisted and exercised through the application runtime. |
 | `CAP-AGENT-002` | implemented | limitation | There is no production dedicated agent or graph worker; creating an agent run persists queued work but does not independently execute it. |
-| `CAP-GRAPH-001` | implemented | capability | Capsulet validates typed agent graph definitions with nodes, ports, hyperedges, transition policy, budgets, and deterministic static ordering. |
+| `CAP-GRAPH-001` | implemented | capability | Capsulet returns a deterministic static order for valid acyclic typed agent graph definitions. |
 
 ## Helm and self-hosting
 
@@ -47,7 +47,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-OPENAPI-001` | implemented | capability | The OpenAPI 3.1 document is generated from shared endpoint metadata, exactly matches all runtime method/path declarations, and is checked for deterministic drift. |
+| `CAP-OPENAPI-001` | experimental | capability | The OpenAPI 3.1 document is generated from shared endpoint metadata, exactly matches all runtime method/path declarations, and is checked for deterministic drift. |
 
 ## Identity and IAM
 
@@ -59,7 +59,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-JOB-001` | implemented | capability | The job worker leases queued work, renews ownership, executes through stub, process, WASI Python, or Kubernetes adapters, and stores logs and artifacts. |
+| `CAP-JOB-001` | experimental | capability | The job worker leases queued work, renews ownership, executes through stub, process, WASI Python, or Kubernetes adapters, and stores logs and artifacts. |
 
 ## Lifecycle and assurance
 
@@ -95,4 +95,4 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-WORKFLOW-001` | implemented | compatibility | Compatibility workflow DAGs support validated dependencies, parallel roots, fan-out/fan-in scheduling, durable step state, cancellation, and checkpoint resume. |
+| `CAP-WORKFLOW-001` | implemented | compatibility | Compatibility workflow DAG creation validates and returns declared step dependencies. |

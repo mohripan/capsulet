@@ -47,11 +47,13 @@ Eight claims intentionally lack executable evidence:
 
 No implemented capability or guarantee is accepted without executable test evidence.
 
-## Completed M0 inventory
+## Corrected M0 inventory after M1 Task 1
 
-The completed inventory contains 20 claims across 47 public surfaces. `CAP-OPENAPI-001` moved from
-a limitation to an implemented capability after the runtime registry became the source for the
-generated OpenAPI document.
+The corrected inventory contains 20 claims across 57 discovered public surfaces. The entry review
+showed that the existing evidence for `CAP-JOB-001` and `CAP-OPENAPI-001` proved only part of each
+statement, so both remain experimental until their complete behavior is executable. The two
+implemented capability statements were narrowed to the behavior their selected tests execute.
+M0 remains open until the typed route and wire-model remediation in M1 Task 2 passes.
 
 | Dimension | Value | Count |
 | --- | --- | ---: |
@@ -59,13 +61,14 @@ generated OpenAPI document.
 | Kind | compatibility | 3 |
 | Kind | limitation | 4 |
 | Kind | positioning | 1 |
-| Maturity | implemented | 11 |
-| Maturity | experimental | 8 |
+| Maturity | implemented | 9 |
+| Maturity | experimental | 10 |
 | Maturity | planned | 1 |
 
 The experimental claims are `CAP-AGENT-001`, `CAP-MEMORY-001`, `CAP-AUTOMATION-001`,
 `CAP-IAM-001`, `CAP-PERSISTENCE-001`, `CAP-DASHBOARD-001`, `CAP-OBSERVABILITY-001`, and
-`CAP-HELM-001`. The planned claim is `CAP-PRODUCT-001`. The explicit limitations are
+`CAP-HELM-001`, `CAP-JOB-001`, and `CAP-OPENAPI-001`. The planned claim is `CAP-PRODUCT-001`.
+The explicit limitations are
 `CAP-CORRECTNESS-002`, `CAP-AGENT-002`, `CAP-DASHBOARD-002`, and `CAP-SECURITY-001`.
 
 ## Completed M0 contract measurements
@@ -77,8 +80,10 @@ The experimental claims are `CAP-AGENT-001`, `CAP-MEMORY-001`, `CAP-AUTOMATION-0
   schemas, and no runtime paths missing from the document.
 - The Python client maps its seven public transport operations to the generated contract.
 - The dashboard maps 68 explicit client operations to the generated contract.
-- The product-claim gate validates the registry schema, evidence references, public-surface
-  coverage, generated claim table, and prohibited unqualified wording.
+- The product-claim gate discovers public surfaces from reviewed include/exclude globs, validates
+  exact registry coverage, maps implemented assertions to executable evidence, checks each
+  command/selector against the collected-test manifest, verifies the generated claim table, and
+  rejects prohibited unqualified wording.
 - The aggregate contract gate is wired into both GitHub Actions workflows and the pull-request
   checklist records product, API, authorization, lifecycle, migration, stability, client, docs,
   and ADR impact.
@@ -91,11 +96,27 @@ The following checks passed from this checkout on 2026-08-31:
 - locked kernel, core, and API test suites (17 kernel tests, 66 core tests, and 87 API tests)
 - `cargo run -p capsulet-api --bin export-openapi --locked -- --check`
 - `powershell -File scripts/check-contracts.ps1` using the local Windows PowerShell 5.1 fallback;
-  CI runs the same script with PowerShell 7 (20 claims, 47 surfaces, 90 OpenAPI paths, 116
+  CI runs the same script with PowerShell 7 (20 claims, 57 surfaces, 90 OpenAPI paths, 116
   operations, eight Python client tests, and ten dashboard contract tests)
-- PowerShell 7.5 schema validation and all 15 negative/positive product-contract fixtures in the
+- PowerShell 7.5 schema validation and all 19 negative/positive product-contract fixtures in the
   pinned `mcr.microsoft.com/powershell:7.5-alpine-3.20` container
 - dashboard TypeScript checking and production build (25 routes)
+
+The exact executable evidence commands collected by the Task 1 gate are:
+
+- `cargo test -p capsulet-kernel --locked`
+- `cargo test -p capsulet-core --test typed_hypergraph --locked`
+- `cargo test -p capsulet-application --test agents --locked`
+- `cargo test -p capsulet-core --test memory_core --locked`
+- `cargo test -p capsulet-worker --locked`
+- `cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies`
+- `cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering`
+- `cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens`
+- `npm test --prefix dashboard`
+- `python -m unittest discover -s sdk/python/tests -v`
+- `cargo test -p capsulet-application --test execution_contracts --locked`
+- `cargo test -p capsulet-api --test openapi_contract --locked`
+- `pwsh ./scripts/tests/check-product-claims.ps1`
 - `docker compose config --quiet`
 - `scripts/compose-smoke.ps1 -KeepExistingQueue -TimeoutSeconds 300` with
   `CAPSULET_POSTGRES_HOST_PORT=56432` (all application services healthy; served OpenAPI 90

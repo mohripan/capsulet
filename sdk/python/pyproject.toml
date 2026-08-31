@@ -1,3 +1,4 @@
+# capsulet-claims: CAP-SDK-001
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

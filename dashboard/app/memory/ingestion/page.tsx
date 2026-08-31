@@ -1,5 +1,7 @@
 "use client";
 
+// capsulet-claims: CAP-MEMORY-001, CAP-DASHBOARD-001
+
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, Check, FileText, Play, PlugZap, RefreshCw, X } from "lucide-react";

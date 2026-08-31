@@ -2,6 +2,7 @@
   "name": "capsulet-dashboard",
   "version": "0.1.0",
   "private": true,
+  "capsuletClaims": ["CAP-DASHBOARD-001"],
   "scripts": {
     "dev": "next dev",
     "build": "next build",

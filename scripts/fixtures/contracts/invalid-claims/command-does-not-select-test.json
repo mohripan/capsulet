@@ -11,14 +11,14 @@
       "id": "CAP-TEST-001",
       "kind": "capability",
       "maturity": "implemented",
-      "area": "Contract tooling",
-      "statement": "The valid fixture has executable evidence.",
+      "area": "Test",
+      "statement": "The declared command must collect the selected test.",
       "public_surfaces": ["AGENTS.md"],
       "verification": [
-        { "assertion": "fixture-executes", "evidence_selectors": ["Agent Instructions"] }
+        { "assertion": "command-selects-test", "evidence_selectors": ["Agent Instructions"] }
       ],
       "evidence": [
-        { "type": "test", "path": "AGENTS.md", "command": "fixture-only", "selector": "Agent Instructions" }
+        { "type": "test", "path": "AGENTS.md", "command": "fixture-only --filter another-test", "selector": "Agent Instructions" }
       ]
     }
   ]
