@@ -14,6 +14,8 @@ pub(crate) enum ApiError {
     Unauthorized,
     #[error("insufficient permission; required scope: {0}")]
     Forbidden(&'static str),
+    #[error("public route is missing endpoint contract metadata: {0}")]
+    MissingEndpointContract(String),
     #[error("validation error: {0}")]
     Validation(String),
     #[error("queue overloaded: {0}")]
@@ -105,7 +107,9 @@ impl ApiError {
             | Self::ArtifactNotFound(_)
             | Self::ArtifactObjectNotFound(_) => StatusCode::NOT_FOUND,
             Self::AdmissionUnavailable(_) | Self::Proposer(_) => StatusCode::SERVICE_UNAVAILABLE,
-            Self::Store(_) | Self::ObjectStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::MissingEndpointContract(_) | Self::Store(_) | Self::ObjectStore(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 
@@ -113,6 +117,7 @@ impl ApiError {
         match self {
             Self::Unauthorized => "authentication_required",
             Self::Forbidden(_) => "permission_denied",
+            Self::MissingEndpointContract(_) => "missing_endpoint_contract",
             Self::Validation(_) => "validation_error",
             Self::QueueOverloaded(_) => "queue_overloaded",
             Self::AdmissionUnavailable(_) => "admission_unavailable",

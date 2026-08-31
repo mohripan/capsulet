@@ -2,7 +2,6 @@
   "components": {
     "schemas": {
       "ActivateMemorySubgraphRequest": {
-        "additionalProperties": false,
         "properties": {
           "contract_id": {
             "type": "string"
@@ -30,18 +29,25 @@
         "type": "object"
       },
       "AgentBudgetRequest": {
-        "additionalProperties": false,
         "properties": {
           "max_cost_micros": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           },
           "max_seconds": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           },
           "max_steps": {
+            "format": "int32",
+            "minimum": 0,
             "type": "integer"
           },
           "max_tokens": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           }
         },
@@ -54,18 +60,25 @@
         "type": "object"
       },
       "AgentBudgetResponse": {
-        "additionalProperties": false,
         "properties": {
           "max_cost_micros": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           },
           "max_seconds": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           },
           "max_steps": {
+            "format": "int32",
+            "minimum": 0,
             "type": "integer"
           },
           "max_tokens": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           }
         },
@@ -78,7 +91,6 @@
         "type": "object"
       },
       "AgentResponse": {
-        "additionalProperties": false,
         "properties": {
           "budget": {
             "$ref": "#/components/schemas/AgentBudgetResponse"
@@ -109,8 +121,6 @@
         "type": "object"
       },
       "AgentRunResponse": {
-        "additionalProperties": false,
-        "description": "Current experimental persisted agent-run state. Starting a run creates queued work; a production graph worker is not yet claimed.",
         "properties": {
           "agent_id": {
             "type": "string"
@@ -122,17 +132,11 @@
             "type": "object"
           },
           "state_version": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           },
           "status": {
-            "enum": [
-              "queued",
-              "running",
-              "succeeded",
-              "failed",
-              "cancelled",
-              "stopped"
-            ],
             "type": "string"
           }
         },
@@ -146,7 +150,6 @@
         "type": "object"
       },
       "ArtifactResponse": {
-        "additionalProperties": false,
         "properties": {
           "content_type": {
             "type": "string"
@@ -164,6 +167,8 @@
             "type": "string"
           },
           "size_bytes": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           }
         },
@@ -178,7 +183,6 @@
         "type": "object"
       },
       "AskRequest": {
-        "additionalProperties": false,
         "properties": {
           "authority": {
             "type": [
@@ -187,6 +191,7 @@
             ]
           },
           "model": {
+            "description": "Overrides the configured model for this request.",
             "type": [
               "string",
               "null"
@@ -196,6 +201,7 @@
             "type": "string"
           },
           "text": {
+            "description": "Text to reason over. Stored immutably and cut into citable spans.",
             "type": "string"
           },
           "title": {
@@ -212,12 +218,12 @@
         "type": "object"
       },
       "AuditEventResponse": {
-        "additionalProperties": false,
         "properties": {
           "created_at": {
             "type": "string"
           },
           "id": {
+            "format": "int64",
             "type": "integer"
           },
           "method": {
@@ -239,6 +245,7 @@
             "type": "string"
           },
           "status_code": {
+            "format": "int32",
             "type": "integer"
           }
         },
@@ -249,13 +256,11 @@
           "method",
           "path",
           "status_code",
-          "request_id",
           "created_at"
         ],
         "type": "object"
       },
       "AutomationResponse": {
-        "additionalProperties": false,
         "properties": {
           "condition": {
             "type": "object"
@@ -273,7 +278,7 @@
             "type": "string"
           },
           "status": {
-            "$ref": "#/components/schemas/AutomationStatus"
+            "type": "string"
           },
           "triggers": {
             "items": {
@@ -309,7 +314,6 @@
         "type": "string"
       },
       "CanonicalEntityResponse": {
-        "additionalProperties": false,
         "properties": {
           "aliases": {
             "items": {
@@ -547,7 +551,6 @@
         "type": "object"
       },
       "ClaimConflictResponse": {
-        "additionalProperties": false,
         "properties": {
           "canonical_entity_id": {
             "type": [
@@ -580,11 +583,6 @@
             "type": "string"
           },
           "status": {
-            "enum": [
-              "candidate",
-              "resolved",
-              "dismissed"
-            ],
             "type": "string"
           },
           "subject_id": {
@@ -599,17 +597,84 @@
           "tenant_id",
           "project_id",
           "subject_id",
-          "canonical_entity_id",
           "predicate",
           "claim_ids",
           "status",
-          "reason",
-          "preferred_claim_id"
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ClaimPolicyResponse": {
+        "properties": {
+          "allow_contradictions": {
+            "type": "boolean"
+          },
+          "min_confidence": {
+            "format": "double",
+            "type": "number"
+          },
+          "require_source": {
+            "type": "boolean"
+          },
+          "store_confidence": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "require_source",
+          "store_confidence",
+          "allow_contradictions",
+          "min_confidence"
+        ],
+        "type": "object"
+      },
+      "CompiledMemoryPolicyResponse": {
+        "properties": {
+          "claim_policy": {
+            "$ref": "#/components/schemas/ClaimPolicyResponse"
+          },
+          "contradiction_rules": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "entity_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/RelationPolicyResponse"
+            },
+            "type": "array"
+          },
+          "retrieval_policies": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievalPolicyResponse"
+            },
+            "type": "array"
+          },
+          "source_priority": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity_types",
+          "relations",
+          "claim_policy",
+          "source_priority",
+          "retrieval_policies",
+          "contradiction_rules"
         ],
         "type": "object"
       },
       "CreateAgentRequest": {
-        "additionalProperties": false,
         "properties": {
           "budget": {
             "$ref": "#/components/schemas/AgentBudgetRequest"
@@ -641,14 +706,9 @@
         "type": "object"
       },
       "CreateAutomationRequest": {
-        "additionalProperties": false,
         "properties": {
           "condition": {
-            "additionalProperties": true,
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object"
           },
           "description": {
             "type": [
@@ -663,11 +723,7 @@
             ]
           },
           "job_input": {
-            "additionalProperties": true,
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object"
           },
           "name": {
             "type": "string"
@@ -680,7 +736,7 @@
           },
           "triggers": {
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/CreateAutomationTriggerRequest"
             },
             "type": [
               "array",
@@ -693,12 +749,43 @@
         },
         "required": [
           "name",
-          "workflow_id"
+          "workflow_id",
+          "job_input",
+          "condition"
+        ],
+        "type": "object"
+      },
+      "CreateAutomationTriggerRequest": {
+        "properties": {
+          "config": {
+            "type": "object"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "plugin_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "kind"
         ],
         "type": "object"
       },
       "CreateCanonicalEntityRequest": {
-        "additionalProperties": false,
         "properties": {
           "aliases": {
             "items": {
@@ -726,7 +813,6 @@
         "type": "object"
       },
       "CreateEntityGraphAttachmentRequest": {
-        "additionalProperties": false,
         "properties": {
           "attachment_type": {
             "type": "string"
@@ -752,12 +838,12 @@
         "type": "object"
       },
       "CreateEntityResolutionRequest": {
-        "additionalProperties": false,
         "properties": {
           "canonical_entity_id": {
             "type": "string"
           },
           "confidence": {
+            "format": "double",
             "type": "number"
           },
           "entity_id": {
@@ -793,7 +879,6 @@
         "type": "object"
       },
       "CreateGraphRequest": {
-        "additionalProperties": false,
         "properties": {
           "hyperedges": {
             "items": {
@@ -819,10 +904,10 @@
           "transition_policy": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/GraphTransitionPolicyRequest"
+                "type": "null"
               },
               {
-                "type": "null"
+                "$ref": "#/components/schemas/GraphTransitionPolicyRequest"
               }
             ]
           }
@@ -835,38 +920,9 @@
         "type": "object"
       },
       "CreateIngestionConnectorRequest": {
-        "additionalProperties": false,
         "properties": {
           "config": {
-            "additionalProperties": false,
-            "properties": {
-              "authority": {
-                "type": "string"
-              },
-              "content": {
-                "type": "string"
-              },
-              "content_type": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              },
-              "uri": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "required": [
-              "title",
-              "content",
-              "content_type",
-              "uri",
-              "authority"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/LocalTextConnectorConfigRequest"
           },
           "enabled": {
             "type": "boolean"
@@ -878,9 +934,6 @@
             ]
           },
           "kind": {
-            "enum": [
-              "local_text"
-            ],
             "type": "string"
           },
           "name": {
@@ -895,7 +948,6 @@
         "type": "object"
       },
       "CreateJobDefinitionRequest": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": [
@@ -904,11 +956,7 @@
             ]
           },
           "input_schema": {
-            "additionalProperties": true,
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object"
           },
           "name": {
             "type": "string"
@@ -923,12 +971,16 @@
             "type": "string"
           },
           "retry_delay_seconds": {
+            "format": "int64",
+            "minimum": 0,
             "type": [
               "integer",
               "null"
             ]
           },
           "retry_max_attempts": {
+            "format": "int32",
+            "minimum": 0,
             "type": [
               "integer",
               "null"
@@ -948,12 +1000,12 @@
         "type": "object"
       },
       "CreateMemoryClaimRequest": {
-        "additionalProperties": false,
         "properties": {
           "authority": {
             "type": "string"
           },
           "confidence": {
+            "format": "double",
             "type": "number"
           },
           "evidence_ids": {
@@ -1011,7 +1063,6 @@
         "type": "object"
       },
       "CreateMemoryContractRequest": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": [
@@ -1033,7 +1084,6 @@
         "type": "object"
       },
       "CreateMemoryEntityRequest": {
-        "additionalProperties": false,
         "properties": {
           "aliases": {
             "items": {
@@ -1061,7 +1111,6 @@
         "type": "object"
       },
       "CreateMemoryEventRequest": {
-        "additionalProperties": false,
         "properties": {
           "entity_ids": {
             "items": {
@@ -1096,7 +1145,6 @@
         "type": "object"
       },
       "CreateMemoryEvidenceRequest": {
-        "additionalProperties": false,
         "properties": {
           "excerpt": {
             "type": "string"
@@ -1126,7 +1174,6 @@
         "type": "object"
       },
       "CreateMemoryRelationshipRequest": {
-        "additionalProperties": false,
         "properties": {
           "evidence_ids": {
             "items": {
@@ -1159,7 +1206,6 @@
         "type": "object"
       },
       "CreateMemorySourceRequest": {
-        "additionalProperties": false,
         "properties": {
           "authority": {
             "type": "string"
@@ -1191,7 +1237,6 @@
         "type": "object"
       },
       "CreateMemorySubgraphMemberRequest": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": [
@@ -1217,7 +1262,6 @@
         "type": "object"
       },
       "CreateMemorySubgraphRequest": {
-        "additionalProperties": false,
         "properties": {
           "description": {
             "type": [
@@ -1247,17 +1291,12 @@
         "type": "object"
       },
       "CreateRunRequest": {
-        "additionalProperties": false,
         "properties": {
           "execution_pool": {
             "type": "string"
           },
           "input": {
-            "additionalProperties": true,
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object"
           },
           "job_definition_id": {
             "type": "string"
@@ -1277,14 +1316,15 @@
         },
         "required": [
           "job_definition_id",
-          "execution_pool"
+          "execution_pool",
+          "input"
         ],
         "type": "object"
       },
       "CreateServiceAccountRequest": {
-        "additionalProperties": false,
         "properties": {
           "expires_at_unix": {
+            "format": "int64",
             "type": [
               "integer",
               "null"
@@ -1328,19 +1368,36 @@
         "type": "object"
       },
       "CreateServiceAccountResponse": {
-        "additionalProperties": false,
         "properties": {
           "created_at": {
             "type": "string"
           },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "type": "string"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": "string"
           },
           "project_id": {
             "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "role": {
             "type": "string"
@@ -1365,13 +1422,15 @@
           "project_id",
           "role",
           "scopes",
+          "expires_at",
+          "revoked_at",
+          "last_used_at",
           "created_at",
           "token"
         ],
         "type": "object"
       },
       "CreateSubgraphEdgeRequest": {
-        "additionalProperties": false,
         "properties": {
           "claim_ids": {
             "items": {
@@ -1425,7 +1484,6 @@
         "type": "object"
       },
       "CreateSummaryTraceRequest": {
-        "additionalProperties": false,
         "properties": {
           "evidence_ids": {
             "items": {
@@ -1459,7 +1517,6 @@
         "type": "object"
       },
       "CreateTriggerPluginRequest": {
-        "additionalProperties": false,
         "properties": {
           "command": {
             "items": {
@@ -1471,11 +1528,7 @@
             ]
           },
           "config_schema": {
-            "additionalProperties": true,
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object"
           },
           "description": {
             "type": [
@@ -1502,14 +1555,37 @@
         "required": [
           "id",
           "name",
-          "runtime_image"
+          "runtime_image",
+          "config_schema"
+        ],
+        "type": "object"
+      },
+      "CreateWorkflowDependencyRequest": {
+        "properties": {
+          "from_step_id": {
+            "type": "string"
+          },
+          "policy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_step_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_step_id",
+          "to_step_id"
         ],
         "type": "object"
       },
       "CreateWorkflowRequest": {
-        "additionalProperties": false,
         "properties": {
           "deadline_seconds": {
+            "format": "int64",
+            "minimum": 0,
             "type": [
               "integer",
               "null"
@@ -1517,7 +1593,7 @@
           },
           "dependencies": {
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/CreateWorkflowDependencyRequest"
             },
             "type": [
               "array",
@@ -1541,7 +1617,7 @@
           },
           "steps": {
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/CreateWorkflowStepRequest"
             },
             "type": "array"
           }
@@ -1549,6 +1625,39 @@
         "required": [
           "name",
           "steps"
+        ],
+        "type": "object"
+      },
+      "CreateWorkflowStepRequest": {
+        "properties": {
+          "execution_pool": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_definition_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "job_definition_id",
+          "execution_pool"
         ],
         "type": "object"
       },
@@ -1577,7 +1686,6 @@
         "type": "object"
       },
       "EntityGraphAttachmentResponse": {
-        "additionalProperties": false,
         "properties": {
           "attachment_type": {
             "type": "string"
@@ -1609,12 +1717,12 @@
         "type": "object"
       },
       "EntityResolutionResponse": {
-        "additionalProperties": false,
         "properties": {
           "canonical_entity_id": {
             "type": "string"
           },
           "confidence": {
+            "format": "double",
             "type": "number"
           },
           "entity_id": {
@@ -1633,11 +1741,6 @@
             "type": "string"
           },
           "status": {
-            "enum": [
-              "candidate",
-              "confirmed",
-              "rejected"
-            ],
             "type": "string"
           },
           "subgraph_id": {
@@ -1689,7 +1792,6 @@
         "type": "string"
       },
       "ExecutionPoolResponse": {
-        "additionalProperties": false,
         "properties": {
           "description": {
             "type": "string"
@@ -1713,7 +1815,6 @@
         "type": "object"
       },
       "GraphHyperedgeRequest": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string"
@@ -1739,7 +1840,6 @@
         "type": "object"
       },
       "GraphHyperedgeResponse": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string"
@@ -1765,7 +1865,6 @@
         "type": "object"
       },
       "GraphNodeRequest": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string"
@@ -1792,7 +1891,6 @@
         "type": "object"
       },
       "GraphNodeResponse": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string"
@@ -1819,7 +1917,6 @@
         "type": "object"
       },
       "GraphPortRequest": {
-        "additionalProperties": false,
         "properties": {
           "direction": {
             "type": "string"
@@ -1839,7 +1936,6 @@
         "type": "object"
       },
       "GraphPortResponse": {
-        "additionalProperties": false,
         "properties": {
           "direction": {
             "type": "string"
@@ -1859,7 +1955,6 @@
         "type": "object"
       },
       "GraphResponse": {
-        "additionalProperties": false,
         "properties": {
           "hyperedges": {
             "items": {
@@ -1900,7 +1995,6 @@
         "type": "object"
       },
       "GraphTransitionPolicyRequest": {
-        "additionalProperties": false,
         "properties": {
           "actions": {
             "items": {
@@ -1921,7 +2015,6 @@
         "type": "object"
       },
       "GraphTransitionPolicyResponse": {
-        "additionalProperties": false,
         "properties": {
           "actions": {
             "items": {
@@ -1946,11 +2039,6 @@
       "HealthResponse": {
         "properties": {
           "status": {
-            "enum": [
-              "ok",
-              "ready",
-              "not_ready"
-            ],
             "type": "string"
           }
         },
@@ -1960,7 +2048,6 @@
         "type": "object"
       },
       "HostGroupResponse": {
-        "additionalProperties": false,
         "properties": {
           "description": {
             "type": "string"
@@ -1969,6 +2056,8 @@
             "type": "string"
           },
           "host_count": {
+            "format": "int32",
+            "minimum": 0,
             "type": [
               "integer",
               "null"
@@ -1985,13 +2074,11 @@
           "name",
           "description",
           "is_default",
-          "execution_pool",
-          "host_count"
+          "execution_pool"
         ],
         "type": "object"
       },
       "HyperedgeEndpointRequest": {
-        "additionalProperties": false,
         "properties": {
           "field": {
             "type": [
@@ -2022,16 +2109,11 @@
           }
         },
         "required": [
-          "kind",
-          "node_id",
-          "port_id",
-          "field",
-          "value_type"
+          "kind"
         ],
         "type": "object"
       },
       "HyperedgeEndpointResponse": {
-        "additionalProperties": false,
         "properties": {
           "field": {
             "type": [
@@ -2062,43 +2144,14 @@
           }
         },
         "required": [
-          "kind",
-          "node_id",
-          "port_id",
-          "field",
-          "value_type"
+          "kind"
         ],
         "type": "object"
       },
       "IngestionConnectorResponse": {
-        "additionalProperties": false,
         "properties": {
           "config": {
-            "additionalProperties": false,
-            "properties": {
-              "authority": {
-                "type": "string"
-              },
-              "content_type": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              },
-              "uri": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "required": [
-              "title",
-              "content_type",
-              "uri",
-              "authority"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/LocalTextConnectorConfigResponse"
           },
           "enabled": {
             "type": "boolean"
@@ -2107,9 +2160,6 @@
             "type": "string"
           },
           "kind": {
-            "enum": [
-              "local_text"
-            ],
             "type": "string"
           },
           "name": {
@@ -2134,7 +2184,6 @@
         "type": "object"
       },
       "IngestionRunOutputsResponse": {
-        "additionalProperties": false,
         "properties": {
           "claims": {
             "items": {
@@ -2184,7 +2233,6 @@
         "type": "object"
       },
       "IngestionRunWithOutputsResponse": {
-        "additionalProperties": false,
         "properties": {
           "outputs": {
             "$ref": "#/components/schemas/IngestionRunOutputsResponse"
@@ -2200,7 +2248,6 @@
         "type": "object"
       },
       "JobDefinitionResponse": {
-        "additionalProperties": false,
         "properties": {
           "bundle_object_key": {
             "type": "string"
@@ -2227,9 +2274,13 @@
             "type": "array"
           },
           "retry_delay_seconds": {
+            "format": "int64",
+            "minimum": 0,
             "type": "integer"
           },
           "retry_max_attempts": {
+            "format": "int32",
+            "minimum": 0,
             "type": "integer"
           },
           "runtime_image": {
@@ -2250,7 +2301,6 @@
         "type": "object"
       },
       "JobDefinitionSourceResponse": {
-        "additionalProperties": false,
         "properties": {
           "python_dependencies": {
             "items": {
@@ -2269,7 +2319,6 @@
         "type": "object"
       },
       "JobRunLogsResponse": {
-        "additionalProperties": false,
         "properties": {
           "logs": {
             "type": "string"
@@ -2289,9 +2338,10 @@
         "type": "object"
       },
       "JobRunResponse": {
-        "additionalProperties": false,
         "properties": {
           "attempt_count": {
+            "format": "int32",
+            "minimum": 0,
             "type": "integer"
           },
           "created_at": {
@@ -2313,7 +2363,7 @@
             "type": "string"
           },
           "status": {
-            "$ref": "#/components/schemas/JobRunStatus"
+            "type": "string"
           }
         },
         "required": [
@@ -2350,7 +2400,6 @@
         "type": "string"
       },
       "ListAgentRunsResponse": {
-        "additionalProperties": false,
         "properties": {
           "agent_runs": {
             "items": {
@@ -2365,7 +2414,6 @@
         "type": "object"
       },
       "ListAgentsResponse": {
-        "additionalProperties": false,
         "properties": {
           "agents": {
             "items": {
@@ -2380,7 +2428,6 @@
         "type": "object"
       },
       "ListArtifactsResponse": {
-        "additionalProperties": false,
         "properties": {
           "artifacts": {
             "items": {
@@ -2395,7 +2442,6 @@
         "type": "object"
       },
       "ListAuditEventsResponse": {
-        "additionalProperties": false,
         "properties": {
           "audit_events": {
             "items": {
@@ -2410,7 +2456,6 @@
         "type": "object"
       },
       "ListAutomationTriggersResponse": {
-        "additionalProperties": false,
         "properties": {
           "condition": {
             "type": "object"
@@ -2429,7 +2474,6 @@
         "type": "object"
       },
       "ListAutomationsResponse": {
-        "additionalProperties": false,
         "properties": {
           "automations": {
             "items": {
@@ -2444,7 +2488,6 @@
         "type": "object"
       },
       "ListCanonicalEntitiesResponse": {
-        "additionalProperties": false,
         "properties": {
           "canonical_entities": {
             "items": {
@@ -2474,7 +2517,6 @@
         "type": "object"
       },
       "ListClaimConflictsResponse": {
-        "additionalProperties": false,
         "properties": {
           "conflicts": {
             "items": {
@@ -2489,7 +2531,6 @@
         "type": "object"
       },
       "ListEntityResolutionsResponse": {
-        "additionalProperties": false,
         "properties": {
           "entity_resolutions": {
             "items": {
@@ -2504,7 +2545,6 @@
         "type": "object"
       },
       "ListExecutionPoolsResponse": {
-        "additionalProperties": false,
         "properties": {
           "execution_pools": {
             "items": {
@@ -2519,7 +2559,6 @@
         "type": "object"
       },
       "ListGraphsResponse": {
-        "additionalProperties": false,
         "properties": {
           "graphs": {
             "items": {
@@ -2534,7 +2573,6 @@
         "type": "object"
       },
       "ListHostGroupsResponse": {
-        "additionalProperties": false,
         "properties": {
           "host_groups": {
             "items": {
@@ -2549,7 +2587,6 @@
         "type": "object"
       },
       "ListIngestionConnectorsResponse": {
-        "additionalProperties": false,
         "properties": {
           "connectors": {
             "items": {
@@ -2579,7 +2616,6 @@
         "type": "object"
       },
       "ListIngestionRunsResponse": {
-        "additionalProperties": false,
         "properties": {
           "runs": {
             "items": {
@@ -2594,7 +2630,6 @@
         "type": "object"
       },
       "ListJobDefinitionsResponse": {
-        "additionalProperties": false,
         "properties": {
           "job_definitions": {
             "items": {
@@ -2624,7 +2659,6 @@
         "type": "object"
       },
       "ListMemoryContractsResponse": {
-        "additionalProperties": false,
         "properties": {
           "contracts": {
             "items": {
@@ -2714,7 +2748,6 @@
         "type": "object"
       },
       "ListMemorySubgraphsResponse": {
-        "additionalProperties": false,
         "properties": {
           "subgraphs": {
             "items": {
@@ -2729,7 +2762,6 @@
         "type": "object"
       },
       "ListProjectMembershipsResponse": {
-        "additionalProperties": false,
         "properties": {
           "memberships": {
             "items": {
@@ -2744,7 +2776,6 @@
         "type": "object"
       },
       "ListProjectsResponse": {
-        "additionalProperties": false,
         "properties": {
           "projects": {
             "items": {
@@ -2759,7 +2790,6 @@
         "type": "object"
       },
       "ListRunsResponse": {
-        "additionalProperties": false,
         "properties": {
           "runs": {
             "items": {
@@ -2774,7 +2804,6 @@
         "type": "object"
       },
       "ListServiceAccountsResponse": {
-        "additionalProperties": false,
         "properties": {
           "service_accounts": {
             "items": {
@@ -2789,7 +2818,6 @@
         "type": "object"
       },
       "ListTriggerPluginsResponse": {
-        "additionalProperties": false,
         "properties": {
           "trigger_plugins": {
             "items": {
@@ -2804,7 +2832,6 @@
         "type": "object"
       },
       "ListWorkflowRunsResponse": {
-        "additionalProperties": false,
         "properties": {
           "workflow_runs": {
             "items": {
@@ -2819,7 +2846,6 @@
         "type": "object"
       },
       "ListWorkflowsResponse": {
-        "additionalProperties": false,
         "properties": {
           "workflows": {
             "items": {
@@ -2833,13 +2859,67 @@
         ],
         "type": "object"
       },
+      "LocalTextConnectorConfigRequest": {
+        "properties": {
+          "authority": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "content",
+          "content_type",
+          "authority"
+        ],
+        "type": "object"
+      },
+      "LocalTextConnectorConfigResponse": {
+        "properties": {
+          "authority": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "content_type",
+          "authority"
+        ],
+        "type": "object"
+      },
       "MemoryClaimResponse": {
-        "additionalProperties": false,
         "properties": {
           "authority": {
             "type": "string"
           },
           "confidence": {
+            "format": "double",
             "type": "number"
           },
           "evidence_ids": {
@@ -2864,14 +2944,6 @@
             "type": "string"
           },
           "status": {
-            "enum": [
-              "candidate",
-              "active",
-              "rejected",
-              "superseded",
-              "contradicted",
-              "expired"
-            ],
             "type": "string"
           },
           "subject_id": {
@@ -2904,18 +2976,14 @@
           "confidence",
           "authority",
           "status",
-          "observed_at",
-          "valid_from",
-          "valid_until"
+          "observed_at"
         ],
         "type": "object"
       },
       "MemoryContractResponse": {
-        "additionalProperties": false,
         "properties": {
           "compiled": {
-            "description": "Compiled current memory-policy DSL.",
-            "type": "object"
+            "$ref": "#/components/schemas/CompiledMemoryPolicyResponse"
           },
           "id": {
             "type": "string"
@@ -2944,7 +3012,6 @@
         "type": "object"
       },
       "MemoryEntityResponse": {
-        "additionalProperties": false,
         "properties": {
           "aliases": {
             "items": {
@@ -2979,7 +3046,6 @@
         "type": "object"
       },
       "MemoryEventResponse": {
-        "additionalProperties": false,
         "properties": {
           "entity_ids": {
             "items": {
@@ -3021,7 +3087,6 @@
         "type": "object"
       },
       "MemoryEvidenceResponse": {
-        "additionalProperties": false,
         "properties": {
           "excerpt": {
             "type": "string"
@@ -3057,7 +3122,6 @@
         "type": "object"
       },
       "MemoryRelationshipResponse": {
-        "additionalProperties": false,
         "properties": {
           "evidence_ids": {
             "items": {
@@ -3096,7 +3160,6 @@
         "type": "object"
       },
       "MemorySourceResponse": {
-        "additionalProperties": false,
         "properties": {
           "authority": {
             "type": "string"
@@ -3128,14 +3191,12 @@
           "tenant_id",
           "project_id",
           "kind",
-          "uri",
           "title",
           "authority"
         ],
         "type": "object"
       },
       "MemorySubgraphMemberResponse": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string"
@@ -3171,7 +3232,6 @@
         "type": "object"
       },
       "MemorySubgraphResponse": {
-        "additionalProperties": false,
         "properties": {
           "contract_id": {
             "type": [
@@ -3210,21 +3270,12 @@
             ]
           },
           "permissions": {
-            "additionalProperties": true,
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object"
           },
           "project_id": {
             "type": "string"
           },
           "status": {
-            "enum": [
-              "draft",
-              "active",
-              "archived"
-            ],
             "type": "string"
           },
           "summary_claim_id": {
@@ -3241,13 +3292,7 @@
           "id",
           "tenant_id",
           "project_id",
-          "parent_subgraph_id",
           "name",
-          "description",
-          "owner_kind",
-          "owner_id",
-          "contract_id",
-          "summary_claim_id",
           "permissions",
           "status"
         ],
@@ -3317,7 +3362,6 @@
         "type": "object"
       },
       "ProjectMembershipResponse": {
-        "additionalProperties": false,
         "properties": {
           "created_at": {
             "type": "string"
@@ -3361,7 +3405,6 @@
         "type": "object"
       },
       "ProjectResponse": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string"
@@ -3436,6 +3479,25 @@
         ],
         "type": "object"
       },
+      "RelationPolicyResponse": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
       "Residual": {
         "additionalProperties": false,
         "properties": {
@@ -3464,7 +3526,6 @@
         "type": "object"
       },
       "ResolveClaimConflictRequest": {
-        "additionalProperties": false,
         "properties": {
           "preferred_claim_id": {
             "type": "string"
@@ -3475,13 +3536,39 @@
         ],
         "type": "object"
       },
+      "RetrievalPolicyResponse": {
+        "properties": {
+          "max_hops": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "seed_from": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "seed_from"
+        ],
+        "type": "object"
+      },
       "ReviewClaimResponse": {
-        "additionalProperties": false,
         "properties": {
           "authority": {
             "type": "string"
           },
           "confidence": {
+            "format": "double",
             "type": "number"
           },
           "evidence": {
@@ -3518,14 +3605,6 @@
             "type": "array"
           },
           "status": {
-            "enum": [
-              "candidate",
-              "active",
-              "rejected",
-              "superseded",
-              "contradicted",
-              "expired"
-            ],
             "type": "string"
           },
           "subject_id": {
@@ -3559,15 +3638,12 @@
           "authority",
           "status",
           "observed_at",
-          "valid_from",
-          "valid_until",
           "evidence",
           "sources"
         ],
         "type": "object"
       },
       "ReviewEvidenceResponse": {
-        "additionalProperties": false,
         "properties": {
           "excerpt": {
             "type": "string"
@@ -3595,7 +3671,6 @@
         "type": "object"
       },
       "ReviewSourceResponse": {
-        "additionalProperties": false,
         "properties": {
           "authority": {
             "type": "string"
@@ -3619,14 +3694,12 @@
         "required": [
           "id",
           "kind",
-          "uri",
           "title",
           "authority"
         ],
         "type": "object"
       },
       "ServiceAccountResponse": {
-        "additionalProperties": false,
         "properties": {
           "created_at": {
             "type": "string"
@@ -3678,12 +3751,14 @@
           "project_id",
           "role",
           "scopes",
+          "expires_at",
+          "revoked_at",
+          "last_used_at",
           "created_at"
         ],
         "type": "object"
       },
       "StartAgentRunRequest": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": [
@@ -3695,14 +3770,12 @@
             "type": "object"
           }
         },
-        "required": [],
         "type": "object"
       },
       "StringResponse": {
         "type": "string"
       },
       "SubgraphEdgeResponse": {
-        "additionalProperties": false,
         "properties": {
           "claim_ids": {
             "items": {
@@ -3764,7 +3837,6 @@
         "type": "object"
       },
       "SummaryTraceResponse": {
-        "additionalProperties": false,
         "properties": {
           "evidence_ids": {
             "items": {
@@ -3806,7 +3878,6 @@
         "type": "object"
       },
       "TopologyEdgeResponse": {
-        "additionalProperties": false,
         "properties": {
           "from": {
             "type": "string"
@@ -3826,7 +3897,6 @@
         "type": "object"
       },
       "TopologyNodeResponse": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string"
@@ -3850,7 +3920,6 @@
         "type": "object"
       },
       "TopologyResponse": {
-        "additionalProperties": false,
         "properties": {
           "edges": {
             "items": {
@@ -3872,7 +3941,6 @@
         "type": "object"
       },
       "TriggerPluginResponse": {
-        "additionalProperties": false,
         "properties": {
           "command": {
             "items": {
@@ -3911,7 +3979,6 @@
         "type": "object"
       },
       "TriggerResponse": {
-        "additionalProperties": false,
         "properties": {
           "config": {
             "type": "object"
@@ -3936,13 +4003,11 @@
           "name",
           "kind",
           "config",
-          "plugin_id",
           "enabled"
         ],
         "type": "object"
       },
       "UpsertProjectMembershipRequest": {
-        "additionalProperties": false,
         "properties": {
           "principal_kind": {
             "type": "string"
@@ -3982,7 +4047,6 @@
         "type": "object"
       },
       "WorkflowDependencyResponse": {
-        "additionalProperties": false,
         "properties": {
           "from_step_id": {
             "type": "string"
@@ -4002,7 +4066,6 @@
         "type": "object"
       },
       "WorkflowEditabilityResponse": {
-        "additionalProperties": false,
         "properties": {
           "editable": {
             "type": "boolean"
@@ -4015,13 +4078,11 @@
           }
         },
         "required": [
-          "editable",
-          "reason"
+          "editable"
         ],
         "type": "object"
       },
       "WorkflowResponse": {
-        "additionalProperties": false,
         "properties": {
           "dependencies": {
             "items": {
@@ -4039,7 +4100,7 @@
             "type": "string"
           },
           "status": {
-            "$ref": "#/components/schemas/WorkflowStatus"
+            "type": "string"
           },
           "steps": {
             "items": {
@@ -4059,7 +4120,6 @@
         "type": "object"
       },
       "WorkflowRunLogEntryResponse": {
-        "additionalProperties": false,
         "properties": {
           "job_run_id": {
             "type": [
@@ -4074,10 +4134,11 @@
             "type": "boolean"
           },
           "position": {
+            "format": "int32",
             "type": "integer"
           },
           "status": {
-            "$ref": "#/components/schemas/WorkflowRunStatus"
+            "type": "string"
           },
           "step_run_id": {
             "type": "string"
@@ -4089,7 +4150,6 @@
         "required": [
           "step_run_id",
           "workflow_step_id",
-          "job_run_id",
           "position",
           "status",
           "logs",
@@ -4098,7 +4158,6 @@
         "type": "object"
       },
       "WorkflowRunLogsResponse": {
-        "additionalProperties": false,
         "properties": {
           "entries": {
             "items": {
@@ -4107,7 +4166,7 @@
             "type": "array"
           },
           "status": {
-            "$ref": "#/components/schemas/WorkflowRunStatus"
+            "type": "string"
           },
           "workflow_id": {
             "type": "string"
@@ -4125,7 +4184,6 @@
         "type": "object"
       },
       "WorkflowRunResponse": {
-        "additionalProperties": false,
         "properties": {
           "automation_id": {
             "type": [
@@ -4137,13 +4195,14 @@
             "type": "string"
           },
           "current_step_position": {
+            "format": "int32",
             "type": "integer"
           },
           "id": {
             "type": "string"
           },
           "status": {
-            "$ref": "#/components/schemas/WorkflowRunStatus"
+            "type": "string"
           },
           "step_runs": {
             "items": {
@@ -4158,7 +4217,6 @@
         "required": [
           "id",
           "workflow_id",
-          "automation_id",
           "status",
           "current_step_position",
           "created_at",
@@ -4188,7 +4246,6 @@
         "type": "string"
       },
       "WorkflowStepResponse": {
-        "additionalProperties": false,
         "properties": {
           "execution_pool": {
             "type": "string"
@@ -4206,9 +4263,12 @@
             "type": "string"
           },
           "position": {
+            "format": "int32",
             "type": "integer"
           },
           "timeout_seconds": {
+            "format": "int64",
+            "minimum": 0,
             "type": [
               "integer",
               "null"
@@ -4221,13 +4281,11 @@
           "name",
           "job_definition_id",
           "execution_pool",
-          "host_group",
-          "timeout_seconds"
+          "host_group"
         ],
         "type": "object"
       },
       "WorkflowStepRunResponse": {
-        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string"
@@ -4239,10 +4297,11 @@
             ]
           },
           "position": {
+            "format": "int32",
             "type": "integer"
           },
           "status": {
-            "$ref": "#/components/schemas/WorkflowRunStatus"
+            "type": "string"
           },
           "workflow_step_id": {
             "type": "string"
@@ -4251,7 +4310,6 @@
         "required": [
           "id",
           "workflow_step_id",
-          "job_run_id",
           "position",
           "status"
         ],

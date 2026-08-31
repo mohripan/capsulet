@@ -15,14 +15,20 @@ mod reasoning;
 mod state;
 mod store;
 mod webhooks;
+mod wire_schemas;
 
 pub use auth::{AuthConfig, Principal, Role};
-pub use endpoint_contract::{EndpointContract, distinct_paths, endpoint_contracts, find_endpoint};
+pub use endpoint_contract::{
+    AuthenticationMode, EndpointContract, ErrorContract, HttpMethod, MediaType, ProjectContextRule,
+    RequiredPermission, ResponseStatus, SchemaId, Stability, distinct_paths, endpoint_contracts,
+    find_endpoint, find_operation,
+};
 pub use http::router;
 pub use models::{
     CreateAutomationRequest, CreateAutomationTriggerRequest, CreateJobDefinitionRequest,
-    CreateRunRequest, CreateTriggerPluginRequest, CreateWorkflowDependencyRequest,
-    CreateWorkflowRequest, CreateWorkflowStepRequest,
+    CreateRunRequest, CreateServiceAccountResponse, CreateTriggerPluginRequest,
+    CreateWorkflowDependencyRequest, CreateWorkflowRequest, CreateWorkflowStepRequest,
+    ServiceAccountResponse,
 };
 pub use openapi::{canonical_openapi_json, generated_openapi, validated_openapi};
 pub use state::{AdmissionConfig, AppState};

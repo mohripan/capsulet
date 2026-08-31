@@ -13,6 +13,7 @@ use capsulet_core::{
 };
 use capsulet_storage::ObjectStore;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::{
     auth::Principal,
@@ -22,7 +23,7 @@ use crate::{
     store::ApiStore,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateIngestionConnectorRequest {
     id: Option<String>,
     name: String,
@@ -32,7 +33,7 @@ pub(crate) struct CreateIngestionConnectorRequest {
     enabled: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct LocalTextConnectorConfigRequest {
     title: String,
     content: String,
@@ -41,7 +42,7 @@ pub(crate) struct LocalTextConnectorConfigRequest {
     authority: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct IngestionConnectorResponse {
     id: String,
     tenant_id: String,
@@ -52,7 +53,7 @@ pub(crate) struct IngestionConnectorResponse {
     config: LocalTextConnectorConfigResponse,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct LocalTextConnectorConfigResponse {
     title: String,
     content_type: String,
@@ -60,12 +61,12 @@ pub(crate) struct LocalTextConnectorConfigResponse {
     authority: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListIngestionConnectorsResponse {
     connectors: Vec<IngestionConnectorResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct IngestionRunResponse {
     id: String,
     tenant_id: String,
@@ -81,7 +82,7 @@ pub(crate) struct IngestionRunResponse {
     relationship_count: u32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct IngestionRunOutputsResponse {
     sources: Vec<String>,
     evidence: Vec<String>,
@@ -91,23 +92,23 @@ pub(crate) struct IngestionRunOutputsResponse {
     relationships: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct IngestionRunWithOutputsResponse {
     run: IngestionRunResponse,
     outputs: IngestionRunOutputsResponse,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListIngestionRunsResponse {
     runs: Vec<IngestionRunResponse>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ReviewClaimsQuery {
     status: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ReviewClaimResponse {
     id: String,
     tenant_id: String,
@@ -126,7 +127,7 @@ pub(crate) struct ReviewClaimResponse {
     sources: Vec<ReviewSourceResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ReviewEvidenceResponse {
     id: String,
     source_id: String,
@@ -135,7 +136,7 @@ pub(crate) struct ReviewEvidenceResponse {
     observed_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ReviewSourceResponse {
     id: String,
     kind: String,
@@ -144,7 +145,7 @@ pub(crate) struct ReviewSourceResponse {
     authority: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListReviewClaimsResponse {
     claims: Vec<ReviewClaimResponse>,
 }

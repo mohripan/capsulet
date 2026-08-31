@@ -18,6 +18,7 @@ use capsulet_postgres::CertificateRecord;
 use capsulet_proposer::{EvidenceAlphabet, OllamaProposer, RawProposal, chunk_into_spans};
 use capsulet_storage::ObjectStore;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::{
     auth::Principal,
@@ -27,7 +28,7 @@ use crate::{
     store::ApiStore,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AskRequest {
     /// Text to reason over. Stored immutably and cut into citable spans.
     pub text: String,

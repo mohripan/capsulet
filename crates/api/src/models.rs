@@ -10,15 +10,16 @@ use capsulet_core::{
 use capsulet_postgres::{ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use utoipa::ToSchema;
 
 use crate::{error::ApiError, http::json_from_string};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct HealthResponse {
     pub(crate) status: &'static str,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateServiceAccountRequest {
     pub(crate) id: Option<String>,
     pub(crate) name: String,
@@ -32,18 +33,21 @@ pub(crate) struct CreateServiceAccountRequest {
     pub(crate) expires_at_unix: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
-pub(crate) struct ServiceAccountResponse {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) tenant_id: String,
-    pub(crate) project_id: String,
-    pub(crate) role: String,
-    pub(crate) scopes: Vec<String>,
-    pub(crate) expires_at: Option<String>,
-    pub(crate) revoked_at: Option<String>,
-    pub(crate) last_used_at: Option<String>,
-    pub(crate) created_at: String,
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ServiceAccountResponse {
+    pub id: String,
+    pub name: String,
+    pub tenant_id: String,
+    pub project_id: String,
+    pub role: String,
+    pub scopes: Vec<String>,
+    #[schema(required)]
+    pub expires_at: Option<String>,
+    #[schema(required)]
+    pub revoked_at: Option<String>,
+    #[schema(required)]
+    pub last_used_at: Option<String>,
+    pub created_at: String,
 }
 
 impl From<&ServiceAccountRecord> for ServiceAccountResponse {
@@ -63,19 +67,48 @@ impl From<&ServiceAccountRecord> for ServiceAccountResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
-pub(crate) struct CreateServiceAccountResponse {
-    #[serde(flatten)]
-    pub(crate) account: ServiceAccountResponse,
-    pub(crate) token: String,
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CreateServiceAccountResponse {
+    pub id: String,
+    pub name: String,
+    pub tenant_id: String,
+    pub project_id: String,
+    pub role: String,
+    pub scopes: Vec<String>,
+    #[schema(required)]
+    pub expires_at: Option<String>,
+    #[schema(required)]
+    pub revoked_at: Option<String>,
+    #[schema(required)]
+    pub last_used_at: Option<String>,
+    pub created_at: String,
+    pub token: String,
 }
 
-#[derive(Debug, Serialize)]
+impl CreateServiceAccountResponse {
+    pub(crate) fn from_record(account: &ServiceAccountRecord, token: String) -> Self {
+        Self {
+            id: account.id.clone(),
+            name: account.name.clone(),
+            tenant_id: account.tenant_id.clone(),
+            project_id: account.project_id.clone(),
+            role: account.role.clone(),
+            scopes: account.scopes.clone(),
+            expires_at: account.expires_at.clone(),
+            revoked_at: account.revoked_at.clone(),
+            last_used_at: account.last_used_at.clone(),
+            created_at: account.created_at.clone(),
+            token,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListServiceAccountsResponse {
     pub(crate) service_accounts: Vec<ServiceAccountResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ProjectResponse {
     pub(crate) id: String,
     pub(crate) tenant_id: String,
@@ -92,19 +125,19 @@ impl From<&ProjectRecord> for ProjectResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListProjectsResponse {
     pub(crate) projects: Vec<ProjectResponse>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct UpsertProjectMembershipRequest {
     pub(crate) principal_kind: String,
     pub(crate) principal_name: String,
     pub(crate) role: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ProjectMembershipResponse {
     pub(crate) id: String,
     pub(crate) tenant_id: String,
@@ -133,22 +166,23 @@ impl From<&ProjectMembershipRecord> for ProjectMembershipResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListProjectMembershipsResponse {
     pub(crate) memberships: Vec<ProjectMembershipResponse>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateRunRequest {
     pub job_definition_id: String,
     #[serde(alias = "host_group")]
     pub execution_pool: String,
     pub run_id: Option<String>,
     pub python_script: Option<String>,
+    #[schema(value_type = Object)]
     pub input: Option<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateJobDefinitionRequest {
     pub id: Option<String>,
     pub name: String,
@@ -157,12 +191,13 @@ pub struct CreateJobDefinitionRequest {
     #[serde(default)]
     pub python_dependencies: Vec<String>,
     #[serde(default)]
+    #[schema(value_type = Object)]
     pub input_schema: Option<Value>,
     pub retry_max_attempts: Option<u32>,
     pub retry_delay_seconds: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWorkflowRequest {
     pub id: Option<String>,
     pub name: String,
@@ -172,7 +207,7 @@ pub struct CreateWorkflowRequest {
     pub deadline_seconds: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateGraphRequest {
     pub id: Option<String>,
     pub name: String,
@@ -181,7 +216,7 @@ pub struct CreateGraphRequest {
     pub transition_policy: Option<GraphTransitionPolicyRequest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GraphNodeRequest {
     pub id: String,
     pub name: String,
@@ -189,21 +224,21 @@ pub struct GraphNodeRequest {
     pub ports: Vec<GraphPortRequest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GraphPortRequest {
     pub id: String,
     pub direction: String,
     pub value_type: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GraphHyperedgeRequest {
     pub id: String,
     pub sources: Vec<HyperedgeEndpointRequest>,
     pub targets: Vec<HyperedgeEndpointRequest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct HyperedgeEndpointRequest {
     pub kind: String,
     pub node_id: Option<String>,
@@ -212,7 +247,7 @@ pub struct HyperedgeEndpointRequest {
     pub value_type: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GraphTransitionPolicyRequest {
     pub mode: String,
     #[serde(default)]
@@ -221,7 +256,7 @@ pub struct GraphTransitionPolicyRequest {
     pub cycles_allowed: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAgentRequest {
     pub id: Option<String>,
     pub name: String,
@@ -231,7 +266,7 @@ pub struct CreateAgentRequest {
     pub termination_conditions: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AgentBudgetRequest {
     #[serde(rename = "max_steps")]
     pub steps: u32,
@@ -243,32 +278,33 @@ pub struct AgentBudgetRequest {
     pub cost_micros: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct StartAgentRunRequest {
     pub id: Option<String>,
     #[serde(default)]
+    #[schema(value_type = Object)]
     pub initial_state: Value,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct JobDefinitionSourceResponse {
     pub(crate) python_script: String,
     pub(crate) python_dependencies: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct WorkflowEditabilityResponse {
     pub(crate) editable: bool,
     pub(crate) reason: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct TopologyResponse {
     pub(crate) nodes: Vec<TopologyNodeResponse>,
     pub(crate) edges: Vec<TopologyEdgeResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct TopologyNodeResponse {
     pub(crate) id: String,
     pub(crate) label: String,
@@ -276,14 +312,14 @@ pub(crate) struct TopologyNodeResponse {
     pub(crate) status: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct TopologyEdgeResponse {
     pub(crate) from: String,
     pub(crate) to: String,
     pub(crate) label: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWorkflowStepRequest {
     pub id: Option<String>,
     pub name: String,
@@ -293,29 +329,32 @@ pub struct CreateWorkflowStepRequest {
     pub timeout_seconds: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAutomationRequest {
     pub id: Option<String>,
     pub name: String,
     pub description: Option<String>,
     pub workflow_id: String,
     pub status: Option<String>,
+    #[schema(value_type = Object)]
     pub job_input: Option<Value>,
     pub triggers: Option<Vec<CreateAutomationTriggerRequest>>,
+    #[schema(value_type = Object)]
     pub condition: Option<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAutomationTriggerRequest {
     pub name: String,
     pub kind: String,
     #[serde(default)]
+    #[schema(value_type = Object)]
     pub config: Value,
     pub plugin_id: Option<String>,
     pub enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateTriggerPluginRequest {
     pub id: String,
     pub name: String,
@@ -323,10 +362,11 @@ pub struct CreateTriggerPluginRequest {
     pub runtime_image: String,
     pub command: Option<Vec<String>>,
     pub python_script: Option<String>,
+    #[schema(value_type = Object)]
     pub config_schema: Option<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ListRunsQuery {
     pub(crate) limit: Option<u16>,
     pub(crate) start_at: Option<String>,
@@ -337,14 +377,14 @@ pub(crate) struct ListRunsQuery {
     pub(crate) direction: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWorkflowDependencyRequest {
     pub from_step_id: String,
     pub to_step_id: String,
     pub policy: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ListWorkflowRunsQuery {
     pub(crate) limit: Option<u16>,
     pub(crate) start_at: Option<String>,
@@ -355,73 +395,74 @@ pub(crate) struct ListWorkflowRunsQuery {
     pub(crate) direction: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ListJobDefinitionsQuery {
     pub(crate) limit: Option<u16>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListRunsResponse {
     pub(crate) runs: Vec<JobRunResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListJobDefinitionsResponse {
     pub(crate) job_definitions: Vec<JobDefinitionResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListExecutionPoolsResponse {
     pub(crate) execution_pools: Vec<ExecutionPoolResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListHostGroupsResponse {
     pub(crate) host_groups: Vec<HostGroupResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListWorkflowsResponse {
     pub(crate) workflows: Vec<WorkflowResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListGraphsResponse {
     pub(crate) graphs: Vec<GraphResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListAgentsResponse {
     pub(crate) agents: Vec<AgentResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListAgentRunsResponse {
     pub(crate) agent_runs: Vec<AgentRunResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListAutomationsResponse {
     pub(crate) automations: Vec<AutomationResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListAutomationTriggersResponse {
     pub(crate) triggers: Vec<TriggerResponse>,
+    #[schema(value_type = Object)]
     pub(crate) condition: Value,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListTriggerPluginsResponse {
     pub(crate) trigger_plugins: Vec<TriggerPluginResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListWorkflowRunsResponse {
     pub(crate) workflow_runs: Vec<WorkflowRunResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct WorkflowRunLogsResponse {
     pub(crate) workflow_run_id: String,
     pub(crate) workflow_id: String,
@@ -429,7 +470,7 @@ pub(crate) struct WorkflowRunLogsResponse {
     pub(crate) entries: Vec<WorkflowRunLogEntryResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct WorkflowRunLogEntryResponse {
     pub(crate) step_run_id: String,
     pub(crate) workflow_step_id: String,
@@ -440,7 +481,7 @@ pub(crate) struct WorkflowRunLogEntryResponse {
     pub(crate) object_log_available: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ExecutionPoolResponse {
     pub(crate) name: String,
     pub(crate) description: String,
@@ -448,7 +489,7 @@ pub(crate) struct ExecutionPoolResponse {
     pub(crate) host_group: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct HostGroupResponse {
     pub(crate) name: String,
     pub(crate) description: String,
@@ -457,7 +498,7 @@ pub(crate) struct HostGroupResponse {
     pub(crate) host_count: Option<u32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct JobDefinitionResponse {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -465,12 +506,13 @@ pub(crate) struct JobDefinitionResponse {
     pub(crate) command: Vec<String>,
     pub(crate) python_dependencies: Vec<String>,
     pub(crate) bundle_object_key: String,
+    #[schema(value_type = Object)]
     pub(crate) input_schema: Value,
     pub(crate) retry_max_attempts: u32,
     pub(crate) retry_delay_seconds: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct WorkflowResponse {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -480,7 +522,7 @@ pub(crate) struct WorkflowResponse {
     pub(crate) dependencies: Vec<WorkflowDependencyResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct GraphResponse {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -490,7 +532,7 @@ pub(crate) struct GraphResponse {
     pub(crate) static_order: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct GraphNodeResponse {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -498,21 +540,21 @@ pub(crate) struct GraphNodeResponse {
     pub(crate) ports: Vec<GraphPortResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct GraphPortResponse {
     pub(crate) id: String,
     pub(crate) direction: String,
     pub(crate) value_type: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct GraphHyperedgeResponse {
     pub(crate) id: String,
     pub(crate) sources: Vec<HyperedgeEndpointResponse>,
     pub(crate) targets: Vec<HyperedgeEndpointResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct HyperedgeEndpointResponse {
     pub(crate) kind: String,
     pub(crate) node_id: Option<String>,
@@ -521,14 +563,14 @@ pub(crate) struct HyperedgeEndpointResponse {
     pub(crate) value_type: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct GraphTransitionPolicyResponse {
     pub(crate) mode: String,
     pub(crate) actions: Vec<String>,
     pub(crate) cycles_allowed: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AgentResponse {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -537,7 +579,7 @@ pub(crate) struct AgentResponse {
     pub(crate) termination_conditions: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AgentBudgetResponse {
     #[serde(rename = "max_steps")]
     pub(crate) steps: u32,
@@ -549,16 +591,17 @@ pub(crate) struct AgentBudgetResponse {
     pub(crate) cost_micros: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AgentRunResponse {
     pub(crate) id: String,
     pub(crate) agent_id: String,
     pub(crate) status: String,
     pub(crate) state_version: u64,
+    #[schema(value_type = Object)]
     pub(crate) state: Value,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AuditEventResponse {
     pub(crate) id: i64,
     pub(crate) principal: String,
@@ -570,19 +613,19 @@ pub(crate) struct AuditEventResponse {
     pub(crate) created_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListAuditEventsResponse {
     pub(crate) audit_events: Vec<AuditEventResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct WorkflowDependencyResponse {
     pub(crate) from_step_id: String,
     pub(crate) to_step_id: String,
     pub(crate) policy: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct WorkflowStepResponse {
     pub(crate) id: String,
     pub(crate) position: i32,
@@ -593,7 +636,7 @@ pub(crate) struct WorkflowStepResponse {
     pub(crate) timeout_seconds: Option<u64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AutomationResponse {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -601,20 +644,23 @@ pub(crate) struct AutomationResponse {
     pub(crate) workflow_id: String,
     pub(crate) status: String,
     pub(crate) triggers: Vec<TriggerResponse>,
+    #[schema(value_type = Object)]
     pub(crate) condition: Value,
+    #[schema(value_type = Object)]
     pub(crate) job_input: Value,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct TriggerResponse {
     pub(crate) name: String,
     pub(crate) kind: String,
+    #[schema(value_type = Object)]
     pub(crate) config: Value,
     pub(crate) plugin_id: Option<String>,
     pub(crate) enabled: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct TriggerPluginResponse {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -622,10 +668,11 @@ pub(crate) struct TriggerPluginResponse {
     pub(crate) runtime_image: String,
     pub(crate) command: Vec<String>,
     pub(crate) python_script: String,
+    #[schema(value_type = Object)]
     pub(crate) config_schema: Value,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct WorkflowRunResponse {
     pub(crate) id: String,
     pub(crate) workflow_id: String,
@@ -636,7 +683,7 @@ pub(crate) struct WorkflowRunResponse {
     pub(crate) step_runs: Vec<WorkflowStepRunResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct WorkflowStepRunResponse {
     pub(crate) id: String,
     pub(crate) workflow_step_id: String,
@@ -645,7 +692,7 @@ pub(crate) struct WorkflowStepRunResponse {
     pub(crate) status: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct JobRunResponse {
     pub(crate) id: String,
     pub(crate) job_definition_id: String,
@@ -654,22 +701,23 @@ pub(crate) struct JobRunResponse {
     pub(crate) host_group: String,
     pub(crate) attempt_count: u32,
     pub(crate) created_at: String,
+    #[schema(value_type = Object)]
     pub(crate) input: Value,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct JobRunLogsResponse {
     pub(crate) run_id: String,
     pub(crate) logs: String,
     pub(crate) object_log_available: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListArtifactsResponse {
     pub(crate) artifacts: Vec<ArtifactResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ArtifactResponse {
     pub(crate) id: String,
     pub(crate) run_id: String,

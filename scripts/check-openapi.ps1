@@ -4,12 +4,12 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $repoRoot
 try {
-  & cargo test -p capsulet-api --test openapi_contract
+  & cargo test -p capsulet-api --test openapi_contract --locked
   if ($LASTEXITCODE -ne 0) {
     throw "OpenAPI contract tests failed."
   }
 
-  & cargo run -p capsulet-api --bin export-openapi -- --check
+  & cargo run -p capsulet-api --bin export-openapi --locked -- --check
   if ($LASTEXITCODE -ne 0) {
     throw "The checked OpenAPI artifact is stale."
   }

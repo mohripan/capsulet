@@ -17,6 +17,7 @@ use capsulet_core::{
 use capsulet_storage::ObjectStore;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use utoipa::ToSchema;
 
 use crate::{
     auth::Principal,
@@ -26,7 +27,7 @@ use crate::{
     store::ApiStore,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateSourceRequest {
     id: Option<String>,
     kind: String,
@@ -35,7 +36,7 @@ pub(crate) struct CreateSourceRequest {
     authority: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateEvidenceRequest {
     id: Option<String>,
     source_id: String,
@@ -44,7 +45,7 @@ pub(crate) struct CreateEvidenceRequest {
     observed_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateEntityRequest {
     id: Option<String>,
     entity_type: String,
@@ -53,7 +54,7 @@ pub(crate) struct CreateEntityRequest {
     aliases: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateClaimRequest {
     id: Option<String>,
     subject_id: String,
@@ -68,7 +69,7 @@ pub(crate) struct CreateClaimRequest {
     valid_until: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateEventRequest {
     id: Option<String>,
     event_type: String,
@@ -78,7 +79,7 @@ pub(crate) struct CreateEventRequest {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateRelationshipRequest {
     id: Option<String>,
     relationship_type: String,
@@ -87,14 +88,14 @@ pub(crate) struct CreateRelationshipRequest {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateMemoryContractRequest {
     id: Option<String>,
     name: String,
     source: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateMemorySubgraphRequest {
     id: Option<String>,
     parent_subgraph_id: Option<String>,
@@ -102,16 +103,17 @@ pub(crate) struct CreateMemorySubgraphRequest {
     description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ActivateMemorySubgraphRequest {
     owner_kind: String,
     owner_id: String,
     contract_id: String,
+    #[schema(value_type = Object)]
     permissions: Value,
     summary_claim_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateMemorySubgraphMemberRequest {
     id: Option<String>,
     member_kind: String,
@@ -119,7 +121,7 @@ pub(crate) struct CreateMemorySubgraphMemberRequest {
     role: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateCanonicalEntityRequest {
     id: Option<String>,
     entity_type: String,
@@ -128,7 +130,7 @@ pub(crate) struct CreateCanonicalEntityRequest {
     aliases: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateEntityResolutionRequest {
     id: Option<String>,
     subgraph_id: String,
@@ -139,22 +141,22 @@ pub(crate) struct CreateEntityResolutionRequest {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ListEntityResolutionsQuery {
     status: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ListClaimConflictsQuery {
     status: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct ResolveClaimConflictRequest {
     preferred_claim_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateSummaryTraceRequest {
     id: Option<String>,
     subgraph_id: String,
@@ -165,7 +167,7 @@ pub(crate) struct CreateSummaryTraceRequest {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateEntityGraphAttachmentRequest {
     id: Option<String>,
     canonical_entity_id: String,
@@ -173,7 +175,7 @@ pub(crate) struct CreateEntityGraphAttachmentRequest {
     attachment_type: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateSubgraphEdgeRequest {
     id: Option<String>,
     edge_type: String,
@@ -189,7 +191,7 @@ pub(crate) struct CreateSubgraphEdgeRequest {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct SourceResponse {
     id: String,
     tenant_id: String,
@@ -200,7 +202,7 @@ pub(crate) struct SourceResponse {
     authority: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct EvidenceResponse {
     id: String,
     tenant_id: String,
@@ -211,7 +213,7 @@ pub(crate) struct EvidenceResponse {
     observed_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct EntityResponse {
     id: String,
     tenant_id: String,
@@ -221,7 +223,7 @@ pub(crate) struct EntityResponse {
     aliases: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ClaimResponse {
     id: String,
     tenant_id: String,
@@ -238,7 +240,7 @@ pub(crate) struct ClaimResponse {
     valid_until: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct EventResponse {
     id: String,
     tenant_id: String,
@@ -249,7 +251,7 @@ pub(crate) struct EventResponse {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct RelationshipResponse {
     id: String,
     tenant_id: String,
@@ -260,7 +262,7 @@ pub(crate) struct RelationshipResponse {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct MemoryContractResponse {
     id: String,
     tenant_id: String,
@@ -270,7 +272,7 @@ pub(crate) struct MemoryContractResponse {
     compiled: CompiledMemoryPolicyResponse,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct MemorySubgraphResponse {
     id: String,
     tenant_id: String,
@@ -282,11 +284,12 @@ pub(crate) struct MemorySubgraphResponse {
     owner_id: Option<String>,
     contract_id: Option<String>,
     summary_claim_id: Option<String>,
+    #[schema(value_type = Object)]
     permissions: Option<Value>,
     status: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct MemorySubgraphMemberResponse {
     id: String,
     tenant_id: String,
@@ -297,7 +300,7 @@ pub(crate) struct MemorySubgraphMemberResponse {
     role: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct CanonicalEntityResponse {
     id: String,
     tenant_id: String,
@@ -307,7 +310,7 @@ pub(crate) struct CanonicalEntityResponse {
     aliases: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct EntityResolutionResponse {
     id: String,
     tenant_id: String,
@@ -320,7 +323,7 @@ pub(crate) struct EntityResolutionResponse {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ClaimConflictResponse {
     id: String,
     tenant_id: String,
@@ -334,7 +337,7 @@ pub(crate) struct ClaimConflictResponse {
     preferred_claim_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct SummaryTraceResponse {
     id: String,
     tenant_id: String,
@@ -345,7 +348,7 @@ pub(crate) struct SummaryTraceResponse {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct EntityGraphAttachmentResponse {
     id: String,
     tenant_id: String,
@@ -355,7 +358,7 @@ pub(crate) struct EntityGraphAttachmentResponse {
     attachment_type: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct SubgraphEdgeResponse {
     id: String,
     tenant_id: String,
@@ -371,7 +374,7 @@ pub(crate) struct SubgraphEdgeResponse {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct CompiledMemoryPolicyResponse {
     entity_types: Vec<String>,
     relations: Vec<RelationPolicyResponse>,
@@ -381,14 +384,14 @@ pub(crate) struct CompiledMemoryPolicyResponse {
     contradiction_rules: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct RelationPolicyResponse {
     name: String,
     from: String,
     to: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ClaimPolicyResponse {
     require_source: bool,
     store_confidence: bool,
@@ -396,64 +399,64 @@ pub(crate) struct ClaimPolicyResponse {
     min_confidence: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct RetrievalPolicyResponse {
     name: String,
     seed_from: Vec<String>,
     max_hops: Option<u32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListSourcesResponse {
     sources: Vec<SourceResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListEvidenceResponse {
     evidence: Vec<EvidenceResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListEntitiesResponse {
     entities: Vec<EntityResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListClaimsResponse {
     claims: Vec<ClaimResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListEventsResponse {
     events: Vec<EventResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListRelationshipsResponse {
     relationships: Vec<RelationshipResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListMemoryContractsResponse {
     contracts: Vec<MemoryContractResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListMemorySubgraphsResponse {
     subgraphs: Vec<MemorySubgraphResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListCanonicalEntitiesResponse {
     canonical_entities: Vec<CanonicalEntityResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListEntityResolutionsResponse {
     entity_resolutions: Vec<EntityResolutionResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListClaimConflictsResponse {
     conflicts: Vec<ClaimConflictResponse>,
 }

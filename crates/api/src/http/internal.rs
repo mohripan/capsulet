@@ -15,7 +15,7 @@ use axum::{
         IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
     },
-    routing::{get, post},
+    routing::{MethodRouter, get, post},
 };
 use capsulet_application::CreateManualRunCommand;
 use capsulet_core::{
@@ -38,6 +38,7 @@ use tower_http::{
     compression::CompressionLayer, cors::CorsLayer, limit::RequestBodyLimitLayer,
     timeout::TimeoutLayer, trace::TraceLayer,
 };
+use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
 
 use crate::{
@@ -143,6 +144,49 @@ struct ActivityStepRunSnapshot {
     status: String,
 }
 
+struct ContractRouter<S> {
+    router: OpenApiRouter<S>,
+    registered_operations: BTreeSet<&'static str>,
+}
+
+impl<S> ContractRouter<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    fn new() -> Self {
+        Self {
+            router: OpenApiRouter::new(),
+            registered_operations: BTreeSet::new(),
+        }
+    }
+
+    fn route_operations(
+        mut self,
+        operation_ids: &[&'static str],
+        method_router: MethodRouter<S>,
+    ) -> Self {
+        let mut contracts = operation_ids.iter().map(|operation_id| {
+            crate::find_operation(operation_id)
+                .unwrap_or_else(|| panic!("unknown route operation ID: {operation_id}"))
+        });
+        let first = contracts
+            .next()
+            .expect("route registration includes at least one operation");
+        assert!(
+            contracts.all(|contract| contract.path == first.path),
+            "route registration mixes operation paths"
+        );
+        for operation_id in operation_ids {
+            assert!(
+                self.registered_operations.insert(operation_id),
+                "operation registered more than once: {operation_id}"
+            );
+        }
+        self.router = self.router.route(first.path, method_router);
+        self
+    }
+}
+
 #[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 pub fn router<S, O>(state: AppState<S, O>) -> Router
 where
@@ -163,263 +207,272 @@ where
             .finish()
             .expect("rate limit configuration is valid"),
     );
-    let protected = Router::new()
-        .route("/v1/auth/me", get(current_principal))
-        .route("/v1/projects", get(list_projects))
-        .route(
-            "/v1/projects/{project_id}/memberships",
+    let protected = ContractRouter::new()
+        .route_operations(&["getCurrentPrincipal"], get(current_principal))
+        .route_operations(&["listProjects"], get(list_projects))
+        .route_operations(
+            &["listProjectMemberships", "upsertProjectMembership"],
             get(list_project_memberships).post(upsert_project_membership),
         )
-        .route(
-            "/v1/projects/{project_id}/memberships/{principal_kind}/{principal_name}",
+        .route_operations(
+            &["deleteProjectMembership"],
             axum::routing::delete(delete_project_membership),
         )
-        .route(
-            "/v1/service-accounts",
+        .route_operations(
+            &["listServiceAccounts", "createServiceAccount"],
             post(create_service_account).get(list_service_accounts),
         )
-        .route(
-            "/v1/service-accounts/{id}/revoke",
-            post(revoke_service_account),
-        )
-        .route(
-            "/v1/job-definitions",
+        .route_operations(&["revokeServiceAccount"], post(revoke_service_account))
+        .route_operations(
+            &["listJobDefinitions", "createJobDefinition"],
             post(create_job_definition).get(list_job_definitions),
         )
-        .route(
-            "/v1/job-definitions/{id}",
+        .route_operations(
+            &[
+                "getJobDefinition",
+                "updateJobDefinition",
+                "deleteJobDefinition",
+            ],
             get(get_job_definition)
                 .put(update_job_definition)
                 .delete(delete_job_definition),
         )
-        .route(
-            "/v1/job-definitions/{id}/source",
-            get(get_job_definition_source),
+        .route_operations(&["getJobDefinitionSource"], get(get_job_definition_source))
+        .route_operations(&["listExecutionPools"], get(list_execution_pools))
+        .route_operations(&["listAuditEvents"], get(list_audit_events))
+        .route_operations(&["listHostGroups"], get(list_host_groups))
+        .route_operations(&["getTopology"], get(get_topology))
+        .route_operations(
+            &["listWorkflows", "createWorkflow"],
+            post(create_workflow).get(list_workflows),
         )
-        .route("/v1/execution-pools", get(list_execution_pools))
-        .route("/v1/audit-events", get(list_audit_events))
-        .route("/v1/host-groups", get(list_host_groups))
-        .route("/v1/topology", get(get_topology))
-        .route("/v1/workflows", post(create_workflow).get(list_workflows))
-        .route(
-            "/v1/workflows/{id}",
+        .route_operations(
+            &["getWorkflow", "updateWorkflow", "deleteWorkflow"],
             get(get_workflow)
                 .put(update_workflow)
                 .delete(delete_workflow),
         )
-        .route(
-            "/v1/workflows/{id}/editability",
-            get(get_workflow_editability),
-        )
-        .route(
-            "/v1/graphs",
+        .route_operations(&["getWorkflowEditability"], get(get_workflow_editability))
+        .route_operations(
+            &["listGraphs", "createGraph"],
             post(crate::graphs::create_graph).get(crate::graphs::list_graphs),
         )
-        .route("/v1/graphs/{id}", get(crate::graphs::get_graph))
-        .route(
-            "/v1/agents",
+        .route_operations(&["getGraph"], get(crate::graphs::get_graph))
+        .route_operations(
+            &["listAgents", "createAgent"],
             post(crate::graphs::create_agent).get(crate::graphs::list_agents),
         )
-        .route("/v1/agents/{id}", get(crate::graphs::get_agent))
-        .route("/v1/agents/{id}/runs", post(crate::graphs::start_agent_run))
-        .route("/v1/agent-runs", get(crate::graphs::list_agent_runs))
-        .route("/v1/agent-runs/{id}", get(crate::graphs::get_agent_run))
-        .route("/v1/reasoning/ask", post(crate::reasoning::ask))
-        .route(
-            "/v1/reasoning/certificates",
+        .route_operations(&["getAgent"], get(crate::graphs::get_agent))
+        .route_operations(&["startAgentRun"], post(crate::graphs::start_agent_run))
+        .route_operations(&["listAgentRuns"], get(crate::graphs::list_agent_runs))
+        .route_operations(&["getAgentRun"], get(crate::graphs::get_agent_run))
+        .route_operations(&["askReasoning"], post(crate::reasoning::ask))
+        .route_operations(
+            &["listCertificates"],
             get(crate::reasoning::list_certificates),
         )
-        .route(
-            "/v1/memory/sources",
+        .route_operations(
+            &["listMemorySources", "createMemorySource"],
             post(crate::memory::create_source).get(crate::memory::list_sources),
         )
-        .route("/v1/memory/sources/{id}", get(crate::memory::get_source))
-        .route(
-            "/v1/memory/evidence",
+        .route_operations(&["getMemorySource"], get(crate::memory::get_source))
+        .route_operations(
+            &["listMemoryEvidence", "createMemoryEvidence"],
             post(crate::memory::create_evidence).get(crate::memory::list_evidence),
         )
-        .route("/v1/memory/evidence/{id}", get(crate::memory::get_evidence))
-        .route(
-            "/v1/memory/entities",
+        .route_operations(&["getMemoryEvidence"], get(crate::memory::get_evidence))
+        .route_operations(
+            &["listMemoryEntities", "createMemoryEntity"],
             post(crate::memory::create_entity).get(crate::memory::list_entities),
         )
-        .route("/v1/memory/entities/{id}", get(crate::memory::get_entity))
-        .route(
-            "/v1/memory/claims",
+        .route_operations(&["getMemoryEntity"], get(crate::memory::get_entity))
+        .route_operations(
+            &["listMemoryClaims", "createMemoryClaim"],
             post(crate::memory::create_claim).get(crate::memory::list_claims),
         )
-        .route("/v1/memory/claims/{id}", get(crate::memory::get_claim))
-        .route(
-            "/v1/memory/events",
+        .route_operations(&["getMemoryClaim"], get(crate::memory::get_claim))
+        .route_operations(
+            &["listMemoryEvents", "createMemoryEvent"],
             post(crate::memory::create_event).get(crate::memory::list_events),
         )
-        .route("/v1/memory/events/{id}", get(crate::memory::get_event))
-        .route(
-            "/v1/memory/relationships",
+        .route_operations(&["getMemoryEvent"], get(crate::memory::get_event))
+        .route_operations(
+            &["listMemoryRelationships", "createMemoryRelationship"],
             post(crate::memory::create_relationship).get(crate::memory::list_relationships),
         )
-        .route(
-            "/v1/memory/relationships/{id}",
+        .route_operations(
+            &["getMemoryRelationship"],
             get(crate::memory::get_relationship),
         )
-        .route(
-            "/v1/memory/contracts",
+        .route_operations(
+            &["listMemoryContracts", "createMemoryContract"],
             post(crate::memory::create_contract).get(crate::memory::list_contracts),
         )
-        .route(
-            "/v1/memory/contracts/{id}",
-            get(crate::memory::get_contract),
-        )
-        .route(
-            "/v1/memory/subgraphs",
+        .route_operations(&["getMemoryContract"], get(crate::memory::get_contract))
+        .route_operations(
+            &["listMemorySubgraphs", "createMemorySubgraph"],
             post(crate::memory::create_subgraph).get(crate::memory::list_subgraphs),
         )
-        .route(
-            "/v1/memory/subgraphs/{id}",
-            get(crate::memory::get_subgraph),
-        )
-        .route(
-            "/v1/memory/subgraphs/{id}/activate",
+        .route_operations(&["getMemorySubgraph"], get(crate::memory::get_subgraph))
+        .route_operations(
+            &["activateMemorySubgraph"],
             post(crate::memory::activate_subgraph),
         )
-        .route(
-            "/v1/memory/subgraphs/{id}/members",
+        .route_operations(
+            &["createMemorySubgraphMember"],
             post(crate::memory::create_subgraph_member),
         )
-        .route(
-            "/v1/memory/canonical-entities",
+        .route_operations(
+            &["listCanonicalEntities", "createCanonicalEntity"],
             post(crate::memory::create_canonical_entity)
                 .get(crate::memory::list_canonical_entities),
         )
-        .route(
-            "/v1/memory/entity-resolutions",
+        .route_operations(
+            &["listEntityResolutions", "createEntityResolution"],
             post(crate::memory::create_entity_resolution)
                 .get(crate::memory::list_entity_resolutions),
         )
-        .route(
-            "/v1/memory/entity-resolutions/{id}/confirm",
+        .route_operations(
+            &["confirmEntityResolution"],
             post(crate::memory::confirm_entity_resolution),
         )
-        .route(
-            "/v1/memory/entity-resolutions/{id}/reject",
+        .route_operations(
+            &["rejectEntityResolution"],
             post(crate::memory::reject_entity_resolution),
         )
-        .route(
-            "/v1/memory/conflicts",
+        .route_operations(
+            &["listClaimConflicts"],
             get(crate::memory::list_claim_conflicts),
         )
-        .route(
-            "/v1/memory/conflicts/{id}/resolve",
+        .route_operations(
+            &["resolveClaimConflict"],
             post(crate::memory::resolve_claim_conflict),
         )
-        .route(
-            "/v1/memory/conflicts/{id}/dismiss",
+        .route_operations(
+            &["dismissClaimConflict"],
             post(crate::memory::dismiss_claim_conflict),
         )
-        .route(
-            "/v1/memory/summary-traces",
+        .route_operations(
+            &["createSummaryTrace"],
             post(crate::memory::create_summary_trace),
         )
-        .route(
-            "/v1/memory/entity-graph-attachments",
+        .route_operations(
+            &["createEntityGraphAttachment"],
             post(crate::memory::create_entity_graph_attachment),
         )
-        .route(
-            "/v1/ingestion/connectors",
+        .route_operations(
+            &["listIngestionConnectors", "createIngestionConnector"],
             post(crate::ingestion::create_connector).get(crate::ingestion::list_connectors),
         )
-        .route(
-            "/v1/ingestion/connectors/{id}",
+        .route_operations(
+            &["getIngestionConnector"],
             get(crate::ingestion::get_connector),
         )
-        .route(
-            "/v1/ingestion/connectors/{id}/runs",
+        .route_operations(
+            &["runIngestionConnector"],
             post(crate::ingestion::run_connector),
         )
-        .route("/v1/ingestion/runs", get(crate::ingestion::list_runs))
-        .route("/v1/ingestion/runs/{id}", get(crate::ingestion::get_run))
-        .route(
-            "/v1/ingestion/review/claims",
+        .route_operations(&["listIngestionRuns"], get(crate::ingestion::list_runs))
+        .route_operations(&["getIngestionRun"], get(crate::ingestion::get_run))
+        .route_operations(
+            &["listIngestionReviewClaims"],
             get(crate::ingestion::list_review_claims),
         )
-        .route(
-            "/v1/ingestion/review/claims/{id}/approve",
+        .route_operations(
+            &["approveIngestionReviewClaim"],
             post(crate::ingestion::approve_review_claim),
         )
-        .route(
-            "/v1/ingestion/review/claims/{id}/reject",
+        .route_operations(
+            &["rejectIngestionReviewClaim"],
             post(crate::ingestion::reject_review_claim),
         )
-        .route(
-            "/v1/memory/subgraph-edges",
+        .route_operations(
+            &["createSubgraphEdge"],
             post(crate::memory::create_subgraph_edge),
         )
-        .route(
-            "/v1/automations",
+        .route_operations(
+            &["listAutomations", "createAutomation"],
             post(crate::automations::create_automation).get(crate::automations::list_automations),
         )
-        .route(
-            "/v1/automations/{id}",
+        .route_operations(
+            &["getAutomation", "updateAutomation", "deleteAutomation"],
             get(crate::automations::get_automation)
                 .put(crate::automations::update_automation)
                 .delete(crate::automations::delete_automation),
         )
-        .route(
-            "/v1/automations/{id}/enable",
+        .route_operations(
+            &["enableAutomation"],
             post(crate::automations::enable_automation),
         )
-        .route(
-            "/v1/automations/{id}/disable",
+        .route_operations(
+            &["disableAutomation"],
             post(crate::automations::disable_automation),
         )
-        .route(
-            "/v1/automations/{id}/triggers",
+        .route_operations(
+            &["listAutomationTriggers"],
             get(crate::automations::list_automation_triggers),
         )
-        .route("/v1/automations/{id}/trigger", post(trigger_automation))
-        .route(
-            "/v1/trigger-plugins",
+        .route_operations(&["triggerAutomation"], post(trigger_automation))
+        .route_operations(
+            &["listTriggerPlugins", "createTriggerPlugin"],
             post(crate::automations::create_trigger_plugin)
                 .get(crate::automations::list_trigger_plugins),
         )
-        .route(
-            "/v1/trigger-plugins/{id}",
+        .route_operations(
+            &["getTriggerPlugin"],
             get(crate::automations::get_trigger_plugin),
         )
-        .route("/v1/workflow-runs", get(list_workflow_runs))
-        .route("/v1/events/stream", get(stream_activity_events))
-        .route("/v1/workflow-runs/{id}", get(get_workflow_run))
-        .route("/v1/workflow-runs/{id}/logs", get(get_workflow_run_logs))
-        .route(
-            "/v1/workflow-runs/{id}/logs/stream",
-            get(stream_workflow_run_logs),
+        .route_operations(&["listWorkflowRuns"], get(list_workflow_runs))
+        .route_operations(&["streamActivityEvents"], get(stream_activity_events))
+        .route_operations(&["getWorkflowRun"], get(get_workflow_run))
+        .route_operations(&["getWorkflowRunLogs"], get(get_workflow_run_logs))
+        .route_operations(&["streamWorkflowRunLogs"], get(stream_workflow_run_logs))
+        .route_operations(&["removeWorkflowRun"], post(remove_workflow_run))
+        .route_operations(&["cancelWorkflowRun"], post(cancel_workflow_run))
+        .route_operations(&["resumeWorkflowRun"], post(resume_workflow_run))
+        .route_operations(
+            &["listJobRuns", "createJobRun"],
+            post(create_run).get(list_runs),
         )
-        .route("/v1/workflow-runs/{id}/remove", post(remove_workflow_run))
-        .route("/v1/workflow-runs/{id}/cancel", post(cancel_workflow_run))
-        .route("/v1/workflow-runs/{id}/resume", post(resume_workflow_run))
-        .route("/v1/jobs/runs", post(create_run).get(list_runs))
-        .route("/v1/jobs/runs/{id}", get(get_run))
-        .route("/v1/jobs/runs/{id}/cancel", post(cancel_run))
-        .route("/v1/jobs/runs/{id}/logs", get(get_run_logs))
-        .route("/v1/jobs/runs/{id}/logs/stream", get(stream_run_logs))
-        .route("/v1/jobs/runs/{id}/artifacts", get(list_artifacts))
-        .route(
-            "/v1/jobs/runs/{id}/artifacts/{artifact_id}",
-            get(download_artifact),
-        )
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
+        .route_operations(&["getJobRun"], get(get_run))
+        .route_operations(&["cancelJobRun"], post(cancel_run))
+        .route_operations(&["getJobRunLogs"], get(get_run_logs))
+        .route_operations(&["streamJobRunLogs"], get(stream_run_logs))
+        .route_operations(&["listJobArtifacts"], get(list_artifacts))
+        .route_operations(&["downloadJobArtifact"], get(download_artifact));
 
-    Router::new()
-        .route("/healthz", get(healthz::<S, O>))
-        .route("/livez", get(livez))
-        .route("/readyz", get(readyz::<S, O>))
-        .route("/metrics", get(metrics::<S, O>))
-        .route("/openapi.json", get(openapi_spec))
-        .route(
-            "/v1/webhooks/{automation_id}/{trigger_name}",
+    let public = ContractRouter::new()
+        .route_operations(&["getHealth"], get(healthz::<S, O>))
+        .route_operations(&["getLiveness"], get(livez))
+        .route_operations(&["getReadiness"], get(readyz::<S, O>))
+        .route_operations(&["getMetrics"], get(metrics::<S, O>))
+        .route_operations(&["getOpenApi"], get(openapi_spec))
+        .route_operations(
+            &["ingestWebhook"],
             post(crate::webhooks::ingest::<S, O>).layer(DefaultBodyLimit::max(1_048_576)),
+        );
+
+    let registered_operations = protected
+        .registered_operations
+        .union(&public.registered_operations)
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let declared_operations = crate::endpoint_contracts()
+        .iter()
+        .map(|endpoint| endpoint.operation_id)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        registered_operations, declared_operations,
+        "runtime route registrations must exactly cover the endpoint contract"
+    );
+
+    let router = public
+        .router
+        .merge(
+            protected
+                .router
+                .route_layer(middleware::from_fn_with_state(state.clone(), require_auth)),
         )
-        .merge(protected)
         .with_state(state)
         .layer(middleware::from_fn(request_context))
         .layer(TraceLayer::new_for_http())
@@ -440,7 +493,8 @@ where
             "CAPSULET_API_CONCURRENCY_LIMIT",
             DEFAULT_CONCURRENCY_LIMIT,
         )))
-        .layer(GovernorLayer::new(rate_limit))
+        .layer(GovernorLayer::new(rate_limit));
+    router.into()
 }
 
 async fn metrics<S, O>(State(state): State<AppState<S, O>>) -> Response
@@ -830,7 +884,8 @@ where
         .await;
         return Err(ApiError::Unauthorized);
     };
-    let required_scope = required_scope(request.method(), request.uri().path());
+    let required_scope = required_scope(request.method(), request.uri().path())
+        .ok_or_else(|| ApiError::MissingEndpointContract(path.clone()))?;
     if !principal.has_scope(required_scope) {
         audit_auth_failure(
             &state,
@@ -978,63 +1033,9 @@ async fn audit_auth_failure<S, O>(
     }
 }
 
-fn required_scope(method: &Method, path: &str) -> &'static str {
-    if let Some(endpoint) = crate::find_endpoint(method.as_str(), path) {
-        return endpoint.required_scope;
-    }
-    if path == "/v1/auth/me" {
-        return "auth:read";
-    }
-    if path == "/v1/projects" || path.starts_with("/v1/projects/") {
-        return "auth:read";
-    }
-    if path == "/v1/audit-events" {
-        return "audit:read";
-    }
-    if path.starts_with("/v1/service-accounts") {
-        return "auth:write";
-    }
-    if method == Method::GET || method == Method::HEAD {
-        if path.starts_with("/v1/jobs/") {
-            return "jobs:read";
-        }
-        if path.starts_with("/v1/workflows") || path.starts_with("/v1/workflow-runs") {
-            return "workflows:read";
-        }
-        if path.starts_with("/v1/automations") || path.starts_with("/v1/trigger-plugins") {
-            return "automations:read";
-        }
-        return "system:read";
-    }
-    if path == "/v1/jobs/runs" {
-        return "jobs:run";
-    }
-    if path.starts_with("/v1/jobs/runs/") && path.ends_with("/cancel") {
-        return "jobs:cancel";
-    }
-    if path.starts_with("/v1/workflow-runs/")
-        && (path.ends_with("/cancel") || path.ends_with("/resume") || path.ends_with("/remove"))
-    {
-        return "workflows:operate";
-    }
-    if path.starts_with("/v1/automations/") && path.ends_with("/trigger") {
-        return "automations:operate";
-    }
-    if path.starts_with("/v1/automations/")
-        && (path.ends_with("/enable") || path.ends_with("/disable"))
-    {
-        return "automations:operate";
-    }
-    if path.starts_with("/v1/job-definitions") {
-        return "jobs:write";
-    }
-    if path.starts_with("/v1/workflows") {
-        return "workflows:write";
-    }
-    if path.starts_with("/v1/automations") || path.starts_with("/v1/trigger-plugins") {
-        return "automations:write";
-    }
-    "system:write"
+fn required_scope(method: &Method, path: &str) -> Option<&'static str> {
+    crate::find_endpoint(method.as_str(), path)
+        .map(|endpoint| endpoint.required_permission.as_str())
 }
 
 /// Converts a requests-per-second budget into the quota replenish interval that
@@ -1159,10 +1160,7 @@ where
         .map_err(ApiError::store)?;
     Ok((
         StatusCode::CREATED,
-        Json(CreateServiceAccountResponse {
-            account: ServiceAccountResponse::from(&record),
-            token,
-        }),
+        Json(CreateServiceAccountResponse::from_record(&record, token)),
     ))
 }
 
@@ -3309,6 +3307,16 @@ where
 
 fn generated_run_id() -> String {
     generated_id("run")
+}
+
+#[cfg(test)]
+mod endpoint_policy_tests {
+    use super::*;
+
+    #[test]
+    fn unregistered_route_should_not_receive_a_prefix_based_permission() {
+        assert_eq!(required_scope(&Method::GET, "/v1/unregistered"), None);
+    }
 }
 
 pub(crate) fn valid_json_object_string(value: &Value, label: &str) -> Result<String, ApiError> {

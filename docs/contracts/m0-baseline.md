@@ -53,7 +53,7 @@ The corrected inventory contains 20 claims across 57 discovered public surfaces.
 showed that the existing evidence for `CAP-JOB-001` and `CAP-OPENAPI-001` proved only part of each
 statement, so both remain experimental until their complete behavior is executable. The two
 implemented capability statements were narrowed to the behavior their selected tests execute.
-M0 remains open until the typed route and wire-model remediation in M1 Task 2 passes.
+M0 closed after the typed route and wire-model remediation in M1 Task 2 passed its complete gate.
 
 | Dimension | Value | Count |
 | --- | --- | ---: |
@@ -61,13 +61,14 @@ M0 remains open until the typed route and wire-model remediation in M1 Task 2 pa
 | Kind | compatibility | 3 |
 | Kind | limitation | 4 |
 | Kind | positioning | 1 |
-| Maturity | implemented | 9 |
-| Maturity | experimental | 10 |
+| Maturity | implemented | 10 |
+| Maturity | experimental | 9 |
 | Maturity | planned | 1 |
 
 The experimental claims are `CAP-AGENT-001`, `CAP-MEMORY-001`, `CAP-AUTOMATION-001`,
 `CAP-IAM-001`, `CAP-PERSISTENCE-001`, `CAP-DASHBOARD-001`, `CAP-OBSERVABILITY-001`, and
-`CAP-HELM-001`, `CAP-JOB-001`, and `CAP-OPENAPI-001`. The planned claim is `CAP-PRODUCT-001`.
+`CAP-HELM-001` and `CAP-JOB-001`. `CAP-OPENAPI-001` is implemented after the typed route and wire
+schema gate passed. The planned claim is `CAP-PRODUCT-001`.
 The explicit limitations are
 `CAP-CORRECTNESS-002`, `CAP-AGENT-002`, `CAP-DASHBOARD-002`, and `CAP-SECURITY-001`.
 
@@ -76,8 +77,9 @@ The explicit limitations are
 - One endpoint registry describes all 116 runtime operations across 90 paths, including method,
   path, operation ID, stability, scope, project context, authentication, parameters, request and
   response bodies, status codes, and content types.
-- The generated OpenAPI 3.1 document contains the same 90 paths and 116 operations, 145 reusable
-  schemas, and no runtime paths missing from the document.
+- The generated OpenAPI 3.1 document contains the same 90 paths and 116 operations, 154 reusable
+  schemas derived from actual Serde wire types (with compact adapters for external/raw payloads),
+  and no runtime paths missing from the document.
 - The Python client maps its seven public transport operations to the generated contract.
 - The dashboard maps 68 explicit client operations to the generated contract.
 - The product-claim gate discovers public surfaces from reviewed include/exclude globs, validates
@@ -93,7 +95,7 @@ The explicit limitations are
 The following checks passed from this checkout on 2026-08-31:
 
 - `cargo fmt --all -- --check`
-- locked kernel, core, and API test suites (17 kernel tests, 66 core tests, and 87 API tests)
+- locked kernel, core, and API test suites (17 kernel tests, 66 core tests, and 91 API tests)
 - `cargo run -p capsulet-api --bin export-openapi --locked -- --check`
 - `powershell -File scripts/check-contracts.ps1` using the local Windows PowerShell 5.1 fallback;
   CI runs the same script with PowerShell 7 (20 claims, 57 surfaces, 90 OpenAPI paths, 116

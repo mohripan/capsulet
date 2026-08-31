@@ -1,21 +1,343 @@
 //! Stable metadata for every public HTTP operation.
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fmt};
 
-/// Public HTTP operation metadata shared by authorization and OpenAPI generation.
+/// HTTP methods supported by the public contract registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+    Patch,
+}
+
+impl HttpMethod {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+            Self::Delete => "DELETE",
+            Self::Patch => "PATCH",
+        }
+    }
+
+    #[must_use]
+    pub const fn as_lowercase(self) -> &'static str {
+        match self {
+            Self::Get => "get",
+            Self::Post => "post",
+            Self::Put => "put",
+            Self::Delete => "delete",
+            Self::Patch => "patch",
+        }
+    }
+}
+
+impl fmt::Display for HttpMethod {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Stability level exposed for a public operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stability {
+    Experimental,
+}
+
+impl Stability {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Experimental => "experimental",
+        }
+    }
+}
+
+/// Permission required before a handler may execute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequiredPermission {
+    Public,
+    AuthRead,
+    AuthWrite,
+    AuditRead,
+    SystemRead,
+    SystemWrite,
+    JobsRead,
+    JobsWrite,
+    JobsRun,
+    JobsCancel,
+    WorkflowsRead,
+    WorkflowsWrite,
+    WorkflowsOperate,
+    AutomationsRead,
+    AutomationsWrite,
+    AutomationsOperate,
+}
+
+impl RequiredPermission {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::AuthRead => "auth:read",
+            Self::AuthWrite => "auth:write",
+            Self::AuditRead => "audit:read",
+            Self::SystemRead => "system:read",
+            Self::SystemWrite => "system:write",
+            Self::JobsRead => "jobs:read",
+            Self::JobsWrite => "jobs:write",
+            Self::JobsRun => "jobs:run",
+            Self::JobsCancel => "jobs:cancel",
+            Self::WorkflowsRead => "workflows:read",
+            Self::WorkflowsWrite => "workflows:write",
+            Self::WorkflowsOperate => "workflows:operate",
+            Self::AutomationsRead => "automations:read",
+            Self::AutomationsWrite => "automations:write",
+            Self::AutomationsOperate => "automations:operate",
+        }
+    }
+}
+
+/// Whether an operation selects a project context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectContextRule {
+    None,
+    SelectedProject,
+}
+
+impl ProjectContextRule {
+    #[must_use]
+    pub const fn is_required(self) -> bool {
+        matches!(self, Self::SelectedProject)
+    }
+}
+
+/// Authentication mode for a public operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthenticationMode {
+    Anonymous,
+    Bearer,
+}
+
+impl AuthenticationMode {
+    #[must_use]
+    pub const fn requires_authentication(self) -> bool {
+        matches!(self, Self::Bearer)
+    }
+}
+
+/// Successful response status declared by a public operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseStatus {
+    Ok,
+    Created,
+    Accepted,
+    NoContent,
+}
+
+impl ResponseStatus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "200",
+            Self::Created => "201",
+            Self::Accepted => "202",
+            Self::NoContent => "204",
+        }
+    }
+}
+
+/// Response content types supported by public operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaType {
+    Json,
+    PlainText,
+    EventStream,
+    Binary,
+    OpenApiJson,
+}
+
+impl MediaType {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Json => "application/json",
+            Self::PlainText => "text/plain",
+            Self::EventStream => "text/event-stream",
+            Self::Binary => "application/octet-stream",
+            Self::OpenApiJson => "application/vnd.oai.openapi+json",
+        }
+    }
+}
+
+/// Identifier for a registered Rust wire schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SchemaId(&'static str);
+
+impl SchemaId {
+    const fn new(name: &'static str) -> Self {
+        Self(name)
+    }
+
+    /// Returns the stable component name emitted into `OpenAPI`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
+const fn optional_schema(name: Option<&'static str>) -> Option<SchemaId> {
+    match name {
+        Some(name) => Some(SchemaId::new(name)),
+        None => None,
+    }
+}
+
+/// Error response shape shared by public endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorContract {
+    Json,
+}
+
+/// Public HTTP operation metadata shared by authorization and `OpenAPI` generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EndpointContract {
-    pub method: &'static str,
+    pub method: HttpMethod,
     pub path: &'static str,
     pub operation_id: &'static str,
-    pub stability: &'static str,
-    pub required_scope: &'static str,
-    pub project_context: bool,
-    pub authenticated: bool,
-    pub request_schema: Option<&'static str>,
-    pub response_schema: &'static str,
-    pub success_status: &'static str,
-    pub response_content_type: &'static str,
+    pub stability: Stability,
+    pub required_permission: RequiredPermission,
+    pub project_context: ProjectContextRule,
+    pub authentication: AuthenticationMode,
+    pub request_schema: Option<SchemaId>,
+    pub response_schema: SchemaId,
+    pub error_contract: ErrorContract,
+    pub success_status: ResponseStatus,
+    pub response_content_type: MediaType,
+}
+
+macro_rules! http_method {
+    ("GET") => {
+        HttpMethod::Get
+    };
+    ("POST") => {
+        HttpMethod::Post
+    };
+    ("PUT") => {
+        HttpMethod::Put
+    };
+    ("DELETE") => {
+        HttpMethod::Delete
+    };
+    ("PATCH") => {
+        HttpMethod::Patch
+    };
+}
+
+macro_rules! required_permission {
+    ("public") => {
+        RequiredPermission::Public
+    };
+    ("auth:read") => {
+        RequiredPermission::AuthRead
+    };
+    ("auth:write") => {
+        RequiredPermission::AuthWrite
+    };
+    ("audit:read") => {
+        RequiredPermission::AuditRead
+    };
+    ("system:read") => {
+        RequiredPermission::SystemRead
+    };
+    ("system:write") => {
+        RequiredPermission::SystemWrite
+    };
+    ("jobs:read") => {
+        RequiredPermission::JobsRead
+    };
+    ("jobs:write") => {
+        RequiredPermission::JobsWrite
+    };
+    ("jobs:run") => {
+        RequiredPermission::JobsRun
+    };
+    ("jobs:cancel") => {
+        RequiredPermission::JobsCancel
+    };
+    ("workflows:read") => {
+        RequiredPermission::WorkflowsRead
+    };
+    ("workflows:write") => {
+        RequiredPermission::WorkflowsWrite
+    };
+    ("workflows:operate") => {
+        RequiredPermission::WorkflowsOperate
+    };
+    ("automations:read") => {
+        RequiredPermission::AutomationsRead
+    };
+    ("automations:write") => {
+        RequiredPermission::AutomationsWrite
+    };
+    ("automations:operate") => {
+        RequiredPermission::AutomationsOperate
+    };
+}
+
+macro_rules! project_context_rule {
+    (true) => {
+        ProjectContextRule::SelectedProject
+    };
+    (false) => {
+        ProjectContextRule::None
+    };
+}
+
+macro_rules! authentication_mode {
+    (true) => {
+        AuthenticationMode::Bearer
+    };
+    (false) => {
+        AuthenticationMode::Anonymous
+    };
+}
+
+macro_rules! response_status {
+    ("200") => {
+        ResponseStatus::Ok
+    };
+    ("201") => {
+        ResponseStatus::Created
+    };
+    ("202") => {
+        ResponseStatus::Accepted
+    };
+    ("204") => {
+        ResponseStatus::NoContent
+    };
+}
+
+macro_rules! media_type {
+    ("application/json") => {
+        MediaType::Json
+    };
+    ("text/plain") => {
+        MediaType::PlainText
+    };
+    ("text/event-stream") => {
+        MediaType::EventStream
+    };
+    ("application/octet-stream") => {
+        MediaType::Binary
+    };
+    ("application/vnd.oai.openapi+json") => {
+        MediaType::OpenApiJson
+    };
 }
 
 impl EndpointContract {
@@ -30,24 +352,25 @@ impl EndpointContract {
 }
 
 macro_rules! endpoint {
-    ($method:literal, $path:literal, $operation:literal, $scope:literal, $project:literal, $auth:literal, $request:expr, $response:literal, $status:literal) => {
+    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:expr, $response:literal, $status:tt) => {
         EndpointContract {
-            method: $method,
+            method: http_method!($method),
             path: $path,
             operation_id: $operation,
-            stability: "experimental",
-            required_scope: $scope,
-            project_context: $project,
-            authenticated: $auth,
-            request_schema: $request,
-            response_schema: $response,
-            success_status: $status,
-            response_content_type: "application/json",
+            stability: Stability::Experimental,
+            required_permission: required_permission!($scope),
+            project_context: project_context_rule!($project),
+            authentication: authentication_mode!($auth),
+            request_schema: optional_schema($request),
+            response_schema: SchemaId::new($response),
+            error_contract: ErrorContract::Json,
+            success_status: response_status!($status),
+            response_content_type: MediaType::Json,
         }
     };
-    ($method:literal, $path:literal, $operation:literal, $scope:literal, $project:literal, $auth:literal, $request:expr, $response:literal, $status:literal, $content:literal) => {
+    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:expr, $response:literal, $status:tt, $content:tt) => {
         EndpointContract {
-            response_content_type: $content,
+            response_content_type: media_type!($content),
             ..endpoint!(
                 $method, $path, $operation, $scope, $project, $auth, $request, $response, $status
             )
@@ -1346,12 +1669,20 @@ pub const fn endpoint_contracts() -> &'static [EndpointContract] {
     ENDPOINTS
 }
 
+/// Finds a contract by its stable operation identifier.
+#[must_use]
+pub fn find_operation(operation_id: &str) -> Option<&'static EndpointContract> {
+    ENDPOINTS
+        .iter()
+        .find(|endpoint| endpoint.operation_id == operation_id)
+}
+
 /// Finds a contract by concrete request path.
 #[must_use]
 pub fn find_endpoint(method: &str, concrete_path: &str) -> Option<&'static EndpointContract> {
-    ENDPOINTS
-        .iter()
-        .find(|endpoint| endpoint.method == method && path_matches(endpoint.path, concrete_path))
+    ENDPOINTS.iter().find(|endpoint| {
+        endpoint.method.as_str() == method && path_matches(endpoint.path, concrete_path)
+    })
 }
 
 fn path_matches(template: &str, concrete: &str) -> bool {

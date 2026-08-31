@@ -71,7 +71,7 @@
     { "command": "npm test --prefix dashboard", "tests": [{ "path": "dashboard/tests/api.test.ts", "selector": "calls nested memory subgraph endpoints" }] },
     { "command": "python -m unittest discover -s sdk/python/tests -v", "tests": [{ "path": "sdk/python/tests/test_workflow.py", "selector": "test_infers_dependency_and_compiles_artifact_path" }] },
     { "command": "cargo test -p capsulet-application --test execution_contracts --locked", "tests": [{ "path": "crates/application/tests/execution_contracts.rs", "selector": "worker_tick_outcome_has_stable_metric_names" }] },
-    { "command": "cargo test -p capsulet-api --test openapi_contract --locked", "tests": [{ "path": "crates/api/tests/openapi_contract.rs", "selector": "generated_openapi_should_match_every_runtime_endpoint" }] },
+    { "command": "cargo test -p capsulet-api --test openapi_contract --locked", "tests": [{ "path": "crates/api/tests/openapi_contract.rs", "selector": "generated_openapi_should_match_every_runtime_endpoint" }, { "path": "crates/api/tests/openapi_contract.rs", "selector": "generated_document_should_round_trip_through_utoipa" }, { "path": "crates/api/tests/openapi_contract.rs", "selector": "checked_openapi_artifact_should_equal_canonical_generation" }, { "path": "crates/api/tests/openapi_contract.rs", "selector": "create_service_account_response_should_match_its_generated_wire_schema" }] },
     { "command": "pwsh ./scripts/tests/check-product-claims.ps1", "tests": [{ "path": "scripts/tests/check-product-claims.ps1", "selector": "invalidLifecycleCases" }] }
   ],
   "claims": [
@@ -186,10 +186,11 @@
       "evidence": [{ "type": "source", "path": "charts/capsulet/templates/deployments.yaml" }]
     },
     {
-      "id": "CAP-OPENAPI-001", "kind": "capability", "maturity": "experimental", "area": "HTTP API",
-      "statement": "The OpenAPI 3.1 document is generated from shared endpoint metadata, exactly matches all runtime method/path declarations, and is checked for deterministic drift.",
+      "id": "CAP-OPENAPI-001", "kind": "capability", "maturity": "implemented", "area": "HTTP API",
+      "statement": "The OpenAPI 3.1 document is generated from typed endpoint metadata and actual Rust wire schemas, exactly matches runtime registration, validates through utoipa, and is checked for deterministic drift.",
       "public_surfaces": ["docs/api.md", "crates/api/openapi.json"],
-      "evidence": [{ "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "generated_openapi_should_match_every_runtime_endpoint" }, { "type": "decision", "path": "docs/adr/0015-code-generated-openapi-contract.md" }]
+      "verification": [{ "assertion": "runtime-operation-set", "evidence_selectors": ["generated_openapi_should_match_every_runtime_endpoint"] }, { "assertion": "valid-typed-document", "evidence_selectors": ["generated_document_should_round_trip_through_utoipa", "create_service_account_response_should_match_its_generated_wire_schema"] }, { "assertion": "deterministic-artifact", "evidence_selectors": ["checked_openapi_artifact_should_equal_canonical_generation"] }],
+      "evidence": [{ "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "generated_openapi_should_match_every_runtime_endpoint" }, { "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "generated_document_should_round_trip_through_utoipa" }, { "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "checked_openapi_artifact_should_equal_canonical_generation" }, { "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "create_service_account_response_should_match_its_generated_wire_schema" }, { "type": "decision", "path": "docs/adr/0015-code-generated-openapi-contract.md" }]
     },
     {
       "id": "CAP-LIFECYCLE-001", "kind": "compatibility", "maturity": "implemented", "area": "Lifecycle and assurance",
