@@ -19,12 +19,28 @@ jobs:
           toolchain: "1.96.0"
           components: rustfmt, clippy
 
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
       - name: Check formatting
         run: cargo fmt --check
 
-      - name: Check OpenAPI contract
+      - name: Check product contracts
         shell: pwsh
-        run: ./scripts/check-openapi.ps1
+        run: ./scripts/check-contracts.ps1
 
       - name: Lint
         run: cargo clippy --workspace --all-targets -- -D warnings

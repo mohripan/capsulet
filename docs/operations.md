@@ -105,5 +105,5 @@ Before an alpha release:
 - `.\scripts\compose-smoke.ps1`
 - minikube smoke from `docs/minikube-smoke.md`
 - `/openapi.json` validates in a client generator
-- Keycloak login and temporary admin login both verified
+- Keycloak login and temporary admin login both exercised successfully
 - threat model reviewed against deployment settings

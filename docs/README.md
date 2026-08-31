@@ -33,3 +33,7 @@ Current docs:
 - [Local Kubernetes runner](local-kubernetes-runner.md)
 - [Troubleshooting](troubleshooting.md)
 - [Public contracts](contracts/README.md)
+
+Contributors should start with the [contract change workflow](development.md#changing-public-contracts)
+and run `pwsh ./scripts/check-contracts.ps1`. Generated claim and OpenAPI artifacts must be changed
+through their render/export commands, never by hand.

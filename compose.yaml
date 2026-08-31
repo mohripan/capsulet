@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: capsulet
       POSTGRES_PASSWORD: capsulet
     ports:
-      - "55432:5432"
+      - "${CAPSULET_POSTGRES_HOST_PORT:-55432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U capsulet -d capsulet"]
       interval: 5s

@@ -20,6 +20,47 @@ Optional later tools:
 - kind or minikube
 - kubectl
 
+If Windows reserves the default PostgreSQL host port, select another free port without changing
+the container-to-container configuration:
+
+```powershell
+$env:CAPSULET_POSTGRES_HOST_PORT = "56432"
+docker compose up -d
+```
+
+## Changing public contracts
+
+Run the complete local/CI contract gate from the repository root:
+
+```powershell
+pwsh ./scripts/check-contracts.ps1
+```
+
+Use the following workflow for contract changes:
+
+1. Product claim: edit `docs/contracts/product-claims.json`, add the claim marker to every declared
+   public surface, and attach executable test evidence for implemented capabilities/guarantees.
+   Add an accepted ADR when the claim establishes a normative product or compatibility decision.
+   Regenerate `docs/contracts/product-claims.md` with
+   `pwsh ./scripts/render-product-claims.ps1 -OutputPath docs/contracts/product-claims.md`.
+2. Endpoint or wire schema: update `crates/api/src/endpoint_contract.rs` and the matching concrete
+   schema in `crates/api/src/openapi.rs` alongside the runtime handler. Preserve stable
+   `operationId` values unless the versioning policy authorizes a break. Run
+   `cargo run -p capsulet-api --bin export-openapi` and never hand-edit the generated artifact.
+3. Status or verdict: update the Rust source enum first, then
+   `docs/contracts/lifecycle-mapping.json`, transitions, owners, and target mappings. Execution
+   status and assurance verdict remain separate vocabularies.
+4. Policy or decision: update the normative file under `docs/contracts/`, index it from the contract
+   README, and create/supersede an ADR where the decision policy requires one.
+5. SDK/dashboard call: add the transport operation to `CLIENT_OPERATIONS` or
+   `DASHBOARD_OPERATIONS`, keep ergonomic authoring separate from wire types, and run
+   `pwsh ./scripts/check-sdk-contracts.ps1`.
+
+The unified gate validates deterministic generated files, route/OpenAPI equality, schema and
+security metadata, claim markers/evidence, lifecycle semantics, accepted ADR status, and client
+operation maps. The pull-request template records migration, authorization, stability, SDK, and
+documentation impact explicitly.
+
 ## Backend
 
 Run from the repository root:

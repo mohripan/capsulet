@@ -140,7 +140,7 @@ The CLI is an HTTP client for job submission, script submission, run listing/det
 
 ### Evaluator (`capsulet-evaluator`)
 
-The evaluator continuously produces timezone-aware cron, read-only SQL, and isolated custom-plugin events, consumes signed-webhook events, evaluates durable correlation groups, and creates workflow runs exactly once. Leases, retry/dead-letter state, per-trigger runtime errors, health/metrics, and retention cleanup support multiple evaluator replicas.
+The evaluator continuously produces timezone-aware cron, read-only SQL, and isolated custom-plugin events, consumes signed-webhook events, evaluates durable correlation groups, and transactionally deduplicates workflow-run creation by correlation key. Leases, retry/dead-letter state, per-trigger runtime errors, health/metrics, and retention cleanup support multiple evaluator replicas.
 
 ## Workspace boundaries
 
@@ -307,7 +307,7 @@ The current automation implementation targets one compatibility workflow and sto
 
 The API validates trigger names, kind-specific configuration, plugin references, input/config contracts, and condition references. It also retains compatibility fields for `manual` and fixed `interval` automations.
 
-`POST /v1/automations/{id}/trigger` starts manual workflow runs directly. The evaluator produces cron, SQL, and custom-plugin events and consumes signed webhooks; durable correlation groups are evaluated into workflow runs exactly once. The scheduler retains legacy interval compatibility and advances workflow DAGs. The next automation direction is direct agent-run triggering with workflow creation kept as a compatibility path.
+`POST /v1/automations/{id}/trigger` starts manual workflow runs directly. The evaluator produces cron, SQL, and custom-plugin events and consumes signed webhooks; durable correlation groups use a PostgreSQL uniqueness boundary to deduplicate workflow-run creation. The scheduler retains legacy interval compatibility and advances workflow DAGs. The next automation direction is direct agent-run triggering with workflow creation kept as a compatibility path.
 
 ## Execution pools
 

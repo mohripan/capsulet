@@ -16,7 +16,7 @@ function schemaName(schema: JsonObject | undefined) {
 }
 
 describe("dashboard OpenAPI contract", () => {
-  it("resolves every explicit handwritten client operation exactly once", () => {
+  it("resolves every explicit handwritten client operation to one contract", () => {
     assert.ok(Object.keys(DASHBOARD_OPERATIONS).length >= 60);
     const operationIds = new Set<string>();
 

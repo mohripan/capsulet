@@ -89,7 +89,7 @@ An automation or manual action creates a workflow run. On each tick, the schedul
 
 ## Automations
 
-The compatibility authoring model supports named `manual`, `schedule`, `sql`, `webhook`, and `custom` trigger definitions, custom-trigger plugin metadata, and validated boolean condition expressions. Trigger events, leases, correlation, retries, and exactly-once workflow-run creation are durable in PostgreSQL. Future trigger slices should target agent runs directly instead of creating workflow runs first.
+The compatibility authoring model supports named `manual`, `schedule`, `sql`, `webhook`, and `custom` trigger definitions, custom-trigger plugin metadata, and validated boolean condition expressions. Trigger events, leases, correlation, retries, and a PostgreSQL uniqueness boundary for deduplicating workflow-run creation are durable. Future trigger slices should target agent runs directly instead of creating workflow runs first.
 
 ## Storage keys
 

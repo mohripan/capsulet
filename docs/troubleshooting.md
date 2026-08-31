@@ -1,7 +1,7 @@
 <!-- capsulet-claims: CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Troubleshooting
 
-This guide covers common failures in the current local and early-alpha Capsulet setup.
+This guide covers common failures in the current experimental local Capsulet setup.
 
 ## API Cannot Start
 

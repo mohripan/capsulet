@@ -15,11 +15,6 @@ $registryFullPath = (Resolve-Path -LiteralPath $RegistryPath).Path
 $raw = Get-Content -LiteralPath $registryFullPath -Raw
 
 $testJson = Get-Command Test-Json -ErrorAction SilentlyContinue
-if ($testJson) {
-    $schemaValid = $raw | Test-Json -SchemaFile $schemaPath -ErrorAction SilentlyContinue
-    if (-not $schemaValid) { throw "product claim registry does not satisfy product-claims.schema.json" }
-}
-
 $registry = $raw | ConvertFrom-Json
 foreach ($requiredProperty in @("schema_version", "public_surfaces", "claims")) {
     if (-not $registry.PSObject.Properties.Name.Contains($requiredProperty)) {
@@ -109,6 +104,13 @@ foreach ($surface in $registry.public_surfaces) {
     }
 }
 
+# Run structural schema validation after the targeted semantic checks so invalid fixtures retain
+# actionable diagnostics on both Windows PowerShell (where Test-Json may be absent) and PowerShell 7.
+if ($testJson) {
+    $schemaValid = $raw | Test-Json -SchemaFile $schemaPath -ErrorAction SilentlyContinue
+    if (-not $schemaValid) { throw "product claim registry does not satisfy product-claims.schema.json" }
+}
+
 if (-not $PSBoundParameters.ContainsKey("LifecyclePath") -and $registryFullPath -eq $defaultRegistry) {
     $LifecyclePath = $defaultLifecycle
 }
@@ -116,11 +118,6 @@ if ($LifecyclePath) {
     $lifecycleFullPath = (Resolve-Path -LiteralPath $LifecyclePath).Path
     $lifecycleRaw = Get-Content -LiteralPath $lifecycleFullPath -Raw
     $lifecycleSchemaPath = Join-Path $repositoryRoot "docs\contracts\lifecycle-mapping.schema.json"
-    if ($testJson -and (Test-Path -LiteralPath $lifecycleSchemaPath)) {
-        $lifecycleSchemaValid = $lifecycleRaw | Test-Json -SchemaFile $lifecycleSchemaPath -ErrorAction SilentlyContinue
-        if (-not $lifecycleSchemaValid) { throw "lifecycle mapping does not satisfy lifecycle-mapping.schema.json" }
-    }
-
     $lifecycle = $lifecycleRaw | ConvertFrom-Json
     $requiredExecution = @("queued", "running", "waiting", "completed", "failed", "cancelled")
     $requiredAssurance = @("unverified", "accepted", "conditional", "rejected")
@@ -187,6 +184,11 @@ if ($LifecyclePath) {
                 throw "lifecycle '$($item.name)' transition references unknown status '$($transition.from) -> $($transition.to)'"
             }
         }
+    }
+
+    if ($testJson -and (Test-Path -LiteralPath $lifecycleSchemaPath)) {
+        $lifecycleSchemaValid = $lifecycleRaw | Test-Json -SchemaFile $lifecycleSchemaPath -ErrorAction SilentlyContinue
+        if (-not $lifecycleSchemaValid) { throw "lifecycle mapping does not satisfy lifecycle-mapping.schema.json" }
     }
 }
 

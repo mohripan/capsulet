@@ -88,7 +88,7 @@ the narrower proposer/checker foundation remains in
 The goal is not to replace frontier models. It is to make a small model good enough for complex
 work, by making correctness a property of the system rather than of the model. Small models are
 poor at long chains and roughly adequate at single hops, so the plan is to only ever ask for a
-single hop and move composition somewhere it can be made correct by construction.
+single hop and move composition into deterministic mechanisms that can check it explicitly.
 
 That requires being precise about what can be checked. Whether an id exists, whether a claim is
 active, whether a quoted string is byte-identical to the span it cites, whether arithmetic
@@ -102,7 +102,7 @@ verdict is three-valued. **Accepted** means every step was discharged mechanical
 means the result is sound given a set of named readings, each pinned to a span. **Rejected** names
 the failed premise and the subsystem that owns the repair. Capsulet does not verify meaning today
 either — the difference is that it would stop implying otherwise, and report per answer exactly
-what was verified and what was assumed.
+what was mechanically discharged and what was assumed.
 
 Learned components stay on the proposer side of that line. Knowledge graph embeddings are
 well suited to generating retrieval candidates and ordering search, and unsuited to deciding
@@ -176,13 +176,13 @@ Memory APIs are tenant/project scoped and claim-first. They support direct autho
 curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/sources
 curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/claims
 curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/ingestion/review/claims?status=candidate
-curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/entity-resolutions?status=proposed
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/entity-resolutions?status=candidate
 curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/memory/conflicts?status=candidate
 ```
 
 The dashboard Memory Studio exposes ingestion, claim review, entity resolution, nested graph activation, and the conflict inbox as the first product surface for governing memory before agents consume it.
 
-## Verified reasoning API
+## Kernel certificate API
 
 The first slice of the correctness architecture is implemented: stored text is
 cut into byte-exact citable spans, retrieval pins the legal evidence set, a local
@@ -273,6 +273,18 @@ migrations/     PostgreSQL schema history
 ```
 
 ## Development and verification
+
+The repository's product vocabulary and public contract inventory have one local/CI gate:
+
+```powershell
+pwsh ./scripts/check-contracts.ps1
+```
+
+It checks claim evidence and generated claim docs, lifecycle/assurance mappings, accepted ADR
+evidence, generated OpenAPI/runtime parity, authorization metadata, deterministic artifacts, and
+the experimental Python/dashboard operation maps. See the [public contracts](docs/contracts/README.md)
+and [development guide](docs/development.md) before changing a public claim, endpoint, status, or
+client call.
 
 ### Python workflow authoring
 

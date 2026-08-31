@@ -86,7 +86,7 @@ scheduler:
 
 ## PostgreSQL
 
-Bundled PostgreSQL is enabled by default for local public-alpha evaluation:
+Bundled PostgreSQL is enabled by default for experimental local evaluation:
 
 ```yaml
 postgresql:
@@ -148,7 +148,7 @@ helm upgrade --install capsulet charts/capsulet -n capsulet
 
 ## MinIO And Object Storage
 
-Bundled MinIO is enabled by default for local public-alpha evaluation:
+Bundled MinIO is enabled by default for experimental local evaluation:
 
 ```yaml
 minio:
@@ -225,9 +225,9 @@ Capsulet API, worker, scheduler, evaluator, and dashboard defaults include:
 - read-only root filesystem
 - dropped Linux capabilities
 
-Bundled PostgreSQL and MinIO also run as non-root with dropped capabilities, but they keep `readOnlyRootFilesystem: false` because stateful database/object-storage images need writable runtime paths. Bundled dependencies are for local alpha evaluation; production-shaped installs should use external PostgreSQL and external S3-compatible storage.
+Bundled PostgreSQL and MinIO also run as non-root with dropped capabilities, but they keep `readOnlyRootFilesystem: false` because stateful database/object-storage images need writable runtime paths. Bundled dependencies are for experimental local evaluation; production-shaped installs should use external PostgreSQL and external S3-compatible storage.
 
-The evaluator leases durable trigger events, evaluates nested conditions exactly once, executes timezone-aware cron, named read-only SQL, signed webhook, and isolated custom-plugin triggers, and runs retention cleanup. Configure SQL connections and webhook secrets outside chart values as secrets in production.
+The evaluator leases durable trigger events and uses durable state to deduplicate evaluations. It executes timezone-aware cron, named read-only SQL, signed webhook, and isolated custom-plugin triggers, and runs retention cleanup. Configure SQL connections and webhook secrets outside chart values as secrets in production.
 
 Named SQL connections are supplied as a JSON object in a Secret, for example `{"inventory":"postgres://readonly:..."}`:
 

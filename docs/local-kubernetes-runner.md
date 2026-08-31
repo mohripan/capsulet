@@ -33,7 +33,7 @@ docker build -f dashboard/Dockerfile -t capsulet-dashboard:dev dashboard
 
 ## Install Capsulet
 
-Install the full local alpha stack:
+Install the experimental local stack:
 
 ```powershell
 kubectl create secret generic capsulet-api-auth `
