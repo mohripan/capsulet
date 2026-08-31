@@ -3,14 +3,16 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $aggregate = Get-Content -LiteralPath (Join-Path $repoRoot "scripts\check-contracts.ps1") -Raw
-foreach ($required in @(
-  "tests\check-product-claims.ps1",
-  "check-product-claims.ps1",
-  "check-openapi.ps1",
-  "check-sdk-contracts.ps1"
-)) {
+foreach ($required in @("capsulet-xtask", "--gate claims", "--gate api-contracts", "--gate sdk")) {
   if (-not $aggregate.Contains($required)) {
-    throw "Unified contract gate does not invoke $required"
+    throw "Unified contract gate does not delegate $required"
+  }
+}
+
+foreach ($wrapper in @("check-contracts.ps1", "check-openapi.ps1", "check-sdk-contracts.ps1")) {
+  $content = Get-Content -LiteralPath (Join-Path $repoRoot "scripts\$wrapper") -Raw
+  if (-not $content.Contains("capsulet-xtask") -or $content -match "cargo test|npm test|python -m") {
+    throw "$wrapper is not a thin xtask delegate"
   }
 }
 

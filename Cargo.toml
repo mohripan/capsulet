@@ -13,6 +13,7 @@ members = [
     "crates/scheduler",
     "crates/storage",
     "crates/worker",
+    "crates/xtask",
 ]
 resolver = "2"
 

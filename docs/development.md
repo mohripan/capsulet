@@ -15,6 +15,16 @@ and runtime-wide enforcement remain planned.
 - Helm 3.18 or newer
 - Docker
 
+Check the current machine without changing it:
+
+```sh
+cargo run -p capsulet-xtask --locked -- verify doctor
+```
+
+Run deterministic service-free verification with `verify --profile fast`, or the release-equivalent
+suite with `verify --profile full`. The executable gate graph and supported-tool matrix are in
+[`docs/contracts/verification-matrix.md`](contracts/verification-matrix.md).
+
 Optional later tools:
 
 - kind or minikube
@@ -30,10 +40,17 @@ docker compose up -d
 
 ## Changing public contracts
 
-Run the complete local/CI contract gate from the repository root:
+Run the complete local/CI contract gate from the repository root. The PowerShell entry point is a
+compatibility delegate to the Rust verifier:
 
 ```powershell
 pwsh ./scripts/check-contracts.ps1
+```
+
+The direct cross-platform form is:
+
+```sh
+cargo run -p capsulet-xtask --locked -- verify --gate claims --gate api-contracts --gate sdk
 ```
 
 Use the following workflow for contract changes:

@@ -13,6 +13,11 @@ and the [public claim registry](docs/contracts/product-claims.md) for the author
 Public stability, migration, lifecycle, and SDK rules are indexed in
 [docs/contracts](docs/contracts/README.md).
 
+For a deterministic local check that needs no service containers, run
+`cargo run -p capsulet-xtask --locked -- verify --profile fast`. The full release-equivalent graph
+is `verify --profile full`; inspect its machine-readable definition with
+`verify --list --format json`.
+
 ![Capsulet workflow dashboard](docs/images/capsulet-dashboard.png)
 
 ## What works today
