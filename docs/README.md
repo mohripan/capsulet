@@ -32,3 +32,4 @@ Current docs:
 - [Worker and runner](worker-runner.md)
 - [Local Kubernetes runner](local-kubernetes-runner.md)
 - [Troubleshooting](troubleshooting.md)
+- [Public contracts](contracts/README.md)

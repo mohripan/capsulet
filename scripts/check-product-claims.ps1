@@ -58,6 +58,19 @@ foreach ($claim in $registry.claims) {
     if ($claim.maturity -eq "implemented" -and $claim.kind -in @("capability", "guarantee") -and $testEvidence.Count -eq 0) {
         throw "implemented $($claim.kind) '$($claim.id)' requires executable test evidence"
     }
+    if ($claim.kind -in @("positioning", "compatibility")) {
+        $acceptedDecision = @($claim.evidence | Where-Object {
+            if ($_.type -ne "decision" -or $_.path -notlike "docs/adr/*.md") { return $false }
+            $decisionPath = Join-Path $repositoryRoot $_.path
+            if (-not (Test-Path -LiteralPath $decisionPath -PathType Leaf)) { return $false }
+            $decisionContent = Get-Content -LiteralPath $decisionPath -Raw
+            return $decisionContent -match '(?im)^Status:\s*Accepted\s*$' -or
+                $decisionContent -match '(?ims)^## Status\s+Accepted\s*(?:\r?\n|$)'
+        })
+        if ($acceptedDecision.Count -eq 0) {
+            throw "$($claim.kind) claim '$($claim.id)' requires evidence from an accepted ADR"
+        }
+    }
 
     foreach ($evidence in $claim.evidence) {
         $evidencePath = Join-Path $repositoryRoot $evidence.path

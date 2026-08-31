@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -34,6 +34,11 @@ The kernel's verdict is three-valued. **Accepted** means every step was discharg
 **Conditional** means the result is sound given a set of named interpretation obligations, each
 pinned to a specific span. **Rejected** names the failed premise and the subsystem that owns the
 repair.
+
+The surrounding platform assurance layer additionally uses **Unverified** when the correctness
+plane did not run. This is not a fourth kernel conclusion: the deterministic kernel remains
+three-valued and only returns after checking a proposal. Execution status and platform assurance
+are independent as defined by the lifecycle and assurance contract.
 
 Interpretation is represented explicitly as a kernel rule that discharges nothing and records a
 residual obligation. The platform reports what it verified and what it assumed, per answer,

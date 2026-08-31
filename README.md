@@ -10,6 +10,8 @@ correctness plane whose deterministic kernel is implemented but whose runtime-wi
 assurance model is planned. See the
 [product constitution](docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md)
 and the [public claim registry](docs/contracts/product-claims.md) for the authoritative boundaries.
+Public stability, migration, lifecycle, and SDK rules are indexed in
+[docs/contracts](docs/contracts/README.md).
 
 ![Capsulet workflow dashboard](docs/images/capsulet-dashboard.png)
 

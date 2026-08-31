@@ -103,6 +103,7 @@ $invalidCases = @(
     @{ File = "invalid-selector.json"; Message = "test selector was not found" },
     @{ File = "unmarked-surface.json"; Message = "missing claim marker" },
     @{ File = "unregistered-surface.json"; Message = "unregistered public surface" },
+    @{ File = "missing-accepted-adr.json"; Message = "requires evidence from an accepted ADR" },
     @{ File = "implemented-guarantee-without-test.json"; Message = "requires executable test evidence" }
 )
 

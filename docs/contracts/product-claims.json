@@ -54,7 +54,7 @@
       "id": "CAP-PRODUCT-001", "kind": "positioning", "maturity": "planned", "area": "Product identity",
       "statement": "Capsulet is a correctness-first AI-agent workflow platform for building and operating workflows whose important outputs can be inspected, checked, and governed.",
       "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/README.md", "docs/architecture.md", "docs/development.md", "docs/installation.md", "dashboard/README.md", "dashboard/app/layout.tsx", "dashboard/app/page.tsx", "charts/capsulet/Chart.yaml", "charts/capsulet/values.schema.json"],
-      "evidence": [{ "type": "specification", "path": "docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md" }]
+      "evidence": [{ "type": "specification", "path": "docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md" }, { "type": "decision", "path": "docs/adr/0014-correctness-first-agent-workflow-product.md" }]
     },
     {
       "id": "CAP-CORRECTNESS-001", "kind": "capability", "maturity": "implemented", "area": "Correctness kernel",
@@ -102,7 +102,7 @@
       "id": "CAP-WORKFLOW-001", "kind": "compatibility", "maturity": "implemented", "area": "Workflow compatibility",
       "statement": "Compatibility workflow DAGs support validated dependencies, parallel roots, fan-out/fan-in scheduling, durable step state, cancellation, and checkpoint resume.",
       "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/persistence.md", "docs/troubleshooting.md", "sdk/python/README.md", "dashboard/README.md", "dashboard/app/automations/page.tsx", "dashboard/app/components.tsx", "dashboard/app/workflows/new/page.tsx", "dashboard/app/workflows/page.tsx", "examples/workflows/README.md"],
-      "evidence": [{ "type": "test", "path": "crates/api/src/tests.rs", "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies", "selector": "creates_and_returns_workflow_dag_dependencies" }]
+      "evidence": [{ "type": "test", "path": "crates/api/src/tests.rs", "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies", "selector": "creates_and_returns_workflow_dag_dependencies" }, { "type": "decision", "path": "docs/adr/0014-correctness-first-agent-workflow-product.md" }]
     },
     {
       "id": "CAP-AUTOMATION-001", "kind": "capability", "maturity": "experimental", "area": "Automations",
@@ -138,7 +138,7 @@
       "id": "CAP-SDK-001", "kind": "compatibility", "maturity": "implemented", "area": "Dashboard and SDK",
       "statement": "The experimental Python SDK compiles decorated Python functions into compatibility workflow and job API payloads.",
       "public_surfaces": ["README.md", "docs/development.md", "sdk/python/README.md", "examples/workflows/README.md"],
-      "evidence": [{ "type": "test", "path": "sdk/python/tests/test_workflow.py", "command": "python -m unittest discover -s sdk/python/tests -v", "selector": "test_infers_dependency_and_compiles_artifact_path" }]
+      "evidence": [{ "type": "test", "path": "sdk/python/tests/test_workflow.py", "command": "python -m unittest discover -s sdk/python/tests -v", "selector": "test_infers_dependency_and_compiles_artifact_path" }, { "type": "decision", "path": "docs/adr/0016-public-contract-stability-and-versioning.md" }]
     },
     {
       "id": "CAP-OBSERVABILITY-001", "kind": "capability", "maturity": "experimental", "area": "Observability and operations",
@@ -168,7 +168,7 @@
       "id": "CAP-LIFECYCLE-001", "kind": "compatibility", "maturity": "implemented", "area": "Lifecycle and assurance",
       "statement": "Execution status and assurance verdict are independent; every current persisted status is explicitly mapped without treating successful execution as verified output.",
       "public_surfaces": ["ARCHITECTURE.md", "docs/api.md", "docs/architecture.md"],
-      "evidence": [{ "type": "test", "path": "scripts/tests/check-product-claims.ps1", "command": "pwsh ./scripts/tests/check-product-claims.ps1", "selector": "invalidLifecycleCases" }]
+      "evidence": [{ "type": "test", "path": "scripts/tests/check-product-claims.ps1", "command": "pwsh ./scripts/tests/check-product-claims.ps1", "selector": "invalidLifecycleCases" }, { "type": "decision", "path": "docs/adr/0014-correctness-first-agent-workflow-product.md" }]
     }
   ]
 }
