@@ -294,3 +294,98 @@ fn every_control_plane_operation_should_use_a_concrete_component() {
         }
     }
 }
+
+#[test]
+fn agent_correctness_memory_and_ingestion_schemas_should_be_concrete() {
+    let document = generated_openapi();
+    let schemas = &document["components"]["schemas"];
+    for endpoint in endpoint_contracts().iter().filter(|endpoint| {
+        endpoint.path.starts_with("/v1/graphs")
+            || endpoint.path.starts_with("/v1/agents")
+            || endpoint.path.starts_with("/v1/agent-runs")
+            || endpoint.path.starts_with("/v1/reasoning")
+            || endpoint.path.starts_with("/v1/memory")
+            || endpoint.path.starts_with("/v1/ingestion")
+    }) {
+        assert_eq!(endpoint.stability, "experimental");
+        for name in endpoint
+            .request_schema
+            .into_iter()
+            .chain(std::iter::once(endpoint.response_schema))
+        {
+            let schema = &schemas[name];
+            assert!(!schema.is_null(), "missing component {name}");
+            assert_ne!(
+                schema["additionalProperties"], true,
+                "generic component {name}"
+            );
+            assert!(schema["properties"].is_object(), "{name}");
+        }
+    }
+}
+
+#[test]
+fn certificate_schema_should_expose_only_current_kernel_assurance() {
+    let document = generated_openapi();
+    let schemas = &document["components"]["schemas"];
+    assert_eq!(
+        schemas["KernelVerdict"]["enum"],
+        serde_json::json!(["accepted", "conditional", "rejected"])
+    );
+    assert!(
+        !schemas["KernelVerdict"]["enum"]
+            .as_array()
+            .expect("verdicts")
+            .contains(&serde_json::json!("unverified"))
+    );
+    assert_eq!(
+        schemas["Certificate"]["examples"].as_array().map(Vec::len),
+        Some(3)
+    );
+    for field in [
+        "verdict",
+        "goal",
+        "discharged",
+        "residuals",
+        "errors",
+        "replay_digest",
+    ] {
+        assert!(
+            schemas["Certificate"]["required"]
+                .as_array()
+                .expect("required fields")
+                .contains(&serde_json::json!(field))
+        );
+    }
+}
+
+#[test]
+fn evidence_and_review_filters_should_match_current_handlers() {
+    let document = generated_openapi();
+    let evidence = &document["components"]["schemas"]["MemoryEvidenceResponse"]["properties"];
+    for field in ["source_id", "locator", "excerpt", "observed_at"] {
+        assert!(
+            evidence.get(field).is_some(),
+            "missing evidence field {field}"
+        );
+    }
+    for absent in ["start_byte", "end_byte", "source_hash"] {
+        assert!(
+            evidence.get(absent).is_none(),
+            "invented evidence field {absent}"
+        );
+    }
+    for path in [
+        "/v1/memory/entity-resolutions",
+        "/v1/memory/conflicts",
+        "/v1/ingestion/review/claims",
+    ] {
+        assert!(
+            document["paths"][path]["get"]["parameters"]
+                .as_array()
+                .expect("parameters")
+                .iter()
+                .any(|parameter| parameter["name"] == "status" && parameter["in"] == "query")
+        );
+    }
+}

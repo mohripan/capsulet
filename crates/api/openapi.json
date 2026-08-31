@@ -1,14 +1,148 @@
 {
   "components": {
     "schemas": {
+      "ActivateMemorySubgraphRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_id": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "owner_kind": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "object"
+          },
+          "summary_claim_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_kind",
+          "owner_id",
+          "contract_id",
+          "permissions",
+          "summary_claim_id"
+        ],
+        "type": "object"
+      },
+      "AgentBudgetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "max_cost_micros": {
+            "type": "integer"
+          },
+          "max_seconds": {
+            "type": "integer"
+          },
+          "max_steps": {
+            "type": "integer"
+          },
+          "max_tokens": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_steps",
+          "max_tokens",
+          "max_seconds",
+          "max_cost_micros"
+        ],
+        "type": "object"
+      },
+      "AgentBudgetResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "max_cost_micros": {
+            "type": "integer"
+          },
+          "max_seconds": {
+            "type": "integer"
+          },
+          "max_steps": {
+            "type": "integer"
+          },
+          "max_tokens": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_steps",
+          "max_tokens",
+          "max_seconds",
+          "max_cost_micros"
+        ],
+        "type": "object"
+      },
       "AgentResponse": {
-        "additionalProperties": true,
-        "description": "AgentResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/AgentBudgetResponse"
+          },
+          "graph_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "termination_conditions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "graph_id",
+          "budget",
+          "termination_conditions"
+        ],
         "type": "object"
       },
       "AgentRunResponse": {
-        "additionalProperties": true,
-        "description": "AgentRunResponse payload.",
+        "additionalProperties": false,
+        "description": "Current experimental persisted agent-run state. Starting a run creates queued work; a production graph worker is not yet claimed.",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "object"
+          },
+          "state_version": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "stopped"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "agent_id",
+          "status",
+          "state_version",
+          "state"
+        ],
         "type": "object"
       },
       "ArtifactResponse": {
@@ -44,8 +178,37 @@
         "type": "object"
       },
       "AskRequest": {
-        "additionalProperties": true,
-        "description": "AskRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "question": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "question"
+        ],
         "type": "object"
       },
       "AuditEventResponse": {
@@ -146,23 +309,335 @@
         "type": "string"
       },
       "CanonicalEntityResponse": {
-        "additionalProperties": true,
-        "description": "CanonicalEntityResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "entity_type",
+          "display_name",
+          "aliases"
+        ],
+        "type": "object"
+      },
+      "Certificate": {
+        "additionalProperties": false,
+        "description": "Current deterministic kernel certificate. `unverified` is not a kernel verdict; it belongs to the future platform assurance layer.",
+        "examples": [
+          {
+            "discharged": [
+              {
+                "concluded": "fact",
+                "detail": "literal evidence matched",
+                "rule": "cite"
+              }
+            ],
+            "errors": [],
+            "goal": {
+              "object": "fact",
+              "predicate": "states",
+              "subject": "document"
+            },
+            "replay_digest": "sha256:accepted",
+            "residuals": [],
+            "verdict": "accepted"
+          },
+          {
+            "discharged": [],
+            "errors": [],
+            "goal": {
+              "object": "fact",
+              "predicate": "implies",
+              "subject": "document"
+            },
+            "replay_digest": "sha256:conditional",
+            "residuals": [
+              {
+                "evidence_ids": [
+                  "evidence_1"
+                ],
+                "from": "attributed text",
+                "rationale": "interpretation required",
+                "to": {
+                  "object": "fact",
+                  "predicate": "implies",
+                  "subject": "document"
+                }
+              }
+            ],
+            "verdict": "conditional"
+          },
+          {
+            "discharged": [],
+            "errors": [
+              {
+                "code": "quote_mismatch",
+                "message": "quote was not found",
+                "repair_owner": "proposer"
+              }
+            ],
+            "goal": {
+              "object": "missing",
+              "predicate": "states",
+              "subject": "document"
+            },
+            "replay_digest": "sha256:rejected",
+            "residuals": [],
+            "verdict": "rejected"
+          }
+        ],
+        "properties": {
+          "discharged": {
+            "items": {
+              "$ref": "#/components/schemas/DischargedStep"
+            },
+            "type": "array"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/CertificateError"
+            },
+            "type": "array"
+          },
+          "goal": {
+            "$ref": "#/components/schemas/Proposition"
+          },
+          "replay_digest": {
+            "type": "string"
+          },
+          "residuals": {
+            "items": {
+              "$ref": "#/components/schemas/Residual"
+            },
+            "type": "array"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/KernelVerdict"
+          }
+        },
+        "required": [
+          "verdict",
+          "goal",
+          "discharged",
+          "residuals",
+          "errors",
+          "replay_digest"
+        ],
+        "type": "object"
+      },
+      "CertificateError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "corrected_value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "repair_owner": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "repair_owner"
+        ],
         "type": "object"
       },
       "CertificateResponse": {
-        "additionalProperties": true,
-        "description": "CertificateResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "alphabet_digest": {
+            "type": "string"
+          },
+          "alphabet_size": {
+            "type": "integer"
+          },
+          "certificate": {
+            "$ref": "#/components/schemas/Certificate"
+          },
+          "certificate_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/RawProposal"
+          },
+          "question": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "certificate_id",
+          "question",
+          "source_id",
+          "model",
+          "alphabet_digest",
+          "alphabet_size",
+          "certificate",
+          "proposal"
+        ],
+        "type": "object"
+      },
+      "CertificateSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "alphabet_digest": {
+            "type": "string"
+          },
+          "certificate": {
+            "$ref": "#/components/schemas/Certificate"
+          },
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/KernelVerdict"
+          }
+        },
+        "required": [
+          "id",
+          "question",
+          "verdict",
+          "model",
+          "alphabet_digest",
+          "certificate"
+        ],
         "type": "object"
       },
       "ClaimConflictResponse": {
-        "additionalProperties": true,
-        "description": "ClaimConflictResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "canonical_entity_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "preferred_claim_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "candidate",
+              "resolved",
+              "dismissed"
+            ],
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "subject_id",
+          "canonical_entity_id",
+          "predicate",
+          "claim_ids",
+          "status",
+          "reason",
+          "preferred_claim_id"
+        ],
         "type": "object"
       },
       "CreateAgentRequest": {
-        "additionalProperties": true,
-        "description": "CreateAgentRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/AgentBudgetRequest"
+          },
+          "graph_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "termination_conditions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "graph_id",
+          "budget"
+        ],
         "type": "object"
       },
       "CreateAutomationRequest": {
@@ -223,28 +698,200 @@
         "type": "object"
       },
       "CreateCanonicalEntityRequest": {
-        "additionalProperties": true,
-        "description": "CreateCanonicalEntityRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "entity_type",
+          "display_name"
+        ],
         "type": "object"
       },
       "CreateEntityGraphAttachmentRequest": {
-        "additionalProperties": true,
-        "description": "CreateEntityGraphAttachmentRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "attachment_type": {
+            "type": "string"
+          },
+          "canonical_entity_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subgraph_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "canonical_entity_id",
+          "subgraph_id",
+          "attachment_type"
+        ],
         "type": "object"
       },
       "CreateEntityResolutionRequest": {
-        "additionalProperties": true,
-        "description": "CreateEntityResolutionRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "canonical_entity_id": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "subgraph_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subgraph_id",
+          "entity_id",
+          "canonical_entity_id",
+          "confidence",
+          "status",
+          "evidence_ids"
+        ],
         "type": "object"
       },
       "CreateGraphRequest": {
-        "additionalProperties": true,
-        "description": "CreateGraphRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "hyperedges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphHyperedgeRequest"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeRequest"
+            },
+            "type": "array"
+          },
+          "transition_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GraphTransitionPolicyRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "nodes",
+          "hyperedges"
+        ],
         "type": "object"
       },
       "CreateIngestionConnectorRequest": {
-        "additionalProperties": true,
-        "description": "CreateIngestionConnectorRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": false,
+            "properties": {
+              "authority": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              },
+              "content_type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "title",
+              "content",
+              "content_type",
+              "uri",
+              "authority"
+            ],
+            "type": "object"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "local_text"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "config"
+        ],
         "type": "object"
       },
       "CreateJobDefinitionRequest": {
@@ -301,48 +948,302 @@
         "type": "object"
       },
       "CreateMemoryClaimRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemoryClaimRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "valid_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid_until": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "subject_id",
+          "predicate",
+          "object",
+          "evidence_ids",
+          "confidence",
+          "authority",
+          "observed_at"
+        ],
         "type": "object"
       },
       "CreateMemoryContractRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemoryContractRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "source"
+        ],
         "type": "object"
       },
       "CreateMemoryEntityRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemoryEntityRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_type",
+          "name"
+        ],
         "type": "object"
       },
       "CreateMemoryEventRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemoryEventRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "occurred_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_type",
+          "occurred_at",
+          "evidence_ids"
+        ],
         "type": "object"
       },
       "CreateMemoryEvidenceRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemoryEvidenceRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locator": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "locator",
+          "excerpt",
+          "observed_at"
+        ],
         "type": "object"
       },
       "CreateMemoryRelationshipRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemoryRelationshipRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from_entity_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relationship_type": {
+            "type": "string"
+          },
+          "to_entity_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship_type",
+          "from_entity_id",
+          "to_entity_id",
+          "evidence_ids"
+        ],
         "type": "object"
       },
       "CreateMemorySourceRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemorySourceRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "authority"
+        ],
         "type": "object"
       },
       "CreateMemorySubgraphMemberRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemorySubgraphMemberRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "member_id": {
+            "type": "string"
+          },
+          "member_kind": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_kind",
+          "member_id",
+          "role"
+        ],
         "type": "object"
       },
       "CreateMemorySubgraphRequest": {
-        "additionalProperties": true,
-        "description": "CreateMemorySubgraphRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_subgraph_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
         "type": "object"
       },
       "CreateRunRequest": {
@@ -470,13 +1371,91 @@
         "type": "object"
       },
       "CreateSubgraphEdgeRequest": {
-        "additionalProperties": true,
-        "description": "CreateSubgraphEdgeRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "edge_type": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from_member_id": {
+            "type": "string"
+          },
+          "from_member_kind": {
+            "type": "string"
+          },
+          "from_subgraph_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_member_id": {
+            "type": "string"
+          },
+          "to_member_kind": {
+            "type": "string"
+          },
+          "to_subgraph_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "edge_type",
+          "from_subgraph_id",
+          "to_subgraph_id",
+          "from_member_kind",
+          "from_member_id",
+          "to_member_kind",
+          "to_member_id"
+        ],
         "type": "object"
       },
       "CreateSummaryTraceRequest": {
-        "additionalProperties": true,
-        "description": "CreateSummaryTraceRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inner_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subgraph_id": {
+            "type": "string"
+          },
+          "summary_claim_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subgraph_id",
+          "summary_claim_id"
+        ],
         "type": "object"
       },
       "CreateTriggerPluginRequest": {
@@ -573,18 +1552,112 @@
         ],
         "type": "object"
       },
+      "DischargedStep": {
+        "additionalProperties": false,
+        "properties": {
+          "concluded": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "concluded",
+          "detail"
+        ],
+        "type": "object"
+      },
       "EmptyResponse": {
         "maxProperties": 0,
         "type": "object"
       },
       "EntityGraphAttachmentResponse": {
-        "additionalProperties": true,
-        "description": "EntityGraphAttachmentResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "attachment_type": {
+            "type": "string"
+          },
+          "canonical_entity_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "subgraph_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "canonical_entity_id",
+          "subgraph_id",
+          "attachment_type"
+        ],
         "type": "object"
       },
       "EntityResolutionResponse": {
-        "additionalProperties": true,
-        "description": "EntityResolutionResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "canonical_entity_id": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "candidate",
+              "confirmed",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "subgraph_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "subgraph_id",
+          "entity_id",
+          "canonical_entity_id",
+          "confidence",
+          "status",
+          "evidence_ids"
+        ],
         "type": "object"
       },
       "Error": {
@@ -639,9 +1712,235 @@
         ],
         "type": "object"
       },
+      "GraphHyperedgeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/HyperedgeEndpointRequest"
+            },
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/HyperedgeEndpointRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "sources",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "GraphHyperedgeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/HyperedgeEndpointResponse"
+            },
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/HyperedgeEndpointResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "sources",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "GraphNodeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ports": {
+            "items": {
+              "$ref": "#/components/schemas/GraphPortRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "ports"
+        ],
+        "type": "object"
+      },
+      "GraphNodeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ports": {
+            "items": {
+              "$ref": "#/components/schemas/GraphPortResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "ports"
+        ],
+        "type": "object"
+      },
+      "GraphPortRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "value_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "direction",
+          "value_type"
+        ],
+        "type": "object"
+      },
+      "GraphPortResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "value_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "direction",
+          "value_type"
+        ],
+        "type": "object"
+      },
       "GraphResponse": {
-        "additionalProperties": true,
-        "description": "GraphResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "hyperedges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphHyperedgeResponse"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeResponse"
+            },
+            "type": "array"
+          },
+          "static_order": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "transition_policy": {
+            "$ref": "#/components/schemas/GraphTransitionPolicyResponse"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "nodes",
+          "hyperedges",
+          "transition_policy",
+          "static_order"
+        ],
+        "type": "object"
+      },
+      "GraphTransitionPolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cycles_allowed": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "GraphTransitionPolicyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cycles_allowed": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "actions",
+          "cycles_allowed"
+        ],
         "type": "object"
       },
       "HealthResponse": {
@@ -691,14 +1990,213 @@
         ],
         "type": "object"
       },
-      "IngestionConnectorResponse": {
-        "additionalProperties": true,
-        "description": "IngestionConnectorResponse payload.",
+      "HyperedgeEndpointRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "port_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "node_id",
+          "port_id",
+          "field",
+          "value_type"
+        ],
         "type": "object"
       },
-      "IngestionRunResponse": {
-        "additionalProperties": true,
-        "description": "IngestionRunResponse payload.",
+      "HyperedgeEndpointResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "port_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "node_id",
+          "port_id",
+          "field",
+          "value_type"
+        ],
+        "type": "object"
+      },
+      "IngestionConnectorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": false,
+            "properties": {
+              "authority": {
+                "type": "string"
+              },
+              "content_type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "title",
+              "content_type",
+              "uri",
+              "authority"
+            ],
+            "type": "object"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "local_text"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "name",
+          "kind",
+          "enabled",
+          "config"
+        ],
+        "type": "object"
+      },
+      "IngestionRunOutputsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "claims": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "entities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "relationships": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources",
+          "evidence",
+          "entities",
+          "claims",
+          "events",
+          "relationships"
+        ],
+        "type": "object"
+      },
+      "IngestionRunWithOutputsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "outputs": {
+            "$ref": "#/components/schemas/IngestionRunOutputsResponse"
+          },
+          "run": {
+            "$ref": "#/components/schemas/IngestionRunResponse"
+          }
+        },
+        "required": [
+          "run",
+          "outputs"
+        ],
         "type": "object"
       },
       "JobDefinitionResponse": {
@@ -843,14 +2341,42 @@
         ],
         "type": "string"
       },
+      "KernelVerdict": {
+        "enum": [
+          "accepted",
+          "conditional",
+          "rejected"
+        ],
+        "type": "string"
+      },
       "ListAgentRunsResponse": {
-        "additionalProperties": true,
-        "description": "ListAgentRunsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "agent_runs": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRunResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agent_runs"
+        ],
         "type": "object"
       },
       "ListAgentsResponse": {
-        "additionalProperties": true,
-        "description": "ListAgentsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agents"
+        ],
         "type": "object"
       },
       "ListArtifactsResponse": {
@@ -918,23 +2444,63 @@
         "type": "object"
       },
       "ListCanonicalEntitiesResponse": {
-        "additionalProperties": true,
-        "description": "ListCanonicalEntitiesResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "canonical_entities": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalEntityResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "canonical_entities"
+        ],
         "type": "object"
       },
       "ListCertificatesResponse": {
-        "additionalProperties": true,
-        "description": "ListCertificatesResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "certificates": {
+            "items": {
+              "$ref": "#/components/schemas/CertificateSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "certificates"
+        ],
         "type": "object"
       },
       "ListClaimConflictsResponse": {
-        "additionalProperties": true,
-        "description": "ListClaimConflictsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimConflictResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "conflicts"
+        ],
         "type": "object"
       },
       "ListEntityResolutionsResponse": {
-        "additionalProperties": true,
-        "description": "ListEntityResolutionsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "entity_resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/EntityResolutionResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity_resolutions"
+        ],
         "type": "object"
       },
       "ListExecutionPoolsResponse": {
@@ -953,8 +2519,18 @@
         "type": "object"
       },
       "ListGraphsResponse": {
-        "additionalProperties": true,
-        "description": "ListGraphsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "graphs": {
+            "items": {
+              "$ref": "#/components/schemas/GraphResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "graphs"
+        ],
         "type": "object"
       },
       "ListHostGroupsResponse": {
@@ -973,18 +2549,48 @@
         "type": "object"
       },
       "ListIngestionConnectorsResponse": {
-        "additionalProperties": true,
-        "description": "ListIngestionConnectorsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "connectors": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionConnectorResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "connectors"
+        ],
         "type": "object"
       },
       "ListIngestionReviewClaimsResponse": {
-        "additionalProperties": true,
-        "description": "ListIngestionReviewClaimsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewClaimResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "claims"
+        ],
         "type": "object"
       },
       "ListIngestionRunsResponse": {
-        "additionalProperties": true,
-        "description": "ListIngestionRunsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionRunResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
         "type": "object"
       },
       "ListJobDefinitionsResponse": {
@@ -1003,43 +2609,123 @@
         "type": "object"
       },
       "ListMemoryClaimsResponse": {
-        "additionalProperties": true,
-        "description": "ListMemoryClaimsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryClaimResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "claims"
+        ],
         "type": "object"
       },
       "ListMemoryContractsResponse": {
-        "additionalProperties": true,
-        "description": "ListMemoryContractsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "contracts": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryContractResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "contracts"
+        ],
         "type": "object"
       },
       "ListMemoryEntitiesResponse": {
-        "additionalProperties": true,
-        "description": "ListMemoryEntitiesResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntityResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entities"
+        ],
         "type": "object"
       },
       "ListMemoryEventsResponse": {
-        "additionalProperties": true,
-        "description": "ListMemoryEventsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryEventResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
         "type": "object"
       },
       "ListMemoryEvidenceResponse": {
-        "additionalProperties": true,
-        "description": "ListMemoryEvidenceResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryEvidenceResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
         "type": "object"
       },
       "ListMemoryRelationshipsResponse": {
-        "additionalProperties": true,
-        "description": "ListMemoryRelationshipsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryRelationshipResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relationships"
+        ],
         "type": "object"
       },
       "ListMemorySourcesResponse": {
-        "additionalProperties": true,
-        "description": "ListMemorySourcesResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/MemorySourceResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
+        ],
         "type": "object"
       },
       "ListMemorySubgraphsResponse": {
-        "additionalProperties": true,
-        "description": "ListMemorySubgraphsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "subgraphs": {
+            "items": {
+              "$ref": "#/components/schemas/MemorySubgraphResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "subgraphs"
+        ],
         "type": "object"
       },
       "ListProjectMembershipsResponse": {
@@ -1148,48 +2834,423 @@
         "type": "object"
       },
       "MemoryClaimResponse": {
-        "additionalProperties": true,
-        "description": "MemoryClaimResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "candidate",
+              "active",
+              "rejected",
+              "superseded",
+              "contradicted",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "valid_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid_until": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "subject_id",
+          "predicate",
+          "object",
+          "evidence_ids",
+          "confidence",
+          "authority",
+          "status",
+          "observed_at",
+          "valid_from",
+          "valid_until"
+        ],
         "type": "object"
       },
       "MemoryContractResponse": {
-        "additionalProperties": true,
-        "description": "MemoryContractResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "compiled": {
+            "description": "Compiled current memory-policy DSL.",
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "name",
+          "source",
+          "compiled"
+        ],
         "type": "object"
       },
       "MemoryEntityResponse": {
-        "additionalProperties": true,
-        "description": "MemoryEntityResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "entity_type",
+          "name",
+          "aliases"
+        ],
         "type": "object"
       },
       "MemoryEventResponse": {
-        "additionalProperties": true,
-        "description": "MemoryEventResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "event_type",
+          "occurred_at",
+          "entity_ids",
+          "evidence_ids"
+        ],
         "type": "object"
       },
       "MemoryEvidenceResponse": {
-        "additionalProperties": true,
-        "description": "MemoryEvidenceResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "locator": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "source_id",
+          "locator",
+          "excerpt",
+          "observed_at"
+        ],
         "type": "object"
       },
       "MemoryRelationshipResponse": {
-        "additionalProperties": true,
-        "description": "MemoryRelationshipResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from_entity_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "relationship_type": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "to_entity_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "relationship_type",
+          "from_entity_id",
+          "to_entity_id",
+          "evidence_ids"
+        ],
         "type": "object"
       },
       "MemorySourceResponse": {
-        "additionalProperties": true,
-        "description": "MemorySourceResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "kind",
+          "uri",
+          "title",
+          "authority"
+        ],
         "type": "object"
       },
       "MemorySubgraphMemberResponse": {
-        "additionalProperties": true,
-        "description": "MemorySubgraphMemberResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "member_id": {
+            "type": "string"
+          },
+          "member_kind": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "subgraph_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "subgraph_id",
+          "member_kind",
+          "member_id",
+          "role"
+        ],
         "type": "object"
       },
       "MemorySubgraphResponse": {
-        "additionalProperties": true,
-        "description": "MemorySubgraphResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "contract_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent_subgraph_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "permissions": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "active",
+              "archived"
+            ],
+            "type": "string"
+          },
+          "summary_claim_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "parent_subgraph_id",
+          "name",
+          "description",
+          "owner_kind",
+          "owner_id",
+          "contract_id",
+          "summary_claim_id",
+          "permissions",
+          "status"
+        ],
         "type": "object"
       },
       "OpenApiDocument": {
@@ -1299,9 +3360,249 @@
         ],
         "type": "object"
       },
+      "Proposition": {
+        "additionalProperties": false,
+        "properties": {
+          "object": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "predicate",
+          "object"
+        ],
+        "type": "object"
+      },
+      "RawProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "type": "string"
+          },
+          "needs_interpretation": {
+            "type": "boolean"
+          },
+          "object": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "predicate",
+          "object",
+          "evidence_id",
+          "quote",
+          "needs_interpretation",
+          "rationale"
+        ],
+        "type": "object"
+      },
+      "Residual": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Proposition"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "rationale",
+          "evidence_ids"
+        ],
+        "type": "object"
+      },
       "ResolveClaimConflictRequest": {
-        "additionalProperties": true,
-        "description": "ResolveClaimConflictRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "preferred_claim_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "preferred_claim_id"
+        ],
+        "type": "object"
+      },
+      "ReviewClaimResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewEvidenceResponse"
+            },
+            "type": "array"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewSourceResponse"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "candidate",
+              "active",
+              "rejected",
+              "superseded",
+              "contradicted",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "valid_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid_until": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "subject_id",
+          "predicate",
+          "object",
+          "evidence_ids",
+          "confidence",
+          "authority",
+          "status",
+          "observed_at",
+          "valid_from",
+          "valid_until",
+          "evidence",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "ReviewEvidenceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "locator": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "locator",
+          "excerpt",
+          "observed_at"
+        ],
+        "type": "object"
+      },
+      "ReviewSourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "uri",
+          "title",
+          "authority"
+        ],
         "type": "object"
       },
       "ServiceAccountResponse": {
@@ -1362,21 +3663,126 @@
         "type": "object"
       },
       "StartAgentRunRequest": {
-        "additionalProperties": true,
-        "description": "StartAgentRunRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "initial_state": {
+            "type": "object"
+          }
+        },
+        "required": [],
         "type": "object"
       },
       "StringResponse": {
         "type": "string"
       },
       "SubgraphEdgeResponse": {
-        "additionalProperties": true,
-        "description": "SubgraphEdgeResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "edge_type": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from_member_id": {
+            "type": "string"
+          },
+          "from_member_kind": {
+            "type": "string"
+          },
+          "from_subgraph_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "to_member_id": {
+            "type": "string"
+          },
+          "to_member_kind": {
+            "type": "string"
+          },
+          "to_subgraph_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "edge_type",
+          "from_subgraph_id",
+          "to_subgraph_id",
+          "from_member_kind",
+          "from_member_id",
+          "to_member_kind",
+          "to_member_id",
+          "claim_ids",
+          "evidence_ids"
+        ],
         "type": "object"
       },
       "SummaryTraceResponse": {
-        "additionalProperties": true,
-        "description": "SummaryTraceResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inner_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "subgraph_id": {
+            "type": "string"
+          },
+          "summary_claim_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "subgraph_id",
+          "summary_claim_id",
+          "inner_claim_ids",
+          "evidence_ids"
+        ],
         "type": "object"
       },
       "TopologyEdgeResponse": {
@@ -2368,6 +4774,7 @@
     },
     "/v1/agents/{id}/runs": {
       "post": {
+        "description": "Persists an experimental agent run in queued state. This endpoint does not claim that a production graph worker will execute it.",
         "operationId": "startAgentRun",
         "parameters": [
           {
@@ -3682,7 +6089,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IngestionRunResponse"
+                  "$ref": "#/components/schemas/IngestionRunWithOutputsResponse"
                 }
               }
             },
@@ -3727,6 +6134,14 @@
             "description": "Optional caller-supplied request correlation identifier.",
             "in": "header",
             "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
             "required": false,
             "schema": {
               "type": "string"
@@ -3986,7 +6401,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IngestionRunResponse"
+                  "$ref": "#/components/schemas/IngestionRunWithOutputsResponse"
                 }
               }
             },
@@ -5294,6 +7709,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5918,6 +8341,14 @@
             "description": "Optional caller-supplied request correlation identifier.",
             "in": "header",
             "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
             "required": false,
             "schema": {
               "type": "string"
@@ -7166,6 +9597,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateMemorySubgraphRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

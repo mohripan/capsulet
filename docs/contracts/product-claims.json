@@ -159,10 +159,10 @@
       "evidence": [{ "type": "source", "path": "charts/capsulet/templates/deployments.yaml" }]
     },
     {
-      "id": "CAP-OPENAPI-001", "kind": "limitation", "maturity": "implemented", "area": "HTTP API",
-      "statement": "The current handwritten OpenAPI document is incomplete and is not yet an exact contract for the running HTTP API.",
+      "id": "CAP-OPENAPI-001", "kind": "capability", "maturity": "implemented", "area": "HTTP API",
+      "statement": "The OpenAPI 3.1 document is generated from shared endpoint metadata, exactly matches all runtime method/path declarations, and is checked for deterministic drift.",
       "public_surfaces": ["docs/api.md", "crates/api/openapi.json"],
-      "evidence": [{ "type": "source", "path": "scripts/check-openapi.ps1" }]
+      "evidence": [{ "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "generated_openapi_should_match_every_runtime_endpoint" }, { "type": "decision", "path": "docs/adr/0015-code-generated-openapi-contract.md" }]
     },
     {
       "id": "CAP-LIFECYCLE-001", "kind": "compatibility", "maturity": "implemented", "area": "Lifecycle and assurance",

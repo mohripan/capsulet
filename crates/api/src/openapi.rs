@@ -39,6 +39,30 @@ pub fn generated_openapi() -> Value {
         "WorkflowStepRunResponse",
         "WorkflowRunLogEntryResponse",
         "ArtifactResponse",
+        "GraphNodeRequest",
+        "GraphPortRequest",
+        "GraphHyperedgeRequest",
+        "HyperedgeEndpointRequest",
+        "GraphTransitionPolicyRequest",
+        "GraphNodeResponse",
+        "GraphPortResponse",
+        "GraphHyperedgeResponse",
+        "HyperedgeEndpointResponse",
+        "GraphTransitionPolicyResponse",
+        "AgentBudgetRequest",
+        "AgentBudgetResponse",
+        "KernelVerdict",
+        "Certificate",
+        "Proposition",
+        "DischargedStep",
+        "Residual",
+        "CertificateError",
+        "RawProposal",
+        "CertificateSummary",
+        "IngestionRunOutputsResponse",
+        "ReviewClaimResponse",
+        "ReviewEvidenceResponse",
+        "ReviewSourceResponse",
     ]);
 
     for endpoint in endpoint_contracts() {
@@ -143,6 +167,16 @@ fn operation_document(endpoint: &crate::EndpointContract) -> Value {
     } else if endpoint.method == "GET" && endpoint.path == "/v1/job-definitions" {
         parameters.push(query_parameter("limit"));
     }
+    if endpoint.method == "GET"
+        && matches!(
+            endpoint.path,
+            "/v1/memory/entity-resolutions"
+                | "/v1/memory/conflicts"
+                | "/v1/ingestion/review/claims"
+        )
+    {
+        parameters.push(query_parameter("status"));
+    }
     if endpoint.path == "/v1/webhooks/{automation_id}/{trigger_name}" {
         for (name, required) in [
             ("x-capsulet-timestamp", true),
@@ -204,6 +238,11 @@ fn operation_document(endpoint: &crate::EndpointContract) -> Value {
     });
     if let Some(body) = request_body {
         operation["requestBody"] = body;
+    }
+    if endpoint.operation_id == "startAgentRun" {
+        operation["description"] = json!(
+            "Persists an experimental agent run in queued state. This endpoint does not claim that a production graph worker will execute it."
+        );
     }
     if endpoint.success_status == "204" {
         operation["responses"]["204"] = json!({"description": "No content"});
@@ -284,6 +323,9 @@ fn component_schema(name: &str) -> Value {
         other if control_plane_schema(other).is_some() => {
             control_plane_schema(other).expect("matched control-plane component")
         }
+        other if agent_memory_schema(other).is_some() => {
+            agent_memory_schema(other).expect("matched agent/memory component")
+        }
         other => json!({
             "type": "object",
             "description": format!("{other} payload."),
@@ -307,6 +349,24 @@ fn list_component(name: &str) -> Option<(&'static str, &'static str)> {
         "ListAutomationsResponse" => ("automations", "AutomationResponse"),
         "ListTriggerPluginsResponse" => ("trigger_plugins", "TriggerPluginResponse"),
         "ListArtifactsResponse" => ("artifacts", "ArtifactResponse"),
+        "ListGraphsResponse" => ("graphs", "GraphResponse"),
+        "ListAgentsResponse" => ("agents", "AgentResponse"),
+        "ListAgentRunsResponse" => ("agent_runs", "AgentRunResponse"),
+        "ListCertificatesResponse" => ("certificates", "CertificateSummary"),
+        "ListMemorySourcesResponse" => ("sources", "MemorySourceResponse"),
+        "ListMemoryEvidenceResponse" => ("evidence", "MemoryEvidenceResponse"),
+        "ListMemoryEntitiesResponse" => ("entities", "MemoryEntityResponse"),
+        "ListMemoryClaimsResponse" => ("claims", "MemoryClaimResponse"),
+        "ListMemoryEventsResponse" => ("events", "MemoryEventResponse"),
+        "ListMemoryRelationshipsResponse" => ("relationships", "MemoryRelationshipResponse"),
+        "ListMemoryContractsResponse" => ("contracts", "MemoryContractResponse"),
+        "ListMemorySubgraphsResponse" => ("subgraphs", "MemorySubgraphResponse"),
+        "ListCanonicalEntitiesResponse" => ("canonical_entities", "CanonicalEntityResponse"),
+        "ListEntityResolutionsResponse" => ("entity_resolutions", "EntityResolutionResponse"),
+        "ListClaimConflictsResponse" => ("conflicts", "ClaimConflictResponse"),
+        "ListIngestionConnectorsResponse" => ("connectors", "IngestionConnectorResponse"),
+        "ListIngestionRunsResponse" => ("runs", "IngestionRunResponse"),
+        "ListIngestionReviewClaimsResponse" => ("claims", "ReviewClaimResponse"),
         _ => return None,
     })
 }
@@ -804,6 +864,661 @@ fn control_plane_schema(name: &str) -> Option<Value> {
     Some(schema)
 }
 
+fn agent_memory_schema(name: &str) -> Option<Value> {
+    let schema = match name {
+        "CreateGraphRequest" => object_schema(
+            &["name", "nodes", "hyperedges"],
+            &[
+                ("id", nullable_string_schema()),
+                ("name", string_schema()),
+                ("nodes", array_ref("GraphNodeRequest")),
+                ("hyperedges", array_ref("GraphHyperedgeRequest")),
+                (
+                    "transition_policy",
+                    nullable_ref("GraphTransitionPolicyRequest"),
+                ),
+            ],
+        ),
+        "GraphNodeRequest" | "GraphNodeResponse" => all_required_schema(&[
+            ("id", string_schema()),
+            ("name", string_schema()),
+            ("kind", string_schema()),
+            (
+                "ports",
+                array_ref(if name.ends_with("Request") {
+                    "GraphPortRequest"
+                } else {
+                    "GraphPortResponse"
+                }),
+            ),
+        ]),
+        "GraphPortRequest" | "GraphPortResponse" => fields(&["id", "direction", "value_type"]),
+        "GraphHyperedgeRequest" | "GraphHyperedgeResponse" => all_required_schema(&[
+            ("id", string_schema()),
+            (
+                "sources",
+                array_ref(if name.ends_with("Request") {
+                    "HyperedgeEndpointRequest"
+                } else {
+                    "HyperedgeEndpointResponse"
+                }),
+            ),
+            (
+                "targets",
+                array_ref(if name.ends_with("Request") {
+                    "HyperedgeEndpointRequest"
+                } else {
+                    "HyperedgeEndpointResponse"
+                }),
+            ),
+        ]),
+        "HyperedgeEndpointRequest" | "HyperedgeEndpointResponse" => all_required_schema(&[
+            ("kind", string_schema()),
+            ("node_id", nullable_string_schema()),
+            ("port_id", nullable_string_schema()),
+            ("field", nullable_string_schema()),
+            ("value_type", nullable_string_schema()),
+        ]),
+        "GraphTransitionPolicyRequest" => object_schema(
+            &["mode"],
+            &[
+                ("mode", string_schema()),
+                ("actions", string_array_schema()),
+                ("cycles_allowed", bool_schema()),
+            ],
+        ),
+        "GraphTransitionPolicyResponse" => all_required_schema(&[
+            ("mode", string_schema()),
+            ("actions", string_array_schema()),
+            ("cycles_allowed", bool_schema()),
+        ]),
+        "GraphResponse" => all_required_schema(&[
+            ("id", string_schema()),
+            ("name", string_schema()),
+            ("nodes", array_ref("GraphNodeResponse")),
+            ("hyperedges", array_ref("GraphHyperedgeResponse")),
+            (
+                "transition_policy",
+                schema_reference("GraphTransitionPolicyResponse"),
+            ),
+            ("static_order", string_array_schema()),
+        ]),
+        "CreateAgentRequest" => object_schema(
+            &["name", "graph_id", "budget"],
+            &[
+                ("id", nullable_string_schema()),
+                ("name", string_schema()),
+                ("graph_id", string_schema()),
+                ("budget", schema_reference("AgentBudgetRequest")),
+                ("termination_conditions", string_array_schema()),
+            ],
+        ),
+        "AgentBudgetRequest" | "AgentBudgetResponse" => all_required_schema(&[
+            ("max_steps", integer_schema()),
+            ("max_tokens", integer_schema()),
+            ("max_seconds", integer_schema()),
+            ("max_cost_micros", integer_schema()),
+        ]),
+        "AgentResponse" => all_required_schema(&[
+            ("id", string_schema()),
+            ("name", string_schema()),
+            ("graph_id", string_schema()),
+            ("budget", schema_reference("AgentBudgetResponse")),
+            ("termination_conditions", string_array_schema()),
+        ]),
+        "StartAgentRunRequest" => object_schema(
+            &[],
+            &[
+                ("id", nullable_string_schema()),
+                ("initial_state", json!({"type": "object"})),
+            ],
+        ),
+        "AgentRunResponse" => {
+            let mut value = all_required_schema(&[
+                ("id", string_schema()),
+                ("agent_id", string_schema()),
+                (
+                    "status",
+                    enum_schema(&[
+                        "queued",
+                        "running",
+                        "succeeded",
+                        "failed",
+                        "cancelled",
+                        "stopped",
+                    ]),
+                ),
+                ("state_version", integer_schema()),
+                ("state", json!({"type": "object"})),
+            ]);
+            value["description"] = json!(
+                "Current experimental persisted agent-run state. Starting a run creates queued work; a production graph worker is not yet claimed."
+            );
+            value
+        }
+        "AskRequest" => object_schema(
+            &["text", "question"],
+            &[
+                ("text", string_schema()),
+                ("question", string_schema()),
+                ("title", nullable_string_schema()),
+                ("authority", nullable_string_schema()),
+                ("model", nullable_string_schema()),
+            ],
+        ),
+        "KernelVerdict" => enum_schema(&["accepted", "conditional", "rejected"]),
+        "Proposition" => fields(&["subject", "predicate", "object"]),
+        "DischargedStep" => fields(&["rule", "concluded", "detail"]),
+        "Residual" => all_required_schema(&[
+            ("from", string_schema()),
+            ("to", schema_reference("Proposition")),
+            ("rationale", string_schema()),
+            ("evidence_ids", string_array_schema()),
+        ]),
+        "CertificateError" => object_schema(
+            &["code", "message", "repair_owner"],
+            &[
+                ("code", string_schema()),
+                ("message", string_schema()),
+                ("repair_owner", string_schema()),
+                ("corrected_value", json!({"type": ["number", "null"]})),
+            ],
+        ),
+        "Certificate" => certificate_schema(),
+        "RawProposal" => all_required_schema(&[
+            ("subject", string_schema()),
+            ("predicate", string_schema()),
+            ("object", string_schema()),
+            ("evidence_id", string_schema()),
+            ("quote", string_schema()),
+            ("needs_interpretation", bool_schema()),
+            ("rationale", string_schema()),
+        ]),
+        "CertificateResponse" => all_required_schema(&[
+            ("certificate_id", string_schema()),
+            ("question", string_schema()),
+            ("source_id", string_schema()),
+            ("model", string_schema()),
+            ("alphabet_digest", string_schema()),
+            ("alphabet_size", integer_schema()),
+            ("certificate", schema_reference("Certificate")),
+            ("proposal", schema_reference("RawProposal")),
+        ]),
+        "CertificateSummary" => all_required_schema(&[
+            ("id", string_schema()),
+            ("question", string_schema()),
+            ("verdict", schema_reference("KernelVerdict")),
+            ("model", string_schema()),
+            ("alphabet_digest", string_schema()),
+            ("certificate", schema_reference("Certificate")),
+        ]),
+        "CreateMemorySourceRequest" => object_schema(
+            &["kind", "title", "authority"],
+            &[
+                ("id", nullable_string_schema()),
+                ("kind", string_schema()),
+                ("uri", nullable_string_schema()),
+                ("title", string_schema()),
+                ("authority", string_schema()),
+            ],
+        ),
+        "MemorySourceResponse" => scoped_schema(&[
+            ("kind", string_schema()),
+            ("uri", nullable_string_schema()),
+            ("title", string_schema()),
+            ("authority", string_schema()),
+        ]),
+        "CreateMemoryEvidenceRequest" => object_schema(
+            &["source_id", "locator", "excerpt", "observed_at"],
+            &[
+                ("id", nullable_string_schema()),
+                ("source_id", string_schema()),
+                ("locator", string_schema()),
+                ("excerpt", string_schema()),
+                ("observed_at", string_schema()),
+            ],
+        ),
+        "MemoryEvidenceResponse" => scoped_schema(&[
+            ("source_id", string_schema()),
+            ("locator", string_schema()),
+            ("excerpt", string_schema()),
+            ("observed_at", string_schema()),
+        ]),
+        "CreateMemoryEntityRequest" => object_schema(
+            &["entity_type", "name"],
+            &[
+                ("id", nullable_string_schema()),
+                ("entity_type", string_schema()),
+                ("name", string_schema()),
+                ("aliases", string_array_schema()),
+            ],
+        ),
+        "MemoryEntityResponse" => scoped_schema(&[
+            ("entity_type", string_schema()),
+            ("name", string_schema()),
+            ("aliases", string_array_schema()),
+        ]),
+        "CreateMemoryClaimRequest" => object_schema(
+            &[
+                "subject_id",
+                "predicate",
+                "object",
+                "evidence_ids",
+                "confidence",
+                "authority",
+                "observed_at",
+            ],
+            &[
+                ("id", nullable_string_schema()),
+                ("subject_id", string_schema()),
+                ("predicate", string_schema()),
+                ("object", string_schema()),
+                ("evidence_ids", string_array_schema()),
+                ("confidence", number_schema()),
+                ("authority", string_schema()),
+                ("status", nullable_string_schema()),
+                ("observed_at", string_schema()),
+                ("valid_from", nullable_string_schema()),
+                ("valid_until", nullable_string_schema()),
+            ],
+        ),
+        "MemoryClaimResponse" => scoped_schema(&[
+            ("subject_id", string_schema()),
+            ("predicate", string_schema()),
+            ("object", string_schema()),
+            ("evidence_ids", string_array_schema()),
+            ("confidence", number_schema()),
+            ("authority", string_schema()),
+            (
+                "status",
+                enum_schema(&[
+                    "candidate",
+                    "active",
+                    "rejected",
+                    "superseded",
+                    "contradicted",
+                    "expired",
+                ]),
+            ),
+            ("observed_at", string_schema()),
+            ("valid_from", nullable_string_schema()),
+            ("valid_until", nullable_string_schema()),
+        ]),
+        "ReviewClaimResponse" => {
+            let mut properties = vec![
+                ("subject_id", string_schema()),
+                ("predicate", string_schema()),
+                ("object", string_schema()),
+                ("evidence_ids", string_array_schema()),
+                ("confidence", number_schema()),
+                ("authority", string_schema()),
+                (
+                    "status",
+                    enum_schema(&[
+                        "candidate",
+                        "active",
+                        "rejected",
+                        "superseded",
+                        "contradicted",
+                        "expired",
+                    ]),
+                ),
+                ("observed_at", string_schema()),
+                ("valid_from", nullable_string_schema()),
+                ("valid_until", nullable_string_schema()),
+                ("evidence", array_ref("ReviewEvidenceResponse")),
+                ("sources", array_ref("ReviewSourceResponse")),
+            ];
+            let mut base = vec![
+                ("id", string_schema()),
+                ("tenant_id", string_schema()),
+                ("project_id", string_schema()),
+            ];
+            base.append(&mut properties);
+            all_required_schema(&base)
+        }
+        "CreateMemoryEventRequest" => object_schema(
+            &["event_type", "occurred_at", "evidence_ids"],
+            &[
+                ("id", nullable_string_schema()),
+                ("event_type", string_schema()),
+                ("occurred_at", string_schema()),
+                ("entity_ids", string_array_schema()),
+                ("evidence_ids", string_array_schema()),
+            ],
+        ),
+        "MemoryEventResponse" => scoped_schema(&[
+            ("event_type", string_schema()),
+            ("occurred_at", string_schema()),
+            ("entity_ids", string_array_schema()),
+            ("evidence_ids", string_array_schema()),
+        ]),
+        "CreateMemoryRelationshipRequest" => object_schema(
+            &[
+                "relationship_type",
+                "from_entity_id",
+                "to_entity_id",
+                "evidence_ids",
+            ],
+            &[
+                ("id", nullable_string_schema()),
+                ("relationship_type", string_schema()),
+                ("from_entity_id", string_schema()),
+                ("to_entity_id", string_schema()),
+                ("evidence_ids", string_array_schema()),
+            ],
+        ),
+        "MemoryRelationshipResponse" => scoped_schema(&[
+            ("relationship_type", string_schema()),
+            ("from_entity_id", string_schema()),
+            ("to_entity_id", string_schema()),
+            ("evidence_ids", string_array_schema()),
+        ]),
+        "CreateMemoryContractRequest" => object_schema(
+            &["name", "source"],
+            &[
+                ("id", nullable_string_schema()),
+                ("name", string_schema()),
+                ("source", string_schema()),
+            ],
+        ),
+        "MemoryContractResponse" => scoped_schema(&[
+            ("name", string_schema()),
+            ("source", string_schema()),
+            (
+                "compiled",
+                json!({"type": "object", "description": "Compiled current memory-policy DSL."}),
+            ),
+        ]),
+        "CreateMemorySubgraphRequest" => object_schema(
+            &["name"],
+            &[
+                ("id", nullable_string_schema()),
+                ("parent_subgraph_id", nullable_string_schema()),
+                ("name", string_schema()),
+                ("description", nullable_string_schema()),
+            ],
+        ),
+        "ActivateMemorySubgraphRequest" => object_schema(
+            &[
+                "owner_kind",
+                "owner_id",
+                "contract_id",
+                "permissions",
+                "summary_claim_id",
+            ],
+            &[
+                ("owner_kind", string_schema()),
+                ("owner_id", string_schema()),
+                ("contract_id", string_schema()),
+                ("permissions", json!({"type": "object"})),
+                ("summary_claim_id", string_schema()),
+            ],
+        ),
+        "MemorySubgraphResponse" => scoped_schema(&[
+            ("parent_subgraph_id", nullable_string_schema()),
+            ("name", string_schema()),
+            ("description", nullable_string_schema()),
+            ("owner_kind", nullable_string_schema()),
+            ("owner_id", nullable_string_schema()),
+            ("contract_id", nullable_string_schema()),
+            ("summary_claim_id", nullable_string_schema()),
+            ("permissions", nullable_object_schema()),
+            ("status", enum_schema(&["draft", "active", "archived"])),
+        ]),
+        "CreateMemorySubgraphMemberRequest" => object_schema(
+            &["member_kind", "member_id", "role"],
+            &[
+                ("id", nullable_string_schema()),
+                ("member_kind", string_schema()),
+                ("member_id", string_schema()),
+                ("role", string_schema()),
+            ],
+        ),
+        "MemorySubgraphMemberResponse" => scoped_schema(&[
+            ("subgraph_id", string_schema()),
+            ("member_kind", string_schema()),
+            ("member_id", string_schema()),
+            ("role", string_schema()),
+        ]),
+        "CreateCanonicalEntityRequest" => object_schema(
+            &["entity_type", "display_name"],
+            &[
+                ("id", nullable_string_schema()),
+                ("entity_type", string_schema()),
+                ("display_name", string_schema()),
+                ("aliases", string_array_schema()),
+            ],
+        ),
+        "CanonicalEntityResponse" => scoped_schema(&[
+            ("entity_type", string_schema()),
+            ("display_name", string_schema()),
+            ("aliases", string_array_schema()),
+        ]),
+        "CreateEntityResolutionRequest" => object_schema(
+            &[
+                "subgraph_id",
+                "entity_id",
+                "canonical_entity_id",
+                "confidence",
+                "status",
+                "evidence_ids",
+            ],
+            &[
+                ("id", nullable_string_schema()),
+                ("subgraph_id", string_schema()),
+                ("entity_id", string_schema()),
+                ("canonical_entity_id", string_schema()),
+                ("confidence", number_schema()),
+                ("status", string_schema()),
+                ("evidence_ids", string_array_schema()),
+            ],
+        ),
+        "EntityResolutionResponse" => scoped_schema(&[
+            ("subgraph_id", string_schema()),
+            ("entity_id", string_schema()),
+            ("canonical_entity_id", string_schema()),
+            ("confidence", number_schema()),
+            (
+                "status",
+                enum_schema(&["candidate", "confirmed", "rejected"]),
+            ),
+            ("evidence_ids", string_array_schema()),
+        ]),
+        "ResolveClaimConflictRequest" => fields(&["preferred_claim_id"]),
+        "ClaimConflictResponse" => scoped_schema(&[
+            ("subject_id", string_schema()),
+            ("canonical_entity_id", nullable_string_schema()),
+            ("predicate", string_schema()),
+            ("claim_ids", string_array_schema()),
+            (
+                "status",
+                enum_schema(&["candidate", "resolved", "dismissed"]),
+            ),
+            ("reason", string_schema()),
+            ("preferred_claim_id", nullable_string_schema()),
+        ]),
+        "CreateSummaryTraceRequest" => object_schema(
+            &["subgraph_id", "summary_claim_id"],
+            &[
+                ("id", nullable_string_schema()),
+                ("subgraph_id", string_schema()),
+                ("summary_claim_id", string_schema()),
+                ("inner_claim_ids", string_array_schema()),
+                ("evidence_ids", string_array_schema()),
+            ],
+        ),
+        "SummaryTraceResponse" => scoped_schema(&[
+            ("subgraph_id", string_schema()),
+            ("summary_claim_id", string_schema()),
+            ("inner_claim_ids", string_array_schema()),
+            ("evidence_ids", string_array_schema()),
+        ]),
+        "CreateEntityGraphAttachmentRequest" => object_schema(
+            &["canonical_entity_id", "subgraph_id", "attachment_type"],
+            &[
+                ("id", nullable_string_schema()),
+                ("canonical_entity_id", string_schema()),
+                ("subgraph_id", string_schema()),
+                ("attachment_type", string_schema()),
+            ],
+        ),
+        "EntityGraphAttachmentResponse" => scoped_schema(&[
+            ("canonical_entity_id", string_schema()),
+            ("subgraph_id", string_schema()),
+            ("attachment_type", string_schema()),
+        ]),
+        "CreateSubgraphEdgeRequest" => object_schema(
+            &[
+                "edge_type",
+                "from_subgraph_id",
+                "to_subgraph_id",
+                "from_member_kind",
+                "from_member_id",
+                "to_member_kind",
+                "to_member_id",
+            ],
+            &[
+                ("id", nullable_string_schema()),
+                ("edge_type", string_schema()),
+                ("from_subgraph_id", string_schema()),
+                ("to_subgraph_id", string_schema()),
+                ("from_member_kind", string_schema()),
+                ("from_member_id", string_schema()),
+                ("to_member_kind", string_schema()),
+                ("to_member_id", string_schema()),
+                ("claim_ids", string_array_schema()),
+                ("evidence_ids", string_array_schema()),
+            ],
+        ),
+        "SubgraphEdgeResponse" => scoped_schema(&[
+            ("edge_type", string_schema()),
+            ("from_subgraph_id", string_schema()),
+            ("to_subgraph_id", string_schema()),
+            ("from_member_kind", string_schema()),
+            ("from_member_id", string_schema()),
+            ("to_member_kind", string_schema()),
+            ("to_member_id", string_schema()),
+            ("claim_ids", string_array_schema()),
+            ("evidence_ids", string_array_schema()),
+        ]),
+        "CreateIngestionConnectorRequest" => object_schema(
+            &["name", "kind", "config"],
+            &[
+                ("id", nullable_string_schema()),
+                ("name", string_schema()),
+                ("kind", enum_schema(&["local_text"])),
+                (
+                    "config",
+                    all_required_schema(&[
+                        ("title", string_schema()),
+                        ("content", string_schema()),
+                        ("content_type", string_schema()),
+                        ("uri", nullable_string_schema()),
+                        ("authority", string_schema()),
+                    ]),
+                ),
+                ("enabled", bool_schema()),
+            ],
+        ),
+        "IngestionConnectorResponse" => scoped_schema(&[
+            ("name", string_schema()),
+            ("kind", enum_schema(&["local_text"])),
+            ("enabled", bool_schema()),
+            (
+                "config",
+                all_required_schema(&[
+                    ("title", string_schema()),
+                    ("content_type", string_schema()),
+                    ("uri", nullable_string_schema()),
+                    ("authority", string_schema()),
+                ]),
+            ),
+        ]),
+        "IngestionRunResponse" => scoped_schema(&[
+            ("connector_id", string_schema()),
+            (
+                "status",
+                enum_schema(&["queued", "running", "succeeded", "failed"]),
+            ),
+            ("error", nullable_string_schema()),
+            ("source_count", integer_schema()),
+            ("evidence_count", integer_schema()),
+            ("entity_count", integer_schema()),
+            ("claim_count", integer_schema()),
+            ("event_count", integer_schema()),
+            ("relationship_count", integer_schema()),
+        ]),
+        "IngestionRunOutputsResponse" => all_required_schema(&[
+            ("sources", string_array_schema()),
+            ("evidence", string_array_schema()),
+            ("entities", string_array_schema()),
+            ("claims", string_array_schema()),
+            ("events", string_array_schema()),
+            ("relationships", string_array_schema()),
+        ]),
+        "IngestionRunWithOutputsResponse" => all_required_schema(&[
+            ("run", schema_reference("IngestionRunResponse")),
+            ("outputs", schema_reference("IngestionRunOutputsResponse")),
+        ]),
+        "ReviewEvidenceResponse" => {
+            fields(&["id", "source_id", "locator", "excerpt", "observed_at"])
+        }
+        "ReviewSourceResponse" => all_required_schema(&[
+            ("id", string_schema()),
+            ("kind", string_schema()),
+            ("uri", nullable_string_schema()),
+            ("title", string_schema()),
+            ("authority", string_schema()),
+        ]),
+        _ => return None,
+    };
+    Some(schema)
+}
+
+fn certificate_schema() -> Value {
+    let mut schema = all_required_schema(&[
+        ("verdict", schema_reference("KernelVerdict")),
+        ("goal", schema_reference("Proposition")),
+        ("discharged", array_ref("DischargedStep")),
+        ("residuals", array_ref("Residual")),
+        ("errors", array_ref("CertificateError")),
+        ("replay_digest", string_schema()),
+    ]);
+    schema["description"] = json!(
+        "Current deterministic kernel certificate. `unverified` is not a kernel verdict; it belongs to the future platform assurance layer."
+    );
+    schema["examples"] = json!([
+        {"verdict":"accepted","goal":{"subject":"document","predicate":"states","object":"fact"},"discharged":[{"rule":"cite","concluded":"fact","detail":"literal evidence matched"}],"residuals":[],"errors":[],"replay_digest":"sha256:accepted"},
+        {"verdict":"conditional","goal":{"subject":"document","predicate":"implies","object":"fact"},"discharged":[],"residuals":[{"from":"attributed text","to":{"subject":"document","predicate":"implies","object":"fact"},"rationale":"interpretation required","evidence_ids":["evidence_1"]}],"errors":[],"replay_digest":"sha256:conditional"},
+        {"verdict":"rejected","goal":{"subject":"document","predicate":"states","object":"missing"},"discharged":[],"residuals":[],"errors":[{"code":"quote_mismatch","message":"quote was not found","repair_owner":"proposer"}],"replay_digest":"sha256:rejected"}
+    ]);
+    schema
+}
+
+fn scoped_schema(extra: &[(&str, Value)]) -> Value {
+    let mut properties = vec![
+        ("id", string_schema()),
+        ("tenant_id", string_schema()),
+        ("project_id", string_schema()),
+    ];
+    properties.extend(extra.iter().cloned());
+    all_required_schema(&properties)
+}
+
+fn all_required_schema(properties: &[(&str, Value)]) -> Value {
+    let required = properties.iter().map(|(name, _)| *name).collect::<Vec<_>>();
+    object_schema(&required, properties)
+}
+
+fn array_ref(name: &str) -> Value {
+    json!({"type": "array", "items": schema_reference(name)})
+}
+
+fn nullable_ref(name: &str) -> Value {
+    json!({"oneOf": [schema_reference(name), {"type": "null"}]})
+}
+
 fn fields(names: &[&str]) -> Value {
     let properties = names
         .iter()
@@ -828,6 +1543,9 @@ fn nullable_string_schema() -> Value {
 }
 fn integer_schema() -> Value {
     json!({"type": "integer"})
+}
+fn number_schema() -> Value {
+    json!({"type": "number"})
 }
 fn nullable_integer_schema() -> Value {
     json!({"type": ["integer", "null"]})

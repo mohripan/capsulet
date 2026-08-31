@@ -89,6 +89,8 @@ The generated router inventory currently exposes:
 | --- | --- | --- |
 | `GET` | `/livez`, `/readyz`, `/healthz` | Process and database health |
 | `GET` | `/openapi.json` | Machine-readable OpenAPI document |
+| `POST` | `/v1/reasoning/ask` | Run the current propose-check-certify slice |
+| `GET` | `/v1/reasoning/certificates` | List persisted kernel certificates |
 | `GET`, `POST` | `/v1/job-definitions` | List or create definitions |
 | `GET`, `PUT`, `DELETE` | `/v1/job-definitions/{id}` | Read, replace, or delete a definition |
 | `GET` | `/v1/execution-pools`, `/v1/host-groups` | Read static execution configuration |
@@ -122,6 +124,12 @@ The generated router inventory currently exposes:
 | `POST` | `/v1/memory/summary-traces` | Link a subgraph summary claim to inner claims or evidence |
 | `POST` | `/v1/memory/entity-graph-attachments` | Attach a nested graph to a canonical entity |
 | `POST` | `/v1/memory/subgraph-edges` | Create explicit cross-subgraph boundary edges |
+| `GET`, `POST` | `/v1/ingestion/connectors` | List or create local-text connectors |
+| `GET` | `/v1/ingestion/connectors/{id}` | Read a connector |
+| `POST` | `/v1/ingestion/connectors/{id}/runs` | Run a connector and return its output IDs |
+| `GET` | `/v1/ingestion/runs`, `/v1/ingestion/runs/{id}` | List or inspect ingestion runs |
+| `GET` | `/v1/ingestion/review/claims` | List evidence-expanded claims awaiting review |
+| `POST` | `/v1/ingestion/review/claims/{id}/approve`, `/reject` | Review an ingested claim |
 | `GET`, `POST` | `/v1/agents` | List or create agent definitions |
 | `GET` | `/v1/agents/{id}` | Read one agent definition |
 | `POST` | `/v1/agents/{id}/runs` | Start a queued agent run |
@@ -307,7 +315,7 @@ curl -X POST http://127.0.0.1:8080/v1/memory/conflicts/conflict_123/dismiss
 Entity resolution maps a local entity to a canonical identity inside a nested subgraph. Proposed resolutions can be reviewed before they become confirmed identity links:
 
 ```sh
-curl "http://127.0.0.1:8080/v1/memory/entity-resolutions?status=proposed"
+curl "http://127.0.0.1:8080/v1/memory/entity-resolutions?status=candidate"
 curl -X POST http://127.0.0.1:8080/v1/memory/entity-resolutions/resolution_123/confirm
 curl -X POST http://127.0.0.1:8080/v1/memory/entity-resolutions/resolution_123/reject
 ```
@@ -346,7 +354,23 @@ curl http://127.0.0.1:8080/v1/agent-runs
 curl http://127.0.0.1:8080/v1/agent-runs/agent_run_1
 ```
 
-The current API starts queued agent runs and returns their current state. The application runtime can execute agent runs and persist trace events; HTTP trace and run-control endpoints are planned next.
+The current experimental API persists a queued agent run and returns its opaque state snapshot. The
+application service has an in-process execution slice used by tests, but Capsulet has no production
+dedicated graph/agent worker. Creating a run through HTTP therefore does not claim that it will be
+independently executed. HTTP trace and run-control endpoints are planned next.
+
+## Current correctness certificate API
+
+`POST /v1/reasoning/ask` stores the supplied text, creates citable evidence, asks the configured
+proposer for a pinned proposal, and returns the deterministic kernel certificate alongside the raw
+proposal. Kernel verdicts are exactly `accepted`, `conditional`, and `rejected`. `unverified` is a
+future platform-assurance verdict and is not returned by the current kernel API. The generated
+`Certificate` schema contains one response example for each current verdict.
+
+Certificates expose the goal, mechanically discharged steps, interpretation residuals, errors and
+repair ownership, and a replay digest. Memory evidence responses currently expose `source_id`, a
+string `locator`, `excerpt`, and `observed_at`; they do not yet expose structured byte offsets or a
+source-content hash. Those stronger provenance fields must not be inferred from the current API.
 
 ## Compatibility workflow APIs
 

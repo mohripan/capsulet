@@ -780,7 +780,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "system:write",
         true,
         true,
-        None,
+        Some("ActivateMemorySubgraphRequest"),
         "MemorySubgraphResponse",
         "200"
     ),
@@ -968,7 +968,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "IngestionRunResponse",
+        "IngestionRunWithOutputsResponse",
         "201"
     ),
     endpoint!(
@@ -990,7 +990,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "IngestionRunResponse",
+        "IngestionRunWithOutputsResponse",
         "200"
     ),
     endpoint!(

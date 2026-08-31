@@ -47,7 +47,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-OPENAPI-001` | implemented | limitation | The current handwritten OpenAPI document is incomplete and is not yet an exact contract for the running HTTP API. |
+| `CAP-OPENAPI-001` | implemented | capability | The OpenAPI 3.1 document is generated from shared endpoint metadata, exactly matches all runtime method/path declarations, and is checked for deterministic drift. |
 
 ## Identity and IAM
 
