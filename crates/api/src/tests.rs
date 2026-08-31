@@ -3755,6 +3755,32 @@ async fn healthz_returns_ok() {
 }
 
 #[tokio::test]
+async fn openapi_endpoint_returns_the_canonical_generated_contract() {
+    let response = test_app(FakeStore::default())
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response.headers()[axum::http::header::CONTENT_TYPE],
+        "application/vnd.oai.openapi+json; charset=utf-8"
+    );
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("response body");
+    assert_eq!(
+        String::from_utf8(bytes.to_vec()).expect("UTF-8 OpenAPI"),
+        crate::canonical_openapi_json().expect("OpenAPI should serialize")
+    );
+}
+
+#[tokio::test]
 async fn lists_configured_execution_pools() {
     let response = test_app(FakeStore::default())
         .oneshot(

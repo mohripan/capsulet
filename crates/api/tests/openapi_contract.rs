@@ -133,11 +133,19 @@ fn every_operation_should_have_stable_metadata_and_complete_shapes() {
                     .is_string()
             );
         }
-        assert!(
-            operation["responses"][endpoint.success_status]["content"]
-                [endpoint.response_content_type]["schema"]
-                .is_object()
-        );
+        if endpoint.success_status == "204" {
+            assert!(
+                operation["responses"][endpoint.success_status]
+                    .get("content")
+                    .is_none()
+            );
+        } else {
+            assert!(
+                operation["responses"][endpoint.success_status]["content"]
+                    [endpoint.response_content_type]["schema"]
+                    .is_object()
+            );
+        }
         assert!(
             operation["responses"]["default"]["content"]["application/json"]["schema"].is_object()
         );
@@ -164,4 +172,125 @@ fn checked_openapi_artifact_should_equal_canonical_generation() {
 #[test]
 fn generated_document_should_round_trip_through_utoipa() {
     validated_openapi().expect("generated OpenAPI should be valid for utoipa");
+}
+
+#[test]
+fn control_plane_schemas_should_describe_real_wire_fields() {
+    let document = generated_openapi();
+    let schemas = document["components"]["schemas"]
+        .as_object()
+        .expect("component schemas");
+    for name in [
+        "PrincipalResponse",
+        "ProjectMembershipResponse",
+        "ServiceAccountResponse",
+        "JobDefinitionResponse",
+        "JobRunResponse",
+        "WorkflowResponse",
+        "WorkflowRunResponse",
+        "AutomationResponse",
+        "TriggerPluginResponse",
+        "ExecutionPoolResponse",
+        "TopologyResponse",
+        "JobRunLogsResponse",
+        "ArtifactResponse",
+        "WebhookResponse",
+    ] {
+        assert_ne!(schemas[name]["additionalProperties"], true, "{name}");
+        assert!(schemas[name]["properties"].is_object(), "{name}");
+        assert!(schemas[name]["required"].is_array(), "{name}");
+    }
+    assert!(
+        schemas["CreateRunRequest"]["required"]
+            .as_array()
+            .expect("required")
+            .contains(&serde_json::json!("job_definition_id"))
+    );
+    assert_eq!(
+        schemas["JobRunResponse"]["properties"]["status"]["$ref"],
+        "#/components/schemas/JobRunStatus"
+    );
+    assert_eq!(
+        schemas["WorkflowRunResponse"]["properties"]["automation_id"]["type"],
+        serde_json::json!(["string", "null"])
+    );
+}
+
+#[test]
+fn control_plane_operations_should_document_observable_parameters() {
+    let document = generated_openapi();
+    let job_runs = &document["paths"]["/v1/jobs/runs"]["get"]["parameters"];
+    for name in [
+        "limit",
+        "start_at",
+        "end_at",
+        "q",
+        "state",
+        "sort",
+        "direction",
+    ] {
+        assert!(
+            job_runs
+                .as_array()
+                .expect("parameters")
+                .iter()
+                .any(|parameter| { parameter["name"] == name && parameter["in"] == "query" })
+        );
+    }
+    let webhook = &document["paths"]["/v1/webhooks/{automation_id}/{trigger_name}"]["post"];
+    for name in [
+        "x-capsulet-timestamp",
+        "x-capsulet-signature",
+        "x-capsulet-delivery",
+        "x-capsulet-correlation",
+    ] {
+        assert!(
+            webhook["parameters"]
+                .as_array()
+                .expect("parameters")
+                .iter()
+                .any(|parameter| parameter["name"] == name && parameter["in"] == "header")
+        );
+    }
+    assert_eq!(
+        document["components"]["schemas"]["EventStreamResponse"]["format"],
+        "event-stream"
+    );
+}
+
+#[test]
+fn every_control_plane_operation_should_use_a_concrete_component() {
+    let document = generated_openapi();
+    let schemas = &document["components"]["schemas"];
+    for endpoint in endpoint_contracts().iter().filter(|endpoint| {
+        !endpoint.path.starts_with("/v1/graphs")
+            && !endpoint.path.starts_with("/v1/agents")
+            && !endpoint.path.starts_with("/v1/agent-runs")
+            && !endpoint.path.starts_with("/v1/reasoning")
+            && !endpoint.path.starts_with("/v1/memory")
+            && !endpoint.path.starts_with("/v1/ingestion")
+    }) {
+        for name in endpoint
+            .request_schema
+            .into_iter()
+            .chain(std::iter::once(endpoint.response_schema))
+        {
+            let schema = &schemas[name];
+            assert!(!schema.is_null(), "missing component {name}");
+            if !matches!(
+                name,
+                "WebhookRequest"
+                    | "OpenApiDocument"
+                    | "StringResponse"
+                    | "EventStreamResponse"
+                    | "BinaryResponse"
+                    | "EmptyResponse"
+            ) {
+                assert_ne!(
+                    schema["additionalProperties"], true,
+                    "generic component {name}"
+                );
+            }
+        }
+    }
 }

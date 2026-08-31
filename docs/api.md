@@ -3,8 +3,9 @@
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
 experimental agent and governed-memory resources, and a narrow deterministic correctness-kernel
-slice. The handwritten OpenAPI document is incomplete until the generated-contract tasks in M0 are
-complete; runtime route behavior is authoritative in the meantime.
+slice. Its OpenAPI 3.1 document is generated from the endpoint contract registry used by runtime
+authorization. The generated document and literal Axum declarations must have identical
+method/path sets; CI rejects drift and a stale checked-in artifact.
 
 Execution `status` fields and correctness `verdict` fields are independent. Clients must not infer
 `accepted` from `succeeded`, `completed`, or an HTTP 2xx response. The current and target
@@ -67,7 +68,22 @@ docker exec -i capsulet-postgres psql -U capsulet -d capsulet -c "INSERT INTO jo
 
 ## Endpoints
 
-The router currently exposes:
+The canonical machine-readable contract is served at `/openapi.json` and checked in at
+`crates/api/openapi.json`. Every operation has a stable `operationId`, experimental stability
+label, current required scope, authentication mode, project-context rule, request/response schema,
+and shared error shape. Regenerate it with
+`cargo run -p capsulet-api --bin export-openapi`; use `-- --check` to verify it without writing.
+
+Protected project resources accept `x-capsulet-project-id` when the principal can access multiple
+projects. All operations accept an optional `x-request-id`. Run-list filters are documented as
+OpenAPI query parameters. Log streams use `text/event-stream`; artifact downloads use their stored
+binary content type.
+
+Signed webhook requests require `x-capsulet-timestamp`, `x-capsulet-delivery`, and
+`x-capsulet-signature`; `x-capsulet-correlation` is optional. A webhook returns `202` for a newly
+accepted delivery and `200` for an idempotent replay of an already accepted delivery.
+
+The generated router inventory currently exposes:
 
 | Method | Path | Purpose |
 | --- | --- | --- |

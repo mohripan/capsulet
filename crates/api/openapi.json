@@ -11,15 +11,135 @@
         "description": "AgentRunResponse payload.",
         "type": "object"
       },
+      "ArtifactResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "name",
+          "content_type",
+          "size_bytes",
+          "kind"
+        ],
+        "type": "object"
+      },
       "AskRequest": {
         "additionalProperties": true,
         "description": "AskRequest payload.",
         "type": "object"
       },
-      "AutomationResponse": {
-        "additionalProperties": true,
-        "description": "AutomationResponse payload.",
+      "AuditEventResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "principal": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "status_code": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "principal",
+          "role",
+          "method",
+          "path",
+          "status_code",
+          "request_id",
+          "created_at"
+        ],
         "type": "object"
+      },
+      "AutomationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "condition": {
+            "type": "object"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "job_input": {
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AutomationStatus"
+          },
+          "triggers": {
+            "items": {
+              "$ref": "#/components/schemas/TriggerResponse"
+            },
+            "type": "array"
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "workflow_id",
+          "status",
+          "triggers",
+          "condition",
+          "job_input"
+        ],
+        "type": "object"
+      },
+      "AutomationStatus": {
+        "enum": [
+          "enabled",
+          "disabled"
+        ],
+        "type": "string"
       },
       "BinaryResponse": {
         "format": "binary",
@@ -46,8 +166,60 @@
         "type": "object"
       },
       "CreateAutomationRequest": {
-        "additionalProperties": true,
-        "description": "CreateAutomationRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "condition": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_input": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "triggers": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "workflow_id"
+        ],
         "type": "object"
       },
       "CreateCanonicalEntityRequest": {
@@ -76,8 +248,56 @@
         "type": "object"
       },
       "CreateJobDefinitionRequest": {
-        "additionalProperties": true,
-        "description": "CreateJobDefinitionRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "python_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "python_script": {
+            "type": "string"
+          },
+          "retry_delay_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "retry_max_attempts": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "runtime_image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "python_script"
+        ],
         "type": "object"
       },
       "CreateMemoryClaimRequest": {
@@ -126,18 +346,127 @@
         "type": "object"
       },
       "CreateRunRequest": {
-        "additionalProperties": true,
-        "description": "CreateRunRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "execution_pool": {
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "job_definition_id": {
+            "type": "string"
+          },
+          "python_script": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "job_definition_id",
+          "execution_pool"
+        ],
         "type": "object"
       },
       "CreateServiceAccountRequest": {
-        "additionalProperties": true,
-        "description": "CreateServiceAccountRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "expires_at_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "role"
+        ],
         "type": "object"
       },
       "CreateServiceAccountResponse": {
-        "additionalProperties": true,
-        "description": "CreateServiceAccountResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "tenant_id",
+          "project_id",
+          "role",
+          "scopes",
+          "created_at",
+          "token"
+        ],
         "type": "object"
       },
       "CreateSubgraphEdgeRequest": {
@@ -151,13 +480,97 @@
         "type": "object"
       },
       "CreateTriggerPluginRequest": {
-        "additionalProperties": true,
-        "description": "CreateTriggerPluginRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "config_schema": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "python_script": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtime_image": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "runtime_image"
+        ],
         "type": "object"
       },
       "CreateWorkflowRequest": {
-        "additionalProperties": true,
-        "description": "CreateWorkflowRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "deadline_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "dependencies": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ],
         "type": "object"
       },
       "EmptyResponse": {
@@ -198,7 +611,33 @@
         "type": "object"
       },
       "EventStreamResponse": {
+        "description": "UTF-8 Server-Sent Events stream. Each data field contains a JSON activity or log event.",
+        "format": "event-stream",
         "type": "string"
+      },
+      "ExecutionPoolResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "host_group": {
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "is_default",
+          "host_group"
+        ],
+        "type": "object"
       },
       "GraphResponse": {
         "additionalProperties": true,
@@ -221,6 +660,37 @@
         ],
         "type": "object"
       },
+      "HostGroupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "execution_pool": {
+            "type": "string"
+          },
+          "host_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "is_default",
+          "execution_pool",
+          "host_count"
+        ],
+        "type": "object"
+      },
       "IngestionConnectorResponse": {
         "additionalProperties": true,
         "description": "IngestionConnectorResponse payload.",
@@ -232,566 +702,448 @@
         "type": "object"
       },
       "JobDefinitionResponse": {
-        "additionalProperties": true,
-        "description": "JobDefinitionResponse payload.",
-        "type": "object"
-      },
-      "JobDefinitionSourceResponse": {
-        "additionalProperties": true,
-        "description": "JobDefinitionSourceResponse payload.",
-        "type": "object"
-      },
-      "JobRunLogsResponse": {
-        "additionalProperties": true,
-        "description": "JobRunLogsResponse payload.",
-        "type": "object"
-      },
-      "JobRunResponse": {
-        "additionalProperties": true,
-        "description": "JobRunResponse payload.",
-        "type": "object"
-      },
-      "ListAgentRunsResponse": {
-        "additionalProperties": true,
-        "description": "ListAgentRunsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "bundle_object_key": {
+            "type": "string"
+          },
+          "command": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "type": "string"
             },
             "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "python_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "retry_delay_seconds": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "runtime_image": {
+            "type": "string"
           }
         },
         "required": [
-          "items"
+          "id",
+          "name",
+          "runtime_image",
+          "command",
+          "python_dependencies",
+          "bundle_object_key",
+          "input_schema",
+          "retry_max_attempts",
+          "retry_delay_seconds"
         ],
+        "type": "object"
+      },
+      "JobDefinitionSourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "python_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "python_script": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "python_script",
+          "python_dependencies"
+        ],
+        "type": "object"
+      },
+      "JobRunLogsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "logs": {
+            "type": "string"
+          },
+          "object_log_available": {
+            "type": "boolean"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "logs",
+          "object_log_available"
+        ],
+        "type": "object"
+      },
+      "JobRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_count": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "execution_pool": {
+            "type": "string"
+          },
+          "host_group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object"
+          },
+          "job_definition_id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobRunStatus"
+          }
+        },
+        "required": [
+          "id",
+          "job_definition_id",
+          "status",
+          "execution_pool",
+          "host_group",
+          "attempt_count",
+          "created_at",
+          "input"
+        ],
+        "type": "object"
+      },
+      "JobRunStatus": {
+        "enum": [
+          "queued",
+          "leased",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "timed_out",
+          "retry_scheduled"
+        ],
+        "type": "string"
+      },
+      "ListAgentRunsResponse": {
+        "additionalProperties": true,
+        "description": "ListAgentRunsResponse payload.",
         "type": "object"
       },
       "ListAgentsResponse": {
         "additionalProperties": true,
-        "description": "ListAgentsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListAgentsResponse payload.",
         "type": "object"
       },
       "ListArtifactsResponse": {
-        "additionalProperties": true,
-        "description": "ListArtifactsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "artifacts": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ArtifactResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "artifacts"
         ],
         "type": "object"
       },
       "ListAuditEventsResponse": {
-        "additionalProperties": true,
-        "description": "ListAuditEventsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "audit_events": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/AuditEventResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "audit_events"
         ],
         "type": "object"
       },
       "ListAutomationTriggersResponse": {
-        "additionalProperties": true,
-        "description": "ListAutomationTriggersResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "condition": {
+            "type": "object"
+          },
+          "triggers": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/TriggerResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "triggers",
+          "condition"
         ],
         "type": "object"
       },
       "ListAutomationsResponse": {
-        "additionalProperties": true,
-        "description": "ListAutomationsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "automations": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/AutomationResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "automations"
         ],
         "type": "object"
       },
       "ListCanonicalEntitiesResponse": {
         "additionalProperties": true,
-        "description": "ListCanonicalEntitiesResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListCanonicalEntitiesResponse payload.",
         "type": "object"
       },
       "ListCertificatesResponse": {
         "additionalProperties": true,
-        "description": "ListCertificatesResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListCertificatesResponse payload.",
         "type": "object"
       },
       "ListClaimConflictsResponse": {
         "additionalProperties": true,
-        "description": "ListClaimConflictsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListClaimConflictsResponse payload.",
         "type": "object"
       },
       "ListEntityResolutionsResponse": {
         "additionalProperties": true,
-        "description": "ListEntityResolutionsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListEntityResolutionsResponse payload.",
         "type": "object"
       },
       "ListExecutionPoolsResponse": {
-        "additionalProperties": true,
-        "description": "ListExecutionPoolsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "execution_pools": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ExecutionPoolResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "execution_pools"
         ],
         "type": "object"
       },
       "ListGraphsResponse": {
         "additionalProperties": true,
-        "description": "ListGraphsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListGraphsResponse payload.",
         "type": "object"
       },
       "ListHostGroupsResponse": {
-        "additionalProperties": true,
-        "description": "ListHostGroupsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "host_groups": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/HostGroupResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "host_groups"
         ],
         "type": "object"
       },
       "ListIngestionConnectorsResponse": {
         "additionalProperties": true,
-        "description": "ListIngestionConnectorsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListIngestionConnectorsResponse payload.",
         "type": "object"
       },
       "ListIngestionReviewClaimsResponse": {
         "additionalProperties": true,
-        "description": "ListIngestionReviewClaimsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListIngestionReviewClaimsResponse payload.",
         "type": "object"
       },
       "ListIngestionRunsResponse": {
         "additionalProperties": true,
-        "description": "ListIngestionRunsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListIngestionRunsResponse payload.",
         "type": "object"
       },
       "ListJobDefinitionsResponse": {
-        "additionalProperties": true,
-        "description": "ListJobDefinitionsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "job_definitions": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/JobDefinitionResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "job_definitions"
         ],
         "type": "object"
       },
       "ListMemoryClaimsResponse": {
         "additionalProperties": true,
-        "description": "ListMemoryClaimsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListMemoryClaimsResponse payload.",
         "type": "object"
       },
       "ListMemoryContractsResponse": {
         "additionalProperties": true,
-        "description": "ListMemoryContractsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListMemoryContractsResponse payload.",
         "type": "object"
       },
       "ListMemoryEntitiesResponse": {
         "additionalProperties": true,
-        "description": "ListMemoryEntitiesResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListMemoryEntitiesResponse payload.",
         "type": "object"
       },
       "ListMemoryEventsResponse": {
         "additionalProperties": true,
-        "description": "ListMemoryEventsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListMemoryEventsResponse payload.",
         "type": "object"
       },
       "ListMemoryEvidenceResponse": {
         "additionalProperties": true,
-        "description": "ListMemoryEvidenceResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListMemoryEvidenceResponse payload.",
         "type": "object"
       },
       "ListMemoryRelationshipsResponse": {
         "additionalProperties": true,
-        "description": "ListMemoryRelationshipsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListMemoryRelationshipsResponse payload.",
         "type": "object"
       },
       "ListMemorySourcesResponse": {
         "additionalProperties": true,
-        "description": "ListMemorySourcesResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListMemorySourcesResponse payload.",
         "type": "object"
       },
       "ListMemorySubgraphsResponse": {
         "additionalProperties": true,
-        "description": "ListMemorySubgraphsResponse envelope.",
-        "properties": {
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
+        "description": "ListMemorySubgraphsResponse payload.",
         "type": "object"
       },
       "ListProjectMembershipsResponse": {
-        "additionalProperties": true,
-        "description": "ListProjectMembershipsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "memberships": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ProjectMembershipResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "memberships"
         ],
         "type": "object"
       },
       "ListProjectsResponse": {
-        "additionalProperties": true,
-        "description": "ListProjectsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "projects": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ProjectResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "projects"
         ],
         "type": "object"
       },
       "ListRunsResponse": {
-        "additionalProperties": true,
-        "description": "ListRunsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "runs": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/JobRunResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "runs"
         ],
         "type": "object"
       },
       "ListServiceAccountsResponse": {
-        "additionalProperties": true,
-        "description": "ListServiceAccountsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "service_accounts": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ServiceAccountResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "service_accounts"
         ],
         "type": "object"
       },
       "ListTriggerPluginsResponse": {
-        "additionalProperties": true,
-        "description": "ListTriggerPluginsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "trigger_plugins": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/TriggerPluginResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "trigger_plugins"
         ],
         "type": "object"
       },
       "ListWorkflowRunsResponse": {
-        "additionalProperties": true,
-        "description": "ListWorkflowRunsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "workflow_runs": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/WorkflowRunResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "workflow_runs"
         ],
         "type": "object"
       },
       "ListWorkflowsResponse": {
-        "additionalProperties": true,
-        "description": "ListWorkflowsResponse envelope.",
+        "additionalProperties": false,
         "properties": {
-          "items": {
+          "workflows": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/WorkflowResponse"
             },
             "type": "array"
           }
         },
         "required": [
-          "items"
+          "workflows"
         ],
         "type": "object"
       },
@@ -845,13 +1197,106 @@
         "type": "object"
       },
       "PrincipalResponse": {
-        "additionalProperties": true,
-        "description": "PrincipalResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "platform_admin": {
+            "type": "boolean"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_memberships": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "platform_admin",
+          "project_memberships"
+        ],
         "type": "object"
       },
       "ProjectMembershipResponse": {
-        "additionalProperties": true,
-        "description": "ProjectMembershipResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "principal_kind": {
+            "type": "string"
+          },
+          "principal_name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "project_id",
+          "principal_kind",
+          "principal_name",
+          "role",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ProjectResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name"
+        ],
         "type": "object"
       },
       "ResolveClaimConflictRequest": {
@@ -860,8 +1305,60 @@
         "type": "object"
       },
       "ServiceAccountResponse": {
-        "additionalProperties": true,
-        "description": "ServiceAccountResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "tenant_id",
+          "project_id",
+          "role",
+          "scopes",
+          "created_at"
+        ],
         "type": "object"
       },
       "StartAgentRunRequest": {
@@ -882,49 +1379,456 @@
         "description": "SummaryTraceResponse payload.",
         "type": "object"
       },
+      "TopologyEdgeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "label"
+        ],
+        "type": "object"
+      },
+      "TopologyNodeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "status"
+        ],
+        "type": "object"
+      },
       "TopologyResponse": {
-        "additionalProperties": true,
-        "description": "TopologyResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/TopologyEdgeResponse"
+            },
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/TopologyNodeResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges"
+        ],
         "type": "object"
       },
       "TriggerPluginResponse": {
-        "additionalProperties": true,
-        "description": "TriggerPluginResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "config_schema": {
+            "type": "object"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "python_script": {
+            "type": "string"
+          },
+          "runtime_image": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "runtime_image",
+          "command",
+          "python_script",
+          "config_schema"
+        ],
+        "type": "object"
+      },
+      "TriggerResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "type": "object"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "plugin_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "config",
+          "plugin_id",
+          "enabled"
+        ],
         "type": "object"
       },
       "UpsertProjectMembershipRequest": {
-        "additionalProperties": true,
-        "description": "UpsertProjectMembershipRequest payload.",
+        "additionalProperties": false,
+        "properties": {
+          "principal_kind": {
+            "type": "string"
+          },
+          "principal_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_kind",
+          "principal_name",
+          "role"
+        ],
         "type": "object"
       },
       "WebhookRequest": {
         "additionalProperties": true,
-        "description": "WebhookRequest payload.",
         "type": "object"
       },
       "WebhookResponse": {
-        "additionalProperties": true,
-        "description": "WebhookResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "event_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "event_id"
+        ],
+        "type": "object"
+      },
+      "WorkflowDependencyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "from_step_id": {
+            "type": "string"
+          },
+          "policy": {
+            "type": "string"
+          },
+          "to_step_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_step_id",
+          "to_step_id",
+          "policy"
+        ],
         "type": "object"
       },
       "WorkflowEditabilityResponse": {
-        "additionalProperties": true,
-        "description": "WorkflowEditabilityResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "editable": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "editable",
+          "reason"
+        ],
         "type": "object"
       },
       "WorkflowResponse": {
-        "additionalProperties": true,
-        "description": "WorkflowResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowDependencyResponse"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowStatus"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStepResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "status",
+          "steps",
+          "dependencies"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunLogEntryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "job_run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logs": {
+            "type": "string"
+          },
+          "object_log_available": {
+            "type": "boolean"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowRunStatus"
+          },
+          "step_run_id": {
+            "type": "string"
+          },
+          "workflow_step_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_run_id",
+          "workflow_step_id",
+          "job_run_id",
+          "position",
+          "status",
+          "logs",
+          "object_log_available"
+        ],
         "type": "object"
       },
       "WorkflowRunLogsResponse": {
-        "additionalProperties": true,
-        "description": "WorkflowRunLogsResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunLogEntryResponse"
+            },
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowRunStatus"
+          },
+          "workflow_id": {
+            "type": "string"
+          },
+          "workflow_run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_run_id",
+          "workflow_id",
+          "status",
+          "entries"
+        ],
         "type": "object"
       },
       "WorkflowRunResponse": {
-        "additionalProperties": true,
-        "description": "WorkflowRunResponse payload.",
+        "additionalProperties": false,
+        "properties": {
+          "automation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "current_step_position": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowRunStatus"
+          },
+          "step_runs": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStepRunResponse"
+            },
+            "type": "array"
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "automation_id",
+          "status",
+          "current_step_position",
+          "created_at",
+          "step_runs"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "removed",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "timed_out",
+          "skipped"
+        ],
+        "type": "string"
+      },
+      "WorkflowStatus": {
+        "enum": [
+          "draft",
+          "enabled",
+          "disabled"
+        ],
+        "type": "string"
+      },
+      "WorkflowStepResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "execution_pool": {
+            "type": "string"
+          },
+          "host_group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "job_definition_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "name",
+          "job_definition_id",
+          "execution_pool",
+          "host_group",
+          "timeout_seconds"
+        ],
+        "type": "object"
+      },
+      "WorkflowStepRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "job_run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowRunStatus"
+          },
+          "workflow_step_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_step_id",
+          "job_run_id",
+          "position",
+          "status"
+        ],
         "type": "object"
       }
     },
@@ -946,7 +1850,17 @@
     "/healthz": {
       "get": {
         "operationId": "getHealth",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -979,7 +1893,17 @@
     "/livez": {
       "get": {
         "operationId": "getLiveness",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1012,7 +1936,17 @@
     "/metrics": {
       "get": {
         "operationId": "getMetrics",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1045,7 +1979,17 @@
     "/openapi.json": {
       "get": {
         "operationId": "getOpenApi",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1078,7 +2022,17 @@
     "/readyz": {
       "get": {
         "operationId": "getReadiness",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1116,6 +2070,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -1175,6 +2138,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1222,6 +2194,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1263,6 +2244,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -1332,6 +2322,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1383,6 +2382,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -1444,6 +2452,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1482,7 +2499,17 @@
     "/v1/auth/me": {
       "get": {
         "operationId": "getCurrentPrincipal",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1528,6 +2555,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1569,6 +2605,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -1638,18 +2683,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmptyResponse"
-                }
-              }
-            },
-            "description": "Successful response"
+            "description": "No content"
           },
           "default": {
             "content": {
@@ -1687,6 +2734,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -1740,6 +2796,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -1809,6 +2874,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1860,6 +2934,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -1919,6 +3002,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1974,6 +3066,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2017,6 +3118,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -2068,6 +3178,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2115,6 +3234,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2156,6 +3284,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -2225,6 +3362,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2268,6 +3414,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -2319,6 +3474,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2360,6 +3524,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -2429,6 +3602,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2484,6 +3666,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2527,6 +3718,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -2586,6 +3786,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2641,6 +3850,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2684,6 +3902,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -2743,6 +3970,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2790,6 +4026,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -2831,6 +4086,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -2900,18 +4164,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmptyResponse"
-                }
-              }
-            },
-            "description": "Successful response"
+            "description": "No content"
           },
           "default": {
             "content": {
@@ -2949,6 +4215,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3002,6 +4277,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3071,6 +4355,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3118,6 +4411,73 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3159,6 +4519,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3228,6 +4597,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3279,6 +4657,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3346,6 +4733,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3397,6 +4793,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3456,6 +4861,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3511,6 +4925,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3558,6 +4981,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3599,6 +5031,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3660,6 +5101,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3701,6 +5151,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3770,6 +5229,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3813,6 +5281,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3872,6 +5349,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3923,6 +5409,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -3984,6 +5479,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4025,6 +5529,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -4094,6 +5607,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4141,6 +5663,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4182,6 +5713,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -4251,6 +5791,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4294,6 +5843,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -4355,6 +5913,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4396,6 +5963,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -4465,6 +6041,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4520,6 +6105,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4567,6 +6161,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4608,6 +6211,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -4677,6 +6289,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4724,6 +6345,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4765,6 +6395,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -4834,6 +6473,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4881,6 +6529,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4922,6 +6579,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -4991,6 +6657,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5038,6 +6713,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5079,6 +6763,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -5148,6 +6841,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5191,6 +6893,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -5252,6 +6963,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5293,6 +7013,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -5362,6 +7091,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5417,6 +7155,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5468,6 +7215,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -5529,6 +7285,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -5577,7 +7342,17 @@
     "/v1/projects": {
       "get": {
         "operationId": "listProjects",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5622,6 +7397,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5663,6 +7447,15 @@
             "in": "path",
             "name": "project_id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -5738,18 +7531,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmptyResponse"
-                }
-              }
-            },
-            "description": "Successful response"
+            "description": "No content"
           },
           "default": {
             "content": {
@@ -5781,6 +7576,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -5842,6 +7646,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5880,7 +7693,17 @@
     "/v1/service-accounts": {
       "get": {
         "operationId": "listServiceAccounts",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5915,7 +7738,17 @@
       },
       "post": {
         "operationId": "createServiceAccount",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5970,6 +7803,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6013,6 +7855,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -6064,6 +7915,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6105,6 +7965,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -6174,6 +8043,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6228,6 +8106,47 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-capsulet-timestamp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-capsulet-delivery",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-capsulet-correlation",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-capsulet-signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -6241,6 +8160,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponse"
+                }
+              }
+            },
+            "description": "Delivery was already accepted"
+          },
           "202": {
             "content": {
               "application/json": {
@@ -6277,6 +8206,73 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
             "required": false,
             "schema": {
               "type": "string"
@@ -6336,6 +8332,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6387,6 +8392,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -6446,6 +8460,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6497,6 +8520,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -6556,6 +8588,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6611,6 +8652,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6658,6 +8708,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6699,6 +8758,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -6768,18 +8836,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmptyResponse"
-                }
-              }
-            },
-            "description": "Successful response"
+            "description": "No content"
           },
           "default": {
             "content": {
@@ -6817,6 +8887,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -6870,6 +8949,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
@@ -6935,6 +9023,15 @@
             "description": "Project context. Required when the principal can access more than one project.",
             "in": "header",
             "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
             "required": false,
             "schema": {
               "type": "string"
