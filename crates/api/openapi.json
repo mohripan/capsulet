@@ -3267,13 +3267,27 @@
             "type": "boolean"
           },
           "project_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "project_memberships": {
             "items": {
+              "additionalProperties": false,
+              "properties": {
+                "project_id": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "tenant_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tenant_id",
+                "project_id",
+                "role"
+              ],
               "type": "object"
             },
             "type": "array"
@@ -3281,18 +3295,24 @@
           "role": {
             "type": "string"
           },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tenant_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           }
         },
         "required": [
           "name",
           "role",
           "platform_admin",
-          "project_memberships"
+          "tenant_id",
+          "project_id",
+          "project_memberships",
+          "scopes"
         ],
         "type": "object"
       },
@@ -6217,7 +6237,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryClaimResponse"
+                  "$ref": "#/components/schemas/ReviewClaimResponse"
                 }
               }
             },
@@ -6281,7 +6301,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryClaimResponse"
+                  "$ref": "#/components/schemas/ReviewClaimResponse"
                 }
               }
             },

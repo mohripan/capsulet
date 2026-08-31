@@ -1012,7 +1012,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemoryClaimResponse",
+        "ReviewClaimResponse",
         "200"
     ),
     endpoint!(
@@ -1023,7 +1023,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemoryClaimResponse",
+        "ReviewClaimResponse",
         "200"
     ),
     endpoint!(

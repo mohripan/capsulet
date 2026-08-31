@@ -384,17 +384,35 @@ fn list_schema(property: &str, item: &str) -> Value {
 fn control_plane_schema(name: &str) -> Option<Value> {
     let schema = match name {
         "PrincipalResponse" => object_schema(
-            &["name", "role", "platform_admin", "project_memberships"],
+            &[
+                "name",
+                "role",
+                "platform_admin",
+                "tenant_id",
+                "project_id",
+                "project_memberships",
+                "scopes",
+            ],
             &[
                 ("name", string_schema()),
                 ("role", string_schema()),
                 ("platform_admin", bool_schema()),
-                ("tenant_id", nullable_string_schema()),
-                ("project_id", nullable_string_schema()),
+                ("tenant_id", string_schema()),
+                ("project_id", string_schema()),
                 (
                     "project_memberships",
-                    json!({"type": "array", "items": {"type": "object"}}),
+                    json!({"type": "array", "items": {
+                        "type": "object",
+                        "required": ["tenant_id", "project_id", "role"],
+                        "properties": {
+                            "tenant_id": {"type": "string"},
+                            "project_id": {"type": "string"},
+                            "role": {"type": "string"}
+                        },
+                        "additionalProperties": false
+                    }}),
                 ),
+                ("scopes", string_array_schema()),
             ],
         ),
         "ProjectResponse" => fields(&["id", "tenant_id", "name"]),

@@ -30,6 +30,11 @@ publish explicit operation maps. Their tests compare every declared method, path
 project-context requirement, and response expectation to OpenAPI. Adding a client call without a
 matching operation is a contract failure.
 
+M0 validates the generation input and handwritten boundaries only; it does not publish generated
+packages. The current maps are `CLIENT_OPERATIONS` in the Python client and
+`DASHBOARD_OPERATIONS` in the dashboard client. `scripts/check-sdk-contracts.ps1` runs both
+conformance suites and the dashboard type checker.
+
 SDK compatibility metadata states the supported product/API release range independently from the
 package's ecosystem version. Stable generated symbols follow the deprecation window in the
 stability policy; ergonomic aliases may outlive a wire deprecation but must eventually call the

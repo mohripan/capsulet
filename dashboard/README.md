@@ -6,6 +6,11 @@ and operations. Its API transport is handwritten. Settings and fallback overview
 demonstrative; graph execution, assurance, and certificate views planned by the constitution are
 not yet implemented.
 
+The handwritten transport is experimental and publishes `DASHBOARD_OPERATIONS` in
+`app/lib/api.ts`. Tests compare every declared method, path template, `operationId`, project-header
+rule, and request/response schema to the checked generated OpenAPI document. This is an M0
+conformance boundary, not a published generated TypeScript SDK.
+
 ## Requirements
 
 - Node.js 20.x

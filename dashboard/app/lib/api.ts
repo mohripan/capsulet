@@ -98,18 +98,16 @@ export type WorkflowRunLogEntry = {
 
 export type Artifact = {
   id: string;
+  run_id: string;
   name: string;
-  object_key: string;
   content_type: string;
   size_bytes: number;
-  checksum_sha256: string | null;
   kind: "bundle" | "log" | "artifact";
 };
 
 export type SubmitRunRequest = {
   job_definition_id: string;
   execution_pool: string;
-  host_group?: string;
   run_id?: string;
   python_script?: string;
   input?: Record<string, unknown>;
@@ -565,6 +563,94 @@ export type TableQuery = {
   direction?: "asc" | "desc";
 };
 
+export type ClientOperationContract = {
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  path: string;
+  operationId: string;
+  requestSchema: string | null;
+  responseSchema: string | null;
+  projectContext: boolean;
+};
+
+function clientOperation(
+  method: ClientOperationContract["method"], path: string, operationId: string,
+  requestSchema: string | null, responseSchema: string | null, projectContext = true
+): ClientOperationContract {
+  return { method, path, operationId, requestSchema, responseSchema, projectContext };
+}
+
+// Experimental handwritten transport map. The checked OpenAPI document remains authoritative.
+export const DASHBOARD_OPERATIONS = {
+  listRuns: clientOperation("GET", "/v1/jobs/runs", "listJobRuns", null, "ListRunsResponse"),
+  getCurrentPrincipal: clientOperation("GET", "/v1/auth/me", "getCurrentPrincipal", null, "PrincipalResponse", false),
+  listProjects: clientOperation("GET", "/v1/projects", "listProjects", null, "ListProjectsResponse", false),
+  listProjectMembers: clientOperation("GET", "/v1/projects/{project_id}/memberships", "listProjectMemberships", null, "ListProjectMembershipsResponse", false),
+  upsertProjectMember: clientOperation("POST", "/v1/projects/{project_id}/memberships", "upsertProjectMembership", "UpsertProjectMembershipRequest", "ProjectMembershipResponse", false),
+  deleteProjectMember: clientOperation("DELETE", "/v1/projects/{project_id}/memberships/{principal_kind}/{principal_name}", "deleteProjectMembership", null, null, false),
+  listAuditEvents: clientOperation("GET", "/v1/audit-events", "listAuditEvents", null, "ListAuditEventsResponse"),
+  listServiceAccounts: clientOperation("GET", "/v1/service-accounts", "listServiceAccounts", null, "ListServiceAccountsResponse", false),
+  createServiceAccount: clientOperation("POST", "/v1/service-accounts", "createServiceAccount", "CreateServiceAccountRequest", "CreateServiceAccountResponse", false),
+  revokeServiceAccount: clientOperation("POST", "/v1/service-accounts/{id}/revoke", "revokeServiceAccount", null, "ServiceAccountResponse", false),
+  listJobDefinitions: clientOperation("GET", "/v1/job-definitions", "listJobDefinitions", null, "ListJobDefinitionsResponse"),
+  createJobDefinition: clientOperation("POST", "/v1/job-definitions", "createJobDefinition", "CreateJobDefinitionRequest", "JobDefinitionResponse"),
+  updateJobDefinition: clientOperation("PUT", "/v1/job-definitions/{id}", "updateJobDefinition", "CreateJobDefinitionRequest", "JobDefinitionResponse"),
+  deleteJobDefinition: clientOperation("DELETE", "/v1/job-definitions/{id}", "deleteJobDefinition", null, null),
+  getJobDefinitionSource: clientOperation("GET", "/v1/job-definitions/{id}/source", "getJobDefinitionSource", null, "JobDefinitionSourceResponse"),
+  listExecutionPools: clientOperation("GET", "/v1/execution-pools", "listExecutionPools", null, "ListExecutionPoolsResponse"),
+  listHostGroups: clientOperation("GET", "/v1/host-groups", "listHostGroups", null, "ListHostGroupsResponse"),
+  listWorkflows: clientOperation("GET", "/v1/workflows", "listWorkflows", null, "ListWorkflowsResponse"),
+  getWorkflow: clientOperation("GET", "/v1/workflows/{id}", "getWorkflow", null, "WorkflowResponse"),
+  getWorkflowEditability: clientOperation("GET", "/v1/workflows/{id}/editability", "getWorkflowEditability", null, "WorkflowEditabilityResponse"),
+  getTopology: clientOperation("GET", "/v1/topology", "getTopology", null, "TopologyResponse"),
+  createWorkflow: clientOperation("POST", "/v1/workflows", "createWorkflow", "CreateWorkflowRequest", "WorkflowResponse"),
+  updateWorkflow: clientOperation("PUT", "/v1/workflows/{id}", "updateWorkflow", "CreateWorkflowRequest", "WorkflowResponse"),
+  deleteWorkflow: clientOperation("DELETE", "/v1/workflows/{id}", "deleteWorkflow", null, null),
+  listAutomations: clientOperation("GET", "/v1/automations", "listAutomations", null, "ListAutomationsResponse"),
+  createAutomation: clientOperation("POST", "/v1/automations", "createAutomation", "CreateAutomationRequest", "AutomationResponse"),
+  updateAutomation: clientOperation("PUT", "/v1/automations/{id}", "updateAutomation", "CreateAutomationRequest", "AutomationResponse"),
+  deleteAutomation: clientOperation("DELETE", "/v1/automations/{id}", "deleteAutomation", null, null),
+  enableAutomation: clientOperation("POST", "/v1/automations/{id}/enable", "enableAutomation", null, "AutomationResponse"),
+  disableAutomation: clientOperation("POST", "/v1/automations/{id}/disable", "disableAutomation", null, "AutomationResponse"),
+  triggerAutomation: clientOperation("POST", "/v1/automations/{id}/trigger", "triggerAutomation", null, "WorkflowRunResponse"),
+  listTriggerPlugins: clientOperation("GET", "/v1/trigger-plugins", "listTriggerPlugins", null, "ListTriggerPluginsResponse"),
+  createTriggerPlugin: clientOperation("POST", "/v1/trigger-plugins", "createTriggerPlugin", "CreateTriggerPluginRequest", "TriggerPluginResponse"),
+  listMemorySubgraphs: clientOperation("GET", "/v1/memory/subgraphs", "listMemorySubgraphs", null, "ListMemorySubgraphsResponse"),
+  createMemorySubgraph: clientOperation("POST", "/v1/memory/subgraphs", "createMemorySubgraph", "CreateMemorySubgraphRequest", "MemorySubgraphResponse"),
+  activateMemorySubgraph: clientOperation("POST", "/v1/memory/subgraphs/{id}/activate", "activateMemorySubgraph", "ActivateMemorySubgraphRequest", "MemorySubgraphResponse"),
+  createMemorySubgraphMember: clientOperation("POST", "/v1/memory/subgraphs/{id}/members", "createMemorySubgraphMember", "CreateMemorySubgraphMemberRequest", "MemorySubgraphMemberResponse"),
+  listCanonicalEntities: clientOperation("GET", "/v1/memory/canonical-entities", "listCanonicalEntities", null, "ListCanonicalEntitiesResponse"),
+  createCanonicalEntity: clientOperation("POST", "/v1/memory/canonical-entities", "createCanonicalEntity", "CreateCanonicalEntityRequest", "CanonicalEntityResponse"),
+  createEntityResolution: clientOperation("POST", "/v1/memory/entity-resolutions", "createEntityResolution", "CreateEntityResolutionRequest", "EntityResolutionResponse"),
+  listEntityResolutions: clientOperation("GET", "/v1/memory/entity-resolutions", "listEntityResolutions", null, "ListEntityResolutionsResponse"),
+  confirmEntityResolution: clientOperation("POST", "/v1/memory/entity-resolutions/{id}/confirm", "confirmEntityResolution", null, "EntityResolutionResponse"),
+  rejectEntityResolution: clientOperation("POST", "/v1/memory/entity-resolutions/{id}/reject", "rejectEntityResolution", null, "EntityResolutionResponse"),
+  listClaimConflicts: clientOperation("GET", "/v1/memory/conflicts", "listClaimConflicts", null, "ListClaimConflictsResponse"),
+  resolveClaimConflict: clientOperation("POST", "/v1/memory/conflicts/{id}/resolve", "resolveClaimConflict", "ResolveClaimConflictRequest", "ClaimConflictResponse"),
+  dismissClaimConflict: clientOperation("POST", "/v1/memory/conflicts/{id}/dismiss", "dismissClaimConflict", null, "ClaimConflictResponse"),
+  createSummaryTrace: clientOperation("POST", "/v1/memory/summary-traces", "createSummaryTrace", "CreateSummaryTraceRequest", "SummaryTraceResponse"),
+  createEntityGraphAttachment: clientOperation("POST", "/v1/memory/entity-graph-attachments", "createEntityGraphAttachment", "CreateEntityGraphAttachmentRequest", "EntityGraphAttachmentResponse"),
+  createSubgraphEdge: clientOperation("POST", "/v1/memory/subgraph-edges", "createSubgraphEdge", "CreateSubgraphEdgeRequest", "SubgraphEdgeResponse"),
+  listIngestionConnectors: clientOperation("GET", "/v1/ingestion/connectors", "listIngestionConnectors", null, "ListIngestionConnectorsResponse"),
+  createIngestionConnector: clientOperation("POST", "/v1/ingestion/connectors", "createIngestionConnector", "CreateIngestionConnectorRequest", "IngestionConnectorResponse"),
+  runIngestionConnector: clientOperation("POST", "/v1/ingestion/connectors/{id}/runs", "runIngestionConnector", null, "IngestionRunWithOutputsResponse"),
+  listIngestionRuns: clientOperation("GET", "/v1/ingestion/runs", "listIngestionRuns", null, "ListIngestionRunsResponse"),
+  listReviewClaims: clientOperation("GET", "/v1/ingestion/review/claims", "listIngestionReviewClaims", null, "ListIngestionReviewClaimsResponse"),
+  approveReviewClaim: clientOperation("POST", "/v1/ingestion/review/claims/{id}/approve", "approveIngestionReviewClaim", null, "ReviewClaimResponse"),
+  rejectReviewClaim: clientOperation("POST", "/v1/ingestion/review/claims/{id}/reject", "rejectIngestionReviewClaim", null, "ReviewClaimResponse"),
+  listWorkflowRuns: clientOperation("GET", "/v1/workflow-runs", "listWorkflowRuns", null, "ListWorkflowRunsResponse"),
+  getRun: clientOperation("GET", "/v1/jobs/runs/{id}", "getJobRun", null, "JobRunResponse"),
+  getRunLogs: clientOperation("GET", "/v1/jobs/runs/{id}/logs", "getJobRunLogs", null, "JobRunLogsResponse"),
+  getWorkflowRunLogs: clientOperation("GET", "/v1/workflow-runs/{id}/logs", "getWorkflowRunLogs", null, "WorkflowRunLogsResponse"),
+  removeWorkflowRun: clientOperation("POST", "/v1/workflow-runs/{id}/remove", "removeWorkflowRun", null, "WorkflowRunResponse"),
+  cancelWorkflowRun: clientOperation("POST", "/v1/workflow-runs/{id}/cancel", "cancelWorkflowRun", null, "WorkflowRunResponse"),
+  listArtifacts: clientOperation("GET", "/v1/jobs/runs/{id}/artifacts", "listJobArtifacts", null, "ListArtifactsResponse"),
+  submitRun: clientOperation("POST", "/v1/jobs/runs", "createJobRun", "CreateRunRequest", "JobRunResponse"),
+  cancelRun: clientOperation("POST", "/v1/jobs/runs/{id}/cancel", "cancelJobRun", null, "JobRunResponse"),
+  downloadArtifact: clientOperation("GET", "/v1/jobs/runs/{id}/artifacts/{artifact_id}", "downloadJobArtifact", null, "BinaryResponse"),
+  streamActivityEvents: clientOperation("GET", "/v1/events/stream", "streamActivityEvents", null, "EventStreamResponse"),
+  streamWorkflowRunLogs: clientOperation("GET", "/v1/workflow-runs/{id}/logs/stream", "streamWorkflowRunLogs", null, "EventStreamResponse")
+} as const;
+
 const PROJECT_STORAGE_KEY = "capsulet.activeProject";
 
 export function selectedProjectId() {
@@ -696,7 +782,7 @@ export async function createServiceAccount(request: {
 }
 
 export async function revokeServiceAccount(id: string) {
-  return apiFetch<void>(`/v1/service-accounts/${encodeURIComponent(id)}/revoke`, {
+  return apiFetch<ServiceAccount>(`/v1/service-accounts/${encodeURIComponent(id)}/revoke`, {
     method: "POST",
     body: "{}"
   });
