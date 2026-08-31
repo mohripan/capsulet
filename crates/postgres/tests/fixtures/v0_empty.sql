@@ -1,0 +1,1 @@
+-- Supported source version v0 is an empty PostgreSQL database.

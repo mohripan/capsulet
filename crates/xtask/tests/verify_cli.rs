@@ -68,6 +68,18 @@ fn runs_cleanup_after_failure() {
 }
 
 #[test]
+fn reports_cleanup_failure() {
+    let result = xtask()
+        .args(["verify", "--gate", "format"])
+        .env("CAPSULET_VERIFY_TEST_COMMAND", "fail")
+        .env("CAPSULET_VERIFY_TEST_CLEANUP_FAIL", "1")
+        .output()
+        .expect("xtask runs");
+    assert!(!result.status.success());
+    assert!(stderr(&result).contains("cleanup failed"));
+}
+
+#[test]
 fn cannot_skip_a_required_gate() {
     let result = output(&["verify", "--profile", "full", "--skip", "format"]);
     assert!(!result.status.success());

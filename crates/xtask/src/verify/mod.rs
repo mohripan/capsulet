@@ -1,8 +1,9 @@
 mod catalog;
+mod postgres;
 mod process;
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     env, fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -201,11 +202,40 @@ fn execute(options: &Options) -> Result<(), String> {
 
 fn run_gate(gate: &Gate, root: &Path, log_path: &Path) -> Result<(), ProcessFailure> {
     let _cleanup = CleanupMarker::from_environment();
-    let commands = effective_commands(gate).map_err(ProcessFailure::Io)?;
+    let mut fixture = if matches!(gate.name, "postgres" | "migrations") {
+        Some(postgres::PostgresFixture::start().map_err(ProcessFailure::Io)?)
+    } else {
+        None
+    };
+    let mut commands = effective_commands(gate).map_err(ProcessFailure::Io)?;
+    if let Some(database) = &fixture {
+        for command in &mut commands {
+            command.environment.insert(
+                "CAPSULET_TEST_DATABASE_URL".to_string(),
+                database.database_url().to_string(),
+            );
+            command.environment.insert(
+                "DATABASE_URL".to_string(),
+                database.database_url().to_string(),
+            );
+        }
+    }
     let outcome = run_steps(&gate.provision, gate, root, log_path)
         .and_then(|()| run_steps(&commands, gate, root, log_path));
     let teardown = run_steps(&gate.teardown, gate, root, log_path);
-    outcome.and(teardown)
+    let database_cleanup = fixture.as_mut().map_or(Ok(()), |database| {
+        database.cleanup().map_err(ProcessFailure::Io)
+    });
+    let simulated_cleanup = if env::var_os("CAPSULET_VERIFY_TEST_CLEANUP_FAIL").is_some() {
+        Err(ProcessFailure::Io("cleanup failed".to_string()))
+    } else {
+        Ok(())
+    };
+    let cleanup = teardown.and(database_cleanup).and(simulated_cleanup);
+    match cleanup {
+        Ok(()) => outcome,
+        Err(error) => Err(error),
+    }
 }
 
 fn run_steps(
@@ -266,6 +296,7 @@ fn effective_commands(gate: &Gate) -> Result<Vec<catalog::CommandSpec>, String> 
                 .to_string(),
             arguments: vec!["__test-child".to_string(), mode.to_string()],
             working_directory: None,
+            environment: BTreeMap::default(),
         }]),
         Some(other) => Err(format!("unknown test command mode: {other}")),
         None => Ok(gate.commands.clone()),

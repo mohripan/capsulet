@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use capsulet_application::{
     AgentRunRecord, AgentTraceRecord, JobRunLogRepository, JobRunRepository,
 };
@@ -24,19 +22,14 @@ use capsulet_core::{
 
 use capsulet_core::JobRunStatus;
 
-use super::PostgresStore;
+use capsulet_postgres::PostgresStore;
 
-fn database_url() -> Option<String> {
-    std::env::var("CAPSULET_TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .ok()
-}
+mod support;
+use support::{fixture_id as unique_id, required_database_url as database_url};
 
 #[tokio::test]
 async fn saves_loads_and_cascades_workflow_dependencies_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -98,14 +91,6 @@ async fn saves_loads_and_cascades_workflow_dependencies_when_database_is_availab
     assert_eq!(edge_count, 0);
 }
 
-fn unique_id(prefix: &str) -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time after epoch")
-        .as_nanos();
-    format!("{prefix}_{nanos}")
-}
-
 #[test]
 fn parses_known_status() {
     assert!("queued".parse::<JobRunStatus>().is_ok());
@@ -115,9 +100,7 @@ fn parses_known_status() {
 
 #[tokio::test]
 async fn migrates_and_persists_job_runs_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
 
     let store = PostgresStore::connect(&database_url)
         .await
@@ -222,9 +205,7 @@ fn sample_graph(prefix: &str) -> GraphDefinition {
 
 #[tokio::test]
 async fn saves_and_lists_memory_claims_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -296,9 +277,7 @@ async fn saves_and_lists_memory_claims_when_database_is_available() {
 
 #[tokio::test]
 async fn saves_ingestion_connector_run_and_outputs_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -360,9 +339,7 @@ async fn saves_ingestion_connector_run_and_outputs_when_database_is_available() 
 
 #[tokio::test]
 async fn saves_and_finds_memory_contract_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -417,9 +394,7 @@ claim_policy:
     reason = "nested memory graph persistence test covers the full activation and boundary-edge flow"
 )]
 async fn saves_and_activates_nested_memory_graphs_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -629,9 +604,7 @@ claim_policy:
 
 #[tokio::test]
 async fn saves_and_finds_graph_definition_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -650,9 +623,7 @@ async fn saves_and_finds_graph_definition_when_database_is_available() {
 
 #[tokio::test]
 async fn saves_and_finds_agent_definition_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -679,9 +650,7 @@ async fn saves_and_finds_agent_definition_when_database_is_available() {
 
 #[tokio::test]
 async fn saves_and_finds_agent_run_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -716,9 +685,7 @@ async fn saves_and_finds_agent_run_when_database_is_available() {
 
 #[tokio::test]
 async fn saves_and_lists_agent_trace_events_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -771,9 +738,7 @@ async fn saves_and_lists_agent_trace_events_when_database_is_available() {
 
 #[tokio::test]
 async fn prometheus_metrics_include_queue_slo_gauges_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
 
     let store = PostgresStore::connect(&database_url)
         .await
@@ -805,9 +770,7 @@ async fn prometheus_metrics_include_queue_slo_gauges_when_database_is_available(
 
 #[tokio::test]
 async fn lease_query_does_not_hand_out_same_run_twice_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
 
     let store = PostgresStore::connect(&database_url)
         .await
@@ -843,9 +806,7 @@ async fn lease_query_does_not_hand_out_same_run_twice_when_database_is_available
 
 #[tokio::test]
 async fn pool_limit_prevents_concurrent_leases_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -879,9 +840,7 @@ async fn pool_limit_prevents_concurrent_leases_when_database_is_available() {
 
 #[tokio::test]
 async fn expired_running_lease_is_adopted_without_new_attempt_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect");
@@ -934,9 +893,7 @@ async fn expired_running_lease_is_adopted_without_new_attempt_when_database_is_a
 #[tokio::test]
 async fn stale_worker_cannot_finalize_attempt_adopted_by_another_worker_when_database_is_available()
 {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect");
@@ -1007,9 +964,7 @@ async fn stale_worker_cannot_finalize_attempt_adopted_by_another_worker_when_dat
 
 #[tokio::test]
 async fn finds_job_definition_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
 
     let store = PostgresStore::connect(&database_url)
         .await
@@ -1033,9 +988,7 @@ async fn finds_job_definition_when_database_is_available() {
 
 #[tokio::test]
 async fn saves_and_finds_automation_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
 
     let store = PostgresStore::connect(&database_url)
         .await
@@ -1078,9 +1031,7 @@ async fn saves_and_finds_automation_when_database_is_available() {
 
 #[tokio::test]
 async fn due_schedule_trigger_creates_workflow_run_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
 
     let store = PostgresStore::connect(&database_url)
         .await
@@ -1146,9 +1097,7 @@ async fn due_schedule_trigger_creates_workflow_run_when_database_is_available() 
 
 #[tokio::test]
 async fn custom_trigger_claim_is_exclusive_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
     let store = PostgresStore::connect(&database_url)
         .await
         .expect("connect to postgres");
@@ -1230,9 +1179,7 @@ async fn custom_trigger_claim_is_exclusive_when_database_is_available() {
 
 #[tokio::test]
 async fn saves_and_finds_job_run_logs_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
 
     let store = PostgresStore::connect(&database_url)
         .await
@@ -1266,9 +1213,7 @@ async fn saves_and_finds_job_run_logs_when_database_is_available() {
 
 #[tokio::test]
 async fn saves_lists_and_finds_artifacts_when_database_is_available() {
-    let Some(database_url) = database_url() else {
-        return;
-    };
+    let database_url = database_url();
 
     let store = PostgresStore::connect(&database_url)
         .await

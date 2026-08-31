@@ -65,6 +65,7 @@ pub(crate) fn run_command(
     );
     let mut child = Command::new(platform_program(&specification.program))
         .args(&specification.arguments)
+        .envs(&specification.environment)
         .current_dir(working_directory)
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(error_log))

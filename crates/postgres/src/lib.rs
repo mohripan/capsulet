@@ -38,9 +38,6 @@ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
 const DEFAULT_DATABASE_CONNECT_RETRIES: u32 = 30;
 const DEFAULT_DATABASE_CONNECT_RETRY_SECONDS: u64 = 2;
 
-#[cfg(test)]
-mod tests;
-
 /// `PostgreSQL`-backed store for Capsulet persistence.
 #[derive(Debug, Clone)]
 pub struct PostgresStore {

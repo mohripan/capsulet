@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -22,6 +24,7 @@ pub(crate) struct CommandSpec {
     pub(crate) program: String,
     pub(crate) arguments: Vec<String>,
     pub(crate) working_directory: Option<String>,
+    pub(crate) environment: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -42,6 +45,7 @@ fn command(program: &str, arguments: &[&str]) -> CommandSpec {
         program: program.to_string(),
         arguments: arguments.iter().map(|value| (*value).to_string()).collect(),
         working_directory: None,
+        environment: BTreeMap::new(),
     }
 }
 
@@ -116,16 +120,24 @@ pub(crate) fn gates() -> Vec<Gate> {
             &["cargo"],
             1_800,
             &[Fast, Full],
-            vec![command(
-                "cargo",
-                &[
-                    "test",
-                    "--workspace",
-                    "--exclude",
-                    "capsulet-xtask",
-                    "--locked",
-                ],
-            )],
+            vec![
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "--workspace",
+                        "--exclude",
+                        "capsulet-xtask",
+                        "--exclude",
+                        "capsulet-postgres",
+                        "--locked",
+                    ],
+                ),
+                command(
+                    "cargo",
+                    &["test", "-p", "capsulet-postgres", "--lib", "--locked"],
+                ),
+            ],
         ),
         gate(
             "api-contracts",
@@ -227,7 +239,14 @@ pub(crate) fn gates() -> Vec<Gate> {
             &[Full],
             vec![command(
                 "cargo",
-                &["test", "-p", "capsulet-postgres", "--locked"],
+                &[
+                    "test",
+                    "-p",
+                    "capsulet-postgres",
+                    "--test",
+                    "postgres_integration",
+                    "--locked",
+                ],
             )],
         ),
         gate(

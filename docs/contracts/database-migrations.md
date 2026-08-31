@@ -19,6 +19,12 @@ Release documentation names the oldest supported source version and tests every 
 path. Skipping releases is supported only when explicitly listed; otherwise operators upgrade
 through the documented intermediate releases.
 
+For the current pre-release line, the supported sources are an empty database (`v0`) and a database
+already at the current embedded migration set. The checked `v0_empty.sql` fixture is loaded into a
+disposable PostgreSQL 16 database; the suite applies every migration, reruns detection, verifies the
+recorded count/checksums, and proves checksum tampering fails. New supported release snapshots must
+be checked in before the compatibility window expands.
+
 ## Backup, restore, and rollback
 
 Before an upgrade, operators create a database backup and corresponding object-store/configuration
