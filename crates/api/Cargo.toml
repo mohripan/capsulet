@@ -36,6 +36,8 @@ tower_governor = "0.8.0"
 tower = { workspace = true, features = ["limit"] }
 capsulet-observability = { version = "0.1.0", path = "../observability" }
 uuid = { version = "1.23.3", features = ["v4"] }
+utoipa.workspace = true
+utoipa-axum.workspace = true
 
 [dev-dependencies]
 http-body-util.workspace = true

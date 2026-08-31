@@ -1,28 +1,33 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$specPath = Join-Path $PSScriptRoot "..\crates\api\openapi.json"
-$spec = Get-Content -LiteralPath $specPath -Raw | ConvertFrom-Json
-
-$requiredPaths = @(
-  "/v1/auth/me",
-  "/v1/service-accounts",
-  "/v1/service-accounts/{id}/revoke",
-  "/v1/jobs/runs",
-  "/v1/jobs/runs/{id}/logs/stream",
-  "/v1/workflow-runs/{id}/logs/stream",
-  "/v1/audit-events",
-  "/metrics"
-)
-
-foreach ($path in $requiredPaths) {
-  if (-not $spec.paths.PSObject.Properties.Name.Contains($path)) {
-    throw "OpenAPI spec is missing $path"
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+Push-Location $repoRoot
+try {
+  & cargo test -p capsulet-api --test openapi_contract
+  if ($LASTEXITCODE -ne 0) {
+    throw "OpenAPI contract tests failed."
   }
-}
 
-if ($spec.openapi -notmatch "^3\.") {
-  throw "OpenAPI version must be 3.x"
-}
+  & cargo run -p capsulet-api --bin export-openapi -- --check
+  if ($LASTEXITCODE -ne 0) {
+    throw "The checked OpenAPI artifact is stale."
+  }
 
-Write-Host "OpenAPI contract check passed for $($requiredPaths.Count) required paths."
+  $specPath = Join-Path $repoRoot "crates\api\openapi.json"
+  $spec = Get-Content -LiteralPath $specPath -Raw | ConvertFrom-Json
+  $pathCount = @($spec.paths.PSObject.Properties).Count
+  $operationCount = 0
+  foreach ($path in $spec.paths.PSObject.Properties) {
+    $operationCount += @($path.Value.PSObject.Properties | Where-Object {
+      $_.Name -in @("get", "post", "put", "delete", "patch")
+    }).Count
+  }
+  if ($pathCount -ne 90 -or $operationCount -ne 116) {
+    throw "Expected 90 paths and 116 operations, found $pathCount paths and $operationCount operations."
+  }
+  Write-Host "OpenAPI contract check passed for $operationCount generated operations across $pathCount paths."
+}
+finally {
+  Pop-Location
+}

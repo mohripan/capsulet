@@ -500,15 +500,22 @@ async fn request_context(mut request: Request, next: Next) -> Response {
 }
 
 async fn openapi_spec() -> Response {
-    (
-        StatusCode::OK,
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "application/vnd.oai.openapi+json; charset=utf-8",
-        )],
-        include_str!("../../openapi.json"),
-    )
-        .into_response()
+    match crate::canonical_openapi_json() {
+        Ok(document) => (
+            StatusCode::OK,
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "application/vnd.oai.openapi+json; charset=utf-8",
+            )],
+            document,
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to generate OpenAPI: {error}"),
+        )
+            .into_response(),
+    }
 }
 
 async fn current_principal(Extension(principal): Extension<Principal>) -> Json<Value> {
@@ -972,6 +979,9 @@ async fn audit_auth_failure<S, O>(
 }
 
 fn required_scope(method: &Method, path: &str) -> &'static str {
+    if let Some(endpoint) = crate::find_endpoint(method.as_str(), path) {
+        return endpoint.required_scope;
+    }
     if path == "/v1/auth/me" {
         return "auth:read";
     }
