@@ -19,6 +19,7 @@
 //! golden file to match new output.
 
 pub mod admission;
+pub mod assurance;
 pub mod canonical;
 pub mod capability;
 pub mod correctness;
@@ -37,6 +38,10 @@ pub mod value;
 pub mod version;
 
 pub use admission::{AdmissionCode, AdmissionRecord, AdmissionRefusal, admit};
+pub use assurance::{
+    AssurancePolicy, BoundaryDecision, BoundaryPolicy, DenialReason, TrustRoute, check_trust_route,
+    decide_boundary,
+};
 pub use canonical::{CanonicalError, CanonicalValue, Decimal, to_canonical_bytes};
 pub use capability::{Capability, CapabilityError, CapabilitySet, Grant};
 pub use correctness::{

@@ -10,8 +10,8 @@ use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
 use capsulet_ir::correctness::{Certificate, CertificateBody, CertificateError, EvidenceRef};
 use capsulet_ir::loop_region::{BudgetKind, LoopOutcome, StopReason};
 use capsulet_ir::{
-    AssuranceVerdict, CheckerVerdict, Digest, Identifier, Identity, Obligation, Proposal,
-    RecordedTime, digest_of,
+    AssuranceMode, AssuranceVerdict, CheckerVerdict, Digest, Identifier, Identity, Obligation,
+    Proposal, RecordedTime, digest_of,
 };
 
 fn id(value: &str) -> Identifier {
@@ -65,11 +65,12 @@ fn admission() -> AdmissionRecord {
 }
 
 fn body(obligations: Vec<Obligation>, evidence: Vec<EvidenceRef>) -> CertificateBody {
-    let verdict = AssuranceVerdict::from_obligations(&obligations);
+    let verdict = AssuranceVerdict::under_mode(AssuranceMode::Enforce, &obligations);
     CertificateBody {
         schema_version: Certificate::current_schema_version(),
         id: id("cert-1"),
         admission: admission(),
+        mode: AssuranceMode::Enforce,
         subject: Subject {
             definition: *admission().definition(),
             definition_version: "1".to_string(),

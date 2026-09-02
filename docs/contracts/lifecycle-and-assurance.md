@@ -43,6 +43,27 @@ The platform assurance layer has four verdicts:
 conclusion. It belongs to the surrounding platform, where it explicitly records that no kernel or
 required verifier was invoked.
 
+As of M2 this dimension is implemented rather than declarative. `capsulet_ir::AssuranceVerdict` is
+the four-valued platform verdict, `capsulet_ir::CheckerVerdict` is the three-valued checker
+conclusion, and the mapping between them is total in both directions: `checker_verdict()` returns
+`None` for exactly one case, `unverified`, which is the case a checker that ran cannot express.
+
+Three implemented rules matter to consumers:
+
+- **The verdict is derived, not assigned.** A certificate whose recorded verdict does not follow
+  from its obligations under its recorded mode is refused by `Certificate::seal`.
+- **Observe never concludes anything stronger than `unverified`.** Even when every obligation in an
+  observe-mode run happens to be discharged, the verdict is `unverified`, because nothing was
+  required to be checked and a verdict drawn from an optional subset would overstate what is known.
+- **Absence is `unverified`, and `unverified` gates nothing open.** `capsulet_ir::decide_boundary`
+  treats a missing certificate as `unverified`, and ranks verdicts `rejected` < `unverified` <
+  `conditional` < `accepted`, so a rejection cannot satisfy a minimum that absence would fail. A
+  protected boundary no policy governs is denied rather than implicitly open.
+
+The mode a run was decided under is sealed into the certificate alongside the verdict, because
+`unverified` under observe ("nobody was asked to check") and `unverified` under enforce ("the check
+was required and did not happen") are different statements about the same run.
+
 Execution and assurance therefore form a product, not a single ladder. Representative combinations
 include `completed + unverified`, `completed + conditional`, `failed + unverified`, and
 `completed + rejected`. UI and API models must render both dimensions when assurance exists.

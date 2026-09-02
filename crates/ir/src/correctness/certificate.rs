@@ -18,6 +18,7 @@ use crate::canonical::CanonicalError;
 use crate::correctness::Identity;
 use crate::correctness::evidence::EvidenceRef;
 use crate::correctness::obligation::Obligation;
+use crate::definition::AssuranceMode;
 use crate::digest::Digest;
 use crate::id::Identifier;
 use crate::loop_region::{LoopOutcome, StopReason};
@@ -159,6 +160,12 @@ pub struct CertificateBody {
     /// to build this without admission having run, so a certificate cannot
     /// describe a definition nobody could read.
     pub admission: AdmissionRecord,
+    /// The mode this run was actually decided under, after any policy tightened
+    /// what the definition declared. A verdict is only readable next to the
+    /// mode that produced it: `unverified` under observe means nobody was asked
+    /// to check, which is a different statement from `unverified` under
+    /// enforce.
+    pub mode: AssuranceMode,
     /// The policy in force, pinned by version, because a verdict means nothing
     /// without the policy that defined "required".
     pub policy_version: String,
@@ -211,10 +218,10 @@ impl CertificateBody {
     /// # Errors
     ///
     /// Returns [`CertificateError`] when the verdict does not follow from the
-    /// obligations, an obligation rests on evidence the certificate does not
-    /// carry, or an obligation appears twice.
+    /// obligations under the recorded mode, an obligation rests on evidence the
+    /// certificate does not carry, or an obligation appears twice.
     pub fn check(&self) -> Result<(), CertificateError> {
-        let justified = AssuranceVerdict::from_obligations(&self.obligations);
+        let justified = AssuranceVerdict::under_mode(self.mode, &self.obligations);
         if justified != self.verdict {
             return Err(CertificateError::VerdictNotJustified {
                 id: self.id.clone(),
