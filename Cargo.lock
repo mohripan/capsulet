@@ -432,6 +432,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "capsulet-ir-adapters"
+version = "0.1.0"
+dependencies = [
+ "capsulet-core",
+ "capsulet-ir",
+ "capsulet-kernel",
+]
+
+[[package]]
 name = "capsulet-kernel"
 version = "0.1.0"
 dependencies = [

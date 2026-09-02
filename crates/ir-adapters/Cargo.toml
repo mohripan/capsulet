@@ -1,0 +1,19 @@
+[package]
+name = "capsulet-ir-adapters"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Translates today's workflows, agent graphs, and governed memory into the verified-computation IR."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+capsulet-core = { path = "../core" }
+capsulet-ir = { path = "../ir" }
+capsulet-kernel = { path = "../kernel" }
+
+[lints]
+workspace = true

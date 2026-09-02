@@ -9,7 +9,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `format` | yes | yes | Rust formatting | Cargo |
 | `lint` | no | yes | Strict workspace Clippy | Cargo |
 | `unit` | yes | yes | Locked workspace tests | Cargo |
-| `ir` | yes | yes | IR canonical bytes, digests, and crate purity | Cargo |
+| `ir` | yes | yes | IR contracts, crate purity, and adapter coverage | Cargo |
 | `replay` | yes | yes | Offline certificate replay and tamper detection | Cargo |
 | `api-contracts` | yes | yes | Runtime/OpenAPI equality and drift | Cargo |
 | `claims` | yes | yes | Claims, lifecycle, and public surfaces | PowerShell |

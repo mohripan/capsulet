@@ -6,6 +6,7 @@ members = [
     "crates/core",
     "crates/evaluator",
     "crates/ir",
+    "crates/ir-adapters",
     "crates/kernel",
     "crates/observability",
     "crates/postgres",

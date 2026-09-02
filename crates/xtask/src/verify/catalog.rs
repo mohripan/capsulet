@@ -141,11 +141,14 @@ pub(crate) fn gates() -> Vec<Gate> {
         ),
         gate(
             "ir",
-            "verified-computation IR encoding, digests, and purity",
+            "verified-computation IR contracts, purity, and adapter coverage",
             &["cargo"],
             600,
             &[Fast, Full],
-            vec![command("cargo", &["test", "-p", "capsulet-ir", "--locked"])],
+            vec![
+                command("cargo", &["test", "-p", "capsulet-ir", "--locked"]),
+                command("cargo", &["test", "-p", "capsulet-ir-adapters", "--locked"]),
+            ],
         ),
         gate(
             "replay",
