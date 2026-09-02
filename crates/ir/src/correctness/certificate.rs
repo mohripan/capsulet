@@ -13,6 +13,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 
+use crate::admission::AdmissionRecord;
 use crate::canonical::CanonicalError;
 use crate::correctness::Identity;
 use crate::correctness::evidence::EvidenceRef;
@@ -154,6 +155,10 @@ pub struct CertificateBody {
     pub schema_version: SchemaVersion,
     pub id: Identifier,
     pub subject: Subject,
+    /// Proof that the definition passed structural admission. There is no way
+    /// to build this without admission having run, so a certificate cannot
+    /// describe a definition nobody could read.
+    pub admission: AdmissionRecord,
     /// The policy in force, pinned by version, because a verdict means nothing
     /// without the policy that defined "required".
     pub policy_version: String,

@@ -18,9 +18,11 @@
 //! in [`version`] and provide a compatibility reader rather than editing a
 //! golden file to match new output.
 
+pub mod admission;
 pub mod canonical;
 pub mod capability;
 pub mod correctness;
+pub mod definition;
 pub mod digest;
 pub mod effect;
 pub mod graph;
@@ -34,6 +36,7 @@ pub mod trust;
 pub mod value;
 pub mod version;
 
+pub use admission::{AdmissionCode, AdmissionRecord, AdmissionRefusal, admit};
 pub use canonical::{CanonicalError, CanonicalValue, Decimal, to_canonical_bytes};
 pub use capability::{Capability, CapabilityError, CapabilitySet, Grant};
 pub use correctness::{
@@ -41,6 +44,7 @@ pub use correctness::{
     Contract, DischargeState, EvidenceRef, Identity, Obligation, ObligationStatement, Producer,
     ProducerKind, Proposal, RecordedTime, RepairOwner, Subject, VerifierRecord, VerifierTrust,
 };
+pub use definition::{AssuranceMode, Definition};
 pub use digest::{DIGEST_PREFIX, Digest, DigestError};
 pub use effect::{
     BoundaryError, Crossing, Effect, EffectError, EffectKind, Idempotency, ProtectedBoundary,

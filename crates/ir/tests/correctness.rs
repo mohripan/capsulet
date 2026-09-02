@@ -1,6 +1,9 @@
 //! Certificates are sealed, verdicts are derived, and citations point at
 //! something the document actually carries.
 
+mod fixtures;
+
+use capsulet_ir::admission::AdmissionRecord;
 use capsulet_ir::correctness::certificate::{Subject, VerifierRecord, VerifierTrust};
 use capsulet_ir::correctness::obligation::{DischargeState, ObligationStatement, RepairOwner};
 use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
@@ -55,13 +58,20 @@ fn discharged(name: &str, evidence: &EvidenceRef) -> Obligation {
     }
 }
 
+/// A record for a definition that really was admitted, because there is no
+/// other way to get one.
+fn admission() -> AdmissionRecord {
+    capsulet_ir::admit(&fixtures::definition()).expect("the fixture definition is admitted")
+}
+
 fn body(obligations: Vec<Obligation>, evidence: Vec<EvidenceRef>) -> CertificateBody {
     let verdict = AssuranceVerdict::from_obligations(&obligations);
     CertificateBody {
         schema_version: Certificate::current_schema_version(),
         id: id("cert-1"),
+        admission: admission(),
         subject: Subject {
-            definition: Digest::of(b"a definition"),
+            definition: *admission().definition(),
             definition_version: "1".to_string(),
             run: Some(id("run-1")),
             inputs: vec![Digest::of(b"an input")],
