@@ -21,11 +21,18 @@
 pub mod canonical;
 pub mod digest;
 pub mod reader;
+pub mod trust;
+pub mod value;
 pub mod version;
 
 pub use canonical::{CanonicalError, CanonicalValue, Decimal, to_canonical_bytes};
 pub use digest::{DIGEST_PREFIX, Digest, DigestError};
 pub use reader::{from_json_slice, verify_canonical};
+pub use trust::{
+    ProvenanceLoss, RawTrustClass, RawVerificationRecord, RecordVerdict, TrustClass, TrustError,
+    VerificationRecord,
+};
+pub use value::{Field, IntegerRange, LengthBounds, SchemaMismatch, ValueSchema};
 pub use version::{
     BUNDLE_SCHEMA_VERSION, CERTIFICATE_SCHEMA_VERSION, IR_SCHEMA_VERSION, SchemaVersion,
     SchemaVersionError, read_compatible,
