@@ -19,14 +19,25 @@
 //! golden file to match new output.
 
 pub mod canonical;
+pub mod capability;
 pub mod digest;
+pub mod effect;
+pub mod id;
+pub mod node;
 pub mod reader;
 pub mod trust;
 pub mod value;
 pub mod version;
 
 pub use canonical::{CanonicalError, CanonicalValue, Decimal, to_canonical_bytes};
+pub use capability::{Capability, CapabilityError, CapabilitySet, Grant};
 pub use digest::{DIGEST_PREFIX, Digest, DigestError};
+pub use effect::{
+    BoundaryError, Crossing, Effect, EffectError, EffectKind, Idempotency, ProtectedBoundary,
+    Reversibility,
+};
+pub use id::{Identifier, IdentifierError};
+pub use node::{Node, NodeError, NodeKind, ProviderBinding, ResourceBudget};
 pub use reader::{from_json_slice, verify_canonical};
 pub use trust::{
     ProvenanceLoss, RawTrustClass, RawVerificationRecord, RecordVerdict, TrustClass, TrustError,
