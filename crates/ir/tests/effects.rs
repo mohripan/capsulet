@@ -52,6 +52,8 @@ fn effect_node() -> Node {
         id: id("publish"),
         name: "Open the pull request".to_string(),
         kind: NodeKind::Effect,
+        inputs: vec![],
+        outputs: vec![],
         capabilities: vec![id("github-pull-requests")],
         effects: vec![publish_effect()],
         budget: ResourceBudget {
@@ -141,6 +143,8 @@ fn a_verifier_may_not_reach_a_model() {
         id: id("run-tests"),
         name: "Run the named tests".to_string(),
         kind: NodeKind::Verifier,
+        inputs: vec![],
+        outputs: vec![],
         capabilities: vec![id("openai-small")],
         effects: vec![],
         budget: ResourceBudget::deterministic(600_000),
@@ -181,6 +185,8 @@ fn a_provider_binding_must_spend_a_capability_the_node_holds() {
         id: id("propose-patch"),
         name: "Propose a patch".to_string(),
         kind: NodeKind::Proposer,
+        inputs: vec![],
+        outputs: vec![],
         capabilities: vec![],
         effects: vec![],
         budget: ResourceBudget {

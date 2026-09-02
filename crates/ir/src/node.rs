@@ -13,6 +13,7 @@ use thiserror::Error;
 use crate::capability::{CapabilityError, CapabilitySet, Grant};
 use crate::effect::{Effect, EffectError, EffectKind};
 use crate::id::Identifier;
+use crate::port::{InputPort, OutputPort};
 
 /// Why a node declaration was refused.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -188,14 +189,15 @@ pub struct ProviderBinding {
 }
 
 /// A node in the graph.
-///
-/// Ports are added by the graph module; this is the node's own declaration of
-/// what it is and what it may reach.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Node {
     pub id: Identifier,
     pub name: String,
     pub kind: NodeKind,
+    /// What this node requires, including the trust it requires.
+    pub inputs: Vec<InputPort>,
+    /// What this node produces, including the trust it may claim.
+    pub outputs: Vec<OutputPort>,
     /// Capabilities this node spends. Every one must be granted by the
     /// enclosing definition.
     pub capabilities: Vec<Identifier>,
