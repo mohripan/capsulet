@@ -17,6 +17,7 @@ use thiserror::Error;
 
 use crate::capability::{CapabilityError, CapabilitySet};
 use crate::id::Identifier;
+use crate::loop_region::{LoopError, LoopSpec};
 use crate::node::ResourceBudget;
 
 /// Why a region declaration was refused.
@@ -61,6 +62,8 @@ pub enum RegionError {
         #[source]
         source: CapabilityError,
     },
+    #[error(transparent)]
+    Loop(#[from] LoopError),
 }
 
 /// What kind of scope a region is.
@@ -69,16 +72,15 @@ pub enum RegionError {
 pub enum RegionKind {
     /// A scope that runs its body once.
     Plain,
-    /// A scope that may repeat its body. What it may repeat, and under which
-    /// bounds, is declared by the loop module.
-    Loop,
+    /// A scope that may repeat its body, under the bounds it declares.
+    Loop { spec: Box<LoopSpec> },
 }
 
 impl RegionKind {
     /// Whether this region may contain a cycle.
     #[must_use]
     pub const fn permits_cycles(&self) -> bool {
-        matches!(self, Self::Loop)
+        matches!(self, Self::Loop { .. })
     }
 
     /// A short name for messages.
@@ -86,7 +88,7 @@ impl RegionKind {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Plain => "plain region",
-            Self::Loop => "loop region",
+            Self::Loop { .. } => "loop region",
         }
     }
 }

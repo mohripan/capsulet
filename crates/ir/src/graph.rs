@@ -21,9 +21,10 @@ use thiserror::Error;
 
 use crate::capability::CapabilitySet;
 use crate::id::Identifier;
+use crate::loop_region::{LoopError, LoopSpec};
 use crate::node::{Node, NodeError, NodeKind, ResourceBudget};
 use crate::port::{InputPort, OutputPort, TrustLevel, TrustRequirement};
-use crate::region::{Region, RegionError};
+use crate::region::{Region, RegionError, RegionKind};
 use crate::trust::TrustClass;
 use crate::value::{Field, SchemaMismatch, ValueSchema};
 
@@ -374,7 +375,87 @@ impl Graph {
             };
             region.check_against_parent(parent_capabilities, parent_budget)?;
             self.check_no_cyclic_nesting(region)?;
+            if let RegionKind::Loop { spec } = &region.kind {
+                self.check_loop(region, spec)?;
+            }
         }
+        Ok(())
+    }
+
+    /// Checks a loop against the nodes it names.
+    ///
+    /// The declaration can say a condition is boolean; only the graph knows
+    /// whether the node it names actually produces one, and an invariant
+    /// evaluated by a node outside the loop is not evaluated every iteration.
+    fn check_loop(&self, region: &Region, spec: &LoopSpec) -> Result<(), GraphError> {
+        spec.check(&region.id).map_err(RegionError::from)?;
+
+        let inside = |node: &Identifier, role: &'static str| -> Result<(), GraphError> {
+            if region.contains(node) {
+                Ok(())
+            } else {
+                Err(RegionError::from(LoopError::NodeOutsideLoop {
+                    region: region.id.clone(),
+                    node: node.clone(),
+                    role,
+                })
+                .into())
+            }
+        };
+
+        let output = |node: &Identifier, port: &Identifier| -> Option<&ValueSchema> {
+            self.nodes.get(node).and_then(|declared| {
+                declared
+                    .outputs
+                    .iter()
+                    .find(|candidate| &candidate.id == port)
+                    .map(|candidate| &candidate.schema)
+            })
+        };
+
+        inside(&spec.continuation.evaluated_by, "continuation")?;
+        if !matches!(
+            output(&spec.continuation.evaluated_by, &spec.continuation.port),
+            Some(ValueSchema::Bool)
+        ) {
+            return Err(RegionError::from(LoopError::ContinuationNotBoolean {
+                region: region.id.clone(),
+                node: spec.continuation.evaluated_by.clone(),
+                port: spec.continuation.port.clone(),
+            })
+            .into());
+        }
+
+        for invariant in &spec.invariants {
+            inside(&invariant.evaluator, "invariant evaluator")?;
+            if !matches!(
+                output(&invariant.evaluator, &invariant.port),
+                Some(ValueSchema::Bool)
+            ) {
+                return Err(RegionError::from(LoopError::ContinuationNotBoolean {
+                    region: region.id.clone(),
+                    node: invariant.evaluator.clone(),
+                    port: invariant.port.clone(),
+                })
+                .into());
+            }
+        }
+
+        if let Some(progress) = &spec.progress {
+            inside(&progress.measured_by, "progress measure")?;
+            if !matches!(
+                output(&progress.measured_by, &progress.port),
+                Some(ValueSchema::Integer { .. })
+            ) {
+                return Err(RegionError::from(LoopError::ProgressNotOrdered {
+                    region: region.id.clone(),
+                    node: progress.measured_by.clone(),
+                    port: progress.port.clone(),
+                })
+                .into());
+            }
+        }
+
         Ok(())
     }
 

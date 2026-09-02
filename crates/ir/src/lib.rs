@@ -24,6 +24,7 @@ pub mod digest;
 pub mod effect;
 pub mod graph;
 pub mod id;
+pub mod loop_region;
 pub mod node;
 pub mod port;
 pub mod reader;
@@ -44,6 +45,10 @@ pub use graph::{
     TrustDerivation,
 };
 pub use id::{Identifier, IdentifierError};
+pub use loop_region::{
+    BudgetKind, Continuation, FailureKind, Invariant, IterationRecord, LoopBudget, LoopError,
+    LoopOutcome, LoopSpec, ProgressMeasure, RepairRoute, Route, StopReason,
+};
 pub use node::{Node, NodeError, NodeKind, ProviderBinding, ResourceBudget};
 pub use port::{InputPort, OutputPort, TrustLevel, TrustRequirement};
 pub use reader::{from_json_slice, verify_canonical};
