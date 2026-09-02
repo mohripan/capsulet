@@ -148,6 +148,17 @@ pub(crate) fn gates() -> Vec<Gate> {
             vec![command("cargo", &["test", "-p", "capsulet-ir", "--locked"])],
         ),
         gate(
+            "replay",
+            "offline certificate replay, including the tamper case",
+            &["cargo"],
+            600,
+            &[Fast, Full],
+            vec![command(
+                "cargo",
+                &["test", "-p", "capsulet-replay", "--locked"],
+            )],
+        ),
+        gate(
             "api-contracts",
             "runtime and OpenAPI contracts",
             &["cargo"],

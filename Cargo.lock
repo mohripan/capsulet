@@ -487,6 +487,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "capsulet-replay"
+version = "0.1.0"
+dependencies = [
+ "capsulet-ir",
+ "capsulet-kernel",
+]
+
+[[package]]
 name = "capsulet-runner"
 version = "0.1.0"
 dependencies = [

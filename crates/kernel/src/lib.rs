@@ -12,6 +12,7 @@
 //! nothing and records a [`Residual`], which is what makes a verdict
 //! [`Verdict::Conditional`] rather than [`Verdict::Accepted`].
 
+pub mod bundle;
 pub mod certificate;
 pub mod error;
 pub mod family;
@@ -23,6 +24,7 @@ pub mod workflow;
 
 use capsulet_core::{Authority, ClaimStatus, verify_evidence_span};
 
+pub use bundle::{Bundle, BundleError};
 pub use certificate::{Certificate, CertificateError, DischargedStep, Residual, Verdict};
 pub use error::{CheckError, RepairOwner};
 pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};

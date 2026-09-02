@@ -10,6 +10,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `lint` | no | yes | Strict workspace Clippy | Cargo |
 | `unit` | yes | yes | Locked workspace tests | Cargo |
 | `ir` | yes | yes | IR canonical bytes, digests, and crate purity | Cargo |
+| `replay` | yes | yes | Offline certificate replay and tamper detection | Cargo |
 | `api-contracts` | yes | yes | Runtime/OpenAPI equality and drift | Cargo |
 | `claims` | yes | yes | Claims, lifecycle, and public surfaces | PowerShell |
 | `sdk` | yes | yes | Python and dashboard transports | Python, npm |
