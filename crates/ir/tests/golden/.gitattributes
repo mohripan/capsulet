@@ -1,0 +1,2 @@
+# Golden bytes are digested exactly as stored: never translate line endings.
+* -text
