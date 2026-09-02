@@ -78,6 +78,8 @@ pub enum Permission {
     AutomationsRead,
     AutomationsWrite,
     AutomationsOperate,
+    MemoryRead,
+    MemoryWrite,
 }
 
 impl Permission {
@@ -100,6 +102,8 @@ impl Permission {
             Self::AutomationsRead => "automations:read",
             Self::AutomationsWrite => "automations:write",
             Self::AutomationsOperate => "automations:operate",
+            Self::MemoryRead => "memory:read",
+            Self::MemoryWrite => "memory:write",
         }
     }
 
@@ -116,12 +120,17 @@ impl Permission {
             | Self::SystemWrite
             | Self::JobsWrite
             | Self::WorkflowsWrite
-            | Self::AutomationsWrite => Some(ProjectRole::Admin),
+            | Self::AutomationsWrite
+            // A memory write admits a claim into governed knowledge, which is a
+            // trust transition rather than an operation, so it sits with the
+            // administrative permissions rather than the operator ones.
+            | Self::MemoryWrite => Some(ProjectRole::Admin),
             Self::AuditRead
             | Self::SystemRead
             | Self::JobsRead
             | Self::WorkflowsRead
-            | Self::AutomationsRead => Some(ProjectRole::Viewer),
+            | Self::AutomationsRead
+            | Self::MemoryRead => Some(ProjectRole::Viewer),
         }
     }
 
@@ -141,6 +150,7 @@ impl Permission {
             Self::AutomationsRead | Self::AutomationsWrite | Self::AutomationsOperate => {
                 ResourceKind::Automations
             }
+            Self::MemoryRead | Self::MemoryWrite => ResourceKind::Memory,
         }
     }
 }

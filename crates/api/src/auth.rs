@@ -40,7 +40,7 @@ impl ProjectRole {
     }
 
     #[must_use]
-    pub const fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "project_viewer" => Some(Self::Viewer),
             "project_operator" => Some(Self::Operator),
@@ -347,7 +347,7 @@ impl AuthConfig {
                 project_memberships: Arc::from([ProjectMembership {
                     tenant_id: Arc::from("default"),
                     project_id: Arc::from("default"),
-                    role: Arc::from("project_admin"),
+                    role: ProjectRole::Admin,
                 }]),
                 scopes: Arc::from([Arc::from("*")]),
             });

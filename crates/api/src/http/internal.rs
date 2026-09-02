@@ -42,7 +42,7 @@ use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
 
 use crate::{
-    auth::{Principal, ProjectMembership, Role, token_digest},
+    auth::{Principal, ProjectMembership, ProjectRole, Role, token_digest},
     error::ApiError,
     models::{
         ArtifactResponse, AuditEventResponse, CreateJobDefinitionRequest, CreateRunRequest,
@@ -582,7 +582,7 @@ async fn current_principal(Extension(principal): Extension<Principal>) -> Json<V
         "project_memberships": principal.project_memberships.iter().map(|membership| serde_json::json!({
             "tenant_id": membership.tenant_id,
             "project_id": membership.project_id,
-            "role": membership.role,
+            "role": membership.role.as_str(),
         })).collect::<Vec<_>>(),
         "scopes": principal.scopes().iter().map(AsRef::as_ref).collect::<Vec<_>>(),
     }))
@@ -739,7 +739,7 @@ pub(crate) fn project_context(
     Ok(ProjectContext {
         tenant_id,
         project_id: requested_project.to_string(),
-        role: membership.role.to_string(),
+        role: membership.role.as_str().to_string(),
     })
 }
 
@@ -765,7 +765,7 @@ fn require_project_admin(
     let allowed = principal.project_memberships.iter().any(|membership| {
         membership.tenant_id.as_ref() == tenant_id
             && membership.project_id.as_ref() == project_id
-            && membership.role.as_ref() == "project_admin"
+            && membership.role == ProjectRole::Admin
     });
     if allowed {
         Ok(())
@@ -986,11 +986,16 @@ where
             existing.tenant_id.as_ref() == membership.tenant_id
                 && existing.project_id.as_ref() == membership.project_id
         });
+        // A stored role this build does not recognise grants nothing. Defaulting
+        // to the weakest known role would still be inventing a grant nobody made.
+        let Some(role) = ProjectRole::parse(&membership.role) else {
+            continue;
+        };
         if !exists {
             memberships.push(ProjectMembership {
                 tenant_id: Arc::from(membership.tenant_id),
                 project_id: Arc::from(membership.project_id),
-                role: Arc::from(membership.role),
+                role,
             });
         }
     }
