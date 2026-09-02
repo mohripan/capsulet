@@ -1,0 +1,1 @@
+{"evidence":["sha256:0000000000000000000000000000000000000000000000000000000000000000"],"residuals":[{"obligation":"retrieval.faithful","owner":"human"}],"schema_version":"capsulet.certificate/v1","stop_reason":{"budget_exhausted":"iterations"},"verdict":"conditional"}

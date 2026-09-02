@@ -140,6 +140,14 @@ pub(crate) fn gates() -> Vec<Gate> {
             ],
         ),
         gate(
+            "ir",
+            "verified-computation IR encoding, digests, and purity",
+            &["cargo"],
+            600,
+            &[Fast, Full],
+            vec![command("cargo", &["test", "-p", "capsulet-ir", "--locked"])],
+        ),
+        gate(
             "api-contracts",
             "runtime and OpenAPI contracts",
             &["cargo"],

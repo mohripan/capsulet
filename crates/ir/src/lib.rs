@@ -1,0 +1,48 @@
+//! The verified-computation intermediate representation.
+//!
+//! This crate is deliberately inert. It performs no I/O, spawns nothing, reads
+//! no clock, and consults no randomness, because everything it produces has to
+//! be reproducible by someone else — on another machine, at another time, with
+//! no access to this installation. A digest computed here must be computable
+//! there, or the certificate that carries it means nothing.
+//!
+//! That constraint is enforced, not merely stated: `tests/purity.rs` fails if a
+//! database, HTTP, async-runtime, randomness, or clock crate ever enters this
+//! crate's dependency closure.
+//!
+//! # Stability of the bytes
+//!
+//! [`canonical`] defines the exact encoding every digest is taken over, and
+//! `tests/golden/` pins it to checked-in bytes. Changing those bytes changes
+//! every digest ever stored, so it is a breaking change: bump the schema major
+//! in [`version`] and provide a compatibility reader rather than editing a
+//! golden file to match new output.
+
+pub mod canonical;
+pub mod digest;
+pub mod reader;
+pub mod version;
+
+pub use canonical::{CanonicalError, CanonicalValue, Decimal, to_canonical_bytes};
+pub use digest::{DIGEST_PREFIX, Digest, DigestError};
+pub use reader::{from_json_slice, verify_canonical};
+pub use version::{
+    BUNDLE_SCHEMA_VERSION, CERTIFICATE_SCHEMA_VERSION, IR_SCHEMA_VERSION, SchemaVersion,
+    SchemaVersionError, read_compatible,
+};
+
+use serde::Serialize;
+
+/// The digest of a value, taken over its canonical bytes.
+///
+/// This is the only way a digest should be produced for anything this milestone
+/// persists. Digesting some other serialization would mean two honest readers
+/// could disagree about what a certificate covers.
+///
+/// # Errors
+///
+/// Returns [`CanonicalError`] when the value has no canonical encoding, for
+/// example because it contains floating point or unnormalized text.
+pub fn digest_of<T: Serialize>(value: &T) -> Result<Digest, CanonicalError> {
+    Ok(Digest::of(&to_canonical_bytes(value)?))
+}
