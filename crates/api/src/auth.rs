@@ -12,11 +12,68 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
+use crate::endpoint_contract::Permission;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Role {
     Viewer,
     Operator,
     Admin,
+}
+
+/// A role granted inside one tenant/project boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ProjectRole {
+    Viewer,
+    Operator,
+    Admin,
+}
+
+impl ProjectRole {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Viewer => "project_viewer",
+            Self::Operator => "project_operator",
+            Self::Admin => "project_admin",
+        }
+    }
+
+    #[must_use]
+    pub const fn parse(value: &str) -> Option<Self> {
+        match value {
+            "project_viewer" => Some(Self::Viewer),
+            "project_operator" => Some(Self::Operator),
+            "project_admin" => Some(Self::Admin),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn allows(self, permission: Permission) -> bool {
+        match permission.minimum_project_role() {
+            None => true,
+            Some(required) => self.rank() >= required.rank(),
+        }
+    }
+
+    const fn rank(self) -> u8 {
+        match self {
+            Self::Viewer => 1,
+            Self::Operator => 2,
+            Self::Admin => 3,
+        }
+    }
+}
+
+impl From<Role> for ProjectRole {
+    fn from(role: Role) -> Self {
+        match role {
+            Role::Viewer => Self::Viewer,
+            Role::Operator => Self::Operator,
+            Role::Admin => Self::Admin,
+        }
+    }
 }
 
 impl Role {
@@ -55,7 +112,7 @@ pub struct Principal {
 pub struct ProjectMembership {
     pub tenant_id: Arc<str>,
     pub project_id: Arc<str>,
-    pub role: Arc<str>,
+    pub role: ProjectRole,
 }
 
 impl Principal {
@@ -98,7 +155,7 @@ impl Principal {
             project_memberships: Arc::from([ProjectMembership {
                 tenant_id,
                 project_id,
-                role: Arc::from(project_role_for_role(role)),
+                role: ProjectRole::from(role),
             }]),
             scopes: scopes.into_iter().map(Arc::from).collect::<Vec<_>>().into(),
         }
@@ -117,7 +174,7 @@ impl Principal {
             .collect::<BTreeSet<_>>();
         if !scopes.contains("*") {
             for membership in &memberships {
-                for scope in project_scopes_for_role(&membership.role) {
+                for scope in project_scopes_for_role(membership.role) {
                     scopes.insert((*scope).to_string());
                 }
             }
@@ -310,7 +367,7 @@ impl AuthConfig {
                 let project_memberships = Arc::from([ProjectMembership {
                     tenant_id: Arc::clone(&credential.tenant_id),
                     project_id: Arc::clone(&credential.project_id),
-                    role: Arc::from(project_role_for_role(credential.role)),
+                    role: ProjectRole::from(credential.role),
                 }]);
                 Principal {
                     name: Arc::clone(&credential.name),
@@ -386,14 +443,6 @@ fn principal_from_claims(claims: &OidcClaims, audience: &str) -> Principal {
     }
 }
 
-const fn project_role_for_role(role: Role) -> &'static str {
-    match role {
-        Role::Viewer => "project_viewer",
-        Role::Operator => "project_operator",
-        Role::Admin => "project_admin",
-    }
-}
-
 #[must_use]
 pub fn token_digest(token: &str) -> [u8; 32] {
     Sha256::digest(token.as_bytes()).into()
@@ -459,16 +508,16 @@ fn default_scopes_for_role(role: Role) -> Arc<[Arc<str>]> {
         .into()
 }
 
-fn project_scopes_for_role(role: &str) -> &'static [&'static str] {
+fn project_scopes_for_role(role: ProjectRole) -> &'static [&'static str] {
     match role {
-        "project_viewer" => &[
+        ProjectRole::Viewer => &[
             "auth:read",
             "jobs:read",
             "workflows:read",
             "automations:read",
             "system:read",
         ],
-        "project_operator" => &[
+        ProjectRole::Operator => &[
             "auth:read",
             "jobs:read",
             "jobs:run",
@@ -479,7 +528,7 @@ fn project_scopes_for_role(role: &str) -> &'static [&'static str] {
             "automations:operate",
             "system:read",
         ],
-        "project_admin" => &[
+        ProjectRole::Admin => &[
             "auth:read",
             "jobs:read",
             "jobs:run",
@@ -493,7 +542,6 @@ fn project_scopes_for_role(role: &str) -> &'static [&'static str] {
             "automations:write",
             "system:read",
         ],
-        _ => &[],
     }
 }
 

@@ -57,9 +57,11 @@ impl Stability {
     }
 }
 
+use crate::auth::ProjectRole;
+
 /// Permission required before a handler may execute.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RequiredPermission {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Permission {
     Public,
     AuthRead,
     AuthWrite,
@@ -78,7 +80,7 @@ pub enum RequiredPermission {
     AutomationsOperate,
 }
 
-impl RequiredPermission {
+impl Permission {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -99,6 +101,150 @@ impl RequiredPermission {
             Self::AutomationsWrite => "automations:write",
             Self::AutomationsOperate => "automations:operate",
         }
+    }
+
+    /// Least project role that may exercise this permission.
+    #[must_use]
+    pub const fn minimum_project_role(self) -> Option<ProjectRole> {
+        match self {
+            Self::Public | Self::AuthRead => None,
+            Self::JobsRun
+            | Self::JobsCancel
+            | Self::WorkflowsOperate
+            | Self::AutomationsOperate => Some(ProjectRole::Operator),
+            Self::AuthWrite
+            | Self::SystemWrite
+            | Self::JobsWrite
+            | Self::WorkflowsWrite
+            | Self::AutomationsWrite => Some(ProjectRole::Admin),
+            Self::AuditRead
+            | Self::SystemRead
+            | Self::JobsRead
+            | Self::WorkflowsRead
+            | Self::AutomationsRead => Some(ProjectRole::Viewer),
+        }
+    }
+
+    #[must_use]
+    pub const fn resource(self) -> ResourceKind {
+        match self {
+            Self::Public => ResourceKind::Public,
+            Self::AuthRead | Self::AuthWrite => ResourceKind::Identity,
+            Self::AuditRead => ResourceKind::Audit,
+            Self::SystemRead | Self::SystemWrite => ResourceKind::System,
+            Self::JobsRead | Self::JobsWrite | Self::JobsRun | Self::JobsCancel => {
+                ResourceKind::Jobs
+            }
+            Self::WorkflowsRead | Self::WorkflowsWrite | Self::WorkflowsOperate => {
+                ResourceKind::Workflows
+            }
+            Self::AutomationsRead | Self::AutomationsWrite | Self::AutomationsOperate => {
+                ResourceKind::Automations
+            }
+        }
+    }
+}
+
+/// Compatibility name retained for downstream users of the original contract API.
+pub type RequiredPermission = Permission;
+
+/// Resource family protected by an endpoint policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ResourceKind {
+    Unknown,
+    Public,
+    Identity,
+    Audit,
+    System,
+    Jobs,
+    Workflows,
+    Automations,
+    ExecutionPools,
+    Artifacts,
+    Logs,
+    Graphs,
+    Agents,
+    Reasoning,
+    Certificates,
+    Memory,
+    Connectors,
+    Ingestion,
+    Review,
+    ProjectMemberships,
+    ServiceAccounts,
+}
+
+impl ResourceKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Public => "public",
+            Self::Identity => "identity",
+            Self::Audit => "audit",
+            Self::System => "system",
+            Self::Jobs => "jobs",
+            Self::Workflows => "workflows",
+            Self::Automations => "automations",
+            Self::ExecutionPools => "execution_pools",
+            Self::Artifacts => "artifacts",
+            Self::Logs => "logs",
+            Self::Graphs => "graphs",
+            Self::Agents => "agents",
+            Self::Reasoning => "reasoning",
+            Self::Certificates => "certificates",
+            Self::Memory => "memory",
+            Self::Connectors => "connectors",
+            Self::Ingestion => "ingestion",
+            Self::Review => "review",
+            Self::ProjectMemberships => "project_memberships",
+            Self::ServiceAccounts => "service_accounts",
+        }
+    }
+}
+
+/// How tenant/project ownership is selected for an operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnershipRule {
+    Unscoped,
+    SelectedProject,
+}
+
+impl OwnershipRule {
+    #[must_use]
+    pub const fn is_required(self) -> bool {
+        matches!(self, Self::SelectedProject)
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unscoped => "unscoped",
+            Self::SelectedProject => "selected_project",
+        }
+    }
+}
+
+/// Runtime and documentation policy attached to exactly one public operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EndpointPolicy {
+    pub permission: Permission,
+    pub resource: ResourceKind,
+    pub ownership: OwnershipRule,
+}
+
+impl EndpointPolicy {
+    const fn new(permission: Permission, ownership: OwnershipRule) -> Self {
+        Self {
+            permission,
+            resource: permission.resource(),
+            ownership,
+        }
+    }
+
+    #[must_use]
+    pub const fn allows(self, role: ProjectRole, platform_admin: bool) -> bool {
+        platform_admin || role.allows(self.permission)
     }
 }
 
@@ -212,6 +358,7 @@ pub struct EndpointContract {
     pub stability: Stability,
     pub required_permission: RequiredPermission,
     pub project_context: ProjectContextRule,
+    pub policy: EndpointPolicy,
     pub authentication: AuthenticationMode,
     pub request_schema: Option<SchemaId>,
     pub response_schema: SchemaId,
@@ -289,6 +436,15 @@ macro_rules! required_permission {
     };
 }
 
+macro_rules! ownership_rule {
+    (true) => {
+        OwnershipRule::SelectedProject
+    };
+    (false) => {
+        OwnershipRule::Unscoped
+    };
+}
+
 macro_rules! project_context_rule {
     (true) => {
         ProjectContextRule::SelectedProject
@@ -360,6 +516,10 @@ macro_rules! endpoint {
             stability: Stability::Experimental,
             required_permission: required_permission!($scope),
             project_context: project_context_rule!($project),
+            policy: EndpointPolicy::new(
+                required_permission!($scope),
+                ownership_rule!($project),
+            ),
             authentication: authentication_mode!($auth),
             request_schema: optional_schema($request),
             response_schema: SchemaId::new($response),
