@@ -20,6 +20,7 @@
 
 pub mod canonical;
 pub mod capability;
+pub mod correctness;
 pub mod digest;
 pub mod effect;
 pub mod graph;
@@ -35,6 +36,11 @@ pub mod version;
 
 pub use canonical::{CanonicalError, CanonicalValue, Decimal, to_canonical_bytes};
 pub use capability::{Capability, CapabilityError, CapabilitySet, Grant};
+pub use correctness::{
+    Artifact, AssuranceVerdict, Certificate, CertificateBody, CertificateError, CheckerVerdict,
+    Contract, DischargeState, EvidenceRef, Identity, Obligation, ObligationStatement, Producer,
+    ProducerKind, Proposal, RecordedTime, RepairOwner, Subject, VerifierRecord, VerifierTrust,
+};
 pub use digest::{DIGEST_PREFIX, Digest, DigestError};
 pub use effect::{
     BoundaryError, Crossing, Effect, EffectError, EffectKind, Idempotency, ProtectedBoundary,
