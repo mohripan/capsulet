@@ -436,6 +436,7 @@ name = "capsulet-kernel"
 version = "0.1.0"
 dependencies = [
  "capsulet-core",
+ "capsulet-ir",
  "serde",
  "serde_json",
  "sha2 0.11.0",

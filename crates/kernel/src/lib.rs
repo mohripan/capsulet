@@ -14,15 +14,23 @@
 
 pub mod certificate;
 pub mod error;
+pub mod family;
 pub mod ir;
+pub mod replay;
 pub mod snapshot;
+pub mod snapshot_document;
+pub mod workflow;
 
 use capsulet_core::{Authority, ClaimStatus, verify_evidence_span};
 
 pub use certificate::{Certificate, CertificateError, DischargedStep, Residual, Verdict};
 pub use error::{CheckError, RepairOwner};
+pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};
 pub use ir::{ArithOp, Judgment, Proposal, Proposition, Rule};
+pub use replay::{EvidenceMap, EvidenceSource, ReplayFinding, ReplayNote, ReplayOutcome, replay};
 pub use snapshot::Snapshot;
+pub use snapshot_document::SnapshotDocument;
+pub use workflow::{Assembly, KERNEL_VERSION, certify};
 
 /// Difference below which two computed numbers are considered equal.
 ///
