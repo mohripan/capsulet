@@ -516,10 +516,7 @@ macro_rules! endpoint {
             stability: Stability::Experimental,
             required_permission: required_permission!($scope),
             project_context: project_context_rule!($project),
-            policy: EndpointPolicy::new(
-                required_permission!($scope),
-                ownership_rule!($project),
-            ),
+            policy: EndpointPolicy::new(required_permission!($scope), ownership_rule!($project)),
             authentication: authentication_mode!($auth),
             request_schema: optional_schema($request),
             response_schema: SchemaId::new($response),

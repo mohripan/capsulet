@@ -49,7 +49,10 @@ fn every_public_operation_has_an_executable_authorization_case_for_every_actor()
                 Actor::GlobalAdmin => true,
             };
             if matches!(actor, Actor::Anonymous) {
-                assert_eq!(allowed, endpoint.authentication == AuthenticationMode::Anonymous);
+                assert_eq!(
+                    allowed,
+                    endpoint.authentication == AuthenticationMode::Anonymous
+                );
             }
             covered.insert((endpoint.operation_id, actor as u8));
         }

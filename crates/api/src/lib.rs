@@ -20,8 +20,9 @@ mod wire_schemas;
 pub use auth::{AuthConfig, Principal, ProjectRole, Role};
 pub use endpoint_contract::{
     AuthenticationMode, EndpointContract, EndpointPolicy, ErrorContract, HttpMethod, MediaType,
-    OwnershipRule, Permission, ProjectContextRule, RequiredPermission, ResourceKind, ResponseStatus,
-    SchemaId, Stability, distinct_paths, endpoint_contracts, find_endpoint, find_operation,
+    OwnershipRule, Permission, ProjectContextRule, RequiredPermission, ResourceKind,
+    ResponseStatus, SchemaId, Stability, distinct_paths, endpoint_contracts, find_endpoint,
+    find_operation,
 };
 pub use http::router;
 pub use models::{
