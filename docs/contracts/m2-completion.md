@@ -1,7 +1,10 @@
 # M2 Completion Report — Verified Computation IR v1
 
-Status: implementation complete, gate **partially verified** in this environment. Read the
-[what was not verified](#what-was-not-verified) section before treating M2 as closed.
+Status: implementation complete, gate **partially verified**. Eight of the thirteen full-profile
+gates pass; one fails for a pre-existing dashboard toolchain reason and four cannot run for want of
+Docker, `cargo-audit`, `helm`, and `kubectl`. Read [the verification
+attempt](#verification-attempt-2026-09-03) and [what was not
+verified](#what-was-not-verified) before treating M2 as closed.
 
 M2 gives Capsulet one versioned, trust-typed representation for deterministic workflows, agent
 workflows, and automations; immutable correctness objects; mandatory structural admission; explicit
@@ -95,18 +98,73 @@ the weakest known role.
 
 `cargo fmt --check` was also red at HEAD; corrected separately in `601104f`.
 
+## Verification attempt, 2026-09-03
+
+The full profile was attempted on the development machine. Eight of thirteen gates ran; one failed
+for a pre-existing reason unrelated to M2; four could not run for want of tooling.
+
+| Gate | Result | Detail |
+| --- | --- | --- |
+| `format` | passed | |
+| `lint` | passed | Strict workspace Clippy, `-D warnings`. |
+| `unit` | passed | Locked workspace tests. |
+| `ir` | passed | IR contracts, crate purity, adapter coverage. |
+| `replay` | passed | Offline replay including the tamper case. |
+| `api-contracts` | passed | Runtime/OpenAPI equality, including the five new routes. |
+| `claims` | passed | Claims, lifecycle, and public-surface contracts. |
+| `sdk` | passed | Python and dashboard transport contracts. |
+| `dashboard` | **failed** | Pre-existing, not M2. See below. |
+| `postgres` | **could not run** | Docker daemon unavailable. See below. |
+| `migrations` | **could not run** | Same. |
+| `compose` | **could not run** | Same. |
+| `security` | **could not run** | `cargo-audit` is not installed. |
+| `helm` | **could not run** | `helm` is not installed. |
+| `kind` | **could not run** | `helm` and `kubectl` are not installed. |
+
+### The dashboard gate failure is a toolchain incompatibility
+
+`npm run lint` fails before it lints anything:
+
+```text
+TypeError: Error while loading rule 'react/display-name':
+  contextOrFilename.getFilename is not a function
+```
+
+`eslint-plugin-react@7.37.5`, pulled in transitively by `eslint-config-next@16.2.12`, calls an ESLint
+API that ESLint 10.8.1 removed. Nothing in the dashboard source is at fault and no M2 change touched
+it; this is the "dashboard lint is not green" item the 2026-08-30 audit already recorded, and it
+belongs to M1's dependency work. The fix is a dependency decision — an npm `overrides` entry pinning
+`eslint-plugin-react` to a release that supports ESLint 10, or holding ESLint at 9 — and it should be
+made deliberately rather than folded into a milestone commit.
+
+### Docker was unavailable, for a reason worth recording
+
+Docker Desktop 4.85.0 crash-loops at startup on this machine:
+
+```text
+starting services: initializing Inference manager: listening on
+unix://C:/Users/.../AppData/Local/Docker/run/dockerInference:
+remove .../dockerInference: The file cannot be accessed by the system.
+```
+
+Three orphaned AF_UNIX socket reparse points in `%LOCALAPPDATA%\Dockerun` (dated 2026-08-31)
+cannot be removed by any user-space path — `Remove-Item`, the `\?\` long-path form, `fsutil
+reparsepoint delete`, and removing the parent directory all return Windows error 1920. Docker Desktop
+hits the same error and quits, so the engine never starts and `docker` calls hang.
+
+The standard remedy is a reboot, which clears orphaned reparse points. Until then the `postgres`,
+`migrations`, and `compose` gates cannot run here.
+
 ## What was not verified
 
-**The PostgreSQL integration tests have not been run.** `crates/postgres/tests/ir_and_assurance.rs`
-compiles and is registered in the `postgres` gate, but no Docker daemon was available in the
-environment where this work was done, so the append-only rules, project isolation, and idempotent
-registration are asserted in code that has not executed. The gate fails rather than skips when
-infrastructure is absent, so this is visible rather than assumed — but it is not yet evidence.
+**The PostgreSQL integration tests have still not been run.**
+`crates/postgres/tests/ir_and_assurance.rs` compiles and is registered in the `postgres` gate, but
+the gate could not execute for the reason above, so the append-only rules, project isolation, and
+idempotent registration are asserted in code that has not run. The gate fails rather than skips when
+infrastructure is absent, so this stays visible rather than assumed — but it is not yet evidence.
 
-**The full profile has not been run end to end.** The fast profile passes (`format`, `unit`, `ir`,
-`replay`, `api-contracts`, `claims`, `sdk`). The remaining full-profile gates — `lint` is green when
-run directly, but `dashboard`, `postgres`, `migrations`, `security`, `compose`, `helm`, and `kind`
-need Docker, npm, or a cluster — were not exercised here.
+**`security`, `helm`, and `kind` have never run on this machine.** They need `cargo-audit`, `helm`,
+and `kubectl`, none of which are installed. That is an M1/M6 tooling gap, not an M2 one.
 
 **The CLI `certificate export` command was not added.** The bundle endpoint exists
 (`GET /v1/assurance/certificates/{id}/bundle`) and returns exactly what `capsulet-replay` reads, but
@@ -134,8 +192,10 @@ certificates whose evidence was placed in object storage by something else.
 
 Before durable-runtime work starts:
 
-1. Run the `postgres` and `migrations` gates against a real database and record the result here.
-2. Run the full profile from a clean checkout on a machine with Docker, npm, Helm, and Kind.
+1. Clear the orphaned Docker socket reparse points (a reboot does it), then run the `postgres`,
+   `migrations`, and `compose` gates against a real database and record the result here.
+2. Install `cargo-audit`, `helm`, and `kubectl`, and decide the dashboard ESLint pin, so the full
+   profile can run end to end from a clean checkout.
 3. Decide how a running worker obtains evidence bytes and writes them under their digest, since M3
    is the first thing that produces evidence rather than describing it.
 4. Keep the adapters out of the execution path until the IR itself is what executes; the coverage
