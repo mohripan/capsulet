@@ -1,10 +1,8 @@
 # M2 Completion Report — Verified Computation IR v1
 
-Status: implementation complete, gate **substantially verified**. Eleven of the thirteen
-full-profile gates pass, including the PostgreSQL integration and migration gates. One fails for a
-pre-existing dashboard toolchain reason and three cannot run for want of `cargo-audit`, `helm`, and
-`kubectl`. Read [the verification attempt](#verification-attempt-2026-09-03) before treating M2 as
-closed.
+Status: implementation complete and **verified**. `cargo run -p capsulet-xtask --locked -- verify
+--profile full` passes all fifteen gates on the development machine. See [the verification
+run](#verification-run-2026-09-03) for what it took to get there and what it found.
 
 M2 gives Capsulet one versioned, trust-typed representation for deterministic workflows, agent
 workflows, and automations; immutable correctness objects; mandatory structural admission; explicit
@@ -98,55 +96,17 @@ the weakest known role.
 
 `cargo fmt --check` was also red at HEAD; corrected separately in `601104f`.
 
-## Verification attempt, 2026-09-03
+## Verification run, 2026-09-03
 
-The full profile was attempted on the development machine. Eleven of thirteen gates pass; one fails
-for a pre-existing reason unrelated to M2; three could not run for want of tooling.
-
-Running the persistence gates found a real bug, which is the argument for gates that fail rather
-than skip.
-
-| Gate | Result | Detail |
-| --- | --- | --- |
-| `format` | passed | |
-| `lint` | passed | Strict workspace Clippy, `-D warnings`. |
-| `unit` | passed | Locked workspace tests. |
-| `ir` | passed | IR contracts, crate purity, adapter coverage. |
-| `replay` | passed | Offline replay including the tamper case. |
-| `api-contracts` | passed | Runtime/OpenAPI equality, including the five new routes. |
-| `claims` | passed | Claims, lifecycle, and public-surface contracts. |
-| `sdk` | passed | Python and dashboard transport contracts. |
-| `postgres` | passed | 8 integration tests against a provisioned PostgreSQL. |
-| `migrations` | passed | Forward migrations from empty. |
-| `compose` | passed | Compose configuration and smoke. |
-| `dashboard` | **failed** | Pre-existing, not M2. See below. |
-| `security` | **could not run** | `cargo-audit` is not installed. |
-| `helm` | **could not run** | `helm` is not installed. |
-| `kind` | **could not run** | `helm` and `kubectl` are not installed. |
-
-### The dashboard gate failure is a toolchain incompatibility
-
-`npm run lint` fails before it lints anything:
+`verify --profile full` passes end to end:
 
 ```text
-TypeError: Error while loading rule 'react/display-name':
-  contextOrFilename.getFilename is not a function
+[verify] passed 15 required gates: format, lint, unit, ir, replay, api-contracts, claims,
+         sdk, dashboard, postgres, migrations, security, compose, helm, kind
 ```
 
-`eslint-plugin-react@7.37.5`, pulled in transitively by `eslint-config-next@16.2.12`, calls an ESLint
-API that ESLint 10.8.1 removed. Nothing in the dashboard source is at fault and no M2 change touched
-it; this is the "dashboard lint is not green" item the 2026-08-30 audit already recorded, and it
-belongs to M1's dependency work.
-
-There is only one viable fix. `eslint-plugin-react` has published no release supporting ESLint 10 —
-its newest, 7.37.5, declares `eslint: ^3 || … || ^9.7` — so no `overrides` pin exists to reach for.
-The dashboard has to hold ESLint at `^9` until the plugin catches up, or drop the React rule set and
-lose that coverage. It is a toolchain decision with consequences for CI and every contributor's
-lockfile, so it is recorded here rather than folded into a milestone commit.
-
-Because the orchestrator stops at the first failing gate, a `--profile full` run currently halts
-here. The three gates after it were therefore run individually: `postgres`, `migrations`, and
-`compose` all pass.
+Getting there took four fixes, three of which were defects the gates found rather than anything the
+milestone planned. That is the case for gates that fail rather than skip, made concretely.
 
 ### The immutability defect the `postgres` gate found
 
@@ -168,15 +128,60 @@ replaced on its own terms. A `DO INSTEAD NOTHING` rule makes a mutation *silentl
 no-op, so someone rewriting a verdict would believe it had worked; raising says plainly that the
 write was refused. The tests now assert the refusal is loud rather than merely ineffective.
 
-Getting Docker running first took a repair of its own: Docker Desktop 4.85.0 was crash-looping on
-three orphaned AF_UNIX socket reparse points in its runtime directory that no user-space path could
-delete (Windows error 1920 from `Remove-Item`, the long-path form, `fsutil reparsepoint delete`, and
-removing the parent directory alike). Restarting Docker Desktop cleared it.
+### The prerequisite probe reported installed tools as missing
+
+`verify doctor` claimed `helm` and `kubectl` were absent on a machine where both were installed. The
+probe ran `<tool> --version` for everything, and both tools reject that flag outright — they take a
+`version` subcommand. The consequence was worse than a cosmetic wrong answer: an operator would be
+told to install what they already had, and the full profile would stop at a gate that could have
+run. Probes now use the flag each tool actually accepts, and a test asserts the doctor never reports
+a tool that is on `PATH` as missing.
+
+The `security` gate had the same shape of bug one layer down: it invoked `cargo audit --locked`, and
+`cargo audit` has no such flag. Both only surfaced once the tools were present, which is the point —
+a gate that cannot run proves nothing about the gate.
+
+### The dashboard lint was broken by an override, not by ESLint
+
+The first diagnosis was incomplete. Pinning ESLint back to 9 removed the
+`react/display-name` crash but exposed the real cause: `package.json` carried
+
+```json
+"overrides": { "brace-expansion": "^5.0.8" }
+```
+
+which forced *every* consumer onto v5, including `minimatch@3`, which requires `^1.1.7` and uses the
+older export shape. ESLint then died with `expand is not a function` regardless of version. The
+override was a CVE remediation, so removing it outright would have traded a broken lint for a
+vulnerability. Scoping it per major keeps both properties:
+
+```json
+"overrides": { "brace-expansion@1": "^1.1.18", "brace-expansion@2": "^2.1.4" }
+```
+
+`minimatch@3` now resolves a patched 1.1.18, `minimatch@10` keeps v5, `npm audit` still reports zero
+vulnerabilities, and the lockfile was regenerated because the previous one recorded a tree npm
+itself considered invalid. The dashboard also carried one genuine lint warning — a deliberate full
+page reload after sign-in, so every server component and the middleware see the new session cookie —
+which is now documented at the call site rather than left to look like an oversight.
+
+### One vulnerability was fixed and one is an owned exception
+
+`cargo audit` found two. `RUSTSEC-2026-0258` in `h2` is reachable through `hyper` and `axum`, so it
+was fixed by moving 0.4.14 to 0.4.19.
+
+`RUSTSEC-2023-0071` in `rsa` has no fixed release. It reaches `Cargo.lock` only through
+`sqlx-mysql`, which the workspace's postgres-only feature set never compiles: `cargo tree -i rsa`
+reports nothing and a workspace-wide `cargo tree -e normal` contains no `rsa` node. `cargo audit`
+reads the lockfile rather than the build graph, so it cannot see that.
+
+That is recorded as an exception in [security-exceptions.md](security-exceptions.md) with an owner
+and a review date, and a test fails the build if an advisory is silenced without being documented,
+or if a review date passes. **It is a security exception created during this work and it belongs to
+whoever owns the platform** — the reasoning is verifiable but the decision to accept it is not the
+implementer's to make silently.
 
 ## What was not verified
-
-**`security`, `helm`, and `kind` have never run on this machine.** They need `cargo-audit`, `helm`,
-and `kubectl`, none of which are installed. That is an M1/M6 tooling gap, not an M2 one.
 
 **The CLI `certificate export` command was not added.** The bundle endpoint exists
 (`GET /v1/assurance/certificates/{id}/bundle`) and returns exactly what `capsulet-replay` reads, but
@@ -204,8 +209,7 @@ certificates whose evidence was placed in object storage by something else.
 
 Before durable-runtime work starts:
 
-1. Install `cargo-audit`, `helm`, and `kubectl`, and decide the dashboard ESLint pin, so the full
-   profile can run end to end from a clean checkout.
+1. Confirm the full profile on a second machine and in CI, since it has only been run here.
 2. Decide how a running worker obtains evidence bytes and writes them under their digest, since M3
    is the first thing that produces evidence rather than describing it.
 3. Keep the adapters out of the execution path until the IR itself is what executes; the coverage

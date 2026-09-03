@@ -309,7 +309,9 @@ pub(crate) fn gates() -> Vec<Gate> {
             600,
             &[Full],
             vec![
-                command("cargo", &["audit", "--locked"]),
+                // `cargo audit` reads Cargo.lock by itself and rejects
+                // `--locked`, which is a cargo flag it does not forward.
+                command("cargo", &["audit"]),
                 in_dashboard(command("npm", &["audit", "--audit-level=high"])),
             ],
         ),

@@ -24,6 +24,11 @@ export default function LoginPage() {
         setError(body.message || "Sign in failed.");
         return;
       }
+      // A full reload rather than a client-side push: the sign-in response sets
+      // the session cookie, and reloading guarantees every server component and
+      // the middleware see it. A router push would keep the current tree, which
+      // is the case this rule does not account for.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.assign("/");
     } catch {
       setError("The dashboard could not reach the Capsulet API.");

@@ -24,18 +24,32 @@ pub(crate) fn install_interrupt_handler() -> Result<(), String> {
         .map_err(|error| format!("could not install interrupt handler: {error}"))
 }
 
-pub(crate) fn is_available(program: &str) -> bool {
-    let arguments = if matches!(program, "powershell" | "pwsh") {
-        vec![
+/// How to ask a tool to identify itself.
+///
+/// `--version` is not universal, and guessing wrong is worse than it sounds:
+/// `helm --version` and `kubectl --version` both exit non-zero with "unknown
+/// flag", so probing that way reports an installed tool as missing, tells an
+/// operator to install what they already have, and stops the full profile at a
+/// gate that could have run.
+pub(crate) fn version_arguments(program: &str) -> Vec<&'static str> {
+    match program {
+        "powershell" | "pwsh" => vec![
             "-NoProfile",
             "-Command",
             "$PSVersionTable.PSVersion.ToString()",
-        ]
-    } else {
-        vec!["--version"]
-    };
+        ],
+        // Helm and kubectl take a `version` subcommand and reject `--version`.
+        // `--client` keeps the kubectl probe from reaching for a cluster that
+        // availability has nothing to do with.
+        "helm" => vec!["version", "--short"],
+        "kubectl" => vec!["version", "--client"],
+        _ => vec!["--version"],
+    }
+}
+
+pub(crate) fn is_available(program: &str) -> bool {
     Command::new(platform_program(program))
-        .args(arguments)
+        .args(version_arguments(program))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()

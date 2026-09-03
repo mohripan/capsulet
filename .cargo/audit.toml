@@ -1,0 +1,12 @@
+# Advisories the security gate ignores.
+#
+# Every entry here must appear in docs/contracts/security-exceptions.md with an
+# owner and a review date, and `cargo test -p capsulet-xtask` fails when it does
+# not, or when a review date has passed. An exception nobody owns is nobody's
+# problem, and one that never expires is permanent by accident.
+#
+# RUSTSEC-2023-0071 (rsa): reaches the lockfile only through sqlx-mysql, which
+# the workspace's postgres-only feature set never compiles. See the exceptions
+# document for the verification.
+[advisories]
+ignore = ["RUSTSEC-2023-0071"]
