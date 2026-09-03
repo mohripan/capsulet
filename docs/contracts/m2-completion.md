@@ -136,9 +136,17 @@ TypeError: Error while loading rule 'react/display-name':
 `eslint-plugin-react@7.37.5`, pulled in transitively by `eslint-config-next@16.2.12`, calls an ESLint
 API that ESLint 10.8.1 removed. Nothing in the dashboard source is at fault and no M2 change touched
 it; this is the "dashboard lint is not green" item the 2026-08-30 audit already recorded, and it
-belongs to M1's dependency work. The fix is a dependency decision — an npm `overrides` entry pinning
-`eslint-plugin-react` to a release that supports ESLint 10, or holding ESLint at 9 — and it should be
-made deliberately rather than folded into a milestone commit.
+belongs to M1's dependency work.
+
+There is only one viable fix. `eslint-plugin-react` has published no release supporting ESLint 10 —
+its newest, 7.37.5, declares `eslint: ^3 || … || ^9.7` — so no `overrides` pin exists to reach for.
+The dashboard has to hold ESLint at `^9` until the plugin catches up, or drop the React rule set and
+lose that coverage. It is a toolchain decision with consequences for CI and every contributor's
+lockfile, so it is recorded here rather than folded into a milestone commit.
+
+Because the orchestrator stops at the first failing gate, a `--profile full` run currently halts
+here. The three gates after it were therefore run individually: `postgres`, `migrations`, and
+`compose` all pass.
 
 ### The immutability defect the `postgres` gate found
 
