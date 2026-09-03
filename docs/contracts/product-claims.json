@@ -1,202 +1,1485 @@
 {
   "schema_version": 1,
   "public_surfaces": [
-    { "path": "README.md", "category": "root-docs", "marker_required": true },
-    { "path": "ARCHITECTURE.md", "category": "root-docs", "marker_required": true },
-    { "path": "docs/README.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/api.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/architecture.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/dashboard-streaming.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/development.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/helm-values.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/installation.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/local-kubernetes-runner.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/minikube-smoke.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/operations.md", "category": "operations", "marker_required": true },
-    { "path": "docs/operations/backup-restore-dr.md", "category": "operations", "marker_required": true },
-    { "path": "docs/operations/observability.md", "category": "operations", "marker_required": true },
-    { "path": "docs/persistence.md", "category": "product-docs", "marker_required": true },
-    { "path": "docs/security.md", "category": "security", "marker_required": true },
-    { "path": "docs/security/secrets-rotation.md", "category": "security", "marker_required": true },
-    { "path": "docs/troubleshooting.md", "category": "operations", "marker_required": true },
-    { "path": "docs/worker-runner.md", "category": "product-docs", "marker_required": true },
-    { "path": "sdk/python/README.md", "category": "sdk", "marker_required": true },
-    { "path": "sdk/python/pyproject.toml", "category": "sdk", "marker_required": true },
-    { "path": "dashboard/README.md", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/package.json", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/artifacts/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/automations/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/components.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/execution-pools/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/job-definitions/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/layout.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/login/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/logs/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/layout.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/memory-ui.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/contracts/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/edges/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/entities/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/ingestion/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/subgraphs/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/memory/traces/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/runs/[id]/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/runs/[id]/run-detail-client.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/runs/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/runs/runs-client.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/security/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/settings/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/trigger-plugins/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/workflows/new/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/workflows/page.tsx", "category": "dashboard", "marker_required": true },
-    { "path": "dashboard/app/mock-data.ts", "category": "dashboard", "marker_required": true },
-    { "path": "examples/send-email/README.md", "category": "example", "marker_required": true },
-    { "path": "examples/workflows/README.md", "category": "example", "marker_required": true },
-    { "path": "charts/capsulet/Chart.yaml", "category": "package-metadata", "marker_required": true },
-    { "path": "charts/capsulet/values.yaml", "category": "package-metadata", "marker_required": true },
-    { "path": "charts/capsulet/values.schema.json", "category": "package-metadata", "marker_required": true },
-    { "path": "crates/api/openapi.json", "category": "served-openapi", "marker_required": true }
+    {
+      "path": "README.md",
+      "category": "root-docs",
+      "marker_required": true
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "category": "root-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/README.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/api.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/architecture.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/dashboard-streaming.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/development.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/helm-values.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/installation.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/local-kubernetes-runner.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/minikube-smoke.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/operations.md",
+      "category": "operations",
+      "marker_required": true
+    },
+    {
+      "path": "docs/operations/backup-restore-dr.md",
+      "category": "operations",
+      "marker_required": true
+    },
+    {
+      "path": "docs/operations/observability.md",
+      "category": "operations",
+      "marker_required": true
+    },
+    {
+      "path": "docs/persistence.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "docs/security.md",
+      "category": "security",
+      "marker_required": true
+    },
+    {
+      "path": "docs/security/secrets-rotation.md",
+      "category": "security",
+      "marker_required": true
+    },
+    {
+      "path": "docs/troubleshooting.md",
+      "category": "operations",
+      "marker_required": true
+    },
+    {
+      "path": "docs/worker-runner.md",
+      "category": "product-docs",
+      "marker_required": true
+    },
+    {
+      "path": "sdk/python/README.md",
+      "category": "sdk",
+      "marker_required": true
+    },
+    {
+      "path": "sdk/python/pyproject.toml",
+      "category": "sdk",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/README.md",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/package.json",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/artifacts/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/automations/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/components.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/execution-pools/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/job-definitions/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/layout.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/login/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/logs/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/layout.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/memory-ui.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/contracts/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/edges/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/entities/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/ingestion/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/subgraphs/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/memory/traces/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/runs/[id]/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/runs/[id]/run-detail-client.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/runs/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/runs/runs-client.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/security/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/settings/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/trigger-plugins/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/workflows/new/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/workflows/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/mock-data.ts",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "examples/send-email/README.md",
+      "category": "example",
+      "marker_required": true
+    },
+    {
+      "path": "examples/workflows/README.md",
+      "category": "example",
+      "marker_required": true
+    },
+    {
+      "path": "charts/capsulet/Chart.yaml",
+      "category": "package-metadata",
+      "marker_required": true
+    },
+    {
+      "path": "charts/capsulet/values.yaml",
+      "category": "package-metadata",
+      "marker_required": true
+    },
+    {
+      "path": "charts/capsulet/values.schema.json",
+      "category": "package-metadata",
+      "marker_required": true
+    },
+    {
+      "path": "crates/api/openapi.json",
+      "category": "served-openapi",
+      "marker_required": true
+    }
   ],
   "test_manifest": [
-    { "command": "cargo test -p capsulet-kernel --locked", "tests": [{ "path": "crates/kernel/src/tests.rs", "selector": "accepts_a_citation_that_re_derives_and_contains_its_object" }] },
-    { "command": "cargo test -p capsulet-core --test typed_hypergraph --locked", "tests": [{ "path": "crates/core/tests/typed_hypergraph.rs", "selector": "graph_definition_returns_deterministic_static_order" }] },
-    { "command": "cargo test -p capsulet-application --test agents --locked", "tests": [{ "path": "crates/application/tests/agents.rs", "selector": "agent_service_starts_queued_run_with_initial_state" }] },
-    { "command": "cargo test -p capsulet-core --test memory_core --locked", "tests": [{ "path": "crates/core/tests/memory_core.rs", "selector": "claim_new_rejects_claim_without_evidence" }] },
-    { "command": "cargo test -p capsulet-worker --locked", "tests": [{ "path": "crates/worker/src/tests.rs", "selector": "renews_lease_while_runner_is_active" }] },
-    { "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies", "tests": [{ "path": "crates/api/src/tests.rs", "selector": "creates_and_returns_workflow_dag_dependencies" }] },
-    { "command": "cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering", "tests": [{ "path": "crates/api/src/webhooks.rs", "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering" }] },
-    { "command": "cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens", "tests": [{ "path": "crates/api/src/auth.rs", "selector": "authenticates_configured_roles_without_exposing_tokens" }] },
-    { "command": "npm test --prefix dashboard", "tests": [{ "path": "dashboard/tests/api.test.ts", "selector": "calls nested memory subgraph endpoints" }] },
-    { "command": "python -m unittest discover -s sdk/python/tests -v", "tests": [{ "path": "sdk/python/tests/test_workflow.py", "selector": "test_infers_dependency_and_compiles_artifact_path" }] },
-    { "command": "cargo test -p capsulet-application --test execution_contracts --locked", "tests": [{ "path": "crates/application/tests/execution_contracts.rs", "selector": "worker_tick_outcome_has_stable_metric_names" }] },
-    { "command": "cargo test -p capsulet-api --test openapi_contract --locked", "tests": [{ "path": "crates/api/tests/openapi_contract.rs", "selector": "generated_openapi_should_match_every_runtime_endpoint" }, { "path": "crates/api/tests/openapi_contract.rs", "selector": "generated_document_should_round_trip_through_utoipa" }, { "path": "crates/api/tests/openapi_contract.rs", "selector": "checked_openapi_artifact_should_equal_canonical_generation" }, { "path": "crates/api/tests/openapi_contract.rs", "selector": "create_service_account_response_should_match_its_generated_wire_schema" }] },
-    { "command": "pwsh ./scripts/tests/check-product-claims.ps1", "tests": [{ "path": "scripts/tests/check-product-claims.ps1", "selector": "invalidLifecycleCases" }] }
+    {
+      "command": "cargo test -p capsulet-kernel --locked",
+      "tests": [
+        {
+          "path": "crates/kernel/src/tests.rs",
+          "selector": "accepts_a_citation_that_re_derives_and_contains_its_object"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-core --test typed_hypergraph --locked",
+      "tests": [
+        {
+          "path": "crates/core/tests/typed_hypergraph.rs",
+          "selector": "graph_definition_returns_deterministic_static_order"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-application --test agents --locked",
+      "tests": [
+        {
+          "path": "crates/application/tests/agents.rs",
+          "selector": "agent_service_starts_queued_run_with_initial_state"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-core --test memory_core --locked",
+      "tests": [
+        {
+          "path": "crates/core/tests/memory_core.rs",
+          "selector": "claim_new_rejects_claim_without_evidence"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-worker --locked",
+      "tests": [
+        {
+          "path": "crates/worker/src/tests.rs",
+          "selector": "renews_lease_while_runner_is_active"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies",
+      "tests": [
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "creates_and_returns_workflow_dag_dependencies"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering",
+      "tests": [
+        {
+          "path": "crates/api/src/webhooks.rs",
+          "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens",
+      "tests": [
+        {
+          "path": "crates/api/src/auth.rs",
+          "selector": "authenticates_configured_roles_without_exposing_tokens"
+        }
+      ]
+    },
+    {
+      "command": "npm test --prefix dashboard",
+      "tests": [
+        {
+          "path": "dashboard/tests/api.test.ts",
+          "selector": "calls nested memory subgraph endpoints"
+        }
+      ]
+    },
+    {
+      "command": "python -m unittest discover -s sdk/python/tests -v",
+      "tests": [
+        {
+          "path": "sdk/python/tests/test_workflow.py",
+          "selector": "test_infers_dependency_and_compiles_artifact_path"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-application --test execution_contracts --locked",
+      "tests": [
+        {
+          "path": "crates/application/tests/execution_contracts.rs",
+          "selector": "worker_tick_outcome_has_stable_metric_names"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-api --test openapi_contract --locked",
+      "tests": [
+        {
+          "path": "crates/api/tests/openapi_contract.rs",
+          "selector": "generated_openapi_should_match_every_runtime_endpoint"
+        },
+        {
+          "path": "crates/api/tests/openapi_contract.rs",
+          "selector": "generated_document_should_round_trip_through_utoipa"
+        },
+        {
+          "path": "crates/api/tests/openapi_contract.rs",
+          "selector": "checked_openapi_artifact_should_equal_canonical_generation"
+        },
+        {
+          "path": "crates/api/tests/openapi_contract.rs",
+          "selector": "create_service_account_response_should_match_its_generated_wire_schema"
+        }
+      ]
+    },
+    {
+      "command": "pwsh ./scripts/tests/check-product-claims.ps1",
+      "tests": [
+        {
+          "path": "scripts/tests/check-product-claims.ps1",
+          "selector": "invalidLifecycleCases"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-ir --locked",
+      "tests": [
+        {
+          "path": "crates/ir/tests/canonical.rs",
+          "selector": "presentation_does_not_change_a_digest"
+        },
+        {
+          "path": "crates/ir/tests/canonical.rs",
+          "selector": "floating_point_is_refused_before_any_digest"
+        },
+        {
+          "path": "crates/ir/tests/trust.rs",
+          "selector": "deserializing_cannot_assert_a_class_the_record_does_not_justify"
+        },
+        {
+          "path": "crates/ir/tests/trust.rs",
+          "selector": "combining_values_yields_the_weakest_relevant_trust"
+        },
+        {
+          "path": "crates/ir/tests/admission.rs",
+          "selector": "observe_mode_does_not_switch_admission_off"
+        },
+        {
+          "path": "crates/ir/tests/admission.rs",
+          "selector": "admission_always_reaches_a_decision"
+        },
+        {
+          "path": "crates/ir/tests/loops.rs",
+          "selector": "a_loop_without_an_iteration_bound_is_refused"
+        },
+        {
+          "path": "crates/ir/tests/loops.rs",
+          "selector": "exhausting_a_budget_is_never_completion"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "an_absent_certificate_is_unverified_and_never_satisfies_a_minimum"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "verify_reports_a_verdict_and_blocks_nothing"
+        },
+        {
+          "path": "crates/ir/tests/correctness.rs",
+          "selector": "a_verdict_the_obligations_do_not_justify_is_refused"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "observe_never_reaches_accepted_however_well_the_run_went"
+        },
+        {
+          "path": "crates/ir/tests/purity.rs",
+          "selector": "the_dependency_closure_stays_offline"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-replay --locked",
+      "tests": [
+        {
+          "path": "crates/replay/tests/cli.rs",
+          "selector": "a_complete_bundle_replays_to_its_recorded_verdict"
+        },
+        {
+          "path": "crates/replay/tests/cli.rs",
+          "selector": "one_tampered_byte_makes_the_binary_exit_non_zero_and_say_why"
+        },
+        {
+          "path": "crates/replay/tests/cli.rs",
+          "selector": "the_replay_binary_cannot_reach_a_network_or_a_database"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-ir-adapters --locked",
+      "tests": [
+        {
+          "path": "crates/ir-adapters/tests/differential.rs",
+          "selector": "a_workflow_translates_and_is_admitted"
+        },
+        {
+          "path": "crates/ir-adapters/tests/differential.rs",
+          "selector": "a_dependency_cycle_the_current_model_rejects_is_also_refused_by_admission"
+        }
+      ]
+    }
   ],
   "claims": [
     {
-      "id": "CAP-PRODUCT-001", "kind": "positioning", "maturity": "planned", "area": "Product identity",
+      "id": "CAP-PRODUCT-001",
+      "kind": "positioning",
+      "maturity": "planned",
+      "area": "Product identity",
       "statement": "Capsulet is a correctness-first AI-agent workflow platform for building and operating workflows whose important outputs can be inspected, checked, and governed.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/README.md", "docs/architecture.md", "docs/development.md", "docs/installation.md", "dashboard/README.md", "dashboard/app/layout.tsx", "dashboard/app/page.tsx", "charts/capsulet/Chart.yaml", "charts/capsulet/values.schema.json"],
-      "evidence": [{ "type": "specification", "path": "docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md" }, { "type": "decision", "path": "docs/adr/0014-correctness-first-agent-workflow-product.md" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "dashboard/README.md",
+        "dashboard/app/layout.tsx",
+        "dashboard/app/page.tsx",
+        "charts/capsulet/Chart.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "evidence": [
+        {
+          "type": "specification",
+          "path": "docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md"
+        },
+        {
+          "type": "decision",
+          "path": "docs/adr/0014-correctness-first-agent-workflow-product.md"
+        }
+      ]
     },
     {
-      "id": "CAP-CORRECTNESS-001", "kind": "capability", "maturity": "implemented", "area": "Correctness kernel",
+      "id": "CAP-CORRECTNESS-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
       "statement": "The deterministic kernel accepts a pinned citation when it re-derives and contains the cited proposition.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md"],
-      "verification": [{ "assertion": "accepted-citation", "evidence_selectors": ["accepts_a_citation_that_re_derives_and_contains_its_object"] }],
-      "evidence": [{ "type": "test", "path": "crates/kernel/src/tests.rs", "command": "cargo test -p capsulet-kernel --locked", "selector": "accepts_a_citation_that_re_derives_and_contains_its_object" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "accepted-citation",
+          "evidence_selectors": [
+            "accepts_a_citation_that_re_derives_and_contains_its_object"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/src/tests.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "accepts_a_citation_that_re_derives_and_contains_its_object"
+        }
+      ]
     },
     {
-      "id": "CAP-CORRECTNESS-002", "kind": "limitation", "maturity": "implemented", "area": "Correctness kernel",
+      "id": "CAP-CORRECTNESS-002",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
       "statement": "Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md"],
-      "evidence": [{ "type": "source", "path": "crates/api/src/reasoning.rs" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/api/src/reasoning.rs"
+        }
+      ]
     },
     {
-      "id": "CAP-GRAPH-001", "kind": "capability", "maturity": "implemented", "area": "Graphs and agents",
+      "id": "CAP-GRAPH-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
       "statement": "Capsulet returns a deterministic static order for valid acyclic typed agent graph definitions.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "dashboard/app/components.tsx"],
-      "verification": [{ "assertion": "deterministic-static-order", "evidence_selectors": ["graph_definition_returns_deterministic_static_order"] }],
-      "evidence": [{ "type": "test", "path": "crates/core/tests/typed_hypergraph.rs", "command": "cargo test -p capsulet-core --test typed_hypergraph --locked", "selector": "graph_definition_returns_deterministic_static_order" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "dashboard/app/components.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "deterministic-static-order",
+          "evidence_selectors": [
+            "graph_definition_returns_deterministic_static_order"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/core/tests/typed_hypergraph.rs",
+          "command": "cargo test -p capsulet-core --test typed_hypergraph --locked",
+          "selector": "graph_definition_returns_deterministic_static_order"
+        }
+      ]
     },
     {
-      "id": "CAP-AGENT-001", "kind": "capability", "maturity": "experimental", "area": "Graphs and agents",
+      "id": "CAP-AGENT-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Graphs and agents",
       "statement": "Agent definitions and queued agent runs, opaque JSON state snapshots, and semantic trace events can be persisted and exercised through the application runtime.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/operations.md", "docs/persistence.md", "dashboard/app/components.tsx"],
-      "evidence": [{ "type": "test", "path": "crates/application/tests/agents.rs", "command": "cargo test -p capsulet-application --test agents --locked", "selector": "agent_service_starts_queued_run_with_initial_state" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/persistence.md",
+        "dashboard/app/components.tsx"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/application/tests/agents.rs",
+          "command": "cargo test -p capsulet-application --test agents --locked",
+          "selector": "agent_service_starts_queued_run_with_initial_state"
+        }
+      ]
     },
     {
-      "id": "CAP-AGENT-002", "kind": "limitation", "maturity": "implemented", "area": "Graphs and agents",
+      "id": "CAP-AGENT-002",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
       "statement": "There is no production dedicated agent or graph worker; creating an agent run persists queued work but does not independently execute it.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/operations.md", "docs/persistence.md"],
-      "evidence": [{ "type": "source", "path": "crates/application/src/agent_runtime.rs" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/persistence.md"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/application/src/agent_runtime.rs"
+        }
+      ]
     },
     {
-      "id": "CAP-MEMORY-001", "kind": "capability", "maturity": "experimental", "area": "Governed memory",
+      "id": "CAP-MEMORY-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Governed memory",
       "statement": "Governed memory models sources, evidence, entities, claims, conflicts, contracts, ingestion review, nested subgraphs, and provenance as a major subsystem.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/persistence.md", "dashboard/README.md", "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx", "dashboard/app/memory/page.tsx", "dashboard/app/memory/contracts/page.tsx", "dashboard/app/memory/edges/page.tsx", "dashboard/app/memory/entities/page.tsx", "dashboard/app/memory/ingestion/page.tsx", "dashboard/app/memory/subgraphs/page.tsx", "dashboard/app/memory/traces/page.tsx", "dashboard/app/page.tsx"],
-      "evidence": [{ "type": "test", "path": "crates/core/tests/memory_core.rs", "command": "cargo test -p capsulet-core --test memory_core --locked", "selector": "claim_new_rejects_claim_without_evidence" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/persistence.md",
+        "dashboard/README.md",
+        "dashboard/app/memory/layout.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/memory/page.tsx",
+        "dashboard/app/memory/contracts/page.tsx",
+        "dashboard/app/memory/edges/page.tsx",
+        "dashboard/app/memory/entities/page.tsx",
+        "dashboard/app/memory/ingestion/page.tsx",
+        "dashboard/app/memory/subgraphs/page.tsx",
+        "dashboard/app/memory/traces/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/core/tests/memory_core.rs",
+          "command": "cargo test -p capsulet-core --test memory_core --locked",
+          "selector": "claim_new_rejects_claim_without_evidence"
+        }
+      ]
     },
     {
-      "id": "CAP-JOB-001", "kind": "capability", "maturity": "experimental", "area": "Jobs and runners",
+      "id": "CAP-JOB-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Jobs and runners",
       "statement": "The job worker leases queued work, renews ownership, executes through stub, process, WASI Python, or Kubernetes adapters, and stores logs and artifacts.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/installation.md", "docs/local-kubernetes-runner.md", "docs/minikube-smoke.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/troubleshooting.md", "docs/worker-runner.md", "dashboard/README.md", "dashboard/app/artifacts/page.tsx", "dashboard/app/execution-pools/page.tsx", "dashboard/app/job-definitions/page.tsx", "dashboard/app/logs/page.tsx", "dashboard/app/runs/[id]/page.tsx", "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/page.tsx", "dashboard/app/runs/runs-client.tsx", "examples/send-email/README.md", "charts/capsulet/values.yaml"],
-      "evidence": [{ "type": "test", "path": "crates/worker/src/tests.rs", "command": "cargo test -p capsulet-worker --locked", "selector": "renews_lease_while_runner_is_active" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/worker/src/tests.rs",
+          "command": "cargo test -p capsulet-worker --locked",
+          "selector": "renews_lease_while_runner_is_active"
+        }
+      ]
     },
     {
-      "id": "CAP-WORKFLOW-001", "kind": "compatibility", "maturity": "implemented", "area": "Workflow compatibility",
+      "id": "CAP-WORKFLOW-001",
+      "kind": "compatibility",
+      "maturity": "implemented",
+      "area": "Workflow compatibility",
       "statement": "Compatibility workflow DAG creation validates and returns declared step dependencies.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/persistence.md", "docs/troubleshooting.md", "sdk/python/README.md", "dashboard/README.md", "dashboard/app/automations/page.tsx", "dashboard/app/components.tsx", "dashboard/app/workflows/new/page.tsx", "dashboard/app/workflows/page.tsx", "examples/workflows/README.md"],
-      "evidence": [{ "type": "test", "path": "crates/api/src/tests.rs", "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies", "selector": "creates_and_returns_workflow_dag_dependencies" }, { "type": "decision", "path": "docs/adr/0014-correctness-first-agent-workflow-product.md" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/troubleshooting.md",
+        "sdk/python/README.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/components.tsx",
+        "dashboard/app/workflows/new/page.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "examples/workflows/README.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies",
+          "selector": "creates_and_returns_workflow_dag_dependencies"
+        },
+        {
+          "type": "decision",
+          "path": "docs/adr/0014-correctness-first-agent-workflow-product.md"
+        }
+      ]
     },
     {
-      "id": "CAP-AUTOMATION-001", "kind": "capability", "maturity": "experimental", "area": "Automations",
+      "id": "CAP-AUTOMATION-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Automations",
       "statement": "Automations can consume manual, cron, read-only SQL, signed webhook, and isolated custom-plugin triggers to create compatibility workflow runs.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/operations.md", "docs/operations/observability.md", "docs/persistence.md", "docs/security.md", "docs/troubleshooting.md", "dashboard/README.md", "dashboard/app/automations/page.tsx", "dashboard/app/trigger-plugins/page.tsx"],
-      "evidence": [{ "type": "test", "path": "crates/api/src/webhooks.rs", "command": "cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering", "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/webhooks.rs",
+          "command": "cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering",
+          "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering"
+        }
+      ]
     },
     {
-      "id": "CAP-IAM-001", "kind": "capability", "maturity": "experimental", "area": "Identity and IAM",
+      "id": "CAP-IAM-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Identity and IAM",
       "statement": "Bearer and OIDC authentication, roles/scopes, project selection, memberships, service accounts, and durable mutation audits exist, with known ownership inconsistencies on newer resources.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/api.md", "docs/architecture.md", "docs/development.md", "docs/installation.md", "docs/operations/backup-restore-dr.md", "docs/security.md", "docs/security/secrets-rotation.md", "docs/troubleshooting.md", "dashboard/README.md", "dashboard/app/login/page.tsx", "dashboard/app/security/page.tsx", "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json"],
-      "evidence": [{ "type": "test", "path": "crates/api/src/auth.rs", "command": "cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens", "selector": "authenticates_configured_roles_without_exposing_tokens" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/auth.rs",
+          "command": "cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens",
+          "selector": "authenticates_configured_roles_without_exposing_tokens"
+        }
+      ]
     },
     {
-      "id": "CAP-PERSISTENCE-001", "kind": "capability", "maturity": "experimental", "area": "Persistence and storage",
+      "id": "CAP-PERSISTENCE-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Persistence and storage",
       "statement": "PostgreSQL stores control-plane and execution metadata, while filesystem or S3-compatible object storage stores scripts, large logs, and artifacts.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/development.md", "docs/helm-values.md", "docs/installation.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/persistence.md", "docs/security.md", "docs/security/secrets-rotation.md", "docs/troubleshooting.md", "docs/worker-runner.md", "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json"],
-      "evidence": [{ "type": "source", "path": "migrations/20260529170000_initial_persistence.sql" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/development.md",
+        "docs/helm-values.md",
+        "docs/installation.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "migrations/20260529170000_initial_persistence.sql"
+        }
+      ]
     },
     {
-      "id": "CAP-DASHBOARD-001", "kind": "capability", "maturity": "experimental", "area": "Dashboard and SDK",
+      "id": "CAP-DASHBOARD-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Dashboard and SDK",
       "statement": "The Next.js dashboard provides authenticated operational and governed-memory views backed by handwritten API calls.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/installation.md", "dashboard/README.md", "dashboard/package.json", "dashboard/app/artifacts/page.tsx", "dashboard/app/automations/page.tsx", "dashboard/app/components.tsx", "dashboard/app/execution-pools/page.tsx", "dashboard/app/job-definitions/page.tsx", "dashboard/app/layout.tsx", "dashboard/app/login/page.tsx", "dashboard/app/logs/page.tsx", "dashboard/app/memory/layout.tsx", "dashboard/app/memory/memory-ui.tsx", "dashboard/app/memory/page.tsx", "dashboard/app/memory/contracts/page.tsx", "dashboard/app/memory/edges/page.tsx", "dashboard/app/memory/entities/page.tsx", "dashboard/app/memory/ingestion/page.tsx", "dashboard/app/memory/subgraphs/page.tsx", "dashboard/app/memory/traces/page.tsx", "dashboard/app/page.tsx", "dashboard/app/runs/[id]/page.tsx", "dashboard/app/runs/[id]/run-detail-client.tsx", "dashboard/app/runs/page.tsx", "dashboard/app/runs/runs-client.tsx", "dashboard/app/security/page.tsx", "dashboard/app/trigger-plugins/page.tsx", "dashboard/app/workflows/new/page.tsx", "dashboard/app/workflows/page.tsx"],
-      "evidence": [{ "type": "test", "path": "dashboard/tests/api.test.ts", "command": "npm test --prefix dashboard", "selector": "calls nested memory subgraph endpoints" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "dashboard/README.md",
+        "dashboard/package.json",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/components.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/layout.tsx",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/memory/layout.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/memory/page.tsx",
+        "dashboard/app/memory/contracts/page.tsx",
+        "dashboard/app/memory/edges/page.tsx",
+        "dashboard/app/memory/entities/page.tsx",
+        "dashboard/app/memory/ingestion/page.tsx",
+        "dashboard/app/memory/subgraphs/page.tsx",
+        "dashboard/app/memory/traces/page.tsx",
+        "dashboard/app/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "dashboard/app/security/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx",
+        "dashboard/app/workflows/new/page.tsx",
+        "dashboard/app/workflows/page.tsx"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "dashboard/tests/api.test.ts",
+          "command": "npm test --prefix dashboard",
+          "selector": "calls nested memory subgraph endpoints"
+        }
+      ]
     },
     {
-      "id": "CAP-DASHBOARD-002", "kind": "limitation", "maturity": "implemented", "area": "Dashboard and SDK",
+      "id": "CAP-DASHBOARD-002",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Dashboard and SDK",
       "statement": "Some dashboard overview data, settings, and future controls are demonstrative or static and are not implemented runtime behavior.",
-      "public_surfaces": ["dashboard/README.md", "dashboard/app/page.tsx", "dashboard/app/settings/page.tsx", "dashboard/app/mock-data.ts"],
-      "evidence": [{ "type": "source", "path": "dashboard/app/mock-data.ts" }]
+      "public_surfaces": [
+        "dashboard/README.md",
+        "dashboard/app/page.tsx",
+        "dashboard/app/settings/page.tsx",
+        "dashboard/app/mock-data.ts"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "dashboard/app/mock-data.ts"
+        }
+      ]
     },
     {
-      "id": "CAP-SDK-001", "kind": "compatibility", "maturity": "implemented", "area": "Dashboard and SDK",
+      "id": "CAP-SDK-001",
+      "kind": "compatibility",
+      "maturity": "implemented",
+      "area": "Dashboard and SDK",
       "statement": "The experimental Python SDK compiles decorated Python functions into compatibility workflow and job API payloads.",
-      "public_surfaces": ["README.md", "docs/development.md", "sdk/python/README.md", "sdk/python/pyproject.toml", "examples/workflows/README.md"],
-      "evidence": [{ "type": "test", "path": "sdk/python/tests/test_workflow.py", "command": "python -m unittest discover -s sdk/python/tests -v", "selector": "test_infers_dependency_and_compiles_artifact_path" }, { "type": "decision", "path": "docs/adr/0016-public-contract-stability-and-versioning.md" }]
+      "public_surfaces": [
+        "README.md",
+        "docs/development.md",
+        "sdk/python/README.md",
+        "sdk/python/pyproject.toml",
+        "examples/workflows/README.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "sdk/python/tests/test_workflow.py",
+          "command": "python -m unittest discover -s sdk/python/tests -v",
+          "selector": "test_infers_dependency_and_compiles_artifact_path"
+        },
+        {
+          "type": "decision",
+          "path": "docs/adr/0016-public-contract-stability-and-versioning.md"
+        }
+      ]
     },
     {
-      "id": "CAP-OBSERVABILITY-001", "kind": "capability", "maturity": "experimental", "area": "Observability and operations",
+      "id": "CAP-OBSERVABILITY-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Observability and operations",
       "statement": "Services expose health, readiness, Prometheus metrics, structured logs, and starter dashboards and alerts for current execution paths.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/dashboard-streaming.md", "docs/development.md", "docs/helm-values.md", "docs/installation.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/troubleshooting.md", "dashboard/app/components.tsx", "dashboard/app/logs/page.tsx", "charts/capsulet/values.yaml"],
-      "evidence": [{ "type": "test", "path": "crates/application/tests/execution_contracts.rs", "command": "cargo test -p capsulet-application --test execution_contracts --locked", "selector": "worker_tick_outcome_has_stable_metric_names" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/helm-values.md",
+        "docs/installation.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "dashboard/app/components.tsx",
+        "dashboard/app/logs/page.tsx",
+        "charts/capsulet/values.yaml"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/application/tests/execution_contracts.rs",
+          "command": "cargo test -p capsulet-application --test execution_contracts --locked",
+          "selector": "worker_tick_outcome_has_stable_metric_names"
+        }
+      ]
     },
     {
-      "id": "CAP-SECURITY-001", "kind": "limitation", "maturity": "implemented", "area": "Security and isolation",
+      "id": "CAP-SECURITY-001",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Security and isolation",
       "statement": "Capsulet constrains execution but does not claim a complete sandbox for hostile code; production isolation depends on operator-selected Kubernetes controls and runtime classes.",
-      "public_surfaces": ["README.md", "ARCHITECTURE.md", "docs/helm-values.md", "docs/installation.md", "docs/local-kubernetes-runner.md", "docs/security.md", "docs/security/secrets-rotation.md", "docs/troubleshooting.md", "docs/worker-runner.md", "dashboard/app/security/page.tsx", "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json"],
-      "evidence": [{ "type": "source", "path": "crates/runner/src/internal.rs" }]
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/helm-values.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/runner/src/internal.rs"
+        }
+      ]
     },
     {
-      "id": "CAP-HELM-001", "kind": "capability", "maturity": "experimental", "area": "Helm and self-hosting",
+      "id": "CAP-HELM-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Helm and self-hosting",
       "statement": "An alpha-readiness Helm chart installs the current control plane, execution services, dashboard, and optional bundled dependencies, but is not yet a public-alpha distribution.",
-      "public_surfaces": ["README.md", "docs/development.md", "docs/helm-values.md", "docs/installation.md", "docs/local-kubernetes-runner.md", "docs/minikube-smoke.md", "docs/operations.md", "docs/operations/backup-restore-dr.md", "docs/operations/observability.md", "docs/security.md", "docs/security/secrets-rotation.md", "docs/troubleshooting.md", "docs/worker-runner.md", "charts/capsulet/Chart.yaml", "charts/capsulet/values.yaml", "charts/capsulet/values.schema.json"],
-      "evidence": [{ "type": "source", "path": "charts/capsulet/templates/deployments.yaml" }]
+      "public_surfaces": [
+        "README.md",
+        "docs/development.md",
+        "docs/helm-values.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "charts/capsulet/Chart.yaml",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "charts/capsulet/templates/deployments.yaml"
+        }
+      ]
     },
     {
-      "id": "CAP-OPENAPI-001", "kind": "capability", "maturity": "implemented", "area": "HTTP API",
+      "id": "CAP-OPENAPI-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "HTTP API",
       "statement": "The OpenAPI 3.1 document is generated from typed endpoint metadata and actual Rust wire schemas, exactly matches runtime registration, validates through utoipa, and is checked for deterministic drift.",
-      "public_surfaces": ["docs/api.md", "crates/api/openapi.json"],
-      "verification": [{ "assertion": "runtime-operation-set", "evidence_selectors": ["generated_openapi_should_match_every_runtime_endpoint"] }, { "assertion": "valid-typed-document", "evidence_selectors": ["generated_document_should_round_trip_through_utoipa", "create_service_account_response_should_match_its_generated_wire_schema"] }, { "assertion": "deterministic-artifact", "evidence_selectors": ["checked_openapi_artifact_should_equal_canonical_generation"] }],
-      "evidence": [{ "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "generated_openapi_should_match_every_runtime_endpoint" }, { "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "generated_document_should_round_trip_through_utoipa" }, { "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "checked_openapi_artifact_should_equal_canonical_generation" }, { "type": "test", "path": "crates/api/tests/openapi_contract.rs", "command": "cargo test -p capsulet-api --test openapi_contract --locked", "selector": "create_service_account_response_should_match_its_generated_wire_schema" }, { "type": "decision", "path": "docs/adr/0015-code-generated-openapi-contract.md" }]
+      "public_surfaces": [
+        "docs/api.md",
+        "crates/api/openapi.json"
+      ],
+      "verification": [
+        {
+          "assertion": "runtime-operation-set",
+          "evidence_selectors": [
+            "generated_openapi_should_match_every_runtime_endpoint"
+          ]
+        },
+        {
+          "assertion": "valid-typed-document",
+          "evidence_selectors": [
+            "generated_document_should_round_trip_through_utoipa",
+            "create_service_account_response_should_match_its_generated_wire_schema"
+          ]
+        },
+        {
+          "assertion": "deterministic-artifact",
+          "evidence_selectors": [
+            "checked_openapi_artifact_should_equal_canonical_generation"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/tests/openapi_contract.rs",
+          "command": "cargo test -p capsulet-api --test openapi_contract --locked",
+          "selector": "generated_openapi_should_match_every_runtime_endpoint"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/tests/openapi_contract.rs",
+          "command": "cargo test -p capsulet-api --test openapi_contract --locked",
+          "selector": "generated_document_should_round_trip_through_utoipa"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/tests/openapi_contract.rs",
+          "command": "cargo test -p capsulet-api --test openapi_contract --locked",
+          "selector": "checked_openapi_artifact_should_equal_canonical_generation"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/tests/openapi_contract.rs",
+          "command": "cargo test -p capsulet-api --test openapi_contract --locked",
+          "selector": "create_service_account_response_should_match_its_generated_wire_schema"
+        },
+        {
+          "type": "decision",
+          "path": "docs/adr/0015-code-generated-openapi-contract.md"
+        }
+      ]
     },
     {
-      "id": "CAP-LIFECYCLE-001", "kind": "compatibility", "maturity": "implemented", "area": "Lifecycle and assurance",
+      "id": "CAP-LIFECYCLE-001",
+      "kind": "compatibility",
+      "maturity": "implemented",
+      "area": "Lifecycle and assurance",
       "statement": "Execution status and assurance verdict are independent; every current persisted status is explicitly mapped without treating successful execution as verified output.",
-      "public_surfaces": ["ARCHITECTURE.md", "docs/api.md", "docs/architecture.md"],
-      "evidence": [{ "type": "test", "path": "scripts/tests/check-product-claims.ps1", "command": "pwsh ./scripts/tests/check-product-claims.ps1", "selector": "invalidLifecycleCases" }, { "type": "decision", "path": "docs/adr/0014-correctness-first-agent-workflow-product.md" }]
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "scripts/tests/check-product-claims.ps1",
+          "command": "pwsh ./scripts/tests/check-product-claims.ps1",
+          "selector": "invalidLifecycleCases"
+        },
+        {
+          "type": "decision",
+          "path": "docs/adr/0014-correctness-first-agent-workflow-product.md"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IR-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Verified computation IR",
+      "statement": "Two structurally equal IR documents produce identical canonical bytes and therefore one digest, and floating point is refused before any digest is computed.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "canonical-bytes-are-stable",
+          "evidence_selectors": [
+            "presentation_does_not_change_a_digest"
+          ]
+        },
+        {
+          "assertion": "floating-point-is-refused",
+          "evidence_selectors": [
+            "floating_point_is_refused_before_any_digest"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/canonical.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "presentation_does_not_change_a_digest"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/canonical.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "floating_point_is_refused_before_any_digest"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IR-002",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Verified computation IR",
+      "statement": "A value's trust class cannot be strengthened by assertion: a document claiming a verdict its verification record does not justify is refused.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "trust-requires-a-record",
+          "evidence_selectors": [
+            "deserializing_cannot_assert_a_class_the_record_does_not_justify"
+          ]
+        },
+        {
+          "assertion": "combination-takes-the-weakest",
+          "evidence_selectors": [
+            "combining_values_yields_the_weakest_relevant_trust"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/trust.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "deserializing_cannot_assert_a_class_the_record_does_not_justify"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/trust.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "combining_values_yields_the_weakest_relevant_trust"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IR-003",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Verified computation IR",
+      "statement": "Structural admission applies in every assurance mode, including observe, and returns a decision for every definition without panicking.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "observe-does-not-lower-the-floor",
+          "evidence_selectors": [
+            "observe_mode_does_not_switch_admission_off"
+          ]
+        },
+        {
+          "assertion": "admission-is-total",
+          "evidence_selectors": [
+            "admission_always_reaches_a_decision"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/admission.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "observe_mode_does_not_switch_admission_off"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/admission.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "admission_always_reaches_a_decision"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IR-004",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Verified computation IR",
+      "statement": "A loop must declare finite bounds, and exhausting a budget is reported as a stop reason rather than as completion.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "loops-must-be-bounded",
+          "evidence_selectors": [
+            "a_loop_without_an_iteration_bound_is_refused"
+          ]
+        },
+        {
+          "assertion": "exhaustion-is-not-completion",
+          "evidence_selectors": [
+            "exhausting_a_budget_is_never_completion"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/loops.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_loop_without_an_iteration_bound_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/loops.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "exhausting_a_budget_is_never_completion"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Assurance policy",
+      "statement": "Under enforce, a protected boundary is denied when no certificate exists, because an absent certificate is unverified and unverified never satisfies a higher minimum.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "absence-never-satisfies",
+          "evidence_selectors": [
+            "an_absent_certificate_is_unverified_and_never_satisfies_a_minimum"
+          ]
+        },
+        {
+          "assertion": "verify-does-not-gate",
+          "evidence_selectors": [
+            "verify_reports_a_verdict_and_blocks_nothing"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "an_absent_certificate_is_unverified_and_never_satisfies_a_minimum"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "verify_reports_a_verdict_and_blocks_nothing"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-002",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Assurance policy",
+      "statement": "A certificate's verdict is derived from its obligations under its recorded mode; a certificate recording a verdict its obligations do not justify cannot be sealed.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "verdict-is-derived",
+          "evidence_selectors": [
+            "a_verdict_the_obligations_do_not_justify_is_refused"
+          ]
+        },
+        {
+          "assertion": "observe-stays-unverified",
+          "evidence_selectors": [
+            "observe_never_reaches_accepted_however_well_the_run_went"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/correctness.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_verdict_the_obligations_do_not_justify_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "observe_never_reaches_accepted_however_well_the_run_went"
+        }
+      ]
+    },
+    {
+      "id": "CAP-REPLAY-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Offline certificate replay",
+      "statement": "A certificate bundle replays offline to its recorded verdict, and one changed byte of evidence makes replay report rejected instead.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "bundle-replays-offline",
+          "evidence_selectors": [
+            "a_complete_bundle_replays_to_its_recorded_verdict"
+          ]
+        },
+        {
+          "assertion": "tampering-is-detected",
+          "evidence_selectors": [
+            "one_tampered_byte_makes_the_binary_exit_non_zero_and_say_why"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/replay/tests/cli.rs",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "a_complete_bundle_replays_to_its_recorded_verdict"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/cli.rs",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "one_tampered_byte_makes_the_binary_exit_non_zero_and_say_why"
+        }
+      ]
+    },
+    {
+      "id": "CAP-REPLAY-002",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Offline certificate replay",
+      "statement": "The replay binary cannot reach a database, an HTTP client, an async runtime, or a model provider, asserted over its resolved dependency closure.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "replay-is-offline-by-construction",
+          "evidence_selectors": [
+            "the_replay_binary_cannot_reach_a_network_or_a_database"
+          ]
+        },
+        {
+          "assertion": "ir-crate-is-pure",
+          "evidence_selectors": [
+            "the_dependency_closure_stays_offline"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/replay/tests/cli.rs",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "the_replay_binary_cannot_reach_a_network_or_a_database"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/purity.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "the_dependency_closure_stays_offline"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ADAPTERS-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "IR adapters",
+      "statement": "Today's job DAGs and agent graphs translate into the IR and pass structural admission, and a dependency cycle the current model rejects is refused by admission too.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "workflows-translate-and-admit",
+          "evidence_selectors": [
+            "a_workflow_translates_and_is_admitted"
+          ]
+        },
+        {
+          "assertion": "rejections-are-not-laundered",
+          "evidence_selectors": [
+            "a_dependency_cycle_the_current_model_rejects_is_also_refused_by_admission"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir-adapters/tests/differential.rs",
+          "command": "cargo test -p capsulet-ir-adapters --locked",
+          "selector": "a_workflow_translates_and_is_admitted"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir-adapters/tests/differential.rs",
+          "command": "cargo test -p capsulet-ir-adapters --locked",
+          "selector": "a_dependency_cycle_the_current_model_rejects_is_also_refused_by_admission"
+        }
+      ]
     }
   ]
 }

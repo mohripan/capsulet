@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-REPLAY-001, CAP-REPLAY-002, CAP-ADAPTERS-001 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -19,8 +19,12 @@ application agent runtime, dashboard, object storage, and runner adapters.
 **Experimental:** agent and memory APIs, automations, the handwritten dashboard and SDK, Helm
 self-hosting, and operational integrations.
 
-**Planned:** one trust-typed workflow IR, a dedicated durable graph worker, platform assurance and
-protected-boundary admission, generated clients, and the public-alpha release gate.
+**Experimental, new in M2:** the trust-typed verified-computation IR, structural admission,
+assurance policy decisions, platform certificates, offline replay, and adapters that describe
+today's workflows and agent graphs in the IR. Nothing executes from the IR yet.
+
+**Planned:** a dedicated durable graph worker executing the IR, the verifier and domain-pack
+ecosystem, generated clients, and the public-alpha release gate.
 
 PostgreSQL is the implemented durable event and coordination channel. Kafka remains an optional future scaling path. Hostile multi-tenant workloads should configure a sandboxed Kubernetes RuntimeClass such as gVisor or Kata in addition to the enforced pod security and default-deny network policy.
 
@@ -34,6 +38,37 @@ become verified by success. The exact current-enum mapping and transition owners
 
 The current kernel only emits `accepted`, `conditional`, or `rejected` after it runs. Platform
 `unverified` means it did not run; it is not another kernel result.
+
+## The verified-computation IR
+
+The IR describes deterministic workflows, agent workflows, and automations in one representation.
+As of M2 it is defined, admitted, certified, and replayable; it is not executed. The durable runtime
+that will run from it is M3, and no execution crate depends on the adapters, so wiring it in stays a
+deliberate decision.
+
+Four properties carry the weight:
+
+- **Canonical bytes.** `capsulet-ir` defines the exact encoding every digest is taken over. Two
+  authors who write the same definition produce the same digest, and there is no floating point
+  anywhere in the model, because a value that cannot be reproduced bit-for-bit elsewhere cannot
+  support a claim someone else can check.
+- **Trust as a type.** A value's assurance is a `TrustClass`, reachable only from a verification
+  record that justifies it. Combining values takes the weakest relevant trust, and combining values
+  verified under different contracts yields nothing, because neither contract covers the
+  combination.
+- **Mandatory admission.** Structural rules — graph validity, declared effects and capabilities,
+  bounded loops, provenance, legal trust edges — apply in every assurance mode. Observe means the
+  domain obligations were not evaluated, never that a malformed or unbounded definition may run.
+  Passing produces an admission record, and a certificate cannot be assembled without one.
+- **Offline replay.** A certificate plus the evidence it cites forms a bundle, and `capsulet-replay`
+  reaches its own verdict from that bundle alone, on a machine with no access to this installation.
+  It re-checks the seal and every evidence digest, re-decides the deterministic families, and says
+  plainly which external tools it did not re-run.
+
+The crates are `capsulet-ir` (pure: no I/O, no clock, no randomness, asserted over its dependency
+closure), `capsulet-kernel` (certificate assembly, obligation families, replay), `capsulet-replay`
+(the standalone offline checker), and `capsulet-ir-adapters` (translation, with a published coverage
+report naming every construct that translates with loss).
 
 ## System context
 

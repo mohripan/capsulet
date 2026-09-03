@@ -2,6 +2,13 @@
 
 This file is generated from `docs/contracts/product-claims.json`. Do not edit it directly.
 
+## Assurance policy
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-ASSURANCE-001` | implemented | capability | Under enforce, a protected boundary is denied when no certificate exists, because an absent certificate is unverified and unverified never satisfies a higher minimum. |
+| `CAP-ASSURANCE-002` | implemented | capability | A certificate's verdict is derived from its obligations under its recorded mode; a certificate recording a verdict its obligations do not justify cannot be sealed. |
+
 ## Automations
 
 | ID | Maturity | Kind | Claim |
@@ -55,6 +62,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-IAM-001` | experimental | capability | Bearer and OIDC authentication, roles/scopes, project selection, memberships, service accounts, and durable mutation audits exist, with known ownership inconsistencies on newer resources. |
 
+## IR adapters
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-ADAPTERS-001` | implemented | capability | Today's job DAGs and agent graphs translate into the IR and pass structural admission, and a dependency cycle the current model rejects is refused by admission too. |
+
 ## Jobs and runners
 
 | ID | Maturity | Kind | Claim |
@@ -73,6 +86,13 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-OBSERVABILITY-001` | experimental | capability | Services expose health, readiness, Prometheus metrics, structured logs, and starter dashboards and alerts for current execution paths. |
 
+## Offline certificate replay
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-REPLAY-001` | implemented | capability | A certificate bundle replays offline to its recorded verdict, and one changed byte of evidence makes replay report rejected instead. |
+| `CAP-REPLAY-002` | implemented | capability | The replay binary cannot reach a database, an HTTP client, an async runtime, or a model provider, asserted over its resolved dependency closure. |
+
 ## Persistence and storage
 
 | ID | Maturity | Kind | Claim |
@@ -90,6 +110,15 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
 | `CAP-SECURITY-001` | implemented | limitation | Capsulet constrains execution but does not claim a complete sandbox for hostile code; production isolation depends on operator-selected Kubernetes controls and runtime classes. |
+
+## Verified computation IR
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-IR-001` | implemented | capability | Two structurally equal IR documents produce identical canonical bytes and therefore one digest, and floating point is refused before any digest is computed. |
+| `CAP-IR-002` | implemented | capability | A value's trust class cannot be strengthened by assertion: a document claiming a verdict its verification record does not justify is refused. |
+| `CAP-IR-003` | implemented | capability | Structural admission applies in every assurance mode, including observe, and returns a decision for every definition without panicking. |
+| `CAP-IR-004` | implemented | capability | A loop must declare finite bounds, and exhausting a budget is reported as a stop reason rather than as completion. |
 
 ## Workflow compatibility
 

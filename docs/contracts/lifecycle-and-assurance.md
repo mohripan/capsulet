@@ -27,6 +27,12 @@ These are target concepts, not a request to rename current enums. Current states
 six-state view can lose. The mapping records each loss as M2/M3 debt; future events and typed
 failure reasons must preserve it.
 
+M2 did not rename or collapse any execution status, and did not discharge that debt. What it added
+is the vocabulary the debt will be paid in: `capsulet_ir::loop_region::StopReason` gives typed
+reasons a run can end for, and `capsulet_ir::correctness::obligation::RepairOwner` gives the
+subsystem that owns each failure. M3 owns turning the current lossy statuses into events that carry
+both.
+
 ## Platform assurance verdict
 
 The platform assurance layer has four verdicts:

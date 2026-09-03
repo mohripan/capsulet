@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-REPLAY-001, CAP-REPLAY-002, CAP-ADAPTERS-001 -->
 # Architecture Overview
 
 Capsulet is a correctness-first AI-agent workflow platform with three layers. The implemented
@@ -29,6 +29,18 @@ The detailed system design and implementation boundaries are in the repository-l
 - **Dashboard:** Next.js UI that reaches the API through a same-origin server proxy.
 - **CLI:** HTTP client for submission and job-run operations.
 - **Evaluator:** durable cron, SQL, webhook, and isolated custom-plugin trigger production and condition evaluation.
+
+## Verified-computation IR
+
+`capsulet-ir` owns the trust-typed IR: canonical encoding, digests, structural admission, assurance
+policy decisions, and the immutable proposal, evidence, obligation, and certificate models. It does
+no I/O and reads no clock, which is what lets a certificate be checked somewhere else.
+
+`capsulet-kernel` assembles certificates and replays them. `capsulet-replay` is a standalone binary
+that replays a bundle offline. `capsulet-ir-adapters` translates today's workflows, agent graphs,
+and governed-memory records into the IR, with a coverage report naming what translates with loss.
+
+Nothing executes from the IR yet; the durable runtime is M3.
 
 ## Dependency view
 

@@ -62,5 +62,26 @@ binary version. Readers:
 - report the unsupported version and supported range in the error.
 
 Domain packs additionally declare compatible runtime and protocol ranges. Certificates pin the IR,
-policy, verifier, evidence, and schema versions needed for replay. These are M2/M4 requirements;
-this policy does not create placeholder runtime models in M0.
+policy, verifier, evidence, and schema versions needed for replay. Domain packs remain M4.
+
+## IR, certificate, and bundle schemas (M2)
+
+Three document schemas are now implemented, each carrying its version as data: `capsulet.ir/v1`,
+`capsulet.certificate/v1`, and `capsulet.bundle/v1`. Their full contract is
+[IR and certificates](ir-and-certificates.md); the versioning rules are:
+
+- A reader that does not recognise a document's major refuses it and says so. It does not fall back
+  to a permissive interpretation, because a document from a later schema is not an empty document.
+- Adding an optional field is a minor change. Adding a variant to a closed enum — a verdict, a
+  discharge state, a stop reason — is a major change, because an old reader would mis-handle the new
+  case rather than ignore it.
+- Changing the canonical encoding, key ordering, or digest algorithm is a major change that also
+  requires a compatibility reader, because every digest ever stored becomes unreproducible
+  otherwise. `crates/ir/tests/golden/` pins the encoding to checked-in bytes so this cannot happen
+  by accident.
+- Stored definitions and certificates are append-only in the database. A mistake is superseded by a
+  new version rather than corrected in place, so what a run was checked against remains readable
+  afterwards.
+- Adding a structural admission rule is additive: each admission record lists the rules its build
+  applied, so an older certificate still states which checks it actually passed rather than
+  implying today's set.
