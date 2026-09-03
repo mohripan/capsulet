@@ -49,6 +49,10 @@ fn text() -> ValueSchema {
 }
 
 /// The fixture: propose a patch, check it, publish it behind a boundary.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one declarative fixture reads better whole than split across helpers"
+)]
 fn definition() -> Definition {
     let mut parts = GraphBuilder::default();
 
@@ -296,16 +300,15 @@ fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
     }
 }
 
-#[test]
-fn the_m2_gate_scenario_holds_end_to_end() {
-    let definition = definition();
+/// The log the checker produced: two of three tests pass, coverage missing.
+const TEST_LOG: &[u8] = b"2 of 3 named tests pass; coverage for the changed branch is absent";
 
-    // 1. Admission.
-    let admission = admit(&definition).expect("the definition is structurally admitted");
-    println!("admitted: {}", admission.definition());
-
-    // 2. Certification: a residual obligation and a loop that ran out of budget.
-    let log = b"2 of 3 named tests pass; coverage for the changed branch is absent";
+/// What the run produced: one discharged obligation, one residual, and a loop
+/// that stopped because it ran out of iterations.
+fn certificate(
+    admission: &capsulet_ir::admission::AdmissionRecord,
+) -> capsulet_ir::correctness::certificate::Certificate {
+    let log = TEST_LOG;
     let evidence = EvidenceRef {
         id: id("test-log"),
         content: Digest::of(log),
@@ -318,7 +321,7 @@ fn the_m2_gate_scenario_holds_end_to_end() {
         captured_at: RecordedTime(1_772_000_000_000),
     };
 
-    let certificate = certify(Assembly {
+    certify(Assembly {
         id: id("cert-gate"),
         subject: Subject {
             definition: *admission.definition(),
@@ -377,8 +380,20 @@ fn the_m2_gate_scenario_holds_end_to_end() {
             },
         }],
     })
-    .expect("the certificate seals");
+    .expect("the certificate seals")
+}
 
+#[test]
+fn the_m2_gate_scenario_holds_end_to_end() {
+    let definition = definition();
+    let log = TEST_LOG;
+
+    // 1. Admission.
+    let admission = admit(&definition).expect("the definition is structurally admitted");
+    println!("admitted: {}", admission.definition());
+
+    // 2. Certification.
+    let certificate = certificate(&admission);
     assert_eq!(certificate.verdict(), AssuranceVerdict::Conditional);
     assert_eq!(
         certificate
