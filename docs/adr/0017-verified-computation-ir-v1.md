@@ -101,8 +101,13 @@ the kernel confirmed it. Overstating this would be the exact failure the design 
 
 ### Storage is append-only in the database
 
-Rules reject UPDATE and DELETE on definitions, versions, evidence, certificates, and obligations. A
-certificate whose contents can be edited afterwards proves nothing.
+Row-level triggers raise on UPDATE and DELETE for definitions, versions, evidence, certificates, and
+obligations. A certificate whose contents can be edited afterwards proves nothing.
+
+Triggers rather than rules, decided after the persistence gate rejected the first attempt. A
+`DO INSTEAD NOTHING` rule makes a refused mutation look like a successful no-op, and PostgreSQL
+refuses `INSERT ... ON CONFLICT` on any table carrying one — which would have cost the idempotent
+registration that content addressing exists to provide.
 
 ### Adapters describe; they do not execute
 

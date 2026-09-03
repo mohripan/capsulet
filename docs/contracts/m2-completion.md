@@ -1,10 +1,10 @@
 # M2 Completion Report — Verified Computation IR v1
 
-Status: implementation complete, gate **partially verified**. Eight of the thirteen full-profile
-gates pass; one fails for a pre-existing dashboard toolchain reason and four cannot run for want of
-Docker, `cargo-audit`, `helm`, and `kubectl`. Read [the verification
-attempt](#verification-attempt-2026-09-03) and [what was not
-verified](#what-was-not-verified) before treating M2 as closed.
+Status: implementation complete, gate **substantially verified**. Eleven of the thirteen
+full-profile gates pass, including the PostgreSQL integration and migration gates. One fails for a
+pre-existing dashboard toolchain reason and three cannot run for want of `cargo-audit`, `helm`, and
+`kubectl`. Read [the verification attempt](#verification-attempt-2026-09-03) before treating M2 as
+closed.
 
 M2 gives Capsulet one versioned, trust-typed representation for deterministic workflows, agent
 workflows, and automations; immutable correctness objects; mandatory structural admission; explicit
@@ -62,7 +62,7 @@ the test setup.
 | Kernel obligation families, certificate assembly, replay | `crates/kernel` | 25 |
 | Certificate bundles and the offline replay binary | `crates/kernel/src/bundle.rs`, `crates/replay` | 10 |
 | Adapters for job DAGs, agent graphs, governed memory | `crates/ir-adapters` | 10 |
-| Append-only persistence and read APIs | `migrations/20260905120000_ir_and_assurance.sql`, `crates/postgres`, `crates/api` | 7 (unrun; see below) |
+| Append-only persistence and read APIs | `migrations/20260905120000_ir_and_assurance.sql`, `crates/postgres`, `crates/api` | 7, run against PostgreSQL |
 
 New verification gates: `ir` (IR contracts, crate purity, adapter coverage) and `replay` (offline
 replay including the tamper case), both in the fast and full profiles.
@@ -100,8 +100,11 @@ the weakest known role.
 
 ## Verification attempt, 2026-09-03
 
-The full profile was attempted on the development machine. Eight of thirteen gates ran; one failed
-for a pre-existing reason unrelated to M2; four could not run for want of tooling.
+The full profile was attempted on the development machine. Eleven of thirteen gates pass; one fails
+for a pre-existing reason unrelated to M2; three could not run for want of tooling.
+
+Running the persistence gates found a real bug, which is the argument for gates that fail rather
+than skip.
 
 | Gate | Result | Detail |
 | --- | --- | --- |
@@ -113,10 +116,10 @@ for a pre-existing reason unrelated to M2; four could not run for want of toolin
 | `api-contracts` | passed | Runtime/OpenAPI equality, including the five new routes. |
 | `claims` | passed | Claims, lifecycle, and public-surface contracts. |
 | `sdk` | passed | Python and dashboard transport contracts. |
+| `postgres` | passed | 8 integration tests against a provisioned PostgreSQL. |
+| `migrations` | passed | Forward migrations from empty. |
+| `compose` | passed | Compose configuration and smoke. |
 | `dashboard` | **failed** | Pre-existing, not M2. See below. |
-| `postgres` | **could not run** | Docker daemon unavailable. See below. |
-| `migrations` | **could not run** | Same. |
-| `compose` | **could not run** | Same. |
 | `security` | **could not run** | `cargo-audit` is not installed. |
 | `helm` | **could not run** | `helm` is not installed. |
 | `kind` | **could not run** | `helm` and `kubectl` are not installed. |
@@ -137,31 +140,32 @@ belongs to M1's dependency work. The fix is a dependency decision — an npm `ov
 `eslint-plugin-react` to a release that supports ESLint 10, or holding ESLint at 9 — and it should be
 made deliberately rather than folded into a milestone commit.
 
-### Docker was unavailable, for a reason worth recording
+### The immutability defect the `postgres` gate found
 
-Docker Desktop 4.85.0 crash-loops at startup on this machine:
+The first run of the persistence gate failed every write:
 
 ```text
-starting services: initializing Inference manager: listening on
-unix://C:/Users/.../AppData/Local/Docker/run/dockerInference:
-remove .../dockerInference: The file cannot be accessed by the system.
+INSERT with ON CONFLICT clause cannot be used with table that has INSERT or UPDATE rules
 ```
 
-Three orphaned AF_UNIX socket reparse points in `%LOCALAPPDATA%\Dockerun` (dated 2026-08-31)
-cannot be removed by any user-space path — `Remove-Item`, the `\?\` long-path form, `fsutil
-reparsepoint delete`, and removing the parent directory all return Windows error 1920. Docker Desktop
-hits the same error and quits, so the engine never starts and `docker` calls hang.
+The migration enforced append-only storage with `CREATE RULE ... DO INSTEAD NOTHING`, and the
+repositories used `INSERT ... ON CONFLICT DO NOTHING` for idempotent, content-addressed
+registration. PostgreSQL refuses to combine the two, so *every* definition and certificate write
+would have failed at runtime. No unit test could have caught it: the incompatibility exists only in
+the database.
 
-The standard remedy is a reboot, which clears orphaned reparse points. Until then the `postgres`,
-`migrations`, and `compose` gates cannot run here.
+The fix improved the design rather than working around it. Immutability is now a row-level
+`BEFORE UPDATE OR DELETE` trigger raising `restrict_violation`, which is better than the rule it
+replaced on its own terms. A `DO INSTEAD NOTHING` rule makes a mutation *silently* succeed as a
+no-op, so someone rewriting a verdict would believe it had worked; raising says plainly that the
+write was refused. The tests now assert the refusal is loud rather than merely ineffective.
+
+Getting Docker running first took a repair of its own: Docker Desktop 4.85.0 was crash-looping on
+three orphaned AF_UNIX socket reparse points in its runtime directory that no user-space path could
+delete (Windows error 1920 from `Remove-Item`, the long-path form, `fsutil reparsepoint delete`, and
+removing the parent directory alike). Restarting Docker Desktop cleared it.
 
 ## What was not verified
-
-**The PostgreSQL integration tests have still not been run.**
-`crates/postgres/tests/ir_and_assurance.rs` compiles and is registered in the `postgres` gate, but
-the gate could not execute for the reason above, so the append-only rules, project isolation, and
-idempotent registration are asserted in code that has not run. The gate fails rather than skips when
-infrastructure is absent, so this stays visible rather than assumed — but it is not yet evidence.
 
 **`security`, `helm`, and `kind` have never run on this machine.** They need `cargo-audit`, `helm`,
 and `kubectl`, none of which are installed. That is an M1/M6 tooling gap, not an M2 one.
@@ -192,11 +196,9 @@ certificates whose evidence was placed in object storage by something else.
 
 Before durable-runtime work starts:
 
-1. Clear the orphaned Docker socket reparse points (a reboot does it), then run the `postgres`,
-   `migrations`, and `compose` gates against a real database and record the result here.
-2. Install `cargo-audit`, `helm`, and `kubectl`, and decide the dashboard ESLint pin, so the full
+1. Install `cargo-audit`, `helm`, and `kubectl`, and decide the dashboard ESLint pin, so the full
    profile can run end to end from a clean checkout.
-3. Decide how a running worker obtains evidence bytes and writes them under their digest, since M3
+2. Decide how a running worker obtains evidence bytes and writes them under their digest, since M3
    is the first thing that produces evidence rather than describing it.
-4. Keep the adapters out of the execution path until the IR itself is what executes; the coverage
+3. Keep the adapters out of the execution path until the IR itself is what executes; the coverage
    report's losses are the list of things that must become real first.

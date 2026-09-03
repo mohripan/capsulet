@@ -3,9 +3,16 @@
 -- Everything here is append-only, and it is append-only in the database rather
 -- than only in Rust. A certificate whose contents can be edited afterwards
 -- proves nothing: the whole point is that the record of what was checked
--- survives the wish that it had said something else. Rules below reject UPDATE
--- and DELETE outright, so a mistaken migration, a console session, or a future
+-- survives the wish that it had said something else. Triggers below raise on
+-- UPDATE and DELETE, so a mistaken migration, a console session, or a future
 -- repository method cannot quietly rewrite history.
+--
+-- Triggers rather than rules, for two reasons. A `DO INSTEAD NOTHING` rule
+-- makes a mutation silently succeed-as-no-op, which tells a caller nothing;
+-- raising says plainly that the write was refused. And PostgreSQL refuses
+-- `INSERT ... ON CONFLICT` on any table carrying an INSERT or UPDATE rule,
+-- which would have cost us the idempotent registration that content addressing
+-- exists to give.
 --
 -- Definitions are content-addressed. Two authors who write the same definition
 -- produce the same canonical bytes and therefore the same digest, so
@@ -113,29 +120,31 @@ CREATE INDEX assurance_obligations_outstanding_idx
 
 -- Append-only, enforced here rather than trusted to callers.
 --
--- Rules are used rather than triggers so the refusal happens before any row is
--- touched, and so it applies to every path into the table.
-CREATE RULE ir_definitions_are_immutable AS
-    ON UPDATE TO ir_definitions DO INSTEAD NOTHING;
-CREATE RULE ir_definitions_are_permanent AS
-    ON DELETE TO ir_definitions DO INSTEAD NOTHING;
+-- A row-level BEFORE trigger, so a statement that matches nothing is not an
+-- error while a statement that would actually change a stored record is.
+CREATE FUNCTION capsulet_refuse_mutation() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'relation % is append-only; % was refused', TG_TABLE_NAME, TG_OP
+        USING ERRCODE = 'restrict_violation';
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE RULE ir_definition_versions_are_immutable AS
-    ON UPDATE TO ir_definition_versions DO INSTEAD NOTHING;
-CREATE RULE ir_definition_versions_are_permanent AS
-    ON DELETE TO ir_definition_versions DO INSTEAD NOTHING;
+CREATE TRIGGER ir_definitions_are_append_only
+    BEFORE UPDATE OR DELETE ON ir_definitions
+    FOR EACH ROW EXECUTE FUNCTION capsulet_refuse_mutation();
 
-CREATE RULE assurance_evidence_is_immutable AS
-    ON UPDATE TO assurance_evidence DO INSTEAD NOTHING;
-CREATE RULE assurance_evidence_is_permanent AS
-    ON DELETE TO assurance_evidence DO INSTEAD NOTHING;
+CREATE TRIGGER ir_definition_versions_are_append_only
+    BEFORE UPDATE OR DELETE ON ir_definition_versions
+    FOR EACH ROW EXECUTE FUNCTION capsulet_refuse_mutation();
 
-CREATE RULE assurance_certificates_are_immutable AS
-    ON UPDATE TO assurance_certificates DO INSTEAD NOTHING;
-CREATE RULE assurance_certificates_are_permanent AS
-    ON DELETE TO assurance_certificates DO INSTEAD NOTHING;
+CREATE TRIGGER assurance_evidence_is_append_only
+    BEFORE UPDATE OR DELETE ON assurance_evidence
+    FOR EACH ROW EXECUTE FUNCTION capsulet_refuse_mutation();
 
-CREATE RULE assurance_obligations_are_immutable AS
-    ON UPDATE TO assurance_obligations DO INSTEAD NOTHING;
-CREATE RULE assurance_obligations_are_permanent AS
-    ON DELETE TO assurance_obligations DO INSTEAD NOTHING;
+CREATE TRIGGER assurance_certificates_are_append_only
+    BEFORE UPDATE OR DELETE ON assurance_certificates
+    FOR EACH ROW EXECUTE FUNCTION capsulet_refuse_mutation();
+
+CREATE TRIGGER assurance_obligations_are_append_only
+    BEFORE UPDATE OR DELETE ON assurance_obligations
+    FOR EACH ROW EXECUTE FUNCTION capsulet_refuse_mutation();

@@ -102,10 +102,15 @@ else.
 
 | Table | Holds | Immutability |
 | --- | --- | --- |
-| `ir_definitions`, `ir_definition_versions` | Definition identity and the exact canonical bytes of each version. | UPDATE and DELETE refused by database rule. |
-| `assurance_certificates` | Certificate bytes plus the queryable columns (verdict, mode, digests). | UPDATE and DELETE refused by database rule. |
-| `assurance_obligations` | A projection of the obligations, so outstanding work is a query. | UPDATE and DELETE refused by database rule. |
-| `assurance_evidence` | Evidence metadata and its object-storage key. | UPDATE and DELETE refused by database rule. |
+| `ir_definitions`, `ir_definition_versions` | Definition identity and the exact canonical bytes of each version. | UPDATE and DELETE raise in the database. |
+| `assurance_certificates` | Certificate bytes plus the queryable columns (verdict, mode, digests). | UPDATE and DELETE raise in the database. |
+| `assurance_obligations` | A projection of the obligations, so outstanding work is a query. | UPDATE and DELETE raise in the database. |
+| `assurance_evidence` | Evidence metadata and its object-storage key. | UPDATE and DELETE raise in the database. |
+
+Immutability is a row-level trigger that raises `restrict_violation`, not a `DO INSTEAD NOTHING`
+rule. A rule would make a rejected mutation look like a successful no-op, and PostgreSQL also
+refuses `INSERT ... ON CONFLICT` on a table carrying one, which would cost the idempotent
+registration that content addressing exists to provide.
 
 Evidence bytes live in object storage under `assurance/evidence/<digest>`, so the key cannot point
 at bytes that are not what it names, and the metadata store does not become a blob store.

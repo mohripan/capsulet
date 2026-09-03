@@ -182,17 +182,29 @@ async fn a_definition_version_cannot_be_updated_or_deleted() {
         .await
         .expect("register the definition");
 
-    // The database refuses both, whatever the caller intended.
-    sqlx::query("UPDATE ir_definition_versions SET canonical_bytes = 'tampered' WHERE digest = $1")
+    // The database refuses both, loudly. A silent no-op would let a caller
+    // believe the edit landed.
+    let update = sqlx::query(
+        "UPDATE ir_definition_versions SET canonical_bytes = 'tampered' WHERE digest = $1",
+    )
+    .bind(digest.to_string())
+    .execute(store.pool())
+    .await
+    .expect_err("an append-only table refuses an update");
+    assert!(
+        update.to_string().contains("append-only"),
+        "the refusal should say why: {update}"
+    );
+
+    let delete = sqlx::query("DELETE FROM ir_definition_versions WHERE digest = $1")
         .bind(digest.to_string())
         .execute(store.pool())
         .await
-        .expect("the statement runs");
-    sqlx::query("DELETE FROM ir_definition_versions WHERE digest = $1")
-        .bind(digest.to_string())
-        .execute(store.pool())
-        .await
-        .expect("the statement runs");
+        .expect_err("an append-only table refuses a delete");
+    assert!(
+        delete.to_string().contains("append-only"),
+        "the refusal should say why: {delete}"
+    );
 
     let stored = store
         .get_ir_definition_version(&tenant, &project, &digest.to_string())
@@ -220,16 +232,18 @@ async fn a_certificate_cannot_be_rewritten_to_a_better_verdict() {
         .await
         .expect("record the certificate");
 
+    // Rewriting a verdict to a better one is exactly the edit this table exists
+    // to refuse, and it is refused with an error rather than quietly dropped.
     sqlx::query("UPDATE assurance_certificates SET verdict = 'accepted' WHERE id = $1")
         .bind(&certificate_id)
         .execute(store.pool())
         .await
-        .expect("the statement runs");
+        .expect_err("an append-only table refuses an update");
     sqlx::query("DELETE FROM assurance_certificates WHERE id = $1")
         .bind(&certificate_id)
         .execute(store.pool())
         .await
-        .expect("the statement runs");
+        .expect_err("an append-only table refuses a delete");
 
     let stored = store
         .get_assurance_certificate(&tenant, &project, &certificate_id)
