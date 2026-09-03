@@ -62,6 +62,21 @@ pub(crate) enum ApiError {
     ArtifactObjectNotFound(String),
     #[error("proposer unavailable: {0}")]
     Proposer(String),
+    #[error("ir definition version not found: {0}")]
+    IrDefinitionNotFound(String),
+    #[error("assurance certificate not found: {0}")]
+    AssuranceCertificateNotFound(String),
+    #[error("cited evidence is no longer retrievable: {0}")]
+    AssuranceEvidenceMissing(String),
+    /// A definition that did not pass structural admission. The rule and its
+    /// owning subsystem travel with the refusal, because the caller has to fix
+    /// something specific.
+    #[error("definition refused by structural admission [{code}, owned by {owner}]: {detail}")]
+    AdmissionRefused {
+        code: String,
+        owner: String,
+        detail: String,
+    },
     #[error("object storage error: {0}")]
     ObjectStore(String),
     #[error("store error: {0}")]
@@ -105,7 +120,11 @@ impl ApiError {
             | Self::RunNotFound(_)
             | Self::RunLogsNotFound(_)
             | Self::ArtifactNotFound(_)
-            | Self::ArtifactObjectNotFound(_) => StatusCode::NOT_FOUND,
+            | Self::ArtifactObjectNotFound(_)
+            | Self::IrDefinitionNotFound(_)
+            | Self::AssuranceCertificateNotFound(_)
+            | Self::AssuranceEvidenceMissing(_) => StatusCode::NOT_FOUND,
+            Self::AdmissionRefused { .. } => StatusCode::UNPROCESSABLE_ENTITY,
             Self::AdmissionUnavailable(_) | Self::Proposer(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::MissingEndpointContract(_) | Self::Store(_) | Self::ObjectStore(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -141,6 +160,10 @@ impl ApiError {
             Self::RunLogsNotFound(_) => "job_run_logs_not_found",
             Self::ArtifactNotFound(_) => "job_artifact_not_found",
             Self::ArtifactObjectNotFound(_) => "job_artifact_object_not_found",
+            Self::IrDefinitionNotFound(_) => "ir_definition_not_found",
+            Self::AssuranceCertificateNotFound(_) => "assurance_certificate_not_found",
+            Self::AssuranceEvidenceMissing(_) => "assurance_evidence_missing",
+            Self::AdmissionRefused { .. } => "admission_refused",
             Self::ObjectStore(_) => "object_store_error",
             Self::Store(_) => "store_error",
         }

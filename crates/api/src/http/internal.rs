@@ -272,6 +272,26 @@ where
             get(crate::reasoning::list_certificates),
         )
         .route_operations(
+            &["registerIrDefinition", "listIrDefinitions"],
+            post(crate::assurance::register_definition).get(crate::assurance::list_definitions),
+        )
+        .route_operations(
+            &["getIrDefinitionVersion"],
+            get(crate::assurance::get_definition_version),
+        )
+        .route_operations(
+            &["listAssuranceCertificates"],
+            get(crate::assurance::list_certificates),
+        )
+        .route_operations(
+            &["getAssuranceCertificate"],
+            get(crate::assurance::get_certificate),
+        )
+        .route_operations(
+            &["getAssuranceCertificateBundle"],
+            get(crate::assurance::get_certificate_bundle),
+        )
+        .route_operations(
             &["listMemorySources", "createMemorySource"],
             post(crate::memory::create_source).get(crate::memory::list_sources),
         )

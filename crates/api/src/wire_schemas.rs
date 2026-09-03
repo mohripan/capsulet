@@ -6,6 +6,19 @@ fn serialize<T: utoipa::PartialSchema>() -> Value {
 
 fn alias_schema(name: &str) -> Option<Value> {
     Some(match name {
+        "RegisterDefinitionRequest" => serialize::<crate::assurance::RegisterDefinitionRequest>(),
+        "RegisterDefinitionResponse" => serialize::<crate::assurance::RegisterDefinitionResponse>(),
+        "DefinitionVersionResponse" => serialize::<crate::assurance::DefinitionVersionResponse>(),
+        "ListDefinitionVersionsResponse" => {
+            serialize::<crate::assurance::ListDefinitionVersionsResponse>()
+        }
+        "AssuranceCertificateResponse" => {
+            serialize::<crate::assurance::AssuranceCertificateResponse>()
+        }
+        "ListAssuranceCertificatesResponse" => {
+            serialize::<crate::assurance::ListAssuranceCertificatesResponse>()
+        }
+        "CertificateBundleResponse" => serialize::<crate::assurance::CertificateBundleResponse>(),
         "CreateMemorySourceRequest" => serialize::<crate::memory::CreateSourceRequest>(),
         "MemorySourceResponse" => serialize::<crate::memory::SourceResponse>(),
         "CreateMemoryEvidenceRequest" => serialize::<crate::memory::CreateEvidenceRequest>(),

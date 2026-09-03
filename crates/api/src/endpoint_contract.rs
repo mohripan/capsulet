@@ -435,6 +435,12 @@ macro_rules! required_permission {
     ("workflows:operate") => {
         RequiredPermission::WorkflowsOperate
     };
+    ("memory:read") => {
+        RequiredPermission::MemoryRead
+    };
+    ("memory:write") => {
+        RequiredPermission::MemoryWrite
+    };
     ("automations:read") => {
         RequiredPermission::AutomationsRead
     };
@@ -986,6 +992,72 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         Some("AskRequest"),
         "CertificateResponse",
+        "200"
+    ),
+    endpoint!(
+        "POST",
+        "/v1/ir/definitions",
+        "registerIrDefinition",
+        "memory:write",
+        true,
+        true,
+        Some("RegisterDefinitionRequest"),
+        "RegisterDefinitionResponse",
+        "201"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/ir/definitions",
+        "listIrDefinitions",
+        "memory:read",
+        true,
+        true,
+        None,
+        "ListDefinitionVersionsResponse",
+        "200"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/ir/definitions/{digest}",
+        "getIrDefinitionVersion",
+        "memory:read",
+        true,
+        true,
+        None,
+        "DefinitionVersionResponse",
+        "200"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/assurance/certificates",
+        "listAssuranceCertificates",
+        "memory:read",
+        true,
+        true,
+        None,
+        "ListAssuranceCertificatesResponse",
+        "200"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/assurance/certificates/{id}",
+        "getAssuranceCertificate",
+        "memory:read",
+        true,
+        true,
+        None,
+        "AssuranceCertificateResponse",
+        "200"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/assurance/certificates/{id}/bundle",
+        "getAssuranceCertificateBundle",
+        "memory:read",
+        true,
+        true,
+        None,
+        "CertificateBundleResponse",
         "200"
     ),
     endpoint!(

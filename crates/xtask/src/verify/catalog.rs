@@ -259,17 +259,30 @@ pub(crate) fn gates() -> Vec<Gate> {
             &["cargo", "docker"],
             1_200,
             &[Full],
-            vec![command(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "capsulet-postgres",
-                    "--test",
-                    "postgres_integration",
-                    "--locked",
-                ],
-            )],
+            vec![
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-postgres",
+                        "--test",
+                        "postgres_integration",
+                        "--locked",
+                    ],
+                ),
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-postgres",
+                        "--test",
+                        "ir_and_assurance",
+                        "--locked",
+                    ],
+                ),
+            ],
         ),
         gate(
             "migrations",

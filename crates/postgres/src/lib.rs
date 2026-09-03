@@ -7,11 +7,13 @@ use thiserror::Error;
 
 mod agents;
 mod artifacts;
+mod assurance;
 mod audit;
 mod automations;
 mod certificates;
 mod graphs;
 mod ingestion;
+mod ir_definitions;
 mod job_definitions;
 mod job_runs;
 mod memory;
@@ -27,8 +29,10 @@ mod workflow_runs;
 mod workflows;
 
 pub use artifacts::UpstreamArtifact;
+pub use assurance::{EvidenceLocation, StoredCertificate};
 pub use audit::AuditEvent;
 pub use certificates::CertificateRecord;
+pub use ir_definitions::IrDefinitionVersion;
 pub use projects::{NewProjectMembership, ProjectMembershipRecord, ProjectRecord};
 pub use retention::RetentionCandidate;
 pub use service_accounts::{NewServiceAccount, ServiceAccountRecord};

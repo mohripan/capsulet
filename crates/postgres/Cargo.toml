@@ -13,6 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 async-trait.workspace = true
 capsulet-core = { path = "../core" }
+capsulet-ir = { path = "../ir" }
 capsulet-kernel = { path = "../kernel" }
 capsulet-application = { path = "../application" }
 sqlx.workspace = true
@@ -22,6 +23,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+capsulet-kernel = { path = "../kernel" }
 
 [lints]
 workspace = true

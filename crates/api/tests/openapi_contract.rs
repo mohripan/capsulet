@@ -33,7 +33,7 @@ fn generated_openapi_should_match_every_runtime_endpoint() {
             .map(|(_, path)| path)
             .collect::<BTreeSet<_>>()
             .len(),
-        90
+        95
     );
 }
 

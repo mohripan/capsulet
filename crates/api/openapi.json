@@ -217,6 +217,40 @@
         ],
         "type": "object"
       },
+      "AssuranceCertificateResponse": {
+        "description": "One stored certificate.",
+        "properties": {
+          "canonical_bytes": {
+            "type": "string"
+          },
+          "definition_digest": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "description": "The mode the run was decided under, because `unverified` under observe\nand `unverified` under enforce are different statements.",
+            "type": "string"
+          },
+          "replay_digest": {
+            "type": "string"
+          },
+          "verdict": {
+            "description": "The assurance verdict. Never inferred from execution status.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "definition_digest",
+          "verdict",
+          "mode",
+          "replay_digest",
+          "canonical_bytes"
+        ],
+        "type": "object"
+      },
       "AuditEventResponse": {
         "properties": {
           "created_at": {
@@ -449,6 +483,19 @@
           "residuals",
           "errors",
           "replay_digest"
+        ],
+        "type": "object"
+      },
+      "CertificateBundleResponse": {
+        "description": "A certificate with every byte it cites.",
+        "properties": {
+          "bundle": {
+            "description": "The bundle's canonical bytes, ready to hand to `capsulet-replay`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle"
         ],
         "type": "object"
       },
@@ -1661,6 +1708,39 @@
         ],
         "type": "object"
       },
+      "DefinitionVersionResponse": {
+        "description": "One stored definition version.",
+        "properties": {
+          "canonical_bytes": {
+            "description": "The exact bytes that were digested, so a reader can check the digest\nrather than trust it.",
+            "type": "string"
+          },
+          "definition_id": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "name",
+          "version",
+          "digest",
+          "schema_version",
+          "canonical_bytes"
+        ],
+        "type": "object"
+      },
       "DischargedStep": {
         "additionalProperties": false,
         "properties": {
@@ -2441,6 +2521,21 @@
         ],
         "type": "object"
       },
+      "ListAssuranceCertificatesResponse": {
+        "description": "A page of certificates.",
+        "properties": {
+          "certificates": {
+            "items": {
+              "$ref": "#/components/schemas/AssuranceCertificateResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "certificates"
+        ],
+        "type": "object"
+      },
       "ListAuditEventsResponse": {
         "properties": {
           "audit_events": {
@@ -2527,6 +2622,21 @@
         },
         "required": [
           "conflicts"
+        ],
+        "type": "object"
+      },
+      "ListDefinitionVersionsResponse": {
+        "description": "A page of definition versions.",
+        "properties": {
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/DefinitionVersionResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
         ],
         "type": "object"
       },
@@ -3476,6 +3586,52 @@
           "quote",
           "needs_interpretation",
           "rationale"
+        ],
+        "type": "object"
+      },
+      "RegisterDefinitionRequest": {
+        "description": "A definition offered for registration.",
+        "properties": {
+          "definition": {
+            "description": "The definition itself, in the IR's own shape.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "definition"
+        ],
+        "type": "object"
+      },
+      "RegisterDefinitionResponse": {
+        "description": "What registration recorded.",
+        "properties": {
+          "definition_id": {
+            "type": "string"
+          },
+          "digest": {
+            "description": "The digest of the canonical bytes: this version's identity.",
+            "type": "string"
+          },
+          "rules_applied": {
+            "description": "The structural rules that were applied before it was accepted.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "version",
+          "digest",
+          "schema_version",
+          "rules_applied"
         ],
         "type": "object"
       },
@@ -4922,6 +5078,190 @@
         "summary": "start agent run",
         "x-capsulet-project-context": true,
         "x-capsulet-required-scope": "system:write",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/assurance/certificates": {
+      "get": {
+        "operationId": "listAssuranceCertificates",
+        "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAssuranceCertificatesResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "list assurance certificates",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/assurance/certificates/{id}": {
+      "get": {
+        "operationId": "getAssuranceCertificate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssuranceCertificateResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "get assurance certificate",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/assurance/certificates/{id}/bundle": {
+      "get": {
+        "operationId": "getAssuranceCertificateBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateBundleResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "get assurance certificate bundle",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:read",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6504,6 +6844,190 @@
         "summary": "get ingestion run",
         "x-capsulet-project-context": true,
         "x-capsulet-required-scope": "system:read",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/ir/definitions": {
+      "get": {
+        "operationId": "listIrDefinitions",
+        "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListDefinitionVersionsResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "list ir definitions",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-stability": "experimental"
+      },
+      "post": {
+        "operationId": "registerIrDefinition",
+        "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDefinitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "register ir definition",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/ir/definitions/{digest}": {
+      "get": {
+        "operationId": "getIrDefinitionVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digest",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefinitionVersionResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "get ir definition version",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:read",
         "x-capsulet-stability": "experimental"
       }
     },

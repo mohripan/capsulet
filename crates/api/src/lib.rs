@@ -1,5 +1,6 @@
 pub mod runtime;
 
+mod assurance;
 mod auth;
 
 mod automations;

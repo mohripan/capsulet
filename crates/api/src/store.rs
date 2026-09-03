@@ -15,10 +15,13 @@ use capsulet_core::{
     SourceId, SubgraphEdge, SummaryTrace, WorkflowDefinition, WorkflowId, WorkflowRun,
     WorkflowRunId, WorkflowStepRun,
 };
+use capsulet_ir::admission::AdmissionRecord;
+use capsulet_ir::correctness::certificate::Certificate as AssuranceCertificate;
+use capsulet_ir::definition::Definition;
 use capsulet_postgres::{
-    AdmissionSnapshot, AuditEvent, CertificateRecord, NewProjectMembership, NewServiceAccount,
-    PostgresStore, PostgresStoreError, ProjectMembershipRecord, ProjectRecord,
-    ServiceAccountRecord, TriggerEvent,
+    AdmissionSnapshot, AuditEvent, CertificateRecord, EvidenceLocation, IrDefinitionVersion,
+    NewProjectMembership, NewServiceAccount, PostgresStore, PostgresStoreError,
+    ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, StoredCertificate, TriggerEvent,
 };
 
 /// Storage operations required by the HTTP API.
@@ -194,6 +197,68 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         _source_id: &SourceId,
         _content_hash: &str,
     ) -> Result<Option<SourceContent>, Self::Error> {
+        Ok(None)
+    }
+    /// Registers an admitted IR definition version and returns its digest.
+    ///
+    /// Default implementations return nothing, because a store that does not
+    /// implement the correctness plane should say so by having nothing to show
+    /// rather than by pretending a definition was stored.
+    async fn insert_ir_definition_version(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _definition: &Definition,
+        _admission: &AdmissionRecord,
+    ) -> Result<String, Self::Error> {
+        Ok(String::new())
+    }
+    async fn list_ir_definition_versions(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _limit: i64,
+    ) -> Result<Vec<IrDefinitionVersion>, Self::Error> {
+        Ok(Vec::new())
+    }
+    async fn get_ir_definition_version(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _digest: &str,
+    ) -> Result<Option<IrDefinitionVersion>, Self::Error> {
+        Ok(None)
+    }
+    async fn insert_assurance_certificate(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _certificate: &AssuranceCertificate,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn list_assurance_certificates(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _limit: i64,
+    ) -> Result<Vec<StoredCertificate>, Self::Error> {
+        Ok(Vec::new())
+    }
+    async fn get_assurance_certificate(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _id: &str,
+    ) -> Result<Option<StoredCertificate>, Self::Error> {
+        Ok(None)
+    }
+    async fn get_assurance_evidence(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _digest: &str,
+    ) -> Result<Option<EvidenceLocation>, Self::Error> {
         Ok(None)
     }
     async fn insert_certificate(&self, _record: &CertificateRecord) -> Result<(), Self::Error> {
@@ -700,6 +765,78 @@ impl ApiStore for PostgresStore {
         content_hash: &str,
     ) -> Result<Option<SourceContent>, Self::Error> {
         self.find_memory_source_content(source_id, content_hash)
+            .await
+    }
+
+    async fn insert_ir_definition_version(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        definition: &Definition,
+        admission: &AdmissionRecord,
+    ) -> Result<String, Self::Error> {
+        self.insert_ir_definition_version(tenant_id, project_id, definition, admission)
+            .await
+            .map(|digest| digest.to_string())
+    }
+
+    async fn list_ir_definition_versions(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IrDefinitionVersion>, Self::Error> {
+        self.list_ir_definition_versions(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn get_ir_definition_version(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        digest: &str,
+    ) -> Result<Option<IrDefinitionVersion>, Self::Error> {
+        self.get_ir_definition_version(tenant_id, project_id, digest)
+            .await
+    }
+
+    async fn insert_assurance_certificate(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        certificate: &AssuranceCertificate,
+    ) -> Result<(), Self::Error> {
+        self.insert_assurance_certificate(tenant_id, project_id, certificate)
+            .await
+    }
+
+    async fn list_assurance_certificates(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<StoredCertificate>, Self::Error> {
+        self.list_assurance_certificates(tenant_id, project_id, limit)
+            .await
+    }
+
+    async fn get_assurance_certificate(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        id: &str,
+    ) -> Result<Option<StoredCertificate>, Self::Error> {
+        self.get_assurance_certificate(tenant_id, project_id, id)
+            .await
+    }
+
+    async fn get_assurance_evidence(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        digest: &str,
+    ) -> Result<Option<EvidenceLocation>, Self::Error> {
+        self.get_assurance_evidence(tenant_id, project_id, digest)
             .await
     }
 
