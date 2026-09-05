@@ -86,6 +86,9 @@ Checked by: `verify --gate ir` (`crates/runtime/tests/failure.rs`) and `verify -
 
 ## What is not claimed
 
+- Nothing outside the process can start a run yet. The API registers IR definition versions but has
+  no endpoint that creates a run of one, so today a run is created by `create_ir_run` from a test or
+  from another crate. The durable machinery below that point is complete; the way in is not.
 - Node execution and effect transports are not implemented. The deployed worker ships an executor
   that refuses every node with `verifier_unavailable`; providers arrive in M4.
 - Region entry and exit semantics beyond loop budgets are not implemented. A loop that stops for any

@@ -143,8 +143,13 @@ container verifier protocol, and the validator SDK. The `Executor` trait in
 `crates/graph-worker/src/execute.rs` is the seam they plug into, and its typed outcomes —
 `Performed`, `Failed`, `Uncertain` — are what the declared idempotency is matched against.
 
-Two things M3 left for later, deliberately:
+Three things M3 left for later, deliberately:
 
+- **No way in from outside the process.** The API registers IR definition versions but has no
+  endpoint that creates a run of one. Everything below that point is finished and gated; the entry
+  point is not, and adding one means an OpenAPI change, an SDK regeneration, and a dashboard view —
+  which is M5's surface, not M3's. Worth stating plainly rather than leaving a reader to discover
+  that a complete runtime has no door.
 - **The worker does not drive loop iterations.** Deciding when an iteration begins is
   region-execution semantics that needs a running body, so the chaos gate seeds the loop history
   rather than producing it. What is proven is that the history survives a restart, which is the
