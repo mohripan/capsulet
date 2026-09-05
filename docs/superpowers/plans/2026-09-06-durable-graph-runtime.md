@@ -105,11 +105,11 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/postgres/src/ir_runs.rs`, `crates/postgres/tests/ir_runs.rs`
 
-- [ ] Failing tests: two workers leasing concurrently get different runs; an expired lease is
+- [x] Failing tests: two workers leasing concurrently get different runs; an expired lease is
   reclaimable; a write from the old epoch after reclamation is refused; heartbeats extend a lease
   without changing the epoch.
-- [ ] `lease_next_run` using `FOR UPDATE SKIP LOCKED`, bumping the epoch on each new lease.
-- [ ] Every event append carries an epoch and is rejected when it is not the current one.
+- [x] `lease_next_run` using `FOR UPDATE SKIP LOCKED`, bumping the epoch on each new lease.
+- [x] Every event append carries an epoch and is rejected when it is not the current one.
 
 ### Task 4: The effect ledger and once-only semantics
 

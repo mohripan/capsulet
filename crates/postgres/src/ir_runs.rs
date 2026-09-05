@@ -272,6 +272,153 @@ impl PostgresStore {
         row.as_ref().map(row_to_run).transpose()
     }
 
+    /// Takes ownership of one unfinished run, bumping its fencing epoch.
+    ///
+    /// `FOR UPDATE SKIP LOCKED` so two workers asking at the same moment take
+    /// two different runs instead of queueing behind each other. The epoch is
+    /// bumped on every new lease, which is what makes the previous owner's
+    /// writes fail: it still names the old epoch, and no row matches.
+    ///
+    /// `tenant` restricts the fleet to one tenant's runs. `None` means the whole
+    /// installation, which is the usual deployment; a value is for running a
+    /// dedicated fleet, so one tenant's backlog cannot starve another's.
+    ///
+    /// A `waiting` run is leasable, because only the decision core can say
+    /// whether its wait is due, and saying so means folding the log. Until
+    /// waits carry a wake-up time, that means a waiting run is re-leased once
+    /// per polling interval.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the query fails.
+    pub async fn lease_next_ir_run(
+        &self,
+        worker_id: &str,
+        lease_seconds: i64,
+        tenant: Option<&str>,
+    ) -> Result<Option<IrRunRecord>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            WITH candidate AS (
+                SELECT tenant_id, project_id, id
+                FROM ir_runs
+                WHERE status IN ('queued', 'running', 'waiting')
+                  AND ($3::text IS NULL OR tenant_id = $3)
+                  AND (lease_expires_at IS NULL OR lease_expires_at <= now())
+                ORDER BY created_at, id
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            UPDATE ir_runs
+            SET lease_owner = $1,
+                lease_expires_at = now() + ($2 * interval '1 second'),
+                heartbeat_at = now(),
+                epoch = ir_runs.epoch + 1,
+                updated_at = now()
+            FROM candidate
+            WHERE ir_runs.tenant_id = candidate.tenant_id
+              AND ir_runs.project_id = candidate.project_id
+              AND ir_runs.id = candidate.id
+            RETURNING ir_runs.tenant_id, ir_runs.project_id, ir_runs.id,
+                      ir_runs.definition_digest, ir_runs.status, ir_runs.epoch,
+                      ir_runs.lease_owner, ir_runs.next_position
+            ",
+        )
+        .bind(worker_id)
+        .bind(lease_seconds)
+        .bind(tenant)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.as_ref().map(row_to_run).transpose()
+    }
+
+    /// Extends a lease this worker still holds, leaving the epoch alone.
+    ///
+    /// A heartbeat says "still alive", not "took over", so bumping the epoch
+    /// here would invalidate the holder's own in-flight writes.
+    ///
+    /// Returns whether the lease was still held under `epoch`. A `false` is the
+    /// worker's signal that it was reclaimed and must stop: whatever it does
+    /// next would be refused anyway, and stopping now is the difference between
+    /// noticing and finding out through a failed append.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the query fails.
+    pub async fn heartbeat_ir_run(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        run_id: &str,
+        worker_id: &str,
+        epoch: Epoch,
+        lease_seconds: i64,
+    ) -> Result<bool, PostgresStoreError> {
+        let epoch_value =
+            i64::try_from(epoch.0).map_err(|_| PostgresStoreError::Overflow("run epoch"))?;
+
+        let result = sqlx::query(
+            r"
+            UPDATE ir_runs
+            SET lease_expires_at = now() + ($6 * interval '1 second'),
+                heartbeat_at = now(),
+                updated_at = now()
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+              AND lease_owner = $4 AND epoch = $5
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(run_id)
+        .bind(worker_id)
+        .bind(epoch_value)
+        .bind(lease_seconds)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Gives a lease back so another worker can take the run immediately.
+    ///
+    /// The epoch is left where it is: releasing is not a handover, and the next
+    /// lease will bump it. Returns whether the lease was still held.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the query fails.
+    pub async fn release_ir_run_lease(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        run_id: &str,
+        worker_id: &str,
+        epoch: Epoch,
+    ) -> Result<bool, PostgresStoreError> {
+        let epoch_value =
+            i64::try_from(epoch.0).map_err(|_| PostgresStoreError::Overflow("run epoch"))?;
+
+        let result = sqlx::query(
+            r"
+            UPDATE ir_runs
+            SET lease_owner = NULL,
+                lease_expires_at = NULL,
+                updated_at = now()
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+              AND lease_owner = $4 AND epoch = $5
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(run_id)
+        .bind(worker_id)
+        .bind(epoch_value)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() == 1)
+    }
 }
 
 fn row_to_run(row: &sqlx::postgres::PgRow) -> Result<IrRunRecord, PostgresStoreError> {

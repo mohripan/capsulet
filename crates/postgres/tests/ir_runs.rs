@@ -80,6 +80,17 @@ async fn store() -> PostgresStore {
     store
 }
 
+/// Ages a lease out, standing in for the worker that held it dying.
+///
+/// A test that slept for the lease to expire would be a test nobody runs.
+async fn expire_lease(store: &PostgresStore, run_id: &str) {
+    sqlx::query("UPDATE ir_runs SET lease_expires_at = now() - interval '1 second' WHERE id = $1")
+        .bind(run_id)
+        .execute(store.pool())
+        .await
+        .expect("expire the lease");
+}
+
 /// A registered definition and a run of it, ready to append to.
 async fn run(store: &PostgresStore) -> (String, String, String, Digest) {
     let tenant = unique_id("tenant");
@@ -473,5 +484,292 @@ async fn stored_events_round_trip_to_the_events_that_were_written() {
         events.last().expect("the log is not empty"),
         &written,
         "what comes back is what went in, down to the idempotency key"
+    );
+}
+
+#[tokio::test]
+async fn two_workers_leasing_at_once_take_different_runs() {
+    let store = store().await;
+    let tenant = unique_id("tenant");
+    let project = unique_id("project");
+    let definition = definition(&unique_id("definition"));
+    let digest = store
+        .insert_ir_definition_version(&tenant, &project, &definition, &admission(&definition))
+        .await
+        .expect("register the definition");
+
+    let mut created = Vec::new();
+    for index in 0..2 {
+        let run_id = unique_id("run");
+        store
+            .create_ir_run(
+                &tenant,
+                &project,
+                &run_id,
+                &digest,
+                AssuranceMode::Enforce,
+                at(1_772_000_000_000 + index),
+            )
+            .await
+            .expect("create the run");
+        created.push(run_id);
+    }
+    created.sort();
+
+    // SKIP LOCKED is the point: the second worker steps over the row the first
+    // is taking instead of queueing behind it and then finding it gone.
+    let (first, second) = tokio::join!(
+        store.lease_next_ir_run("worker-a", 60, Some(&tenant)),
+        store.lease_next_ir_run("worker-b", 60, Some(&tenant)),
+    );
+    let first = first.expect("lease").expect("a run was available");
+    let second = second.expect("lease").expect("a run was available");
+
+    assert_ne!(first.id, second.id, "two workers took the same run");
+    let mut taken = vec![first.id.clone(), second.id.clone()];
+    taken.sort();
+    assert_eq!(taken, created);
+
+    // Each lease bumps the epoch, so no two owners ever share one.
+    assert_eq!(first.epoch, Epoch(1));
+    assert_eq!(second.epoch, Epoch(1));
+
+    assert!(
+        store
+            .lease_next_ir_run("worker-c", 60, Some(&tenant))
+            .await
+            .expect("lease")
+            .is_none(),
+        "a run under a live lease is not offered again"
+    );
+}
+
+#[tokio::test]
+async fn an_expired_lease_is_reclaimable_and_the_old_owner_is_fenced_out() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+
+    let first = store
+        .lease_next_ir_run("worker-before-crash", 60, Some(&tenant))
+        .await
+        .expect("lease")
+        .expect("the run was available");
+    assert_eq!(first.epoch, Epoch(1));
+
+    store
+        .append_ir_run_event(
+            &tenant,
+            &project,
+            &run_id,
+            first.epoch,
+            &RunEvent::Started {
+                by: id("worker-before-crash"),
+            },
+            at(1_772_000_000_001),
+        )
+        .await
+        .expect("the holder may append");
+
+    // The worker died without releasing. Expiry is what makes the run
+    // recoverable at all; without it a crash would strand it forever.
+    expire_lease(&store, &run_id).await;
+
+    let second = store
+        .lease_next_ir_run("worker-after-crash", 60, Some(&tenant))
+        .await
+        .expect("lease")
+        .expect("an expired lease is reclaimable");
+    assert_eq!(second.id, run_id);
+    assert_eq!(second.epoch, Epoch(2), "reclaiming bumps the epoch");
+    assert_eq!(second.lease_owner.as_deref(), Some("worker-after-crash"));
+
+    // The old worker wakes up and carries on where it left off. It must not be
+    // able to, and it must find out rather than corrupt the run silently.
+    let error = store
+        .append_ir_run_event(
+            &tenant,
+            &project,
+            &run_id,
+            first.epoch,
+            &RunEvent::Completed {
+                outputs: BTreeMap::new(),
+            },
+            at(1_772_000_000_002),
+        )
+        .await
+        .expect_err("the previous epoch is fenced out");
+    assert!(matches!(
+        error,
+        PostgresStoreError::EpochSuperseded {
+            attempted: 1,
+            current: 2,
+            ..
+        }
+    ));
+
+    store
+        .append_ir_run_event(
+            &tenant,
+            &project,
+            &run_id,
+            second.epoch,
+            &RunEvent::Completed {
+                outputs: BTreeMap::new(),
+            },
+            at(1_772_000_000_003),
+        )
+        .await
+        .expect("the new owner may append");
+}
+
+#[tokio::test]
+async fn a_heartbeat_extends_a_lease_without_changing_the_epoch() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+
+    let lease = store
+        .lease_next_ir_run("worker-a", 60, Some(&tenant))
+        .await
+        .expect("lease")
+        .expect("the run was available");
+
+    expire_lease(&store, &run_id).await;
+
+    assert!(
+        store
+            .heartbeat_ir_run(&tenant, &project, &run_id, "worker-a", lease.epoch, 120)
+            .await
+            .expect("heartbeat"),
+        "the holder is still the holder"
+    );
+
+    let after = store
+        .get_ir_run(&tenant, &project, &run_id)
+        .await
+        .expect("read the run")
+        .expect("the run exists");
+    assert_eq!(
+        after.epoch, lease.epoch,
+        "a heartbeat says still alive, not took over; bumping here would fence the holder out of \
+         its own writes"
+    );
+    assert!(
+        store
+            .lease_next_ir_run("worker-b", 60, Some(&tenant))
+            .await
+            .expect("lease")
+            .is_none(),
+        "the extended lease keeps the run out of the queue"
+    );
+
+    // The holder can still write under the epoch it was given.
+    store
+        .append_ir_run_event(
+            &tenant,
+            &project,
+            &run_id,
+            lease.epoch,
+            &RunEvent::Started { by: id("worker-a") },
+            at(1_772_000_000_001),
+        )
+        .await
+        .expect("the holder may append");
+}
+
+#[tokio::test]
+async fn a_superseded_worker_cannot_heartbeat_its_way_back() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+
+    let first = store
+        .lease_next_ir_run("worker-a", 60, Some(&tenant))
+        .await
+        .expect("lease")
+        .expect("the run was available");
+
+    expire_lease(&store, &run_id).await;
+    store
+        .lease_next_ir_run("worker-b", 60, Some(&tenant))
+        .await
+        .expect("lease")
+        .expect("an expired lease is reclaimable");
+
+    assert!(
+        !store
+            .heartbeat_ir_run(&tenant, &project, &run_id, "worker-a", first.epoch, 120)
+            .await
+            .expect("heartbeat"),
+        "a false heartbeat is how a superseded worker learns to stop, before its next append fails"
+    );
+}
+
+#[tokio::test]
+async fn releasing_a_lease_offers_the_run_again_without_waiting_for_expiry() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+
+    let lease = store
+        .lease_next_ir_run("worker-a", 600, Some(&tenant))
+        .await
+        .expect("lease")
+        .expect("the run was available");
+
+    assert!(
+        store
+            .release_ir_run_lease(&tenant, &project, &run_id, "worker-a", lease.epoch)
+            .await
+            .expect("release"),
+        "the holder may give a run back"
+    );
+    assert!(
+        !store
+            .release_ir_run_lease(&tenant, &project, &run_id, "worker-a", lease.epoch)
+            .await
+            .expect("release"),
+        "releasing twice is not a second release"
+    );
+
+    let second = store
+        .lease_next_ir_run("worker-b", 60, Some(&tenant))
+        .await
+        .expect("lease")
+        .expect("a released run is available at once");
+    assert_eq!(second.id, run_id);
+    assert_eq!(second.epoch, Epoch(2), "the next lease bumps the epoch");
+}
+
+#[tokio::test]
+async fn a_finished_run_is_never_leased_again() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+
+    let lease = store
+        .lease_next_ir_run("worker-a", 60, Some(&tenant))
+        .await
+        .expect("lease")
+        .expect("the run was available");
+    store
+        .append_ir_run_event(
+            &tenant,
+            &project,
+            &run_id,
+            lease.epoch,
+            &RunEvent::Completed {
+                outputs: BTreeMap::new(),
+            },
+            at(1_772_000_000_001),
+        )
+        .await
+        .expect("append");
+
+    expire_lease(&store, &run_id).await;
+
+    assert!(
+        store
+            .lease_next_ir_run("worker-b", 60, Some(&tenant))
+            .await
+            .expect("lease")
+            .is_none(),
+        "a completed run has nothing left to decide, so handing it to a worker would only spin"
     );
 }
