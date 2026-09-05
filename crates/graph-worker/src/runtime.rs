@@ -577,10 +577,20 @@ impl GraphWorker {
                             None => return Ok(false),
                         }
                     }
-                    Err(WaitError::NotWaiting | WaitError::NotDue { .. }) => {
-                        // Leave it for a later pass: the run may yet suspend on
-                        // something this answers, and the timer may yet be due.
+                    Err(WaitError::NotWaiting) => {
+                        // The run is not suspended yet. A webhook can arrive
+                        // before the run reaches the wait it answers, so this
+                        // one stays in the inbox. It costs nothing: a running
+                        // run is work whether or not its inbox has anything.
                         continue;
+                    }
+                    Err(WaitError::NotDue { .. }) => {
+                        // A scheduler that fired early. Answering it "not yet"
+                        // and keeping it would leave the run permanently
+                        // leasable and the worker spinning on it; the wake-up
+                        // comes from the stored wake time, which is the durable
+                        // mechanism and does not need this signal.
+                        SignalOutcome::Refused
                     }
                     Err(_) => SignalOutcome::Refused,
                 }

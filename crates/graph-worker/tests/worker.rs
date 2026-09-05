@@ -730,3 +730,76 @@ async fn a_completed_run_certifies_from_its_log_and_the_certificate_replays() {
         "the certificate points at the exact bytes the run executed"
     );
 }
+
+#[tokio::test]
+async fn a_timer_signal_that_fired_early_does_not_leave_the_worker_spinning() {
+    let store = store().await;
+    let definition = pipeline_definition(&fixture_id("definition"));
+    let (tenant, project, run_id) = seeded_run(&store, &definition).await;
+
+    seed_events(
+        &store,
+        &tenant,
+        &project,
+        &run_id,
+        vec![
+            RunEvent::Started { by: id("setup") },
+            wait::suspend(Wait::Timer {
+                until: RecordedTime(NOW + 60_000),
+            }),
+        ],
+    )
+    .await;
+
+    // A scheduler fires the timer a minute early.
+    store
+        .deliver_ir_run_signal(
+            &tenant,
+            &project,
+            &run_id,
+            &wait::Signal::timer(id("scheduler")),
+        )
+        .await
+        .expect("deliver");
+
+    let executor = Arc::new(ScriptedExecutor::new());
+    let clock = Arc::new(TestClock::at(NOW));
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
+
+    // The pending signal makes the run leasable, and the worker answers it
+    // "not yet". If it left the signal pending the run would stay leasable and
+    // the worker would take it again, and again, for the whole minute.
+    assert_eq!(
+        worker.advance_one().await.expect("advance"),
+        Progress::Suspended
+    );
+    assert!(
+        store
+            .pending_ir_run_signals(&tenant, &project, &run_id)
+            .await
+            .expect("read the inbox")
+            .is_empty(),
+        "the early signal was answered rather than left to be re-answered forever"
+    );
+    assert_eq!(
+        worker.advance_one().await.expect("advance"),
+        Progress::NothingToDo,
+        "and the run went back to waiting for its wake-up time"
+    );
+
+    // Which still arrives.
+    clock.advance_to(NOW + 60_000);
+    assert_eq!(
+        worker.advance_one().await.expect("advance"),
+        Progress::Ended,
+        "the stored wake time is what resumes it, not the signal"
+    );
+    assert_eq!(
+        store
+            .load_ir_run_state(&tenant, &project, &run_id)
+            .await
+            .expect("folds")
+            .status(),
+        RunStatus::Completed
+    );
+}
