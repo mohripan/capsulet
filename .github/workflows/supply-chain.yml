@@ -97,14 +97,25 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           load: true
 
-      - name: Scan image
+      # Two scans, because reporting and gating want different thresholds.
+      # This one reports everything, fixed or not, and never fails: hiding an
+      # advisory nobody can fix yet would be worse than not gating on it.
+      - name: Report image vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           format: sarif
           output: trivy-${{ matrix.name }}.sarif
-          severity: CRITICAL,HIGH
-          exit-code: "1"
+          exit-code: "0"
+
+      # And this one fails the build, under the checked-in policy in
+      # trivy.yaml: a fixable HIGH or CRITICAL is a defect one rebuild away
+      # from being gone, so it is worth stopping for.
+      - name: Gate on fixable image vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          trivy-config: trivy.yaml
 
       - name: Upload Trivy SARIF
         if: always()

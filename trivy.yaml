@@ -1,0 +1,35 @@
+# Container image scanning policy.
+#
+# Checked in rather than written inline in a workflow, so the policy is
+# reviewable, is the same everywhere, and changes to it show up in a diff.
+#
+# `ignore-unfixed` is the substantive decision here, and it is not a way of
+# looking clean. A Debian base image always carries a tail of HIGH and CRITICAL
+# advisories that Debian has marked `affected`, `fix_deferred`, or
+# `will_not_fix` — no upstream fix exists, so no rebuild, no version bump, and
+# no configuration change removes them. Failing the build on those makes the
+# scan permanently red and therefore unread, which costs more than it buys.
+#
+# What is left is exactly the actionable set: a vulnerability with a published
+# fix that this image has not picked up. That is a real defect in the image, it
+# is one `docker build` away from being gone, and it fails the build.
+#
+# The counterweight is that unfixed findings must still be visible. The workflow
+# writes the full report — every severity, fixed or not — to GitHub code
+# scanning, so nothing is hidden; only the build-failing threshold is narrowed.
+#
+# Reviewed by: platform. Review by: 2027-03-01.
+
+scan:
+  scanners:
+    - vuln
+    - secret
+
+severity:
+  - CRITICAL
+  - HIGH
+
+vulnerability:
+  ignore-unfixed: true
+
+exit-code: 1

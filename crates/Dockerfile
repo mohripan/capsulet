@@ -19,7 +19,12 @@ FROM debian:bookworm-slim
 ARG BIN
 ENV CAPSULET_BIN="${BIN}"
 
+# `upgrade` before `install`, so a rebuild picks up fixes Debian published
+# after this tag was cut. Without it only the named packages are current while
+# the rest of the base image stays frozen, which is how an image accumulates
+# fixable advisories although its Dockerfile never changed.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends ca-certificates curl python3 python3-pip \
     && groupadd --gid 10001 capsulet \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin capsulet \

@@ -188,6 +188,35 @@ fn every_silenced_advisory_is_owned_and_unexpired() {
     }
 }
 
+/// The container scanning policy is an exception too, and expires like one.
+///
+/// `ignore-unfixed` narrows what fails the build. That is defensible while the
+/// unfixed set is genuinely unfixable, and indefensible once it is not, so it
+/// carries an owner and a review date in the same document as every silenced
+/// advisory — and this fails when the policy is set without one.
+#[test]
+fn the_container_scan_policy_is_owned_and_unexpired() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let policy = std::fs::read_to_string(root.join("trivy.yaml"))
+        .expect("the container scanning policy is readable");
+    if !policy.contains("ignore-unfixed: true") {
+        return;
+    }
+
+    let document = std::fs::read_to_string(root.join("docs/contracts/security-exceptions.md"))
+        .expect("the exceptions document is readable");
+    let row = document
+        .lines()
+        .find(|line| line.starts_with('|') && line.contains("`ignore-unfixed` in `trivy.yaml`"))
+        .expect("`ignore-unfixed` is set but not documented as an owned exception");
+
+    let review = review_date(row).expect("the container scan exception records no review date");
+    assert!(
+        review.as_str() > &today(),
+        "the container scan exception was due for review on {review}"
+    );
+}
+
 /// Advisory identifiers listed in the audit configuration's ignore list.
 fn silenced(audit: &str) -> Vec<String> {
     audit
