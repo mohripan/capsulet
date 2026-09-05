@@ -161,10 +161,10 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/runtime/src/certify.rs`, tests
 
-- [ ] Failing tests: a completed run's certificate replays offline; a run killed and resumed
+- [x] Failing tests: a completed run's certificate replays offline; a run killed and resumed
   produces the same certificate as one that ran straight through; a certificate names every loop
   stop reason the log recorded.
-- [ ] Assembly reads the event log and hands M2's `certify` its inputs.
+- [x] Assembly reads the event log and hands M2's `certify` its inputs.
 
 ### Task 10: Convergence
 

@@ -19,8 +19,8 @@ use capsulet_runtime::event::Wait;
 use capsulet_runtime::{Epoch, RunEvent, RunFailure, RunStatus, wait};
 
 use support::{
-    NOW, ScriptedExecutor, TestClock, effect_definition, fixture_id, id, pipeline_definition,
-    reversible_effect_definition, seeded_run, store,
+    NOW, ScriptedExecutor, TestClock, admission, effect_definition, fixture_id, id,
+    pipeline_definition, reversible_effect_definition, seeded_run, store,
 };
 
 fn graph_worker(
@@ -678,5 +678,70 @@ async fn a_node_left_running_by_a_dead_worker_times_out_rather_than_hanging() {
     assert!(
         !executor.nodes_run().contains(&"normalize".to_string()),
         "and it was not started a second time on top of the first"
+    );
+}
+
+#[tokio::test]
+async fn a_completed_run_certifies_from_its_log_and_the_certificate_replays() {
+    let store = store().await;
+    let definition = pipeline_definition(&fixture_id("definition"));
+    let (tenant, project, run_id) = seeded_run(&store, &definition).await;
+
+    let executor = Arc::new(ScriptedExecutor::new());
+    let clock = Arc::new(TestClock::at(NOW));
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
+    assert_eq!(
+        worker.advance_one().await.expect("advance"),
+        Progress::Ended
+    );
+
+    // Everything the certificate says about the run comes from the log, read
+    // back from storage rather than from anything the worker kept.
+    let events = store
+        .load_ir_run_events(&tenant, &project, &run_id)
+        .await
+        .expect("read the log");
+    let state = capsulet_runtime::RunState::fold(&events).expect("folds");
+    let evidence = capsulet_runtime::certify::evidence_of(
+        &definition,
+        admission(&definition),
+        &id("certified-run"),
+        &state,
+        &events,
+        vec![],
+    );
+
+    let certificate = capsulet_kernel::workflow::certify(capsulet_kernel::workflow::Assembly {
+        id: id("certificate-1"),
+        admission: evidence.admission.clone(),
+        mode: definition.assurance,
+        subject: evidence.subject.clone(),
+        policy_version: "1".to_string(),
+        contracts: vec![],
+        verifiers: vec![],
+        evidence: vec![],
+        obligations: vec![],
+        loops: evidence.loops.clone(),
+    })
+    .expect("the assembly seals");
+
+    // Offline: no database, no network, nothing but the certificate and the
+    // evidence it carries.
+    let outcome =
+        capsulet_kernel::replay::replay(&certificate, &capsulet_kernel::replay::EvidenceMap::new());
+    assert!(
+        matches!(
+            outcome,
+            capsulet_kernel::replay::ReplayOutcome::Reproduced { .. }
+        ),
+        "a certificate assembled from the log has to replay, or it is a record of nothing: \
+         {outcome:?}"
+    );
+
+    assert_eq!(certificate.body().subject.run, Some(id("certified-run")));
+    assert_eq!(
+        certificate.body().subject.definition,
+        *state.definition(),
+        "the certificate points at the exact bytes the run executed"
     );
 }

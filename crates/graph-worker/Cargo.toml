@@ -26,6 +26,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+capsulet-kernel = { path = "../kernel" }
 sqlx.workspace = true
 
 [lints]

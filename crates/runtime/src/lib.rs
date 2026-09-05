@@ -16,6 +16,7 @@
 //! Purity is enforced by `tests/purity.rs` rather than trusted, exactly as in
 //! [`capsulet_ir`].
 
+pub mod certify;
 pub mod decide;
 pub mod effect;
 pub mod event;
@@ -24,6 +25,7 @@ pub mod loops;
 pub mod state;
 pub mod wait;
 
+pub use certify::{CertifyError, RunEvidence, evidence_of};
 pub use decide::{Decision, decide};
 pub use effect::{EffectAttempt, EffectContext, EffectError, KeySource, check_effect_keys};
 pub use event::{Epoch, RecordedEvent, RunEvent, RunFailure, Wait};

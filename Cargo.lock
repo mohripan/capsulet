@@ -431,6 +431,7 @@ dependencies = [
  "async-trait",
  "capsulet-core",
  "capsulet-ir",
+ "capsulet-kernel",
  "capsulet-observability",
  "capsulet-postgres",
  "capsulet-runtime",

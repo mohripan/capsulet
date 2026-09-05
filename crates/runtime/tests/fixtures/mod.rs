@@ -311,9 +311,9 @@ pub fn loop_definition() -> Definition {
         nodes: members,
         capabilities: CapabilitySet::empty(),
         budget: ResourceBudget {
-            wall_ms: 900_000,
-            tokens: 96_000,
-            cost_micro_units: 150_000,
+            wall_ms: 300_000,
+            tokens: 50_000,
+            cost_micro_units: 50_000,
             effect_count: 0,
         },
     });
@@ -421,9 +421,9 @@ pub fn loop_definition_with(shape: LoopShape) -> Definition {
                 },
                 budget: LoopBudget {
                     max_iterations: shape.max_iterations,
-                    wall_ms: 900_000,
-                    tokens: 96_000,
-                    cost_micro_units: 150_000,
+                    wall_ms: 300_000,
+                    tokens: 50_000,
+                    cost_micro_units: 50_000,
                     effect_count: 0,
                 },
                 invariants: shape.invariants,
@@ -437,9 +437,9 @@ pub fn loop_definition_with(shape: LoopShape) -> Definition {
         nodes: members,
         capabilities: CapabilitySet::empty(),
         budget: ResourceBudget {
-            wall_ms: 900_000,
-            tokens: 96_000,
-            cost_micro_units: 150_000,
+            wall_ms: 300_000,
+            tokens: 50_000,
+            cost_micro_units: 50_000,
             effect_count: 0,
         },
     });
