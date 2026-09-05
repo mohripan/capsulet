@@ -6,7 +6,8 @@
 # problem, and one that never expires is permanent by accident.
 #
 # RUSTSEC-2023-0071 (rsa): reaches the lockfile only through sqlx-mysql, which
-# the workspace's postgres-only feature set never compiles. See the exceptions
-# document for the verification.
+# the workspace's postgres-only feature set never compiles.
+# RUSTSEC-2024-0436 (paste): unmaintained, not vulnerable, and reached through
+# the newest utoipa-axum there is.
 [advisories]
-ignore = ["RUSTSEC-2023-0071"]
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2024-0436"]
