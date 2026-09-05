@@ -115,11 +115,11 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/runtime/src/effect.rs`, `migrations/*`, `crates/postgres/src/ir_runs.rs`, tests
 
-- [ ] Failing tests: a claimed-but-unfinalized idempotent effect is retried; a keyed one is retried
+- [x] Failing tests: a claimed-but-unfinalized idempotent effect is retried; a keyed one is retried
   with the same key; a non-idempotent one stops the run as `effect_uncertain` rather than retrying;
   a finalized effect is never performed twice.
-- [ ] Claim rows keyed by (run, effect, attempt) with the idempotency key the IR declared.
-- [ ] Recovery classifies every outstanding claim by the IR's declared idempotency, and the run
+- [x] Claim rows keyed by (run, effect, attempt) with the idempotency key the IR declared.
+- [x] Recovery classifies every outstanding claim by the IR's declared idempotency, and the run
   records which branch it took.
 
 ### Task 5: Loops that survive a restart

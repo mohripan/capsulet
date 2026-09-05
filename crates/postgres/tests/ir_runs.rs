@@ -9,14 +9,16 @@
 use std::collections::BTreeMap;
 
 use capsulet_ir::admission::AdmissionRecord;
-use capsulet_ir::capability::CapabilitySet;
+use capsulet_ir::capability::{Capability, CapabilitySet, Grant};
 use capsulet_ir::definition::{AssuranceMode, Definition};
+use capsulet_ir::effect::{Effect, EffectKind, Idempotency, Reversibility};
 use capsulet_ir::value::LengthBounds;
 use capsulet_ir::{
     Digest, Graph, GraphBuilder, Identifier, Node, NodeKind, OutputPort, RecordedTime,
     ResourceBudget, ValueSchema, admit,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
+use capsulet_runtime::effect::{EffectAttempt, EffectContext};
 use capsulet_runtime::event::Wait;
 use capsulet_runtime::{Epoch, RunEvent, RunState, RunStatus};
 
@@ -62,6 +64,64 @@ fn definition(name: &str) -> Definition {
         assurance: AssuranceMode::Enforce,
         capabilities: CapabilitySet::empty(),
         budget: ResourceBudget::deterministic(600_000),
+        graph,
+        boundaries: vec![],
+        contracts: vec![],
+    }
+}
+
+/// A definition whose one node performs a declared effect.
+fn effect_definition(name: &str, idempotency: Idempotency) -> Definition {
+    let publish = Node {
+        id: id("publish"),
+        name: "Open the pull request".to_string(),
+        kind: NodeKind::Effect,
+        inputs: vec![],
+        outputs: vec![],
+        capabilities: vec![id("github")],
+        effects: vec![Effect {
+            id: id("open-pull-request"),
+            kind: EffectKind::Publication,
+            target: "github.com/mohripan/capsulet".to_string(),
+            capability: id("github"),
+            idempotency,
+            reversibility: Reversibility::Irreversible,
+        }],
+        budget: ResourceBudget {
+            wall_ms: 30_000,
+            tokens: 0,
+            cost_micro_units: 0,
+            effect_count: 1,
+        },
+        provider: None,
+        sub_workflow: None,
+    };
+
+    let graph = Graph::new(GraphBuilder {
+        nodes: vec![publish],
+        ..GraphBuilder::default()
+    })
+    .expect("the fixture graph is valid");
+
+    Definition {
+        schema_version: Definition::current_schema_version(),
+        id: id(name),
+        version: "1".to_string(),
+        name: name.to_string(),
+        assurance: AssuranceMode::Enforce,
+        capabilities: CapabilitySet::new(vec![Capability {
+            id: id("github"),
+            grant: Grant::Network {
+                hosts: vec!["api.github.com".to_string()],
+            },
+        }])
+        .expect("the fixture grants are distinct"),
+        budget: ResourceBudget {
+            wall_ms: 600_000,
+            tokens: 0,
+            cost_micro_units: 0,
+            effect_count: 4,
+        },
         graph,
         boundaries: vec![],
         contracts: vec![],
@@ -771,5 +831,346 @@ async fn a_finished_run_is_never_leased_again() {
             .expect("lease")
             .is_none(),
         "a completed run has nothing left to decide, so handing it to a worker would only spin"
+    );
+}
+
+/// A run whose definition declares one effect with the given idempotency.
+async fn effect_run(
+    store: &PostgresStore,
+    idempotency: Idempotency,
+) -> (String, String, String, Definition) {
+    let tenant = unique_id("tenant");
+    let project = unique_id("project");
+    let definition = effect_definition(&unique_id("definition"), idempotency);
+    let digest = store
+        .insert_ir_definition_version(&tenant, &project, &definition, &admission(&definition))
+        .await
+        .expect("register the definition");
+    let run_id = unique_id("run");
+    store
+        .create_ir_run(
+            &tenant,
+            &project,
+            &run_id,
+            &digest,
+            AssuranceMode::Enforce,
+            at(1_772_000_000_000),
+        )
+        .await
+        .expect("create the run");
+    (tenant, project, run_id, definition)
+}
+
+/// The single effect the fixture definition declares.
+fn declared(definition: &Definition) -> &capsulet_ir::effect::Effect {
+    definition
+        .graph
+        .node(&id("publish"))
+        .expect("the fixture has the node")
+        .effects
+        .first()
+        .expect("the fixture node declares an effect")
+}
+
+#[tokio::test]
+async fn a_claim_reaches_the_ledger_by_being_appended_to_the_log() {
+    let store = store().await;
+    let (tenant, project, run_id, definition) = effect_run(
+        &store,
+        Idempotency::Keyed {
+            key_source: "run_id".to_string(),
+        },
+    )
+    .await;
+
+    let attempt = EffectAttempt::claim(
+        declared(&definition),
+        &EffectContext {
+            run: &run_id,
+            node: &id("publish"),
+            attempt: 0,
+        },
+    )
+    .expect("the key source is supported");
+
+    store
+        .append_ir_run_event(
+            &tenant,
+            &project,
+            &run_id,
+            Epoch(0),
+            &attempt.claimed(),
+            at(1_772_000_000_001),
+        )
+        .await
+        .expect("append the claim");
+
+    let claims = store
+        .ir_effect_claims_for_run(&tenant, &project, &run_id)
+        .await
+        .expect("read the ledger");
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].node, "publish");
+    assert_eq!(claims[0].effect, "open-pull-request");
+    assert_eq!(claims[0].attempt, 0);
+    assert_eq!(claims[0].outcome, "claimed");
+    assert_eq!(claims[0].receipt, None);
+    assert_eq!(
+        claims[0].idempotency_key.as_deref(),
+        attempt.key(),
+        "the ledger keeps the key that was sent, so a retry can present that one"
+    );
+
+    // And it is the answer to the operator question the ledger exists for.
+    let outstanding = store
+        .list_outstanding_ir_effects(Some(&tenant), 10)
+        .await
+        .expect("list outstanding");
+    assert_eq!(outstanding.len(), 1);
+    assert_eq!(outstanding[0].run_id, run_id);
+}
+
+#[tokio::test]
+async fn finalizing_takes_the_effect_out_of_the_outstanding_set() {
+    let store = store().await;
+    let (tenant, project, run_id, definition) = effect_run(&store, Idempotency::Idempotent).await;
+
+    let attempt = EffectAttempt::claim(
+        declared(&definition),
+        &EffectContext {
+            run: &run_id,
+            node: &id("publish"),
+            attempt: 0,
+        },
+    )
+    .expect("claim");
+    let receipt = Digest::of(b"pull request 41");
+
+    for (position, event) in [attempt.claimed(), attempt.finalized(receipt)]
+        .into_iter()
+        .enumerate()
+    {
+        let millis = 1_772_000_000_001 + i64::try_from(position).expect("small");
+        store
+            .append_ir_run_event(&tenant, &project, &run_id, Epoch(0), &event, at(millis))
+            .await
+            .expect("append");
+    }
+
+    let claims = store
+        .ir_effect_claims_for_run(&tenant, &project, &run_id)
+        .await
+        .expect("read the ledger");
+    assert_eq!(claims.len(), 1, "resolving is not a second claim");
+    assert_eq!(claims[0].outcome, "finalized");
+    assert_eq!(
+        claims[0].receipt.as_deref(),
+        Some(receipt.to_string()).as_deref()
+    );
+
+    assert!(
+        store
+            .list_outstanding_ir_effects(Some(&tenant), 10)
+            .await
+            .expect("list outstanding")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn an_effect_already_finalized_cannot_be_claimed_again() {
+    let store = store().await;
+    let (tenant, project, run_id, definition) =
+        effect_run(&store, Idempotency::NonIdempotent).await;
+
+    let attempt = EffectAttempt::claim(
+        declared(&definition),
+        &EffectContext {
+            run: &run_id,
+            node: &id("publish"),
+            attempt: 0,
+        },
+    )
+    .expect("claim");
+
+    for (position, event) in [
+        attempt.claimed(),
+        attempt.finalized(Digest::of(b"pull request 41")),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let millis = 1_772_000_000_001 + i64::try_from(position).expect("small");
+        store
+            .append_ir_run_event(&tenant, &project, &run_id, Epoch(0), &event, at(millis))
+            .await
+            .expect("append");
+    }
+
+    // This is the duplication the milestone exists to prevent, so it is refused
+    // in the database as well as decided against upstream.
+    let error = store
+        .append_ir_run_event(
+            &tenant,
+            &project,
+            &run_id,
+            Epoch(0),
+            &attempt.claimed(),
+            at(1_772_000_000_010),
+        )
+        .await
+        .expect_err("re-claiming a finalized effect is refused");
+    assert!(
+        error.to_string().contains("already finalized"),
+        "the refusal should say why: {error}"
+    );
+}
+
+#[tokio::test]
+async fn a_keyed_retry_keeps_one_ledger_row_and_counts_the_tries() {
+    let store = store().await;
+    let (tenant, project, run_id, definition) = effect_run(
+        &store,
+        Idempotency::Keyed {
+            key_source: "run_id".to_string(),
+        },
+    )
+    .await;
+
+    let attempt = EffectAttempt::claim(
+        declared(&definition),
+        &EffectContext {
+            run: &run_id,
+            node: &id("publish"),
+            attempt: 2,
+        },
+    )
+    .expect("claim");
+
+    // A keyed retry keeps the same attempt so the key stays stable, so the same
+    // ledger row is claimed twice. That is not a duplicate effect; it is one
+    // effect the far side will collapse, and the count says how hard we tried.
+    for position in 0..2 {
+        let millis = 1_772_000_000_001 + i64::from(position);
+        store
+            .append_ir_run_event(
+                &tenant,
+                &project,
+                &run_id,
+                Epoch(0),
+                &attempt.claimed(),
+                at(millis),
+            )
+            .await
+            .expect("append");
+    }
+
+    let claims = store
+        .ir_effect_claims_for_run(&tenant, &project, &run_id)
+        .await
+        .expect("read the ledger");
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].claim_count, 2);
+    assert_eq!(claims[0].outcome, "claimed");
+}
+
+#[tokio::test]
+async fn recording_the_doubt_clears_the_claim_without_claiming_success() {
+    let store = store().await;
+    let (tenant, project, run_id, definition) =
+        effect_run(&store, Idempotency::NonIdempotent).await;
+
+    let attempt = EffectAttempt::claim(
+        declared(&definition),
+        &EffectContext {
+            run: &run_id,
+            node: &id("publish"),
+            attempt: 0,
+        },
+    )
+    .expect("claim");
+
+    for (position, event) in [attempt.claimed(), attempt.uncertain()]
+        .into_iter()
+        .enumerate()
+    {
+        let millis = 1_772_000_000_001 + i64::try_from(position).expect("small");
+        store
+            .append_ir_run_event(&tenant, &project, &run_id, Epoch(0), &event, at(millis))
+            .await
+            .expect("append");
+    }
+
+    let claims = store
+        .ir_effect_claims_for_run(&tenant, &project, &run_id)
+        .await
+        .expect("read the ledger");
+    assert_eq!(claims[0].outcome, "uncertain");
+    assert_eq!(
+        claims[0].receipt, None,
+        "there is no receipt, because nobody knows whether it happened"
+    );
+    assert!(
+        store
+            .list_outstanding_ir_effects(Some(&tenant), 10)
+            .await
+            .expect("list outstanding")
+            .is_empty(),
+        "the doubt is recorded, so it stops being an open question for an operator"
+    );
+}
+
+#[tokio::test]
+async fn the_ledger_says_what_folding_the_log_says() {
+    let store = store().await;
+    let (tenant, project, run_id, definition) = effect_run(
+        &store,
+        Idempotency::Keyed {
+            key_source: "run_id+node_id".to_string(),
+        },
+    )
+    .await;
+
+    let attempt = EffectAttempt::claim(
+        declared(&definition),
+        &EffectContext {
+            run: &run_id,
+            node: &id("publish"),
+            attempt: 0,
+        },
+    )
+    .expect("claim");
+
+    store
+        .append_ir_run_event(
+            &tenant,
+            &project,
+            &run_id,
+            Epoch(0),
+            &attempt.claimed(),
+            at(1_772_000_000_001),
+        )
+        .await
+        .expect("append");
+
+    // The ledger is derived from the log, so the two must agree. If they ever
+    // stop agreeing, this fails rather than an operator reading a stale answer.
+    let folded = store
+        .load_ir_run_state(&tenant, &project, &run_id)
+        .await
+        .expect("the log folds");
+    let outstanding = store
+        .list_outstanding_ir_effects(Some(&tenant), 10)
+        .await
+        .expect("list outstanding");
+
+    assert_eq!(folded.outstanding_effects().len(), outstanding.len());
+    let claim = &folded.outstanding_effects()[0];
+    assert_eq!(outstanding[0].node, claim.node.as_str());
+    assert_eq!(outstanding[0].effect, claim.effect.as_str());
+    assert_eq!(outstanding[0].attempt, claim.attempt);
+    assert_eq!(
+        outstanding[0].idempotency_key.as_deref(),
+        claim.key.as_deref()
     );
 }
