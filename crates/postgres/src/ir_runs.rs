@@ -283,10 +283,15 @@ impl PostgresStore {
     /// installation, which is the usual deployment; a value is for running a
     /// dedicated fleet, so one tenant's backlog cannot starve another's.
     ///
-    /// A `waiting` run is leasable, because only the decision core can say
-    /// whether its wait is due, and saying so means folding the log. Until
-    /// waits carry a wake-up time, that means a waiting run is re-leased once
-    /// per polling interval.
+    /// A `waiting` run is leasable only when there is a reason to look at it:
+    /// its timer is due at `now_millis`, or something arrived in its inbox.
+    /// Otherwise it is skipped, so a run waiting a week on a human decision
+    /// does not get picked up and put down once a second for a week.
+    ///
+    /// `now_millis` is supplied rather than read from the database clock, for
+    /// the same reason the decision core takes it: whether a timer is due is
+    /// part of a decision that has to be replayable, and a second clock in that
+    /// path is a second answer.
     ///
     /// # Errors
     ///
@@ -296,6 +301,7 @@ impl PostgresStore {
         worker_id: &str,
         lease_seconds: i64,
         tenant: Option<&str>,
+        now_millis: i64,
     ) -> Result<Option<IrRunRecord>, PostgresStoreError> {
         let row = sqlx::query(
             r"
@@ -305,6 +311,18 @@ impl PostgresStore {
                 WHERE status IN ('queued', 'running', 'waiting')
                   AND ($3::text IS NULL OR tenant_id = $3)
                   AND (lease_expires_at IS NULL OR lease_expires_at <= now())
+                  AND (
+                    status <> 'waiting'
+                    OR (wake_at_millis IS NOT NULL AND wake_at_millis <= $4)
+                    OR EXISTS (
+                        SELECT 1
+                        FROM ir_run_signals pending
+                        WHERE pending.tenant_id = ir_runs.tenant_id
+                          AND pending.project_id = ir_runs.project_id
+                          AND pending.run_id = ir_runs.id
+                          AND pending.consumed_at IS NULL
+                    )
+                  )
                 ORDER BY created_at, id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
@@ -327,6 +345,7 @@ impl PostgresStore {
         .bind(worker_id)
         .bind(lease_seconds)
         .bind(tenant)
+        .bind(now_millis)
         .fetch_optional(&self.pool)
         .await?;
 

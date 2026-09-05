@@ -21,6 +21,7 @@ pub mod effect;
 pub mod event;
 pub mod loops;
 pub mod state;
+pub mod wait;
 
 pub use decide::{Decision, decide};
 pub use effect::{EffectAttempt, EffectContext, EffectError, KeySource, check_effect_keys};
@@ -29,3 +30,4 @@ pub use loops::{Repair, repair};
 pub use state::{
     FoldError, LoopProgress, NodeFailure, OutstandingEffect, RunState, RunStatus, Spent,
 };
+pub use wait::{Signal, SignalKind, WaitError, resume, suspend};

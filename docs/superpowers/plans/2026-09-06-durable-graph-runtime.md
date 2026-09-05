@@ -136,9 +136,9 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/runtime/src/wait.rs`, `crates/postgres/src/ir_runs.rs`, tests
 
-- [ ] Failing tests: a timer due in the future does not run; a due timer resumes exactly once; an
+- [x] Failing tests: a timer due in the future does not run; a due timer resumes exactly once; an
   external event resumes a matching wait only; a human gate resumes only on an authorised decision.
-- [ ] Suspension is an event; resumption is an event; nothing is held in worker memory.
+- [x] Suspension is an event; resumption is an event; nothing is held in worker memory.
 
 ### Task 7: The graph worker
 

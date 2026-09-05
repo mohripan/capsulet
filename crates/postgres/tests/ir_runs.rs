@@ -6,7 +6,7 @@
 //! the fold that reconstructs a run is reconstructing a fiction. If a
 //! superseded worker can still write, a run has two owners and neither knows.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use capsulet_ir::admission::AdmissionRecord;
 use capsulet_ir::capability::{Capability, CapabilitySet, Grant};
@@ -17,9 +17,10 @@ use capsulet_ir::{
     Digest, Graph, GraphBuilder, Identifier, Node, NodeKind, OutputPort, RecordedTime,
     ResourceBudget, ValueSchema, admit,
 };
-use capsulet_postgres::{PostgresStore, PostgresStoreError};
+use capsulet_postgres::{PostgresStore, PostgresStoreError, SignalOutcome};
 use capsulet_runtime::effect::{EffectAttempt, EffectContext};
 use capsulet_runtime::event::Wait;
+use capsulet_runtime::wait::{Signal, WaitError};
 use capsulet_runtime::{Epoch, RunEvent, RunState, RunStatus};
 
 mod support;
@@ -28,6 +29,9 @@ use support::{fixture_id as unique_id, required_database_url as database_url};
 fn id(value: &str) -> Identifier {
     Identifier::parse(value).expect("the fixture identifier is valid")
 }
+
+/// A fixed moment these tests measure from. Time is supplied, never read.
+const NOW: i64 = 1_772_000_000_000;
 
 fn at(millis: i64) -> RecordedTime {
     RecordedTime(millis)
@@ -579,8 +583,8 @@ async fn two_workers_leasing_at_once_take_different_runs() {
     // SKIP LOCKED is the point: the second worker steps over the row the first
     // is taking instead of queueing behind it and then finding it gone.
     let (first, second) = tokio::join!(
-        store.lease_next_ir_run("worker-a", 60, Some(&tenant)),
-        store.lease_next_ir_run("worker-b", 60, Some(&tenant)),
+        store.lease_next_ir_run("worker-a", 60, Some(&tenant), NOW),
+        store.lease_next_ir_run("worker-b", 60, Some(&tenant), NOW),
     );
     let first = first.expect("lease").expect("a run was available");
     let second = second.expect("lease").expect("a run was available");
@@ -596,7 +600,7 @@ async fn two_workers_leasing_at_once_take_different_runs() {
 
     assert!(
         store
-            .lease_next_ir_run("worker-c", 60, Some(&tenant))
+            .lease_next_ir_run("worker-c", 60, Some(&tenant), NOW)
             .await
             .expect("lease")
             .is_none(),
@@ -610,7 +614,7 @@ async fn an_expired_lease_is_reclaimable_and_the_old_owner_is_fenced_out() {
     let (tenant, project, run_id, _) = run(&store).await;
 
     let first = store
-        .lease_next_ir_run("worker-before-crash", 60, Some(&tenant))
+        .lease_next_ir_run("worker-before-crash", 60, Some(&tenant), NOW)
         .await
         .expect("lease")
         .expect("the run was available");
@@ -635,7 +639,7 @@ async fn an_expired_lease_is_reclaimable_and_the_old_owner_is_fenced_out() {
     expire_lease(&store, &run_id).await;
 
     let second = store
-        .lease_next_ir_run("worker-after-crash", 60, Some(&tenant))
+        .lease_next_ir_run("worker-after-crash", 60, Some(&tenant), NOW)
         .await
         .expect("lease")
         .expect("an expired lease is reclaimable");
@@ -688,7 +692,7 @@ async fn a_heartbeat_extends_a_lease_without_changing_the_epoch() {
     let (tenant, project, run_id, _) = run(&store).await;
 
     let lease = store
-        .lease_next_ir_run("worker-a", 60, Some(&tenant))
+        .lease_next_ir_run("worker-a", 60, Some(&tenant), NOW)
         .await
         .expect("lease")
         .expect("the run was available");
@@ -715,7 +719,7 @@ async fn a_heartbeat_extends_a_lease_without_changing_the_epoch() {
     );
     assert!(
         store
-            .lease_next_ir_run("worker-b", 60, Some(&tenant))
+            .lease_next_ir_run("worker-b", 60, Some(&tenant), NOW)
             .await
             .expect("lease")
             .is_none(),
@@ -742,14 +746,14 @@ async fn a_superseded_worker_cannot_heartbeat_its_way_back() {
     let (tenant, project, run_id, _) = run(&store).await;
 
     let first = store
-        .lease_next_ir_run("worker-a", 60, Some(&tenant))
+        .lease_next_ir_run("worker-a", 60, Some(&tenant), NOW)
         .await
         .expect("lease")
         .expect("the run was available");
 
     expire_lease(&store, &run_id).await;
     store
-        .lease_next_ir_run("worker-b", 60, Some(&tenant))
+        .lease_next_ir_run("worker-b", 60, Some(&tenant), NOW)
         .await
         .expect("lease")
         .expect("an expired lease is reclaimable");
@@ -769,7 +773,7 @@ async fn releasing_a_lease_offers_the_run_again_without_waiting_for_expiry() {
     let (tenant, project, run_id, _) = run(&store).await;
 
     let lease = store
-        .lease_next_ir_run("worker-a", 600, Some(&tenant))
+        .lease_next_ir_run("worker-a", 600, Some(&tenant), NOW)
         .await
         .expect("lease")
         .expect("the run was available");
@@ -790,7 +794,7 @@ async fn releasing_a_lease_offers_the_run_again_without_waiting_for_expiry() {
     );
 
     let second = store
-        .lease_next_ir_run("worker-b", 60, Some(&tenant))
+        .lease_next_ir_run("worker-b", 60, Some(&tenant), NOW)
         .await
         .expect("lease")
         .expect("a released run is available at once");
@@ -804,7 +808,7 @@ async fn a_finished_run_is_never_leased_again() {
     let (tenant, project, run_id, _) = run(&store).await;
 
     let lease = store
-        .lease_next_ir_run("worker-a", 60, Some(&tenant))
+        .lease_next_ir_run("worker-a", 60, Some(&tenant), NOW)
         .await
         .expect("lease")
         .expect("the run was available");
@@ -826,7 +830,7 @@ async fn a_finished_run_is_never_leased_again() {
 
     assert!(
         store
-            .lease_next_ir_run("worker-b", 60, Some(&tenant))
+            .lease_next_ir_run("worker-b", 60, Some(&tenant), NOW)
             .await
             .expect("lease")
             .is_none(),
@@ -1173,4 +1177,345 @@ async fn the_ledger_says_what_folding_the_log_says() {
         outstanding[0].idempotency_key.as_deref(),
         claim.key.as_deref()
     );
+}
+
+/// Suspends a run on the given wait, under its current epoch.
+async fn suspend_run(store: &PostgresStore, tenant: &str, project: &str, run_id: &str, wait: Wait) {
+    let lease = store
+        .lease_next_ir_run("worker-a", 600, Some(tenant), NOW)
+        .await
+        .expect("lease")
+        .expect("the run was available");
+    store
+        .append_ir_run_event(
+            tenant,
+            project,
+            run_id,
+            lease.epoch,
+            &RunEvent::Started { by: id("worker-a") },
+            at(NOW),
+        )
+        .await
+        .expect("append");
+    store
+        .append_ir_run_event(
+            tenant,
+            project,
+            run_id,
+            lease.epoch,
+            &capsulet_runtime::wait::suspend(wait),
+            at(NOW + 1),
+        )
+        .await
+        .expect("append");
+    store
+        .release_ir_run_lease(tenant, project, run_id, "worker-a", lease.epoch)
+        .await
+        .expect("release");
+}
+
+#[tokio::test]
+async fn a_run_waiting_on_a_timer_is_not_offered_until_it_is_due() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+    suspend_run(
+        &store,
+        &tenant,
+        &project,
+        &run_id,
+        Wait::Timer {
+            until: RecordedTime(NOW + 60_000),
+        },
+    )
+    .await;
+
+    let record = store
+        .get_ir_run(&tenant, &project, &run_id)
+        .await
+        .expect("read the run")
+        .expect("the run exists");
+    assert_eq!(record.status, "waiting");
+
+    // Picking it up and putting it down once a second for a minute is not
+    // waiting, it is spinning.
+    assert!(
+        store
+            .lease_next_ir_run("worker-b", 60, Some(&tenant), NOW + 59_999)
+            .await
+            .expect("lease")
+            .is_none(),
+        "a run with nothing to do yet is not work"
+    );
+
+    let due = store
+        .lease_next_ir_run("worker-b", 60, Some(&tenant), NOW + 60_000)
+        .await
+        .expect("lease")
+        .expect("a due timer makes it work again");
+    assert_eq!(due.id, run_id);
+}
+
+#[tokio::test]
+async fn a_run_waiting_on_something_external_is_offered_once_it_arrives() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+    suspend_run(
+        &store,
+        &tenant,
+        &project,
+        &run_id,
+        Wait::Event {
+            name: id("review-posted"),
+        },
+    )
+    .await;
+
+    // Nothing has arrived, and no amount of time will change that.
+    assert!(
+        store
+            .lease_next_ir_run("worker-b", 60, Some(&tenant), i64::MAX)
+            .await
+            .expect("lease")
+            .is_none(),
+        "there is no time at which a webhook becomes due"
+    );
+
+    store
+        .deliver_ir_run_signal(
+            &tenant,
+            &project,
+            &run_id,
+            &Signal::event(id("review-posted"), id("webhook")),
+        )
+        .await
+        .expect("deliver");
+
+    let woken = store
+        .lease_next_ir_run("worker-b", 60, Some(&tenant), NOW)
+        .await
+        .expect("lease")
+        .expect("a delivered signal makes it work again");
+    assert_eq!(woken.id, run_id);
+}
+
+#[tokio::test]
+async fn a_signal_delivered_while_nobody_was_running_is_still_there_afterwards() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+    suspend_run(
+        &store,
+        &tenant,
+        &project,
+        &run_id,
+        Wait::Event {
+            name: id("review-posted"),
+        },
+    )
+    .await;
+
+    let delivered = Signal::event(id("review-posted"), id("webhook"));
+    store
+        .deliver_ir_run_signal(&tenant, &project, &run_id, &delivered)
+        .await
+        .expect("deliver");
+
+    // The whole point of an inbox: the process that would have handled this was
+    // not running when it arrived.
+    let pending = store
+        .pending_ir_run_signals(&tenant, &project, &run_id)
+        .await
+        .expect("read the inbox");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].signal, delivered);
+}
+
+#[tokio::test]
+async fn a_signal_resumes_a_run_exactly_once() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+    suspend_run(
+        &store,
+        &tenant,
+        &project,
+        &run_id,
+        Wait::Event {
+            name: id("review-posted"),
+        },
+    )
+    .await;
+
+    // The webhook fires twice, as webhooks do.
+    for _ in 0..2 {
+        store
+            .deliver_ir_run_signal(
+                &tenant,
+                &project,
+                &run_id,
+                &Signal::event(id("review-posted"), id("webhook")),
+            )
+            .await
+            .expect("deliver");
+    }
+
+    let lease = store
+        .lease_next_ir_run("worker-b", 60, Some(&tenant), NOW)
+        .await
+        .expect("lease")
+        .expect("the run is work again");
+    let state = store
+        .load_ir_run_state(&tenant, &project, &run_id)
+        .await
+        .expect("folds");
+
+    let mut resumptions = 0;
+    for pending in store
+        .pending_ir_run_signals(&tenant, &project, &run_id)
+        .await
+        .expect("read the inbox")
+    {
+        // The state is folded once, before any of them: the second delivery is
+        // matched against the same wait the first was, and the fold is what
+        // stops it resuming a run that is already running.
+        let outcome = match capsulet_runtime::wait::resume(
+            state.waiting_on(),
+            &pending.signal,
+            at(NOW + 2),
+        ) {
+            Ok(event) if resumptions == 0 => {
+                let recorded = store
+                    .append_ir_run_event(
+                        &tenant,
+                        &project,
+                        &run_id,
+                        lease.epoch,
+                        &event,
+                        at(NOW + 2),
+                    )
+                    .await
+                    .expect("append");
+                resumptions += 1;
+                SignalOutcome::Resumed {
+                    position: recorded.position,
+                }
+            }
+            _ => SignalOutcome::Refused,
+        };
+        assert!(
+            store
+                .consume_ir_run_signal(pending.id, outcome)
+                .await
+                .expect("consume"),
+            "each signal is consumed by exactly one caller"
+        );
+    }
+
+    assert_eq!(resumptions, 1);
+    let events = store
+        .load_ir_run_events(&tenant, &project, &run_id)
+        .await
+        .expect("read the log");
+    assert_eq!(
+        events
+            .iter()
+            .filter(|recorded| recorded.event.as_str() == "resumed")
+            .count(),
+        1,
+        "two deliveries of one webhook resume the run once"
+    );
+    assert_eq!(
+        store
+            .get_ir_run(&tenant, &project, &run_id)
+            .await
+            .expect("read the run")
+            .expect("the run exists")
+            .status,
+        "running"
+    );
+}
+
+#[tokio::test]
+async fn a_consumed_signal_cannot_be_consumed_or_rewritten_again() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+
+    let id_of = store
+        .deliver_ir_run_signal(
+            &tenant,
+            &project,
+            &run_id,
+            &Signal::event(id("review-posted"), id("webhook")),
+        )
+        .await
+        .expect("deliver");
+
+    assert!(
+        store
+            .consume_ir_run_signal(id_of, SignalOutcome::Resumed { position: 3 })
+            .await
+            .expect("consume"),
+        "the first caller consumes it"
+    );
+    assert!(
+        !store
+            .consume_ir_run_signal(id_of, SignalOutcome::Refused)
+            .await
+            .expect("consume"),
+        "losing the race is ordinary, so the second caller is told no rather than erroring"
+    );
+
+    // And what the signal said is not editable after the fact, because it is a
+    // record of something that happened outside this system.
+    let error = sqlx::query("UPDATE ir_run_signals SET subject = 'something-else' WHERE id = $1")
+        .bind(id_of)
+        .execute(store.pool())
+        .await
+        .expect_err("a delivered signal is not editable");
+    assert!(
+        error.to_string().contains("already consumed"),
+        "the refusal should say why: {error}"
+    );
+}
+
+#[tokio::test]
+async fn a_human_gate_stored_and_reloaded_still_needs_the_authority() {
+    let store = store().await;
+    let (tenant, project, run_id, _) = run(&store).await;
+    suspend_run(
+        &store,
+        &tenant,
+        &project,
+        &run_id,
+        Wait::HumanGate {
+            node: id("release"),
+            obligation: id("release-manager"),
+        },
+    )
+    .await;
+
+    let mut authorities = BTreeSet::new();
+    authorities.insert(id("reviewer"));
+    store
+        .deliver_ir_run_signal(
+            &tenant,
+            &project,
+            &run_id,
+            &Signal::decision(id("release-manager"), id("keen-engineer"), authorities),
+        )
+        .await
+        .expect("deliver");
+
+    let state = store
+        .load_ir_run_state(&tenant, &project, &run_id)
+        .await
+        .expect("folds");
+    let pending = store
+        .pending_ir_run_signals(&tenant, &project, &run_id)
+        .await
+        .expect("read the inbox");
+
+    // What somebody was entitled to is a fact about when they tried, so it is
+    // stored with the signal and read back with it rather than resolved again.
+    let error = capsulet_runtime::wait::resume(state.waiting_on(), &pending[0].signal, at(NOW + 2))
+        .expect_err("the stored authorities do not include the one the gate names");
+    assert!(matches!(error, WaitError::Unauthorised { .. }));
 }
