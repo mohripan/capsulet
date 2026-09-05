@@ -332,8 +332,13 @@ if ($GeneratedPath) {
     $temporaryPath = Join-Path ([System.IO.Path]::GetTempPath()) "capsulet-product-claims-$PID.md"
     try {
         & (Join-Path $PSScriptRoot "render-product-claims.ps1") -RegistryPath $registryFullPath -OutputPath $temporaryPath
+        # Compared with line endings normalised. The endings a checkout produces
+        # are a property of the machine, not of the document, and a check that
+        # fails on one platform and passes on the other is a check nobody can
+        # act on.
+        $normalise = { param($path) (Get-Content -LiteralPath $path -Raw).Replace("`r`n", "`n") }
         if (-not (Test-Path -LiteralPath $GeneratedPath -PathType Leaf) -or
-            (Get-Content -LiteralPath $GeneratedPath -Raw) -cne (Get-Content -LiteralPath $temporaryPath -Raw)) {
+            (& $normalise $GeneratedPath) -cne (& $normalise $temporaryPath)) {
             throw "generated Markdown is stale; run scripts/render-product-claims.ps1"
         }
     }
