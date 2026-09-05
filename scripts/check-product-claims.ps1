@@ -9,12 +9,16 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+# Files are read as UTF-8 explicitly throughout. This gate runs Windows
+# PowerShell 5.1 on Windows and PowerShell 7 on Linux, which decode a file with
+# no byte-order mark differently, and a document that decodes differently on two
+# machines cannot be compared between them.
 $defaultRegistry = (Join-Path $repositoryRoot "docs\contracts\product-claims.json")
 $defaultLifecycle = (Join-Path $repositoryRoot "docs\contracts\lifecycle-mapping.json")
 $defaultPublicSurfaces = (Join-Path $repositoryRoot "docs\contracts\public-surfaces.json")
 $schemaPath = Join-Path $repositoryRoot "docs\contracts\product-claims.schema.json"
 $registryFullPath = (Resolve-Path -LiteralPath $RegistryPath).Path
-$raw = Get-Content -LiteralPath $registryFullPath -Raw
+$raw = [System.IO.File]::ReadAllText($registryFullPath, [System.Text.UTF8Encoding]::new($false))
 
 $testJson = Get-Command Test-Json -ErrorAction SilentlyContinue
 $registry = $raw | ConvertFrom-Json
@@ -69,7 +73,7 @@ foreach ($claim in $registry.claims) {
             if ($_.type -ne "decision" -or $_.path -notlike "docs/adr/*.md") { return $false }
             $decisionPath = Join-Path $repositoryRoot $_.path
             if (-not (Test-Path -LiteralPath $decisionPath -PathType Leaf)) { return $false }
-            $decisionContent = Get-Content -LiteralPath $decisionPath -Raw
+            $decisionContent = [System.IO.File]::ReadAllText($decisionPath, [System.Text.UTF8Encoding]::new($false))
             return $decisionContent -match '(?im)^Status:\s*Accepted\s*$' -or
                 $decisionContent -match '(?ims)^## Status\s+Accepted\s*(?:\r?\n|$)'
         })
@@ -90,7 +94,7 @@ foreach ($claim in $registry.claims) {
             if (-not $evidence.PSObject.Properties.Name.Contains("selector") -or -not $evidence.selector) {
                 throw "test evidence for '$($claim.id)' is missing selector"
             }
-            $evidenceContent = Get-Content -LiteralPath $evidencePath -Raw
+            $evidenceContent = [System.IO.File]::ReadAllText($evidencePath, [System.Text.UTF8Encoding]::new($false))
             if (-not $evidenceContent.Contains([string]$evidence.selector)) {
                 throw "test selector was not found for '$($claim.id)' in $($evidence.path): $($evidence.selector)"
             }
@@ -154,7 +158,7 @@ if (-not $PSBoundParameters.ContainsKey("PublicSurfacesPath") -and $registryFull
 }
 if ($PublicSurfacesPath) {
     $surfaceConfigFullPath = (Resolve-Path -LiteralPath $PublicSurfacesPath).Path
-    $surfaceConfigRaw = Get-Content -LiteralPath $surfaceConfigFullPath -Raw
+    $surfaceConfigRaw = [System.IO.File]::ReadAllText($surfaceConfigFullPath, [System.Text.UTF8Encoding]::new($false))
     $surfaceConfig = $surfaceConfigRaw | ConvertFrom-Json
     if ($surfaceConfig.schema_version -ne 1) {
         throw "unsupported public surface schema_version '$($surfaceConfig.schema_version)'"
@@ -228,7 +232,7 @@ foreach ($surface in $registry.public_surfaces) {
     $surfaceClaims = @($registry.claims | Where-Object { @($_.public_surfaces) -contains $surface.path })
     if ($surfaceClaims.Count -eq 0) { throw "unregistered public surface '$($surface.path)'" }
     if ($surface.marker_required) {
-        $surfaceContent = Get-Content -LiteralPath $surfacePath -Raw
+        $surfaceContent = [System.IO.File]::ReadAllText($surfacePath, [System.Text.UTF8Encoding]::new($false))
         foreach ($claim in $surfaceClaims) {
             if (-not $surfaceContent.Contains([string]$claim.id)) {
                 throw "public surface '$($surface.path)' is missing claim marker '$($claim.id)'"
@@ -249,7 +253,7 @@ if (-not $PSBoundParameters.ContainsKey("LifecyclePath") -and $registryFullPath 
 }
 if ($LifecyclePath) {
     $lifecycleFullPath = (Resolve-Path -LiteralPath $LifecyclePath).Path
-    $lifecycleRaw = Get-Content -LiteralPath $lifecycleFullPath -Raw
+    $lifecycleRaw = [System.IO.File]::ReadAllText($lifecycleFullPath, [System.Text.UTF8Encoding]::new($false))
     $lifecycleSchemaPath = Join-Path $repositoryRoot "docs\contracts\lifecycle-mapping.schema.json"
     $lifecycle = $lifecycleRaw | ConvertFrom-Json
     $requiredExecution = @("queued", "running", "waiting", "completed", "failed", "cancelled")
@@ -285,7 +289,7 @@ if ($LifecyclePath) {
         if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
             throw "lifecycle '$($item.name)' source path does not exist: $($item.source_path)"
         }
-        $sourceContent = Get-Content -LiteralPath $sourcePath -Raw
+        $sourceContent = [System.IO.File]::ReadAllText($sourcePath, [System.Text.UTF8Encoding]::new($false))
         $enumPattern = "(?s)pub\s+enum\s+$([regex]::Escape([string]$item.source_enum))\s*\{(?<body>.*?)\}"
         $enumMatch = [regex]::Match($sourceContent, $enumPattern)
         if (-not $enumMatch.Success) {
@@ -336,7 +340,7 @@ if ($GeneratedPath) {
         # are a property of the machine, not of the document, and a check that
         # fails on one platform and passes on the other is a check nobody can
         # act on.
-        $normalise = { param($path) (Get-Content -LiteralPath $path -Raw).Replace("`r`n", "`n") }
+        $normalise = { param($path) ([System.IO.File]::ReadAllText($path, [System.Text.UTF8Encoding]::new($false))).Replace("`r`n", "`n") }
         if (-not (Test-Path -LiteralPath $GeneratedPath -PathType Leaf)) {
             throw "generated Markdown is missing; run scripts/render-product-claims.ps1"
         }

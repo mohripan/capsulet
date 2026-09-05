@@ -6,7 +6,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$registry = Get-Content -LiteralPath $RegistryPath -Raw | ConvertFrom-Json
+# Read as UTF-8 explicitly, not at the host's discretion. This gate runs Windows
+# PowerShell 5.1 on Windows and PowerShell 7 on Linux, and they disagree about
+# how to decode a file with no byte-order mark: 5.1 uses the ANSI code page. An
+# em dash in a claim came back mangled on one platform, was written out as UTF-8
+# again, and the document differed from the one the other platform produced.
+$registry = [System.IO.File]::ReadAllText($RegistryPath, [System.Text.UTF8Encoding]::new($false)) | ConvertFrom-Json
 $lines = [System.Collections.Generic.List[string]]::new()
 $lines.Add("# Product Claims")
 $lines.Add("")

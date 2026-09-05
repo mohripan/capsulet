@@ -51,7 +51,7 @@ function Assert-Check {
 
 Assert-Check -Name "valid registry" -Registry (Join-Path $fixtures "valid-claims.json") -ShouldSucceed $true
 
-$mainRegistry = Get-Content -LiteralPath (Join-Path $repositoryRoot "docs\contracts\product-claims.json") -Raw | ConvertFrom-Json
+$mainRegistry = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot "docs\contracts\product-claims.json"), [System.Text.UTF8Encoding]::new($false)) | ConvertFrom-Json
 $forbiddenPublicPhrases = @(
     "Capsulet is a local-first AI memory platform",
     "governed AI memory platform first",
@@ -141,9 +141,9 @@ $renderedForOrder = Join-Path ([System.IO.Path]::GetTempPath()) "capsulet-claim-
 try {
     & $renderer -RegistryPath (Join-Path $repositoryRoot "docs/contracts/product-claims.json") `
         -OutputPath $renderedForOrder
-    $headings = @(Get-Content -LiteralPath $renderedForOrder |
+    $headings = @(([System.IO.File]::ReadAllText($renderedForOrder, [System.Text.UTF8Encoding]::new($false))) -split "`n" |
         Where-Object { $_.StartsWith("## ") } |
-        ForEach-Object { $_.Substring(3) })
+        ForEach-Object { $_.Substring(3).TrimEnd("`r") })
     if ($headings.Count -lt 2) {
         $failures += "rendered claims have $($headings.Count) sections; the order cannot be checked"
     }
@@ -155,12 +155,35 @@ try {
         }
     }
 }
-finally {
+catch {
     Remove-Item -LiteralPath $renderedForOrder -Force -ErrorAction SilentlyContinue
+    throw
+}
+
+# Non-ASCII has to survive the round trip. An em dash in a claim came back
+# through the ANSI code page on one host, was written out as UTF-8 again, and
+# the document differed from the one the other host produced — a difference that
+# only ever showed up as "stale", on the machine that rendered second.
+$nonAscii = @($mainRegistry.claims | Where-Object {
+        $_.statement -cmatch "[^ -]"
+    })
+if ($nonAscii.Count -eq 0) {
+    $failures += "no claim contains a non-ASCII character, so the round trip is not being checked"
+}
+else {
+    $renderedText = [System.IO.File]::ReadAllText($renderedForOrder, [System.Text.UTF8Encoding]::new($false))
+    foreach ($claim in $nonAscii) {
+        $flattened = ([string]$claim.statement).Replace("|", "\|")
+        if (-not $renderedText.Contains($flattened)) {
+            $failures += "claim '$($claim.id)' did not survive rendering intact; " +
+                "its text came back changed, which is what a decoding mismatch looks like"
+        }
+    }
 }
 
 if ($failures.Count -gt 0) {
     throw ($failures -join [Environment]::NewLine)
 }
 
-Write-Host "Product claim contract tests passed ($($invalidCases.Count + $invalidLifecycleCases.Count + 4) cases)."
+Remove-Item -LiteralPath $renderedForOrder -Force -ErrorAction SilentlyContinue
+Write-Host "Product claim contract tests passed ($($invalidCases.Count + $invalidLifecycleCases.Count + 5) cases)."

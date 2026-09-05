@@ -102,7 +102,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-RUNTIME-005` | implemented | capability | What a loop spent before a crash is still spent after it, and a measure that stopped moving â€” or moved against its declared direction â€” stops the loop. |
+| `CAP-RUNTIME-005` | implemented | capability | What a loop spent before a crash is still spent after it, and a measure that stopped moving — or moved against its declared direction — stops the loop. |
 
 ## Observability and operations
 
