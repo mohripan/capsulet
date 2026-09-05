@@ -5,6 +5,7 @@ members = [
     "crates/cli",
     "crates/core",
     "crates/evaluator",
+    "crates/graph-worker",
     "crates/ir",
     "crates/ir-adapters",
     "crates/kernel",

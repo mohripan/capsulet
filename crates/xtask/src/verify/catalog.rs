@@ -294,6 +294,10 @@ pub(crate) fn gates() -> Vec<Gate> {
                         "--locked",
                     ],
                 ),
+                command(
+                    "cargo",
+                    &["test", "-p", "capsulet-graph-worker", "--locked"],
+                ),
             ],
         ),
         gate(

@@ -424,6 +424,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "capsulet-graph-worker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "capsulet-core",
+ "capsulet-ir",
+ "capsulet-observability",
+ "capsulet-postgres",
+ "capsulet-runtime",
+ "sqlx",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "capsulet-ir"
 version = "0.1.0"
 dependencies = [

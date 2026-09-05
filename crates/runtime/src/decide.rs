@@ -187,8 +187,19 @@ fn decide_loop(definition: &Definition, state: &RunState) -> Option<Decision> {
             continue;
         };
         let progress = state.loop_progress(&region.id);
-        if progress.stopped.is_some() {
-            continue;
+        // A loop that stopped for anything but finishing its work leaves the
+        // run with nowhere to go. Carrying on past it would mean running the
+        // body of a loop that has already been stopped.
+        if let Some(stopped) = &progress.stopped {
+            if stopped.is_completion() {
+                continue;
+            }
+            return Some(Decision::Fail {
+                reason: RunFailure::LoopStopped {
+                    region: region.id.clone(),
+                    reason: stopped.clone(),
+                },
+            });
         }
 
         let reason = loops::exhausted(spec, &progress, state)

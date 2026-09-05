@@ -422,6 +422,24 @@ impl RunState {
             .contains(&(node.clone(), effect.clone()))
     }
 
+    /// Every output every finished node produced, keyed `node.port`.
+    ///
+    /// All of them rather than a selected few: which outputs are *the run's*
+    /// results is a question about the graph, and this is a fold over the log.
+    /// A caller holding the definition can narrow it; a caller that only has
+    /// the log would otherwise have to guess.
+    #[must_use]
+    pub fn outputs(&self) -> BTreeMap<String, Digest> {
+        self.finished
+            .iter()
+            .flat_map(|(node, outputs)| {
+                outputs
+                    .iter()
+                    .map(move |(port, digest)| (format!("{node}.{port}"), *digest))
+            })
+            .collect()
+    }
+
     /// A loop's progress.
     #[must_use]
     pub fn loop_progress(&self, region: &Identifier) -> LoopProgress {

@@ -144,10 +144,10 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/graph-worker/{Cargo.toml,src/main.rs,src/runtime.rs}`, tests
 
-- [ ] Failing tests: the worker advances a run to completion; it stops when its lease is lost; it
+- [x] Failing tests: the worker advances a run to completion; it stops when its lease is lost; it
   reattaches to a run whose previous owner vanished.
-- [ ] Lease, fold, decide, execute, append — in that order, with a heartbeat while executing.
-- [ ] No decision is taken in the worker that the decision core could take.
+- [x] Lease, fold, decide, execute, append — in that order, with a heartbeat while executing.
+- [x] No decision is taken in the worker that the decision core could take.
 
 ### Task 8: Cancellation, retries, timeouts, compensation, escalation
 

@@ -73,6 +73,16 @@ pub enum RunFailure {
     },
     /// A budget ran out at the run level.
     BudgetExhausted { resource: String },
+    /// A loop stopped for a reason that is not the loop finishing its work.
+    ///
+    /// Carried rather than flattened into a message, because "the repair budget
+    /// ran out" and "the invariant stopped holding" are different facts about
+    /// the run, and a certificate that renders both as `failed` has thrown away
+    /// the part anybody would act on.
+    LoopStopped {
+        region: Identifier,
+        reason: StopReason,
+    },
 }
 
 /// One thing that happened.
