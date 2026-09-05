@@ -337,9 +337,22 @@ if ($GeneratedPath) {
         # fails on one platform and passes on the other is a check nobody can
         # act on.
         $normalise = { param($path) (Get-Content -LiteralPath $path -Raw).Replace("`r`n", "`n") }
-        if (-not (Test-Path -LiteralPath $GeneratedPath -PathType Leaf) -or
-            (& $normalise $GeneratedPath) -cne (& $normalise $temporaryPath)) {
-            throw "generated Markdown is stale; run scripts/render-product-claims.ps1"
+        if (-not (Test-Path -LiteralPath $GeneratedPath -PathType Leaf)) {
+            throw "generated Markdown is missing; run scripts/render-product-claims.ps1"
+        }
+        $committed = (& $normalise $GeneratedPath) -split "`n"
+        $rendered = (& $normalise $temporaryPath) -split "`n"
+        if (($committed -join "`n") -cne ($rendered -join "`n")) {
+            # Say where it diverges. "Stale" on its own sends a reader to a file
+            # they cannot see — the rendering happened on the machine that
+            # failed, and that machine is usually gone by the time anybody looks.
+            $at = 0
+            while ($at -lt $committed.Count -and $at -lt $rendered.Count -and
+                   $committed[$at] -ceq $rendered[$at]) { $at++ }
+            # Either side can be the shorter one, so neither index is safe.
+            $line = { param($lines, $index) if ($index -lt $lines.Count) { $lines[$index] } else { "<end of file>" } }
+            $detail = "line $($at + 1): committed '$(& $line $committed $at)' but rendered '$(& $line $rendered $at)'"
+            throw "generated Markdown is stale; run scripts/render-product-claims.ps1 ($detail)"
         }
     }
     finally {
