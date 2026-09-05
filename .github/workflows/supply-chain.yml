@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -30,8 +30,10 @@ jobs:
       - name: Install cargo-deny
         uses: taiki-e/install-action@cargo-deny
 
+      # Exceptions live in .cargo/audit.toml with an owner and a review date,
+      # so CI and a developer machine silence exactly the same advisories.
       - name: Audit advisories
-        run: cargo audit --deny warnings --ignore RUSTSEC-2023-0071
+        run: cargo audit --deny warnings
 
       - name: Check licenses and bans
         run: cargo deny check
@@ -72,7 +74,7 @@ jobs:
             build-args: ""
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -108,7 +110,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-${{ matrix.name }}.sarif
 

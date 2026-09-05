@@ -21,6 +21,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `compose` | no | yes | Compose validation and smoke | Docker |
 | `helm` | no | yes | Chart lint and deterministic render | Helm |
 | `kind` | no | yes | Installed-cluster smoke | Kind, kubectl, Helm, Docker |
+| `wasm-python` | no | no | WASI Python runner, nightly by name | Cargo, Wasmtime |
 
 `fast` prints its exact omissions at both the start and end. `full` cannot report success unless
 every full-profile gate ran successfully. Per-gate logs are written below `.capsulet/verify/`.

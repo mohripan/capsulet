@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust
         run: |
@@ -39,4 +39,4 @@ jobs:
         run: bash scripts/install-wasi-python.sh >> "$GITHUB_ENV"
 
       - name: Run WASI Python integration test
-        run: cargo test -p capsulet-runner --test wasm_python_runner --locked -- --nocapture
+        run: cargo run -p capsulet-xtask --locked -- verify --gate wasm-python

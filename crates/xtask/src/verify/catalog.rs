@@ -334,6 +334,29 @@ pub(crate) fn gates() -> Vec<Gate> {
                 command("helm", &["template", "capsulet", "charts/capsulet"]),
             ],
         ),
+        // Not in a profile: this one needs a Wasmtime runtime and a WASI Python
+        // build that a normal checkout does not have. It runs nightly by name,
+        // so its pass/fail still lives here rather than in YAML.
+        gate(
+            "wasm-python",
+            "WASI Python runner integration",
+            &["cargo", "wasmtime"],
+            1_800,
+            &[],
+            vec![command(
+                "cargo",
+                &[
+                    "test",
+                    "-p",
+                    "capsulet-runner",
+                    "--test",
+                    "wasm_python_runner",
+                    "--locked",
+                    "--",
+                    "--nocapture",
+                ],
+            )],
+        ),
         gate(
             "kind",
             "Kind deployment smoke test",
