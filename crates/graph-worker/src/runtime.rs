@@ -26,7 +26,7 @@ use capsulet_postgres::{IrRunRecord, PostgresStore, PostgresStoreError, SignalOu
 use capsulet_runtime::effect::{EffectAttempt, EffectContext};
 use capsulet_runtime::failure::{self, Compensation};
 use capsulet_runtime::wait::{self, WaitError};
-use capsulet_runtime::{Decision, Epoch, RunEvent, RunFailure, RunState, decide};
+use capsulet_runtime::{Decision, RunEvent, RunFailure, RunState, decide};
 
 use crate::clock::Clock;
 use crate::execute::{
@@ -666,11 +666,5 @@ impl GraphWorker {
     fn identity(&self) -> Identifier {
         Identifier::parse(&self.config.worker_id)
             .unwrap_or_else(|_| Identifier::parse("graph-worker").expect("a legal identifier"))
-    }
-
-    /// The current lease epoch, for callers that want to check fencing.
-    #[must_use]
-    pub const fn epoch_of(lease: &IrRunRecord) -> Epoch {
-        lease.epoch
     }
 }

@@ -16,7 +16,7 @@ use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::effect::Idempotency;
 use capsulet_ir::loop_region::FailureKind;
 use capsulet_runtime::event::Wait;
-use capsulet_runtime::{Epoch, RunEvent, RunFailure, RunStatus, wait};
+use capsulet_runtime::{RunEvent, RunFailure, RunStatus, wait};
 
 use support::{
     NOW, ScriptedExecutor, TestClock, admission, effect_definition, fixture_id, id,
@@ -452,21 +452,6 @@ async fn an_empty_queue_is_not_an_error() {
         worker.advance_one().await.expect("advance"),
         Progress::NothingToDo
     );
-    assert_eq!(GraphWorker::epoch_of(&idle_lease()), Epoch(0));
-}
-
-/// A record standing in for a lease, to exercise the epoch accessor.
-fn idle_lease() -> capsulet_postgres::IrRunRecord {
-    capsulet_postgres::IrRunRecord {
-        tenant_id: "t".to_string(),
-        project_id: "p".to_string(),
-        id: "r".to_string(),
-        definition_digest: Digest::of(b"d").to_string(),
-        status: "queued".to_string(),
-        epoch: Epoch(0),
-        lease_owner: None,
-        next_position: 1,
-    }
 }
 
 /// Appends a run of events under a fresh lease, then gives the lease back.
