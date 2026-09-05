@@ -13,17 +13,27 @@ $lines.Add("")
 $lines.Add("This file is generated from ``docs/contracts/product-claims.json``. Do not edit it directly.")
 $lines.Add("")
 
-# Sorted ordinally rather than with Sort-Object, which compares strings the way
-# the current culture would. Windows and Linux disagree about where a space or a
-# hyphen sorts, so the same registry rendered on two machines produced two
-# different documents and the staleness check called one of them stale. Byte
-# order is the same everywhere, which is what a generated artefact needs.
-$claims = [object[]]@($registry.claims)
-$keys = [string[]]@($claims | ForEach-Object {
-        "$([string]$_.area)`u{1}$([string]$_.maturity)`u{1}$([string]$_.id)"
-    })
-[Array]::Sort($keys, $claims, [System.StringComparer]::Ordinal)
-$areaGroups = @($claims | Group-Object area)
+# Ordered by an explicit ordinal insertion, and not by the two obvious
+# alternatives. `Sort-Object` compares strings the way the current culture would.
+# `[Array]::Sort($keys, $items, $comparer)` looks right and, here, bound to an
+# overload that silently reordered nothing on Windows while sorting on Linux —
+# no error, just two different documents from one registry, which the staleness
+# check then reported as the second one being stale.
+#
+# A generated artefact has to come out byte-identical wherever it is rendered.
+# With a few dozen claims the cost of an insertion sort is irrelevant next to
+# being able to see exactly what it does.
+$ordered = [System.Collections.Generic.List[object]]::new()
+foreach ($claim in $registry.claims) {
+    $key = "$([string]$claim.area)`u{1}$([string]$claim.maturity)`u{1}$([string]$claim.id)"
+    $at = 0
+    while ($at -lt $ordered.Count -and
+           [string]::CompareOrdinal([string]$ordered[$at].Key, $key) -le 0) {
+        $at++
+    }
+    $ordered.Insert($at, [pscustomobject]@{ Key = $key; Claim = $claim })
+}
+$areaGroups = @($ordered | ForEach-Object { $_.Claim } | Group-Object area)
 foreach ($areaGroup in $areaGroups) {
     $lines.Add("## $($areaGroup.Name)")
     $lines.Add("")
