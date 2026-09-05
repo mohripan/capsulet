@@ -277,6 +277,36 @@ impl PostgresStore {
         row.as_ref().map(row_to_run).transpose()
     }
 
+    /// Lists a project's runs, newest first.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the query fails.
+    pub async fn list_ir_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IrRunRecord>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT tenant_id, project_id, id, definition_digest, status, epoch,
+                   lease_owner, next_position
+            FROM ir_runs
+            WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY created_at DESC, id
+            LIMIT $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.iter().map(row_to_run).collect()
+    }
+
     /// Takes ownership of one unfinished run, bumping its fencing epoch.
     ///
     /// `FOR UPDATE SKIP LOCKED` so two workers asking at the same moment take

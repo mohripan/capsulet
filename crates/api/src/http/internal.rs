@@ -280,6 +280,15 @@ where
             get(crate::assurance::get_definition_version),
         )
         .route_operations(
+            &["startIrRun", "listIrRuns"],
+            post(crate::assurance::start_ir_run).get(crate::assurance::list_ir_runs),
+        )
+        .route_operations(&["getIrRun"], get(crate::assurance::get_ir_run))
+        .route_operations(
+            &["getIrRunEvents"],
+            get(crate::assurance::get_ir_run_events),
+        )
+        .route_operations(
             &["listAssuranceCertificates"],
             get(crate::assurance::list_certificates),
         )

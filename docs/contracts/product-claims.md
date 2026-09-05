@@ -141,6 +141,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-SECURITY-001` | implemented | limitation | Capsulet constrains execution but does not claim a complete sandbox for hostile code; production isolation depends on operator-selected Kubernetes controls and runtime classes. |
 
+## Starting a run
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-RUNTIME-007` | implemented | capability | A registered IR definition version can be enqueued as a run over the API, and the run is created queued and unleased so the graph worker is what advances it. |
+
 ## Stopping safely
 
 | ID | Maturity | Kind | Claim |

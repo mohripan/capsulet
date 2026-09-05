@@ -1028,6 +1028,50 @@ const ENDPOINTS: &[EndpointContract] = &[
         "200"
     ),
     endpoint!(
+        "POST",
+        "/v1/ir/runs",
+        "startIrRun",
+        "memory:write",
+        true,
+        true,
+        Some("StartIrRunRequest"),
+        "IrRunResponse",
+        "201"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/ir/runs",
+        "listIrRuns",
+        "memory:read",
+        true,
+        true,
+        None,
+        "ListIrRunsResponse",
+        "200"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/ir/runs/{id}",
+        "getIrRun",
+        "memory:read",
+        true,
+        true,
+        None,
+        "IrRunResponse",
+        "200"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/ir/runs/{id}/events",
+        "getIrRunEvents",
+        "memory:read",
+        true,
+        true,
+        None,
+        "IrRunEventsResponse",
+        "200"
+    ),
+    endpoint!(
         "GET",
         "/v1/assurance/certificates",
         "listAssuranceCertificates",

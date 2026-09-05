@@ -567,6 +567,19 @@
           "selector": "an_iteration_that_started_and_crashed_still_spent_an_iteration"
         }
       ]
+    },
+    {
+      "command": "cargo test -p capsulet-api --locked --lib",
+      "tests": [
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "a_run_of_a_definition_nobody_registered_is_refused"
+        }
+      ]
     }
   ],
   "claims": [
@@ -1759,6 +1772,45 @@
           "path": "crates/graph-worker/tests/worker.rs",
           "command": "cargo test -p capsulet-graph-worker --locked --test worker",
           "selector": "a_cancelled_run_undoes_what_it_published_before_it_stops"
+        }
+      ]
+    },
+    {
+      "id": "CAP-RUNTIME-007",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Starting a run",
+      "statement": "A registered IR definition version can be enqueued as a run over the API, and the run is created queued and unleased so the graph worker is what advances it.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "the-api-enqueues-rather-than-executes",
+          "evidence_selectors": [
+            "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
+          ]
+        },
+        {
+          "assertion": "a-run-names-bytes-somebody-stored",
+          "evidence_selectors": [
+            "a_run_of_a_definition_nobody_registered_is_refused"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "command": "cargo test -p capsulet-api --locked --lib",
+          "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "command": "cargo test -p capsulet-api --locked --lib",
+          "selector": "a_run_of_a_definition_nobody_registered_is_refused"
         }
       ]
     }

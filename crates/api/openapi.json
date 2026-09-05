@@ -2327,6 +2327,68 @@
         ],
         "type": "object"
       },
+      "IrRunEventsResponse": {
+        "description": "A run's whole history.",
+        "properties": {
+          "events": {
+            "description": "Every event, in the order the run recorded them. This is the run: its\nstatus and everything else about it is a fold over exactly these.",
+            "items": {
+              "$ref": "#/components/schemas/IrRunEventResponse"
+            },
+            "type": "array"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "events"
+        ],
+        "type": "object"
+      },
+      "IrRunResponse": {
+        "description": "One stored run.",
+        "properties": {
+          "definition_digest": {
+            "description": "The exact definition version being executed, by digest.",
+            "type": "string"
+          },
+          "epoch": {
+            "description": "The lease generation. Every event names the epoch it was written under,\nand a worker whose lease was reclaimed cannot append under the old one.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "event_count": {
+            "description": "How many events the log holds.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lease_owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "Where the run is, as an execution concept. Never an assurance verdict:\n`completed` says the graph finished, not that anything was verified.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "definition_digest",
+          "status",
+          "epoch",
+          "event_count"
+        ],
+        "type": "object"
+      },
       "JobDefinitionResponse": {
         "properties": {
           "bundle_object_key": {
@@ -2730,6 +2792,21 @@
           "runs": {
             "items": {
               "$ref": "#/components/schemas/IngestionRunResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "type": "object"
+      },
+      "ListIrRunsResponse": {
+        "description": "A page of runs.",
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/IrRunResponse"
             },
             "type": "array"
           }
@@ -3926,6 +4003,26 @@
             "type": "object"
           }
         },
+        "type": "object"
+      },
+      "StartIrRunRequest": {
+        "description": "A request to run a stored definition version.",
+        "properties": {
+          "definition_digest": {
+            "description": "The definition version to run, by the digest of its canonical bytes.",
+            "type": "string"
+          },
+          "id": {
+            "description": "The run's identifier. Supplying one makes a retried request idempotent\nrather than a second run; omitting it has the server generate one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "definition_digest"
+        ],
         "type": "object"
       },
       "StringResponse": {
@@ -7026,6 +7123,254 @@
           }
         ],
         "summary": "get ir definition version",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/ir/runs": {
+      "get": {
+        "operationId": "listIrRuns",
+        "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListIrRunsResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "list ir runs",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-stability": "experimental"
+      },
+      "post": {
+        "operationId": "startIrRun",
+        "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartIrRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrRunResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "start ir run",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/ir/runs/{id}": {
+      "get": {
+        "operationId": "getIrRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrRunResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "get ir run",
+        "x-capsulet-project-context": true,
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/ir/runs/{id}/events": {
+      "get": {
+        "operationId": "getIrRunEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrRunEventsResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "get ir run events",
         "x-capsulet-project-context": true,
         "x-capsulet-required-scope": "memory:read",
         "x-capsulet-stability": "experimental"

@@ -19,6 +19,10 @@ fn alias_schema(name: &str) -> Option<Value> {
             serialize::<crate::assurance::ListAssuranceCertificatesResponse>()
         }
         "CertificateBundleResponse" => serialize::<crate::assurance::CertificateBundleResponse>(),
+        "StartIrRunRequest" => serialize::<crate::assurance::StartIrRunRequest>(),
+        "IrRunResponse" => serialize::<crate::assurance::IrRunResponse>(),
+        "ListIrRunsResponse" => serialize::<crate::assurance::ListIrRunsResponse>(),
+        "IrRunEventsResponse" => serialize::<crate::assurance::IrRunEventsResponse>(),
         "CreateMemorySourceRequest" => serialize::<crate::memory::CreateSourceRequest>(),
         "MemorySourceResponse" => serialize::<crate::memory::SourceResponse>(),
         "CreateMemoryEvidenceRequest" => serialize::<crate::memory::CreateEvidenceRequest>(),

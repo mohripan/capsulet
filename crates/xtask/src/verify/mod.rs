@@ -164,23 +164,19 @@ fn execute(options: &Options) -> Result<(), String> {
         let log_path = log_directory.join(format!("{}.log", gate.name));
         match run_gate(gate, &root, &log_path) {
             Ok(()) => {}
-            Err(ProcessFailure::Failed) => {
+            Err(failure) => {
+                // Print the tail before returning. A gate that fails on another
+                // machine and only says "see the log" is a gate whose reason
+                // nobody ever reads: the log is on the runner, and the runner is
+                // gone by the time anybody looks.
+                print_log_tail(&log_path);
+                let reason = match failure {
+                    ProcessFailure::Failed => "failed".to_string(),
+                    ProcessFailure::TimedOut => "timed out".to_string(),
+                    ProcessFailure::Io(error) => error,
+                };
                 return Err(format!(
-                    "{}: failed (log: {})",
-                    gate.name,
-                    log_path.display()
-                ));
-            }
-            Err(ProcessFailure::TimedOut) => {
-                return Err(format!(
-                    "{}: timed out (log: {})",
-                    gate.name,
-                    log_path.display()
-                ));
-            }
-            Err(ProcessFailure::Io(error)) => {
-                return Err(format!(
-                    "{}: {error} (log: {})",
+                    "{}: {reason} (log: {})",
                     gate.name,
                     log_path.display()
                 ));
@@ -198,6 +194,27 @@ fn execute(options: &Options) -> Result<(), String> {
         passed.join(", ")
     );
     Ok(())
+}
+
+/// How much of a failing gate's log to print.
+///
+/// Enough to carry a test failure and its assertion message, short enough that
+/// a CI log stays readable.
+const LOG_TAIL_LINES: usize = 60;
+
+/// Prints the end of a failing gate's log.
+fn print_log_tail(log_path: &Path) {
+    let Ok(contents) = fs::read_to_string(log_path) else {
+        return;
+    };
+    let lines: Vec<&str> = contents.lines().collect();
+    let skipped = lines.len().saturating_sub(LOG_TAIL_LINES);
+    if skipped > 0 {
+        println!("[verify] ... {skipped} earlier lines omitted ...");
+    }
+    for line in lines.iter().skip(skipped) {
+        println!("[verify] | {line}");
+    }
 }
 
 fn run_gate(gate: &Gate, root: &Path, log_path: &Path) -> Result<(), ProcessFailure> {

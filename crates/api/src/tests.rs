@@ -18,8 +18,10 @@ use capsulet_core::{
     WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
 };
 use capsulet_postgres::{
-    AdmissionSnapshot, NewProjectMembership, ProjectMembershipRecord, ProjectRecord, TriggerEvent,
+    AdmissionSnapshot, IrDefinitionVersion, IrRunRecord, NewProjectMembership,
+    ProjectMembershipRecord, ProjectRecord, TriggerEvent,
 };
+use capsulet_runtime::{RecordedEvent, RunEvent, event::Epoch};
 use capsulet_storage::ObjectStore;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -63,6 +65,9 @@ struct FakeStore {
     ingestion_connectors: Arc<Mutex<Vec<IngestionConnector>>>,
     ingestion_runs: Arc<Mutex<Vec<IngestionRun>>>,
     ingestion_run_outputs: Arc<Mutex<Vec<IngestionRunOutputRecord>>>,
+    ir_definitions: Arc<Mutex<Vec<IrDefinitionVersion>>>,
+    ir_runs: Arc<Mutex<Vec<IrRunRecord>>>,
+    ir_run_events: Arc<Mutex<Vec<(String, RecordedEvent)>>>,
     projects: Arc<Mutex<Vec<ProjectRecord>>>,
     project_memberships: Arc<Mutex<Vec<ProjectMembershipRecord>>>,
     ownership: Arc<Mutex<Vec<FakeOwnership>>>,
@@ -150,6 +155,138 @@ impl ApiStore for FakeStore {
 
     async fn ping(&self) -> Result<(), Self::Error> {
         Ok(())
+    }
+
+    async fn insert_ir_definition_version(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        definition: &capsulet_ir::definition::Definition,
+        _admission: &capsulet_ir::admission::AdmissionRecord,
+    ) -> Result<String, Self::Error> {
+        let bytes =
+            capsulet_ir::to_canonical_bytes(definition).map_err(|error| error.to_string())?;
+        let digest = capsulet_ir::Digest::of(&bytes).to_string();
+        let canonical = String::from_utf8(bytes).map_err(|error| error.to_string())?;
+        let mut stored = self
+            .ir_definitions
+            .lock()
+            .map_err(|error| error.to_string())?;
+        if !stored.iter().any(|each| each.digest == digest) {
+            stored.push(IrDefinitionVersion {
+                tenant_id: tenant_id.to_string(),
+                project_id: project_id.to_string(),
+                definition_id: definition.id.as_str().to_string(),
+                name: definition.name.clone(),
+                version: definition.version.clone(),
+                digest: digest.clone(),
+                schema_version: definition.schema_version.to_string(),
+                canonical_bytes: canonical,
+            });
+        }
+        Ok(digest)
+    }
+
+    async fn get_ir_definition_version(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        digest: &str,
+    ) -> Result<Option<IrDefinitionVersion>, Self::Error> {
+        Ok(self
+            .ir_definitions
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|each| each.digest == digest)
+            .cloned())
+    }
+
+    async fn create_ir_run(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        run_id: &str,
+        definition_digest: &capsulet_ir::Digest,
+        mode: capsulet_ir::definition::AssuranceMode,
+        at: capsulet_ir::RecordedTime,
+    ) -> Result<Option<IrRunRecord>, Self::Error> {
+        // Mirrors the real store: the run and its admission event are written
+        // together, so a run whose log does not fold is not reachable.
+        let record = IrRunRecord {
+            tenant_id: tenant_id.to_string(),
+            project_id: project_id.to_string(),
+            id: run_id.to_string(),
+            definition_digest: definition_digest.to_string(),
+            status: "queued".to_string(),
+            epoch: Epoch(0),
+            lease_owner: None,
+            next_position: 1,
+        };
+        self.ir_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .push(record.clone());
+        self.ir_run_events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .push((
+                run_id.to_string(),
+                RecordedEvent {
+                    position: 0,
+                    epoch: Epoch(0),
+                    at,
+                    event: RunEvent::Admitted {
+                        definition: *definition_digest,
+                        mode,
+                    },
+                },
+            ));
+        Ok(Some(record))
+    }
+
+    async fn get_ir_run(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        run_id: &str,
+    ) -> Result<Option<IrRunRecord>, Self::Error> {
+        Ok(self
+            .ir_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|each| each.id == run_id)
+            .cloned())
+    }
+
+    async fn list_ir_runs(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _limit: i64,
+    ) -> Result<Vec<IrRunRecord>, Self::Error> {
+        Ok(self
+            .ir_runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .clone())
+    }
+
+    async fn load_ir_run_events(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        run_id: &str,
+    ) -> Result<Vec<RecordedEvent>, Self::Error> {
+        Ok(self
+            .ir_run_events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|(each, _)| each == run_id)
+            .map(|(_, event)| event.clone())
+            .collect())
     }
 
     async fn admission_snapshot(
@@ -5111,4 +5248,164 @@ async fn response_body_helper_handles_empty_body() {
         .await
         .expect("empty body");
     assert!(bytes.is_empty());
+}
+
+/// A definition with one pure node.
+///
+/// Built from the IR's own types rather than hand-written JSON, so the fixture
+/// cannot drift from the shape the crate actually reads.
+fn ir_definition_body(assurance: capsulet_ir::definition::AssuranceMode) -> Value {
+    let identifier = |value: &str| capsulet_ir::Identifier::parse(value).expect("identifier");
+    let graph = capsulet_ir::Graph::new(capsulet_ir::GraphBuilder {
+        nodes: vec![capsulet_ir::Node {
+            id: identifier("prepare"),
+            name: "Prepare".to_string(),
+            kind: capsulet_ir::NodeKind::PureComputation,
+            inputs: vec![],
+            outputs: vec![capsulet_ir::OutputPort::new(
+                identifier("patch"),
+                capsulet_ir::ValueSchema::Text {
+                    length: capsulet_ir::value::LengthBounds::new(0, 1_024),
+                },
+            )],
+            capabilities: vec![],
+            effects: vec![],
+            budget: capsulet_ir::ResourceBudget::deterministic(1_000),
+            provider: None,
+            sub_workflow: None,
+        }],
+        ..capsulet_ir::GraphBuilder::default()
+    })
+    .expect("the fixture graph is valid");
+
+    let definition = capsulet_ir::Definition {
+        schema_version: capsulet_ir::Definition::current_schema_version(),
+        id: identifier("prepare-release"),
+        version: "1".to_string(),
+        name: "Prepare release".to_string(),
+        assurance,
+        capabilities: capsulet_ir::CapabilitySet::empty(),
+        budget: capsulet_ir::ResourceBudget::deterministic(600_000),
+        graph,
+        boundaries: vec![],
+        contracts: vec![],
+    };
+    serde_json::to_value(definition).expect("the fixture definition serializes")
+}
+
+/// An authorised request, since the run endpoints all take the same headers.
+fn admin_request(method: Method, uri: &str, body: Option<Value>) -> Request<Body> {
+    let builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(
+            "authorization",
+            "Bearer admin-token-0123456789-abcdefghijkl",
+        )
+        .header("content-type", "application/json");
+    builder
+        .body(body.map_or_else(Body::empty, |value| Body::from(value.to_string())))
+        .expect("request")
+}
+
+#[tokio::test]
+async fn a_registered_definition_can_be_enqueued_as_a_run_and_read_back() {
+    let app = authenticated_app(FakeStore::default());
+
+    let registration = app
+        .clone()
+        .oneshot(admin_request(
+            Method::POST,
+            "/v1/ir/definitions",
+            Some(json!({
+                "definition": ir_definition_body(
+                    capsulet_ir::definition::AssuranceMode::Enforce
+                )
+            })),
+        ))
+        .await
+        .expect("response");
+    assert_eq!(
+        registration.status(),
+        axum::http::StatusCode::CREATED,
+        "the fixture definition has to pass structural admission"
+    );
+    let digest = response_json(registration).await["digest"]
+        .as_str()
+        .expect("a digest")
+        .to_string();
+
+    let started = app
+        .clone()
+        .oneshot(admin_request(
+            Method::POST,
+            "/v1/ir/runs",
+            Some(json!({ "definition_digest": digest, "id": "ir_run_release" })),
+        ))
+        .await
+        .expect("response");
+    assert_eq!(started.status(), axum::http::StatusCode::CREATED);
+
+    let run: Value = response_json(started).await;
+    assert_eq!(run["id"], "ir_run_release");
+    assert_eq!(run["definition_digest"], digest.as_str());
+    assert_eq!(
+        run["status"], "queued",
+        "the API enqueues a run; the graph worker is what advances it"
+    );
+    assert!(
+        run["lease_owner"].is_null(),
+        "nothing has taken the run yet, and the API is not entitled to"
+    );
+
+    let events: Value = response_json(
+        app.clone()
+            .oneshot(admin_request(
+                Method::GET,
+                "/v1/ir/runs/ir_run_release/events",
+                None,
+            ))
+            .await
+            .expect("response"),
+    )
+    .await;
+    let log = events["events"].as_array().expect("an event array");
+    assert_eq!(log.len(), 1, "a new run has exactly its admission event");
+    assert_eq!(log[0]["position"], 0);
+    assert_eq!(log[0]["kind"], "admitted");
+    assert_eq!(
+        log[0]["event"]["admitted"]["mode"], "enforce",
+        "the mode comes from the definition, so nobody can downgrade it per run"
+    );
+
+    let listed: Value = response_json(
+        app.oneshot(admin_request(Method::GET, "/v1/ir/runs", None))
+            .await
+            .expect("response"),
+    )
+    .await;
+    assert_eq!(listed["runs"].as_array().expect("runs").len(), 1);
+}
+
+#[tokio::test]
+async fn a_run_of_a_definition_nobody_registered_is_refused() {
+    let app = authenticated_app(FakeStore::default());
+
+    let response = app
+        .oneshot(admin_request(
+            Method::POST,
+            "/v1/ir/runs",
+            Some(json!({
+                "definition_digest":
+                    "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            })),
+        ))
+        .await
+        .expect("response");
+
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::NOT_FOUND,
+        "a run has to name bytes somebody stored, or it could not say what it executed"
+    );
 }

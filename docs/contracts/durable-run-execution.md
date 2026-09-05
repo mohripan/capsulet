@@ -28,9 +28,14 @@ than `capsulet-graph-worker` calls `append_ir_run_event`, `lease_next_ir_run`, o
 `consume_ir_run_signal`, and when the scheduler or evaluator mentions `ir_run_events`, the decision
 core, or the worker type.
 
-Creating a run is not executing one. `create_ir_run` writes the run and its admission event and
-leaves it `queued` with no lease, so anything that wants a run to happen enqueues it and a worker
-picks it up. Automations do not yet target IR definitions; when they do, that is the path they take.
+Creating a run is not executing one. `POST /v1/ir/runs` writes the run and its admission event and
+leaves it `queued` with no lease, so the API enqueues and a worker picks it up. The assurance mode
+comes from the definition rather than the request: letting a caller choose it per run would let
+anybody downgrade `enforce` to `observe` at the moment it mattered. `GET /v1/ir/runs/{id}/events`
+returns the log itself rather than a summary, because the log *is* the run and a caller checking a
+claim has to see the events it was folded from.
+
+Automations do not yet target IR definitions; when they do, that is the path they take.
 
 Checked by: `verify --gate claims`.
 
@@ -86,9 +91,6 @@ Checked by: `verify --gate ir` (`crates/runtime/tests/failure.rs`) and `verify -
 
 ## What is not claimed
 
-- Nothing outside the process can start a run yet. The API registers IR definition versions but has
-  no endpoint that creates a run of one, so today a run is created by `create_ir_run` from a test or
-  from another crate. The durable machinery below that point is complete; the way in is not.
 - Node execution and effect transports are not implemented. The deployed worker ships an executor
   that refuses every node with `verifier_unavailable`; providers arrive in M4.
 - Region entry and exit semantics beyond loop budgets are not implemented. A loop that stops for any

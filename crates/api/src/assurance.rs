@@ -16,8 +16,14 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
 };
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use capsulet_ir::admission::admit;
+use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::Definition;
+use capsulet_ir::digest::Digest;
+use capsulet_postgres::IrRunRecord;
+use capsulet_runtime::RunEvent;
 use capsulet_storage::ObjectStore;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -25,7 +31,7 @@ use utoipa::ToSchema;
 use crate::{
     auth::Principal,
     error::ApiError,
-    http::internal::{project_context, require_project_role},
+    http::internal::{generated_id, project_context, require_project_role},
     state::AppState,
     store::ApiStore,
 };
@@ -353,4 +359,272 @@ fn to_response(stored: capsulet_postgres::StoredCertificate) -> AssuranceCertifi
         replay_digest: stored.replay_digest,
         canonical_bytes: stored.canonical_bytes,
     }
+}
+
+/// A request to run a stored definition version.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct StartIrRunRequest {
+    /// The definition version to run, by the digest of its canonical bytes.
+    pub definition_digest: String,
+    /// The run's identifier. Supplying one makes a retried request idempotent
+    /// rather than a second run; omitting it has the server generate one.
+    #[serde(default)]
+    pub id: Option<String>,
+}
+
+/// One stored run.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct IrRunResponse {
+    pub id: String,
+    /// The exact definition version being executed, by digest.
+    pub definition_digest: String,
+    /// Where the run is, as an execution concept. Never an assurance verdict:
+    /// `completed` says the graph finished, not that anything was verified.
+    pub status: String,
+    /// The lease generation. Every event names the epoch it was written under,
+    /// and a worker whose lease was reclaimed cannot append under the old one.
+    pub epoch: u64,
+    pub lease_owner: Option<String>,
+    /// How many events the log holds.
+    pub event_count: u64,
+}
+
+/// A page of runs.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ListIrRunsResponse {
+    pub runs: Vec<IrRunResponse>,
+}
+
+/// One event from a run's log.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct IrRunEventResponse {
+    /// Position in this run's log, gapless from zero.
+    pub position: u64,
+    pub epoch: u64,
+    /// The event's short name, which is also the key its body sits under.
+    pub kind: String,
+    /// When the worker says it happened, in milliseconds since the Unix epoch.
+    pub recorded_at: i64,
+    /// The event itself.
+    #[schema(value_type = Object)]
+    pub event: RunEvent,
+}
+
+/// A run's whole history.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct IrRunEventsResponse {
+    pub run_id: String,
+    /// Every event, in the order the run recorded them. This is the run: its
+    /// status and everything else about it is a fold over exactly these.
+    pub events: Vec<IrRunEventResponse>,
+}
+
+fn run_response(record: IrRunRecord) -> IrRunResponse {
+    IrRunResponse {
+        id: record.id,
+        definition_digest: record.definition_digest,
+        status: record.status,
+        epoch: record.epoch.0,
+        lease_owner: record.lease_owner,
+        event_count: record.next_position,
+    }
+}
+
+/// Enqueues a run of a stored definition version.
+///
+/// Enqueues rather than starts. The run is written with its admission event and
+/// no lease, and the graph worker picks it up; nothing in the API advances a
+/// run, and a contract test refuses the code that would.
+///
+/// The assurance mode comes from the definition rather than from the request.
+/// Letting a caller choose it per run would let anybody downgrade `enforce` to
+/// `observe` at the moment it mattered.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the caller lacks permission, the definition
+/// version is not in this project, the run id is already taken, or the store
+/// fails.
+pub(crate) async fn start_ir_run<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Json(request): Json<StartIrRunRequest>,
+) -> Result<(StatusCode, Json<IrRunResponse>), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_editor")?;
+
+    let version = state
+        .store
+        .get_ir_definition_version(
+            &context.tenant_id,
+            &context.project_id,
+            &request.definition_digest,
+        )
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::IrDefinitionNotFound(request.definition_digest.clone()))?;
+    let definition = version
+        .definition()
+        .map_err(|error| ApiError::store(error.to_string()))?;
+    // The digest comes back from storage, so a parse failure here would mean a
+    // row written by an incompatible build rather than a bad request.
+    let digest: Digest = version
+        .digest
+        .parse()
+        .map_err(|error: capsulet_ir::digest::DigestError| ApiError::store(error.to_string()))?;
+
+    let run_id = request.id.clone().unwrap_or_else(|| generated_id("ir_run"));
+    if state
+        .store
+        .get_ir_run(&context.tenant_id, &context.project_id, &run_id)
+        .await
+        .map_err(ApiError::store)?
+        .is_some()
+    {
+        return Err(ApiError::RunAlreadyExists(run_id));
+    }
+
+    let record = state
+        .store
+        .create_ir_run(
+            &context.tenant_id,
+            &context.project_id,
+            &run_id,
+            &digest,
+            definition.assurance,
+            recorded_now(),
+        )
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::store("this store does not execute IR definitions"))?;
+
+    Ok((StatusCode::CREATED, Json(run_response(record))))
+}
+
+/// Lists the caller's project's runs, newest first.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the caller lacks permission or the store fails.
+pub(crate) async fn list_ir_runs<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<ListIrRunsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_viewer")?;
+
+    let runs = state
+        .store
+        .list_ir_runs(&context.tenant_id, &context.project_id, 100)
+        .await
+        .map_err(ApiError::store)?;
+
+    Ok(Json(ListIrRunsResponse {
+        runs: runs.into_iter().map(run_response).collect(),
+    }))
+}
+
+/// Reads one run.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the caller lacks permission, the run is not in
+/// this project, or the store fails.
+pub(crate) async fn get_ir_run<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(run_id): Path<String>,
+) -> Result<Json<IrRunResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_viewer")?;
+
+    let record = state
+        .store
+        .get_ir_run(&context.tenant_id, &context.project_id, &run_id)
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::RunNotFound(run_id.clone()))?;
+
+    Ok(Json(run_response(record)))
+}
+
+/// Reads a run's event log.
+///
+/// The log is returned rather than a summary of it, because the log is the run:
+/// every other statement about where a run is comes from folding exactly these
+/// events, and a caller that wants to check a claim has to see them.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the caller lacks permission, the run is not in
+/// this project, or the store fails.
+pub(crate) async fn get_ir_run_events<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(run_id): Path<String>,
+) -> Result<Json<IrRunEventsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, "project_viewer")?;
+
+    if state
+        .store
+        .get_ir_run(&context.tenant_id, &context.project_id, &run_id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::RunNotFound(run_id));
+    }
+
+    let events = state
+        .store
+        .load_ir_run_events(&context.tenant_id, &context.project_id, &run_id)
+        .await
+        .map_err(ApiError::store)?;
+
+    Ok(Json(IrRunEventsResponse {
+        run_id,
+        events: events
+            .into_iter()
+            .map(|recorded| IrRunEventResponse {
+                position: recorded.position,
+                epoch: recorded.epoch.0,
+                kind: recorded.event.as_str().to_string(),
+                recorded_at: recorded.at.epoch_millis(),
+                event: recorded.event,
+            })
+            .collect(),
+    }))
+}
+
+/// The current moment, as the IR records one.
+///
+/// The one place in this module that reads a clock. Everything downstream takes
+/// time as a parameter so a decision can be replayed; recording when a run was
+/// created is the point at which a real time has to enter.
+fn recorded_now() -> RecordedTime {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis());
+    RecordedTime(i64::try_from(millis).unwrap_or(i64::MAX))
 }

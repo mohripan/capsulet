@@ -17,12 +17,15 @@ use capsulet_core::{
 };
 use capsulet_ir::admission::AdmissionRecord;
 use capsulet_ir::correctness::certificate::Certificate as AssuranceCertificate;
-use capsulet_ir::definition::Definition;
+use capsulet_ir::correctness::evidence::RecordedTime;
+use capsulet_ir::definition::{AssuranceMode, Definition};
+use capsulet_ir::digest::Digest;
 use capsulet_postgres::{
     AdmissionSnapshot, AuditEvent, CertificateRecord, EvidenceLocation, IrDefinitionVersion,
-    NewProjectMembership, NewServiceAccount, PostgresStore, PostgresStoreError,
+    IrRunRecord, NewProjectMembership, NewServiceAccount, PostgresStore, PostgresStoreError,
     ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, StoredCertificate, TriggerEvent,
 };
+use capsulet_runtime::RecordedEvent;
 
 /// Storage operations required by the HTTP API.
 #[async_trait]
@@ -228,6 +231,46 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         _digest: &str,
     ) -> Result<Option<IrDefinitionVersion>, Self::Error> {
         Ok(None)
+    }
+    /// Enqueues a run of a stored definition version.
+    ///
+    /// Enqueues rather than starts: the run is written with its admission
+    /// event and no lease, and the graph worker picks it up. Nothing in the API
+    /// advances a run, and a contract test refuses the code that would.
+    async fn create_ir_run(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _run_id: &str,
+        _definition_digest: &Digest,
+        _mode: AssuranceMode,
+        _at: RecordedTime,
+    ) -> Result<Option<IrRunRecord>, Self::Error> {
+        Ok(None)
+    }
+    async fn get_ir_run(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _run_id: &str,
+    ) -> Result<Option<IrRunRecord>, Self::Error> {
+        Ok(None)
+    }
+    async fn list_ir_runs(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _limit: i64,
+    ) -> Result<Vec<IrRunRecord>, Self::Error> {
+        Ok(Vec::new())
+    }
+    async fn load_ir_run_events(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _run_id: &str,
+    ) -> Result<Vec<RecordedEvent>, Self::Error> {
+        Ok(Vec::new())
     }
     async fn insert_assurance_certificate(
         &self,
@@ -798,6 +841,47 @@ impl ApiStore for PostgresStore {
     ) -> Result<Option<IrDefinitionVersion>, Self::Error> {
         self.get_ir_definition_version(tenant_id, project_id, digest)
             .await
+    }
+
+    async fn create_ir_run(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        run_id: &str,
+        definition_digest: &Digest,
+        mode: AssuranceMode,
+        at: RecordedTime,
+    ) -> Result<Option<IrRunRecord>, Self::Error> {
+        self.create_ir_run(tenant_id, project_id, run_id, definition_digest, mode, at)
+            .await
+            .map(Some)
+    }
+
+    async fn get_ir_run(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        run_id: &str,
+    ) -> Result<Option<IrRunRecord>, Self::Error> {
+        self.get_ir_run(tenant_id, project_id, run_id).await
+    }
+
+    async fn list_ir_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<IrRunRecord>, Self::Error> {
+        self.list_ir_runs(tenant_id, project_id, limit).await
+    }
+
+    async fn load_ir_run_events(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        run_id: &str,
+    ) -> Result<Vec<RecordedEvent>, Self::Error> {
+        self.load_ir_run_events(tenant_id, project_id, run_id).await
     }
 
     async fn insert_assurance_certificate(

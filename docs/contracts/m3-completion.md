@@ -78,7 +78,7 @@ Every claim registered for M3 names a test a gate runs:
 
 ## Verification run 2026-09-06
 
-Three things the gates found that review had not, and two that reading found afterwards.
+Three things the gates found that review had not, and three that reading found afterwards.
 
 ### An internally-tagged event enum could not read back what it wrote
 
@@ -122,6 +122,12 @@ learns to ignore the case that matters. Split into `effect_abandoned` and `effec
 the run failing on the second through `decide` — which also means anything the run still owes gets
 compensated before it ends.
 
+**The runtime had no door.** The API registered IR definition versions and stopped there, so a
+complete durable runtime could not be reached from outside the process. `POST /v1/ir/runs` now
+enqueues one, with `GET /v1/ir/runs`, `GET /v1/ir/runs/{id}`, and `GET /v1/ir/runs/{id}/events` to
+watch it. The mode comes from the definition rather than the request, so nobody downgrades `enforce`
+per run.
+
 **An early timer signal made the worker spin.** A scheduler firing a timer before it was due left
 the signal in the inbox, which kept the run leasable, which made the worker take it and put it down
 again for as long as the timer had left to run. The signal is now answered "not yet" and consumed;
@@ -143,13 +149,8 @@ container verifier protocol, and the validator SDK. The `Executor` trait in
 `crates/graph-worker/src/execute.rs` is the seam they plug into, and its typed outcomes —
 `Performed`, `Failed`, `Uncertain` — are what the declared idempotency is matched against.
 
-Three things M3 left for later, deliberately:
+Two things M3 left for later, deliberately:
 
-- **No way in from outside the process.** The API registers IR definition versions but has no
-  endpoint that creates a run of one. Everything below that point is finished and gated; the entry
-  point is not, and adding one means an OpenAPI change, an SDK regeneration, and a dashboard view —
-  which is M5's surface, not M3's. Worth stating plainly rather than leaving a reader to discover
-  that a complete runtime has no door.
 - **The worker does not drive loop iterations.** Deciding when an iteration begins is
   region-execution semantics that needs a running body, so the chaos gate seeds the loop history
   rather than producing it. What is proven is that the history survives a restart, which is the
