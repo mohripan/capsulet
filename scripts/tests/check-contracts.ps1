@@ -47,4 +47,38 @@ foreach ($workflow in $workflows) {
   }
 }
 
+# One orchestration path for IR runs.
+#
+# A run whose log two components can write is a run whose history nobody can
+# explain: the fold that reconstructs it would be reconstructing the interleaving
+# of two schedulers. Only the graph worker advances an IR run, and the only other
+# place these names may appear is the storage adapter that defines them.
+$writers = @("append_ir_run_event", "lease_next_ir_run", "consume_ir_run_signal")
+$allowed = @("crates\graph-worker", "crates\postgres")
+$sources = Get-ChildItem -LiteralPath (Join-Path $repoRoot "crates") -Filter "*.rs" -Recurse
+foreach ($source in $sources) {
+  $relative = $source.FullName.Substring($repoRoot.Length + 1)
+  if (@($allowed | Where-Object { $relative.StartsWith($_) }).Count -gt 0) { continue }
+  $content = Get-Content -LiteralPath $source.FullName -Raw
+  foreach ($writer in $writers) {
+    if ($content.Contains($writer)) {
+      throw "$relative calls $writer; only the graph worker advances an IR run"
+    }
+  }
+}
+
+# And the components that own the compatibility path must not have grown a
+# second one. They may enqueue an IR run; they may not execute it.
+foreach ($component in @("scheduler", "evaluator")) {
+  $sources = Get-ChildItem -LiteralPath (Join-Path $repoRoot "crates\$component") -Filter "*.rs" -Recurse
+  foreach ($source in $sources) {
+    $content = Get-Content -LiteralPath $source.FullName -Raw
+    foreach ($forbidden in @("ir_run_events", "capsulet_runtime::decide", "GraphWorker")) {
+      if ($content.Contains($forbidden)) {
+        throw "crates\$component references $forbidden; IR runs advance through the graph worker only"
+      }
+    }
+  }
+}
+
 Write-Host "Unified contract wiring test passed."

@@ -170,8 +170,16 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/scheduler/src/service.rs`, `crates/evaluator/src/service.rs`, docs
 
-- [ ] Failing tests: nothing but the graph worker advances an IR run; the scheduler leaves IR runs
-  alone; an automation that targets an IR definition enqueues a run rather than executing it.
+- [x] Failing tests: nothing but the graph worker advances an IR run; the scheduler leaves IR runs
+  alone. Enforced at the source rather than behaviourally: `scripts/tests/check-contracts.ps1`
+  fails when any crate outside `capsulet-graph-worker` calls the log writers, and when the
+  scheduler or evaluator so much as mentions IR run events or the decision core. A behavioural
+  test would only prove that today's scheduler happens not to; this fails the moment one grows
+  a second path.
+- [x] The third clause has no subject yet: automations target workflows, not IR definitions, so
+  there is no automation that could execute an IR run. What the rule will be is written down —
+  `create_ir_run` enqueues and leaves the run `queued` with no lease — and the contract above
+  refuses the alternative in advance.
 
 ### Task 11: The M3 gate
 
