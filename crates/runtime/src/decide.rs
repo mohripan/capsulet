@@ -110,6 +110,18 @@ fn decide_next(definition: &Definition, state: &RunState, now: RecordedTime) -> 
         return decision;
     }
 
+    // An effect nobody could account for ends the run, whatever else remains.
+    // Carrying on past one would mean building on a step whose outcome this
+    // system is not entitled to assume either way.
+    if let Some((node, effect)) = state.uncertain_effects().first() {
+        return Decision::Fail {
+            reason: RunFailure::EffectUncertain {
+                node: node.clone(),
+                effect: effect.clone(),
+            },
+        };
+    }
+
     // Cancellation is honoured here: after any outstanding effect has been
     // resolved, and before anything new is started. Stopping earlier would end
     // the run with something in flight; stopping later would perform an effect

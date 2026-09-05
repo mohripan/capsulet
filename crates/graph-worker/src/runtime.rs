@@ -265,24 +265,16 @@ impl GraphWorker {
                     .iter()
                     .find(|claim| claim.node == node && claim.effect == effect)
                     .map_or(0, |claim| claim.attempt);
-                if !self
-                    .append(
-                        lease,
-                        &RunEvent::EffectUncertain {
-                            node: node.clone(),
-                            effect: effect.clone(),
-                            attempt,
-                        },
-                        now,
-                    )
-                    .await?
-                {
-                    return Ok(false);
-                }
+                // Record the doubt and stop deciding here. Failing the run is
+                // the next decision, not this one — and going through `decide`
+                // is what makes anything the run still owes get compensated
+                // before it ends.
                 self.append(
                     lease,
-                    &RunEvent::Failed {
-                        reason: RunFailure::EffectUncertain { node, effect },
+                    &RunEvent::EffectUncertain {
+                        node,
+                        effect,
+                        attempt,
                     },
                     now,
                 )
@@ -465,9 +457,13 @@ impl GraphWorker {
                 .await
             }
             EffectOutcome::Failed { failure, detail } => {
-                // It definitely did not happen, so the claim is resolved and
-                // the node's failure is what the run has to answer.
-                if !self.append(lease, &claim.uncertain(), at).await? {
+                // It definitely did not happen, so the claim is abandoned
+                // rather than left in doubt, and the node's failure is what the
+                // run has to answer.
+                if !self
+                    .append(lease, &claim.abandoned(detail.clone()), at)
+                    .await?
+                {
                     return Ok(false);
                 }
                 self.append(

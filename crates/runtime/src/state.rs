@@ -146,6 +146,9 @@ pub struct RunState {
     /// them in the reverse of that order.
     finalized_order: Vec<(Identifier, Identifier)>,
     compensated: BTreeSet<(Identifier, Identifier)>,
+    /// Effects nobody could account for. Distinct from abandoned ones, which
+    /// are known not to have happened and leave the run free to carry on.
+    uncertain: Vec<(Identifier, Identifier)>,
     loops: BTreeMap<Identifier, LoopProgress>,
     failures: BTreeMap<Identifier, Vec<NodeFailure>>,
     spent: Spent,
@@ -182,6 +185,7 @@ impl RunState {
             completed_effects: BTreeSet::new(),
             finalized_order: Vec::new(),
             compensated: BTreeSet::new(),
+            uncertain: Vec::new(),
             loops: BTreeMap::new(),
             failures: BTreeMap::new(),
             spent: Spent::default(),
@@ -261,6 +265,7 @@ impl RunState {
             }
             RunEvent::EffectClaimed { .. }
             | RunEvent::EffectFinalized { .. }
+            | RunEvent::EffectAbandoned { .. }
             | RunEvent::EffectUncertain { .. } => self.apply_effect(&recorded.event)?,
             RunEvent::IterationStarted { .. } | RunEvent::IterationFinished { .. } => {
                 self.apply_iteration(&recorded.event)?;
@@ -325,9 +330,14 @@ impl RunState {
                     .insert((node.clone(), effect.clone()));
                 self.finalized_order.push((node.clone(), effect.clone()));
             }
+            RunEvent::EffectAbandoned { node, effect, .. } => {
+                self.outstanding
+                    .retain(|claim| !(&claim.node == node && &claim.effect == effect));
+            }
             RunEvent::EffectUncertain { node, effect, .. } => {
                 self.outstanding
                     .retain(|claim| !(&claim.node == node && &claim.effect == effect));
+                self.uncertain.push((node.clone(), effect.clone()));
             }
             _ => {}
         }
@@ -446,6 +456,15 @@ impl RunState {
     #[must_use]
     pub fn finalized_effects(&self) -> &[(Identifier, Identifier)] {
         &self.finalized_order
+    }
+
+    /// Effects nobody could account for, in the order the run gave up on them.
+    ///
+    /// A run with one of these cannot finish: somewhere out there an effect
+    /// either happened or did not, and this system is not entitled to guess.
+    #[must_use]
+    pub fn uncertain_effects(&self) -> &[(Identifier, Identifier)] {
+        &self.uncertain
     }
 
     /// Whether an effect that happened has since been undone.

@@ -136,7 +136,20 @@ pub enum RunEvent {
         attempt: u32,
         receipt: Digest,
     },
-    /// Recorded during recovery for a claim nobody can resolve.
+    /// Recorded when the far side refused outright: the effect definitely did
+    /// not happen, and the run may carry on deciding what to do about that.
+    ///
+    /// Distinct from [`RunEvent::EffectUncertain`] on purpose. "It did not
+    /// happen" and "nobody knows whether it happened" lead to different
+    /// decisions, and collapsing them would make every refusal look like the
+    /// one case that has to stop the run.
+    EffectAbandoned {
+        node: Identifier,
+        effect: Identifier,
+        attempt: u32,
+        reason: String,
+    },
+    /// Recorded for a claim nobody can resolve. The run stops.
     EffectUncertain {
         node: Identifier,
         effect: Identifier,
@@ -201,6 +214,7 @@ impl RunEvent {
             Self::NodeFailed { .. } => "node_failed",
             Self::EffectClaimed { .. } => "effect_claimed",
             Self::EffectFinalized { .. } => "effect_finalized",
+            Self::EffectAbandoned { .. } => "effect_abandoned",
             Self::EffectUncertain { .. } => "effect_uncertain",
             Self::IterationStarted { .. } => "iteration_started",
             Self::IterationFinished { .. } => "iteration_finished",

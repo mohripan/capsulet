@@ -57,6 +57,12 @@ from the idempotency the IR declared:
 | `keyed` | Retried under the *same* attempt, so the key the far side already saw is presented again. |
 | `non_idempotent` | The run stops with `effect_uncertain`. Nobody guesses. |
 
+A claim resolves three ways, and the last two are deliberately not the same. `finalized` means it
+happened. `abandoned` means the far side refused outright, so it definitely did not happen and the
+node's failure routes like any other. `uncertain` means nobody knows, and the run stops. Collapsing
+the last two would make every refusal look like the one case that has to stop everything, which is
+how a system learns to ignore the case that matters.
+
 A key source this runtime cannot supply is refused before the run starts rather than at the moment
 the effect is due. The supported sources are `run_id`, `run_id+node_id`, and
 `run_id+node_id+attempt`.

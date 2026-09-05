@@ -171,6 +171,19 @@ impl EffectAttempt {
         }
     }
 
+    /// The event to append when the far side refused outright.
+    ///
+    /// Only when the executor is *sure*. A timeout is not this.
+    #[must_use]
+    pub fn abandoned(&self, reason: String) -> RunEvent {
+        RunEvent::EffectAbandoned {
+            node: self.node.clone(),
+            effect: self.effect.clone(),
+            attempt: self.attempt,
+            reason,
+        }
+    }
+
     /// The event to append when nobody can say whether it happened.
     ///
     /// Recording the doubt is the point. A run that stops here says which

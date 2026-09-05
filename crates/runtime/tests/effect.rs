@@ -223,4 +223,55 @@ fn an_effect_nobody_could_resolve_stops_being_outstanding_without_becoming_done(
         !state.effect_completed(&id("publish"), &id("open-pull-request")),
         "recording the doubt must not be mistaken for recording success"
     );
+    assert_eq!(
+        state.uncertain_effects(),
+        [(id("publish"), id("open-pull-request"))],
+        "the run remembers which effect it could not account for"
+    );
+    assert_eq!(
+        decide(&definition, &state, at(0)),
+        Decision::Fail {
+            reason: capsulet_runtime::RunFailure::EffectUncertain {
+                node: id("publish"),
+                effect: id("open-pull-request"),
+            }
+        },
+        "a run cannot finish on top of a step whose outcome nobody knows"
+    );
+}
+
+#[test]
+fn an_effect_the_far_side_refused_outright_is_abandoned_rather_than_doubted() {
+    let definition = effect_definition(Idempotency::NonIdempotent);
+    let attempt = EffectAttempt::claim(
+        declared(&definition),
+        &EffectContext {
+            run: "run-7",
+            node: &id("publish"),
+            attempt: 0,
+        },
+    )
+    .expect("claim");
+
+    let mut events = admitted();
+    events.push(event(1, RunEvent::Started { by: id("worker-1") }));
+    events.push(event(2, attempt.claimed()));
+    events.push(event(
+        3,
+        attempt.abandoned("the repository is archived".to_string()),
+    ));
+
+    let state = RunState::fold(&events).expect("folds");
+    assert!(state.outstanding_effects().is_empty());
+    assert!(!state.effect_completed(&id("publish"), &id("open-pull-request")));
+    assert!(
+        state.uncertain_effects().is_empty(),
+        "knowing it did not happen is not the same as not knowing, and only the second stops a run"
+    );
+    assert!(!matches!(
+        decide(&definition, &state, at(0)),
+        Decision::Fail {
+            reason: capsulet_runtime::RunFailure::EffectUncertain { .. }
+        }
+    ));
 }
