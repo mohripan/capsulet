@@ -14,6 +14,7 @@ mod certificates;
 mod graphs;
 mod ingestion;
 mod ir_definitions;
+mod ir_runs;
 mod job_definitions;
 mod job_runs;
 mod memory;
@@ -33,6 +34,7 @@ pub use assurance::{EvidenceLocation, StoredCertificate};
 pub use audit::AuditEvent;
 pub use certificates::CertificateRecord;
 pub use ir_definitions::IrDefinitionVersion;
+pub use ir_runs::IrRunRecord;
 pub use projects::{NewProjectMembership, ProjectMembershipRecord, ProjectRecord};
 pub use retention::RetentionCandidate;
 pub use service_accounts::{NewServiceAccount, ServiceAccountRecord};
@@ -230,6 +232,18 @@ pub enum PostgresStoreError {
     InvalidPersistedValue(String),
     #[error("job attempt count is too large to persist")]
     AttemptOverflow,
+    #[error("{0} is outside the range this store can hold")]
+    Overflow(&'static str),
+    #[error("run {0} does not exist")]
+    RunNotFound(String),
+    // A worker that lost its lease and did not notice. Naming both epochs makes
+    // the log say who took over, rather than only that something went wrong.
+    #[error("run {run} moved to epoch {current}; a write under epoch {attempted} was refused")]
+    EpochSuperseded {
+        run: String,
+        attempted: u64,
+        current: u64,
+    },
     #[error("invalid postgres pool configuration: {0}")]
     InvalidPoolConfig(String),
     #[error("invalid workflow graph: {0}")]

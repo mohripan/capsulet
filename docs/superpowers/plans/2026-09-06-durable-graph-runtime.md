@@ -74,30 +74,32 @@ The conditions M3 exists to correct, from the product design's own audit:
 **Files:** `crates/runtime/{Cargo.toml,src/lib.rs,src/state.rs,src/event.rs,src/decide.rs}`,
 `crates/runtime/tests/decide.rs`, `Cargo.toml`, `crates/xtask/src/verify/catalog.rs`
 
-- [ ] Failing tests: a run with no events decides "start"; a completed run decides nothing; an
+- [x] Failing tests: a run with no events decides "start"; a completed run decides nothing; an
   unknown event kind is refused rather than ignored; folding the same log twice gives the same state.
-- [ ] `RunEvent` covering admitted, started, node-ready, node-started, node-finished, effect
+- [x] `RunEvent` covering admitted, started, node-ready, node-started, node-finished, effect
   claimed/finalized/uncertain, iteration started/finished, suspended, resumed, cancelled, failed,
   completed — each carrying the fencing epoch it was written under.
-- [ ] `RunState` as a fold over events, with the run's position, ready set, loop counters, spent
+- [x] `RunState` as a fold over events, with the run's position, ready set, loop counters, spent
   budgets, and outstanding effect claims.
-- [ ] `decide(state, definition) -> Vec<Decision>`: which nodes may start, which waits are due,
+- [x] `decide(state, definition) -> Vec<Decision>`: which nodes may start, which waits are due,
   which budgets are exhausted, whether the run is finished.
-- [ ] Purity test over the crate's dependency closure, as `capsulet-ir` has.
-- [ ] An `runtime` gate in the fast and full profiles.
+- [x] Purity test over the crate's dependency closure, as `capsulet-ir` has.
+- [x] Covered by a gate in the fast and full profiles. Folded into the existing `ir` gate rather
+  than given its own: the decision core is IR contracts executed, and a gate per crate is a gate
+  nobody reads.
 
 ### Task 2: The append-only run event log
 
 **Files:** `migrations/*_ir_runs.sql`, `crates/postgres/src/ir_runs.rs`,
 `crates/postgres/tests/ir_runs.rs`
 
-- [ ] Failing tests: positions are gapless per run; an insert at a taken position is refused; UPDATE
+- [x] Failing tests: positions are gapless per run; an insert at a taken position is refused; UPDATE
   and DELETE raise; events from a superseded epoch are refused.
-- [ ] `ir_runs` (identity, definition digest, status, epoch, lease) and `ir_run_events` (run,
+- [x] `ir_runs` (identity, definition digest, status, epoch, lease) and `ir_run_events` (run,
   position, kind, payload, epoch, recorded_at), both append-only.
-- [ ] Append is a single statement that takes the next position atomically, so two workers cannot
+- [x] Append is a single statement that takes the next position atomically, so two workers cannot
   both write position *n*.
-- [ ] Loading a run returns its events in order, and the projection equals the stored status.
+- [x] Loading a run returns its events in order, and the projection equals the stored status.
 
 ### Task 3: Leases with fencing epochs
 

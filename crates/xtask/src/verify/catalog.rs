@@ -283,6 +283,17 @@ pub(crate) fn gates() -> Vec<Gate> {
                         "--locked",
                     ],
                 ),
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-postgres",
+                        "--test",
+                        "ir_runs",
+                        "--locked",
+                    ],
+                ),
             ],
         ),
         gate(
