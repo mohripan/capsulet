@@ -11,6 +11,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::AssuranceMode;
 use capsulet_ir::digest::Digest;
 use capsulet_ir::id::Identifier;
@@ -134,15 +135,24 @@ pub struct RunState {
     mode: AssuranceMode,
     epoch: Epoch,
     next_position: u64,
-    running: BTreeSet<Identifier>,
+    /// Nodes in flight, and when each started. The start time is what a node
+    /// deadline is measured from, and it has to survive a restart or a
+    /// reattaching worker would give a stuck node a fresh timeout.
+    running: BTreeMap<Identifier, RecordedTime>,
     finished: BTreeMap<Identifier, BTreeMap<String, Digest>>,
     outstanding: Vec<OutstandingEffect>,
     completed_effects: BTreeSet<(Identifier, Identifier)>,
+    /// Finalized effects in the order they happened, so compensation can undo
+    /// them in the reverse of that order.
+    finalized_order: Vec<(Identifier, Identifier)>,
+    compensated: BTreeSet<(Identifier, Identifier)>,
     loops: BTreeMap<Identifier, LoopProgress>,
     failures: BTreeMap<Identifier, Vec<NodeFailure>>,
     spent: Spent,
     waiting_on: Option<Wait>,
     failure: Option<RunFailure>,
+    started_at: Option<RecordedTime>,
+    cancel_requested: Option<Identifier>,
 }
 
 impl RunState {
@@ -166,15 +176,19 @@ impl RunState {
             mode: *mode,
             epoch: first.epoch,
             next_position: first.position + 1,
-            running: BTreeSet::new(),
+            running: BTreeMap::new(),
             finished: BTreeMap::new(),
             outstanding: Vec::new(),
             completed_effects: BTreeSet::new(),
+            finalized_order: Vec::new(),
+            compensated: BTreeSet::new(),
             loops: BTreeMap::new(),
             failures: BTreeMap::new(),
             spent: Spent::default(),
             waiting_on: None,
             failure: None,
+            started_at: None,
+            cancel_requested: None,
         };
 
         if first.position != 0 {
@@ -212,15 +226,18 @@ impl RunState {
                     event: recorded.event.as_str(),
                 });
             }
-            RunEvent::Started { .. } => self.status = RunStatus::Running,
+            RunEvent::Started { .. } => {
+                self.status = RunStatus::Running;
+                self.started_at = Some(recorded.at);
+            }
             RunEvent::NodeStarted { node } => {
-                if !self.running.insert(node.clone()) {
+                if self.running.insert(node.clone(), recorded.at).is_some() {
                     return Err(FoldError::StartedTwice { node: node.clone() });
                 }
                 self.status = RunStatus::Running;
             }
             RunEvent::NodeFinished { node, outputs } => {
-                if !self.running.remove(node) {
+                if self.running.remove(node).is_none() {
                     return Err(FoldError::FinishedWithoutStarting { node: node.clone() });
                 }
                 self.finished.insert(node.clone(), outputs.clone());
@@ -261,6 +278,12 @@ impl RunState {
                 }
                 self.status = RunStatus::Running;
             }
+            RunEvent::CancellationRequested { by } => {
+                self.cancel_requested = Some(by.clone());
+            }
+            RunEvent::Compensated { node, effect, .. } => {
+                self.compensated.insert((node.clone(), effect.clone()));
+            }
             RunEvent::Cancelled { .. } => self.status = RunStatus::Cancelled,
             RunEvent::Failed { reason } => {
                 self.failure = Some(reason.clone());
@@ -300,6 +323,7 @@ impl RunState {
                 }
                 self.completed_effects
                     .insert((node.clone(), effect.clone()));
+                self.finalized_order.push((node.clone(), effect.clone()));
             }
             RunEvent::EffectUncertain { node, effect, .. } => {
                 self.outstanding
@@ -402,8 +426,32 @@ impl RunState {
 
     /// Nodes currently in flight.
     #[must_use]
-    pub const fn running(&self) -> &BTreeSet<Identifier> {
+    pub const fn running(&self) -> &BTreeMap<Identifier, RecordedTime> {
         &self.running
+    }
+
+    /// When the run itself started, if it has.
+    #[must_use]
+    pub const fn started_at(&self) -> Option<RecordedTime> {
+        self.started_at
+    }
+
+    /// Who asked for the run to stop, if anybody has.
+    #[must_use]
+    pub const fn cancellation_requested(&self) -> Option<&Identifier> {
+        self.cancel_requested.as_ref()
+    }
+
+    /// Effects known to have happened, oldest first.
+    #[must_use]
+    pub fn finalized_effects(&self) -> &[(Identifier, Identifier)] {
+        &self.finalized_order
+    }
+
+    /// Whether an effect that happened has since been undone.
+    #[must_use]
+    pub fn is_compensated(&self, node: &Identifier, effect: &Identifier) -> bool {
+        self.compensated.contains(&(node.clone(), effect.clone()))
     }
 
     /// Effects claimed and not yet resolved, in claim order.
@@ -492,7 +540,7 @@ impl RunState {
     /// which is exactly what a repair route is for.
     #[must_use]
     pub fn unresolved_failure(&self, node: &Identifier) -> Option<&NodeFailure> {
-        if self.running.contains(node) || self.finished.contains_key(node) {
+        if self.running.contains_key(node) || self.finished.contains_key(node) {
             return None;
         }
         self.failures_of(node).last()

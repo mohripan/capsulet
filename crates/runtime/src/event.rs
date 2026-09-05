@@ -150,6 +150,23 @@ pub enum RunEvent {
         wait: Wait,
         by: Identifier,
     },
+    /// Somebody asked for the run to stop.
+    ///
+    /// A request rather than the stop itself, because stopping in the middle of
+    /// an effect is worse than not stopping: the run would end with something
+    /// outstanding that nobody can account for. The decision core picks the
+    /// next safe point.
+    CancellationRequested {
+        by: Identifier,
+    },
+    /// A reversible effect that happened was undone.
+    Compensated {
+        node: Identifier,
+        effect: Identifier,
+        /// The compensation route the IR declared for it.
+        compensation: Identifier,
+        receipt: Digest,
+    },
     Cancelled {
         by: Identifier,
     },
@@ -179,6 +196,8 @@ impl RunEvent {
             Self::LoopStopped { .. } => "loop_stopped",
             Self::Suspended { .. } => "suspended",
             Self::Resumed { .. } => "resumed",
+            Self::CancellationRequested { .. } => "cancellation_requested",
+            Self::Compensated { .. } => "compensated",
             Self::Cancelled { .. } => "cancelled",
             Self::Failed { .. } => "failed",
             Self::Completed { .. } => "completed",

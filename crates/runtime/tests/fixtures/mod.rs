@@ -196,6 +196,58 @@ pub fn effect_definition(idempotency: Idempotency) -> Definition {
     )
 }
 
+/// A single effect node whose effect declares how to undo itself.
+///
+/// # Panics
+///
+/// Panics if the fixture identifiers collide.
+#[must_use]
+pub fn reversible_effect_definition() -> Definition {
+    let publish = Node {
+        id: id("publish"),
+        name: "Open the pull request".to_string(),
+        kind: NodeKind::Effect,
+        inputs: vec![],
+        outputs: vec![],
+        capabilities: vec![id("github")],
+        effects: vec![Effect {
+            id: id("open-pull-request"),
+            kind: EffectKind::Publication,
+            target: "github.com/mohripan/capsulet".to_string(),
+            capability: id("github"),
+            idempotency: Idempotency::Idempotent,
+            reversibility: Reversibility::Reversible {
+                compensation: id("close-pull-request"),
+            },
+        }],
+        budget: ResourceBudget {
+            wall_ms: 30_000,
+            tokens: 0,
+            cost_micro_units: 0,
+            effect_count: 1,
+        },
+        provider: None,
+        sub_workflow: None,
+    };
+
+    let graph = Graph::new(GraphBuilder {
+        nodes: vec![publish],
+        ..GraphBuilder::default()
+    })
+    .expect("the fixture identifiers are distinct");
+
+    definition_with(
+        graph,
+        CapabilitySet::new(vec![Capability {
+            id: id("github"),
+            grant: Grant::Network {
+                hosts: vec!["api.github.com".to_string()],
+            },
+        }])
+        .expect("the fixture grants are distinct"),
+    )
+}
+
 /// A loop region bounded at three iterations.
 ///
 /// # Panics

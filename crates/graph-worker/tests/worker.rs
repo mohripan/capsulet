@@ -20,10 +20,10 @@ use capsulet_runtime::{Epoch, RunEvent, RunFailure, RunStatus, wait};
 
 use support::{
     NOW, ScriptedExecutor, TestClock, effect_definition, fixture_id, id, pipeline_definition,
-    seeded_run, store,
+    reversible_effect_definition, seeded_run, store,
 };
 
-fn worker(
+fn graph_worker(
     store: &capsulet_postgres::PostgresStore,
     executor: &Arc<ScriptedExecutor>,
     clock: &Arc<TestClock>,
@@ -52,7 +52,7 @@ async fn the_worker_advances_a_run_to_completion() {
 
     let executor = Arc::new(ScriptedExecutor::new());
     let clock = Arc::new(TestClock::at(NOW));
-    let worker = worker(&store, &executor, &clock, "worker-a", &tenant);
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
 
     assert_eq!(
         worker.advance_one().await.expect("advance"),
@@ -123,7 +123,7 @@ async fn a_worker_killed_mid_run_is_picked_up_where_it_stopped() {
         .expect("expire the lease");
 
     let second_executor = Arc::new(ScriptedExecutor::new());
-    let recovering = worker(
+    let recovering = graph_worker(
         &store,
         &second_executor,
         &clock,
@@ -165,7 +165,7 @@ async fn a_worker_that_lost_its_lease_stops_instead_of_writing() {
     // moment a handover is interesting.
     executor.steal_lease_during_work(&store, &run_id);
     let clock = Arc::new(TestClock::at(NOW));
-    let worker = worker(&store, &executor, &clock, "worker-a", &tenant);
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
 
     assert_eq!(
         worker.advance_one().await.expect("advance"),
@@ -209,7 +209,7 @@ async fn an_effect_is_claimed_before_it_is_performed_and_finalized_after() {
         receipt: Digest::of(b"pull request 41"),
     }]);
     let clock = Arc::new(TestClock::at(NOW));
-    let worker = worker(&store, &executor, &clock, "worker-a", &tenant);
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
 
     assert_eq!(
         worker.advance_one().await.expect("advance"),
@@ -267,7 +267,7 @@ async fn an_effect_whose_outcome_is_unknown_is_retried_only_when_the_ir_allows_i
         },
     ]);
     let clock = Arc::new(TestClock::at(NOW));
-    let worker = worker(&store, &executor, &clock, "worker-a", &tenant);
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
 
     assert_eq!(
         worker.advance_one().await.expect("advance"),
@@ -301,7 +301,7 @@ async fn a_non_idempotent_effect_left_in_doubt_stops_the_run() {
         detail: "the connection dropped before the response".to_string(),
     }]);
     let clock = Arc::new(TestClock::at(NOW));
-    let worker = worker(&store, &executor, &clock, "worker-a", &tenant);
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
 
     assert_eq!(
         worker.advance_one().await.expect("advance"),
@@ -344,7 +344,7 @@ async fn a_node_failure_with_no_declared_route_stops_the_run() {
         },
     );
     let clock = Arc::new(TestClock::at(NOW));
-    let worker = worker(&store, &executor, &clock, "worker-a", &tenant);
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
 
     assert_eq!(
         worker.advance_one().await.expect("advance"),
@@ -408,7 +408,7 @@ async fn a_suspended_run_is_put_down_and_picked_up_again_when_its_signal_arrives
 
     let executor = Arc::new(ScriptedExecutor::new());
     let clock = Arc::new(TestClock::at(NOW));
-    let worker = worker(&store, &executor, &clock, "worker-a", &tenant);
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
 
     assert_eq!(
         worker.advance_one().await.expect("advance"),
@@ -446,7 +446,7 @@ async fn an_empty_queue_is_not_an_error() {
     let store = store().await;
     let executor = Arc::new(ScriptedExecutor::new());
     let clock = Arc::new(TestClock::at(NOW));
-    let worker = worker(&store, &executor, &clock, "worker-a", &fixture_id("tenant"));
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &fixture_id("tenant"));
 
     assert_eq!(
         worker.advance_one().await.expect("advance"),
@@ -467,4 +467,216 @@ fn idle_lease() -> capsulet_postgres::IrRunRecord {
         lease_owner: None,
         next_position: 1,
     }
+}
+
+/// Appends a run of events under a fresh lease, then gives the lease back.
+///
+/// Used to put a run into the state a test is about without the worker having
+/// been the one to put it there.
+async fn seed_events(
+    store: &capsulet_postgres::PostgresStore,
+    tenant: &str,
+    project: &str,
+    run_id: &str,
+    events: Vec<RunEvent>,
+) {
+    let lease = store
+        .lease_next_ir_run("setup", 60, Some(tenant), NOW)
+        .await
+        .expect("lease")
+        .expect("available");
+    for (offset, event) in events.into_iter().enumerate() {
+        store
+            .append_ir_run_event(
+                tenant,
+                project,
+                run_id,
+                lease.epoch,
+                &event,
+                RecordedTime(NOW + i64::try_from(offset).expect("the fixture is small")),
+            )
+            .await
+            .expect("append");
+    }
+    store
+        .release_ir_run_lease(tenant, project, run_id, "setup", lease.epoch)
+        .await
+        .expect("release");
+}
+
+#[tokio::test]
+async fn a_cancelled_run_undoes_what_it_published_before_it_stops() {
+    let store = store().await;
+    let definition = reversible_effect_definition(&fixture_id("definition"));
+    let (tenant, project, run_id) = seeded_run(&store, &definition).await;
+
+    // Published, and then asked to stop.
+    seed_events(
+        &store,
+        &tenant,
+        &project,
+        &run_id,
+        vec![
+            RunEvent::Started { by: id("setup") },
+            RunEvent::NodeStarted {
+                node: id("publish"),
+            },
+            RunEvent::EffectClaimed {
+                node: id("publish"),
+                effect: id("open-pull-request"),
+                attempt: 0,
+                key: None,
+            },
+            RunEvent::EffectFinalized {
+                node: id("publish"),
+                effect: id("open-pull-request"),
+                attempt: 0,
+                receipt: Digest::of(b"pull request 41"),
+            },
+            RunEvent::NodeFinished {
+                node: id("publish"),
+                outputs: std::collections::BTreeMap::new(),
+            },
+            capsulet_runtime::failure::request_cancellation(id("operator")),
+        ],
+    )
+    .await;
+
+    let executor = Arc::new(ScriptedExecutor::new());
+    let clock = Arc::new(TestClock::at(NOW));
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
+    assert_eq!(
+        worker.advance_one().await.expect("advance"),
+        Progress::Ended
+    );
+
+    assert_eq!(
+        executor.compensations_performed(),
+        vec![(
+            "open-pull-request".to_string(),
+            "close-pull-request".to_string()
+        )],
+        "the run took back what it published before it stopped"
+    );
+
+    let kinds: Vec<&str> = store
+        .load_ir_run_events(&tenant, &project, &run_id)
+        .await
+        .expect("read the log")
+        .iter()
+        .map(|recorded| recorded.event.as_str())
+        .collect();
+    let compensated = kinds
+        .iter()
+        .position(|kind| *kind == "compensated")
+        .expect("it compensated");
+    let cancelled = kinds
+        .iter()
+        .position(|kind| *kind == "cancelled")
+        .expect("it stopped");
+    assert!(
+        compensated < cancelled,
+        "compensating after the terminal event would mean never compensating: {kinds:?}"
+    );
+    assert_eq!(
+        store
+            .load_ir_run_state(&tenant, &project, &run_id)
+            .await
+            .expect("folds")
+            .status(),
+        RunStatus::Cancelled
+    );
+}
+
+#[tokio::test]
+async fn a_run_nobody_cancelled_keeps_what_it_published() {
+    let store = store().await;
+    let definition = reversible_effect_definition(&fixture_id("definition"));
+    let (tenant, project, run_id) = seeded_run(&store, &definition).await;
+
+    let executor = Arc::new(ScriptedExecutor::new());
+    let clock = Arc::new(TestClock::at(NOW));
+    let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
+    assert_eq!(
+        worker.advance_one().await.expect("advance"),
+        Progress::Ended
+    );
+
+    assert_eq!(executor.effects_performed().len(), 1);
+    assert!(
+        executor.compensations_performed().is_empty(),
+        "a run that finished has nothing to take back"
+    );
+    assert_eq!(
+        store
+            .load_ir_run_state(&tenant, &project, &run_id)
+            .await
+            .expect("folds")
+            .status(),
+        RunStatus::Completed
+    );
+}
+
+#[tokio::test]
+async fn a_node_left_running_by_a_dead_worker_times_out_rather_than_hanging() {
+    let store = store().await;
+    let definition = pipeline_definition(&fixture_id("definition"));
+    let (tenant, project, run_id) = seeded_run(&store, &definition).await;
+
+    // A worker started a node and never came back.
+    let lease = store
+        .lease_next_ir_run("worker-that-died", 60, Some(&tenant), NOW)
+        .await
+        .expect("lease")
+        .expect("available");
+    for (offset, event) in [
+        RunEvent::Started {
+            by: id("worker-that-died"),
+        },
+        RunEvent::NodeStarted {
+            node: id("normalize"),
+        },
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        store
+            .append_ir_run_event(
+                &tenant,
+                &project,
+                &run_id,
+                lease.epoch,
+                &event,
+                RecordedTime(NOW + i64::try_from(offset).expect("small")),
+            )
+            .await
+            .expect("append");
+    }
+    sqlx::query("UPDATE ir_runs SET lease_expires_at = now() - interval '1 second' WHERE id = $1")
+        .bind(&run_id)
+        .execute(store.pool())
+        .await
+        .expect("expire the lease");
+
+    // A long time later, somebody else picks it up.
+    let executor = Arc::new(ScriptedExecutor::new());
+    let clock = Arc::new(TestClock::at(NOW + 3_600_000));
+    let worker = graph_worker(&store, &executor, &clock, "worker-after", &tenant);
+    worker.advance_one().await.expect("advance");
+
+    let kinds: Vec<&str> = store
+        .load_ir_run_events(&tenant, &project, &run_id)
+        .await
+        .expect("read the log")
+        .iter()
+        .map(|recorded| recorded.event.as_str())
+        .collect();
+    assert!(
+        kinds.contains(&"node_failed"),
+        "the inherited node was timed out against the deadline the log records: {kinds:?}"
+    );
+    assert!(
+        !executor.nodes_run().contains(&"normalize".to_string()),
+        "and it was not started a second time on top of the first"
+    );
 }

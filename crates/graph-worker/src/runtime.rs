@@ -24,11 +24,14 @@ use capsulet_ir::definition::Definition;
 use capsulet_ir::id::Identifier;
 use capsulet_postgres::{IrRunRecord, PostgresStore, PostgresStoreError, SignalOutcome};
 use capsulet_runtime::effect::{EffectAttempt, EffectContext};
+use capsulet_runtime::failure::{self, Compensation};
 use capsulet_runtime::wait::{self, WaitError};
 use capsulet_runtime::{Decision, Epoch, RunEvent, RunFailure, RunState, decide};
 
 use crate::clock::Clock;
-use crate::execute::{EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest};
+use crate::execute::{
+    CompensationRequest, EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest,
+};
 
 /// How the worker is configured.
 #[derive(Debug, Clone)]
@@ -289,6 +292,20 @@ impl GraphWorker {
                 self.append(lease, &RunEvent::LoopStopped { region, reason }, now)
                     .await
             }
+            Decision::TimeOutNode { node } => {
+                let Some(timed_out) = failure::timed_out_node(definition, state, now) else {
+                    // It finished between the decision and here, which is a
+                    // race worth losing quietly.
+                    return Ok(true);
+                };
+                debug_assert_eq!(timed_out.node, node);
+                self.append(lease, &failure::timed_out(&timed_out), now)
+                    .await
+            }
+            Decision::Compensate { compensation } => {
+                self.compensate(lease, definition, &compensation).await
+            }
+            Decision::Cancel { by } => self.append(lease, &failure::cancelled(by), now).await,
             Decision::Suspend { wait } => {
                 self.append(lease, &RunEvent::Suspended { wait }, now).await
             }
@@ -404,7 +421,7 @@ impl GraphWorker {
         // Performing an effect *is* the effect node running, so the node opens
         // here and closes when the effect resolves. A recovered attempt finds
         // the node already open and does not open it twice.
-        let already_running = state.running().contains(node);
+        let already_running = state.running().contains_key(node);
         if !already_running
             && !self
                 .append(lease, &RunEvent::NodeStarted { node: node.clone() }, now)
@@ -469,6 +486,64 @@ impl GraphWorker {
                 // happens then follows from the declared idempotency rather
                 // than from anything this worker decides.
                 Ok(true)
+            }
+        }
+    }
+
+    /// Undoes an effect that happened, before the run is allowed to end.
+    async fn compensate(
+        &self,
+        lease: &IrRunRecord,
+        definition: &Definition,
+        compensation: &Compensation,
+    ) -> Result<bool, WorkerError> {
+        let declared = definition
+            .graph
+            .node(&compensation.node)
+            .and_then(|node| {
+                node.effects
+                    .iter()
+                    .find(|each| each.id == compensation.effect)
+            })
+            .ok_or_else(|| WorkerError::Unfoldable {
+                run: lease.id.clone(),
+                reason: format!(
+                    "`{}` is not declared on `{}`",
+                    compensation.effect, compensation.node
+                ),
+            })?;
+
+        let outcome = self
+            .executor
+            .compensate(CompensationRequest {
+                run: &lease.id,
+                node: &compensation.node,
+                effect: declared,
+                route: &compensation.route,
+            })
+            .await;
+
+        let at = self.clock.now();
+        match outcome {
+            EffectOutcome::Performed { receipt } => {
+                self.append(lease, &failure::compensated(compensation, receipt), at)
+                    .await
+            }
+            // A compensation that did not happen, or might not have, is not
+            // something to record as done. The run stops with the effect still
+            // standing, which is the truth and is what somebody needs to see.
+            EffectOutcome::Failed { .. } | EffectOutcome::Uncertain { .. } => {
+                self.append(
+                    lease,
+                    &RunEvent::Failed {
+                        reason: RunFailure::EffectUncertain {
+                            node: compensation.node.clone(),
+                            effect: compensation.effect.clone(),
+                        },
+                    },
+                    at,
+                )
+                .await
             }
         }
     }

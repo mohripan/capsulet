@@ -15,6 +15,8 @@ pub mod runtime;
 pub mod service;
 
 pub use clock::{Clock, SystemClock};
-pub use execute::{EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest};
+pub use execute::{
+    CompensationRequest, EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest,
+};
 pub use runtime::{GraphWorker, Progress, WorkerConfig, WorkerError};
 pub use service::run;

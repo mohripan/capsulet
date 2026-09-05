@@ -17,7 +17,9 @@ use capsulet_observability as observability;
 use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 
 use crate::clock::SystemClock;
-use crate::execute::{EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest};
+use crate::execute::{
+    CompensationRequest, EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest,
+};
 use crate::runtime::{GraphWorker, Progress, WorkerConfig};
 
 const DEFAULT_LEASE_SECONDS: i64 = 60;
@@ -124,6 +126,16 @@ impl Executor for UnconfiguredExecutor {
             detail: format!(
                 "no transport is configured for `{}`; effect execution arrives with M4",
                 request.effect.id
+            ),
+        }
+    }
+
+    async fn compensate(&self, request: CompensationRequest<'_>) -> EffectOutcome {
+        EffectOutcome::Failed {
+            failure: FailureKind::VerifierUnavailable,
+            detail: format!(
+                "no transport is configured for `{}`, so `{}` cannot be undone here",
+                request.effect.id, request.route
             ),
         }
     }

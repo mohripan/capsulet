@@ -25,6 +25,7 @@ use capsulet_ir::node::NodeKind;
 use capsulet_ir::region::RegionKind;
 
 use crate::event::{RunFailure, Wait};
+use crate::failure::{self, Compensation};
 use crate::loops::{self, Repair};
 use crate::state::{NodeFailure, RunState, RunStatus};
 
@@ -61,6 +62,12 @@ pub enum Decision {
         region: Identifier,
         reason: StopReason,
     },
+    /// Undo a reversible effect that happened, before the run ends.
+    Compensate { compensation: Compensation },
+    /// End the run because somebody asked, at a point where stopping is safe.
+    Cancel { by: Identifier },
+    /// A node has outrun its declared wall time.
+    TimeOutNode { node: Identifier },
     /// Suspend durably on something outside the run.
     Suspend { wait: Wait },
     /// The wait the run is suspended on is due.
@@ -79,6 +86,21 @@ pub enum Decision {
 /// crate reaching for a clock and without a test having to wait.
 #[must_use]
 pub fn decide(definition: &Definition, state: &RunState, now: RecordedTime) -> Decision {
+    let next = decide_next(definition, state, now);
+    // A run that is about to fail still owes whatever it published. Ending
+    // first and compensating afterwards is not an option: after the terminal
+    // event there is no run left to do it.
+    if matches!(next, Decision::Fail { .. })
+        && let Some(compensation) = failure::pending_compensations(definition, state).first()
+    {
+        return Decision::Compensate {
+            compensation: compensation.clone(),
+        };
+    }
+    next
+}
+
+fn decide_next(definition: &Definition, state: &RunState, now: RecordedTime) -> Decision {
     if state.status().is_terminal() {
         return Decision::Idle;
     }
@@ -86,6 +108,21 @@ pub fn decide(definition: &Definition, state: &RunState, now: RecordedTime) -> D
     // An effect nobody can account for outranks everything else.
     if let Some(decision) = decide_outstanding_effect(definition, state) {
         return decision;
+    }
+
+    // Cancellation is honoured here: after any outstanding effect has been
+    // resolved, and before anything new is started. Stopping earlier would end
+    // the run with something in flight; stopping later would perform an effect
+    // somebody has already asked not to happen.
+    if let Some(by) = state.cancellation_requested() {
+        if let Some(compensation) = failure::pending_compensations(definition, state).first() {
+            return Decision::Compensate {
+                compensation: compensation.clone(),
+            };
+        }
+        if failure::safe_to_stop(state) {
+            return Decision::Cancel { by: by.clone() };
+        }
     }
 
     if state.status() == RunStatus::Waiting {
@@ -103,6 +140,23 @@ pub fn decide(definition: &Definition, state: &RunState, now: RecordedTime) -> D
 
     if state.status() == RunStatus::Queued {
         return Decision::Start;
+    }
+
+    // A node that outran its declared budget while nobody was watching it — the
+    // reattach case — becomes a typed failure, which the loop it sits in can
+    // then route like any other.
+    if let Some(timed_out) = failure::timed_out_node(definition, state, now) {
+        return Decision::TimeOutNode {
+            node: timed_out.node,
+        };
+    }
+
+    if failure::run_deadline_passed(definition, state, now) {
+        return Decision::Fail {
+            reason: RunFailure::BudgetExhausted {
+                resource: "wall time".to_string(),
+            },
+        };
     }
 
     if let Some(decision) = decide_loop(definition, state) {
@@ -296,7 +350,7 @@ fn next_ready_node(definition: &Definition, state: &RunState) -> Option<Identifi
         .graph
         .nodes()
         .filter(|node| !state.has_finished(&node.id))
-        .filter(|node| !state.running().contains(&node.id))
+        .filter(|node| !state.running().contains_key(&node.id))
         .find(|node| {
             definition
                 .graph

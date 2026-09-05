@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use capsulet_graph_worker::{
-    Clock, EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest,
+    Clock, CompensationRequest, EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest,
 };
 use capsulet_ir::admission::AdmissionRecord;
 use capsulet_ir::capability::{Capability, CapabilitySet, Grant};
@@ -188,6 +188,27 @@ pub fn effect_definition(name: &str, idempotency: Idempotency) -> Definition {
     )
 }
 
+/// An effect node whose effect declares how to undo itself.
+pub fn reversible_effect_definition(name: &str) -> Definition {
+    let mut definition = effect_definition(name, Idempotency::Idempotent);
+    definition.graph = {
+        let mut publish = definition
+            .graph
+            .node(&id("publish"))
+            .expect("the fixture has the node")
+            .clone();
+        publish.effects[0].reversibility = Reversibility::Reversible {
+            compensation: id("close-pull-request"),
+        };
+        Graph::new(GraphBuilder {
+            nodes: vec![publish],
+            ..GraphBuilder::default()
+        })
+        .expect("the fixture identifiers are distinct")
+    };
+    definition
+}
+
 pub fn admission(definition: &Definition) -> AdmissionRecord {
     admit(definition).expect("the fixture definition is admitted")
 }
@@ -249,9 +270,11 @@ impl Clock for TestClock {
 pub struct ScriptedExecutor {
     node: Mutex<BTreeMap<String, NodeOutcome>>,
     effect: Mutex<Vec<EffectOutcome>>,
+    compensation: Mutex<Vec<EffectOutcome>>,
     steal: Mutex<Option<(PostgresStore, String)>>,
     pub node_calls: Mutex<Vec<String>>,
     pub effect_calls: Mutex<Vec<(String, u32, Option<String>)>>,
+    pub compensation_calls: Mutex<Vec<(String, String)>>,
 }
 
 impl ScriptedExecutor {
@@ -300,6 +323,22 @@ impl ScriptedExecutor {
             .effect
             .lock()
             .expect("the scripted outcomes are not poisoned") = outcomes;
+    }
+
+    /// What successive compensations should do, in order.
+    pub fn compensations(&self, outcomes: Vec<EffectOutcome>) {
+        *self
+            .compensation
+            .lock()
+            .expect("the scripted outcomes are not poisoned") = outcomes;
+    }
+
+    #[must_use]
+    pub fn compensations_performed(&self) -> Vec<(String, String)> {
+        self.compensation_calls
+            .lock()
+            .expect("the record is not poisoned")
+            .clone()
     }
 
     #[must_use]
@@ -354,6 +393,27 @@ impl Executor for ScriptedExecutor {
         if scripted.is_empty() {
             EffectOutcome::Performed {
                 receipt: capsulet_ir::Digest::of(b"performed"),
+            }
+        } else {
+            scripted.remove(0)
+        }
+    }
+
+    async fn compensate(&self, request: CompensationRequest<'_>) -> EffectOutcome {
+        self.compensation_calls
+            .lock()
+            .expect("the record is not poisoned")
+            .push((
+                request.effect.id.as_str().to_string(),
+                request.route.as_str().to_string(),
+            ));
+        let mut scripted = self
+            .compensation
+            .lock()
+            .expect("the scripted outcomes are not poisoned");
+        if scripted.is_empty() {
+            EffectOutcome::Performed {
+                receipt: capsulet_ir::Digest::of(b"compensated"),
             }
         } else {
             scripted.remove(0)

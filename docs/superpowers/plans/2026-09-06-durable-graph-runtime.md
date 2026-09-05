@@ -153,7 +153,7 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/runtime/src/failure.rs`, tests
 
-- [ ] Failing tests: cancellation stops before the next effect and not mid-effect; a retry respects
+- [x] Failing tests: cancellation stops before the next effect and not mid-effect; a retry respects
   the declared attempt budget; a timeout is a typed stop reason; a compensation runs only for a
   reversible effect that actually happened; escalation suspends rather than failing.
 

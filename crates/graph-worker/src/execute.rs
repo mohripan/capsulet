@@ -76,6 +76,16 @@ pub enum EffectOutcome {
     Uncertain { detail: String },
 }
 
+/// An effect that happened and now has to be taken back.
+#[derive(Debug, Clone, Copy)]
+pub struct CompensationRequest<'a> {
+    pub run: &'a str,
+    pub node: &'a Identifier,
+    pub effect: &'a Effect,
+    /// The route the IR declared for undoing it.
+    pub route: &'a Identifier,
+}
+
 /// Performs the work the decision core asks for.
 #[async_trait]
 pub trait Executor: Send + Sync {
@@ -84,4 +94,12 @@ pub trait Executor: Send + Sync {
 
     /// Performs one already-claimed effect.
     async fn perform_effect(&self, request: EffectRequest<'_>) -> EffectOutcome;
+
+    /// Undoes an effect that happened.
+    ///
+    /// The same outcomes as performing one, and for the same reason: a
+    /// compensation that might or might not have landed is exactly as awkward
+    /// as an effect that might or might not have landed, and pretending
+    /// otherwise would put the uncertainty somewhere nobody looks.
+    async fn compensate(&self, request: CompensationRequest<'_>) -> EffectOutcome;
 }
