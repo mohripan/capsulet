@@ -100,19 +100,22 @@ pub fn decide(definition: &Definition, state: &RunState, now: RecordedTime) -> D
     next
 }
 
+/// The decision itself, before compensation is taken into account.
 fn decide_next(definition: &Definition, state: &RunState, now: RecordedTime) -> Decision {
     if state.status().is_terminal() {
         return Decision::Idle;
     }
 
-    // An effect nobody can account for outranks everything else.
+    // A claim still open outranks every other kind of work: it is the one thing
+    // that gets worse the longer it is left, and proceeding past it would be
+    // the duplication this milestone exists to prevent.
     if let Some(decision) = decide_outstanding_effect(definition, state) {
         return decision;
     }
 
-    // An effect nobody could account for ends the run, whatever else remains.
-    // Carrying on past one would mean building on a step whose outcome this
-    // system is not entitled to assume either way.
+    // A claim the run gave up on, having failed to account for it, ends the
+    // run. Carrying on would mean building on a step whose outcome this system
+    // is not entitled to assume either way.
     if let Some((node, effect)) = state.uncertain_effects().first() {
         return Decision::Fail {
             reason: RunFailure::EffectUncertain {
