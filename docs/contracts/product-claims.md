@@ -22,6 +22,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when it re-derives and contains the cited proposition. |
 | `CAP-CORRECTNESS-002` | implemented | limitation | Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance. |
 
+## Crash recovery
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-RUNTIME-004` | implemented | capability | Killing the worker at every step boundary of a run in turn leaves no duplicated effect, no lost committed state, and a certificate that replays. |
+
 ## Dashboard and SDK
 
 | ID | Maturity | Kind | Claim |
@@ -29,6 +35,18 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-DASHBOARD-001` | experimental | capability | The Next.js dashboard provides authenticated operational and governed-memory views backed by handwritten API calls. |
 | `CAP-DASHBOARD-002` | implemented | limitation | Some dashboard overview data, settings, and future controls are demonstrative or static and are not implemented runtime behavior. |
 | `CAP-SDK-001` | implemented | compatibility | The experimental Python SDK compiles decorated Python functions into compatibility workflow and job API payloads. |
+
+## Durable run state
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-RUNTIME-001` | implemented | capability | A run's state is a fold over an append-only event log, and the status the database reports is a projection of that log rather than a second answer. |
+
+## Fencing
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-RUNTIME-002` | implemented | capability | A worker that lost its lease cannot append to the run it thought it owned; the write is refused and the worker stops. |
 
 ## Governed memory
 
@@ -80,6 +98,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-LIFECYCLE-001` | implemented | compatibility | Execution status and assurance verdict are independent; every current persisted status is explicitly mapped without treating successful execution as verified output. |
 
+## Loop budgets
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-RUNTIME-005` | implemented | capability | What a loop spent before a crash is still spent after it, and a measure that stopped moving â€” or moved against its declared direction â€” stops the loop. |
+
 ## Observability and operations
 
 | ID | Maturity | Kind | Claim |
@@ -92,6 +116,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-REPLAY-001` | implemented | capability | A certificate bundle replays offline to its recorded verdict, and one changed byte of evidence makes replay report rejected instead. |
 | `CAP-REPLAY-002` | implemented | capability | The replay binary cannot reach a database, an HTTP client, an async runtime, or a model provider, asserted over its resolved dependency closure. |
+
+## Once-only effects
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-RUNTIME-003` | implemented | capability | A protected effect is claimed before it is attempted, and an effect whose outcome nobody can determine stops the run when the IR declares it must not be repeated. |
 
 ## Persistence and storage
 
@@ -110,6 +140,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
 | `CAP-SECURITY-001` | implemented | limitation | Capsulet constrains execution but does not claim a complete sandbox for hostile code; production isolation depends on operator-selected Kubernetes controls and runtime classes. |
+
+## Stopping safely
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-RUNTIME-006` | implemented | capability | Cancellation stops a run at a point where no effect is in flight, and a reversible effect that happened is undone before the run ends. |
 
 ## Verified computation IR
 

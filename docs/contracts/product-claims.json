@@ -503,6 +503,70 @@
           "selector": "a_dependency_cycle_the_current_model_rejects_is_also_refused_by_admission"
         }
       ]
+    },
+    {
+      "command": "cargo test -p capsulet-graph-worker --locked --test chaos",
+      "tests": [
+        {
+          "path": "crates/graph-worker/tests/chaos.rs",
+          "selector": "a_run_survives_the_worker_dying_at_every_step_boundary"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+      "tests": [
+        {
+          "path": "crates/graph-worker/tests/worker.rs",
+          "selector": "a_cancelled_run_undoes_what_it_published_before_it_stops"
+        },
+        {
+          "path": "crates/graph-worker/tests/worker.rs",
+          "selector": "a_non_idempotent_effect_left_in_doubt_stops_the_run"
+        },
+        {
+          "path": "crates/graph-worker/tests/worker.rs",
+          "selector": "a_worker_that_lost_its_lease_stops_instead_of_writing"
+        },
+        {
+          "path": "crates/graph-worker/tests/worker.rs",
+          "selector": "an_effect_is_claimed_before_it_is_performed_and_finalized_after"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-postgres --locked --test ir_runs",
+      "tests": [
+        {
+          "path": "crates/postgres/tests/ir_runs.rs",
+          "selector": "an_expired_lease_is_reclaimable_and_the_old_owner_is_fenced_out"
+        },
+        {
+          "path": "crates/postgres/tests/ir_runs.rs",
+          "selector": "the_stored_status_is_what_folding_the_log_says_it_is"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-runtime --locked",
+      "tests": [
+        {
+          "path": "crates/runtime/tests/decide.rs",
+          "selector": "folding_the_same_log_twice_gives_the_same_state"
+        },
+        {
+          "path": "crates/runtime/tests/failure.rs",
+          "selector": "cancellation_stops_at_the_next_safe_point_and_not_inside_an_effect"
+        },
+        {
+          "path": "crates/runtime/tests/loops.rs",
+          "selector": "a_measure_that_moved_the_wrong_way_is_non_progress_at_once"
+        },
+        {
+          "path": "crates/runtime/tests/loops.rs",
+          "selector": "an_iteration_that_started_and_crashed_still_spent_an_iteration"
+        }
+      ]
     }
   ],
   "claims": [
@@ -1478,6 +1542,223 @@
           "path": "crates/ir-adapters/tests/differential.rs",
           "command": "cargo test -p capsulet-ir-adapters --locked",
           "selector": "a_dependency_cycle_the_current_model_rejects_is_also_refused_by_admission"
+        }
+      ]
+    },
+    {
+      "id": "CAP-RUNTIME-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Durable run state",
+      "statement": "A run's state is a fold over an append-only event log, and the status the database reports is a projection of that log rather than a second answer.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "state-is-a-fold",
+          "evidence_selectors": [
+            "folding_the_same_log_twice_gives_the_same_state"
+          ]
+        },
+        {
+          "assertion": "projection-agrees-with-the-fold",
+          "evidence_selectors": [
+            "the_stored_status_is_what_folding_the_log_says_it_is"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/runtime/tests/decide.rs",
+          "command": "cargo test -p capsulet-runtime --locked",
+          "selector": "folding_the_same_log_twice_gives_the_same_state"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/ir_runs.rs",
+          "command": "cargo test -p capsulet-postgres --locked --test ir_runs",
+          "selector": "the_stored_status_is_what_folding_the_log_says_it_is"
+        }
+      ]
+    },
+    {
+      "id": "CAP-RUNTIME-002",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Fencing",
+      "statement": "A worker that lost its lease cannot append to the run it thought it owned; the write is refused and the worker stops.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-superseded-worker-is-fenced-out",
+          "evidence_selectors": [
+            "an_expired_lease_is_reclaimable_and_the_old_owner_is_fenced_out",
+            "a_worker_that_lost_its_lease_stops_instead_of_writing"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/ir_runs.rs",
+          "command": "cargo test -p capsulet-postgres --locked --test ir_runs",
+          "selector": "an_expired_lease_is_reclaimable_and_the_old_owner_is_fenced_out"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/worker.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+          "selector": "a_worker_that_lost_its_lease_stops_instead_of_writing"
+        }
+      ]
+    },
+    {
+      "id": "CAP-RUNTIME-003",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Once-only effects",
+      "statement": "A protected effect is claimed before it is attempted, and an effect whose outcome nobody can determine stops the run when the IR declares it must not be repeated.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "claim-precedes-the-effect",
+          "evidence_selectors": [
+            "an_effect_is_claimed_before_it_is_performed_and_finalized_after"
+          ]
+        },
+        {
+          "assertion": "uncertainty-stops-rather-than-guesses",
+          "evidence_selectors": [
+            "a_non_idempotent_effect_left_in_doubt_stops_the_run"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/worker.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+          "selector": "an_effect_is_claimed_before_it_is_performed_and_finalized_after"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/worker.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+          "selector": "a_non_idempotent_effect_left_in_doubt_stops_the_run"
+        }
+      ]
+    },
+    {
+      "id": "CAP-RUNTIME-004",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Crash recovery",
+      "statement": "Killing the worker at every step boundary of a run in turn leaves no duplicated effect, no lost committed state, and a certificate that replays.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-run-survives-every-kill-point",
+          "evidence_selectors": [
+            "a_run_survives_the_worker_dying_at_every_step_boundary"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/chaos.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test chaos",
+          "selector": "a_run_survives_the_worker_dying_at_every_step_boundary"
+        }
+      ]
+    },
+    {
+      "id": "CAP-RUNTIME-005",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Loop budgets",
+      "statement": "What a loop spent before a crash is still spent after it, and a measure that stopped moving — or moved against its declared direction — stops the loop.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-restart-does-not-refund-a-budget",
+          "evidence_selectors": [
+            "an_iteration_that_started_and_crashed_still_spent_an_iteration"
+          ]
+        },
+        {
+          "assertion": "non-progress-is-detected",
+          "evidence_selectors": [
+            "a_measure_that_moved_the_wrong_way_is_non_progress_at_once"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/runtime/tests/loops.rs",
+          "command": "cargo test -p capsulet-runtime --locked",
+          "selector": "an_iteration_that_started_and_crashed_still_spent_an_iteration"
+        },
+        {
+          "type": "test",
+          "path": "crates/runtime/tests/loops.rs",
+          "command": "cargo test -p capsulet-runtime --locked",
+          "selector": "a_measure_that_moved_the_wrong_way_is_non_progress_at_once"
+        }
+      ]
+    },
+    {
+      "id": "CAP-RUNTIME-006",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Stopping safely",
+      "statement": "Cancellation stops a run at a point where no effect is in flight, and a reversible effect that happened is undone before the run ends.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "cancellation-waits-for-a-safe-point",
+          "evidence_selectors": [
+            "cancellation_stops_at_the_next_safe_point_and_not_inside_an_effect"
+          ]
+        },
+        {
+          "assertion": "compensation-precedes-the-ending",
+          "evidence_selectors": [
+            "a_cancelled_run_undoes_what_it_published_before_it_stops"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/runtime/tests/failure.rs",
+          "command": "cargo test -p capsulet-runtime --locked",
+          "selector": "cancellation_stops_at_the_next_safe_point_and_not_inside_an_effect"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/worker.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+          "selector": "a_cancelled_run_undoes_what_it_published_before_it_stops"
         }
       ]
     }

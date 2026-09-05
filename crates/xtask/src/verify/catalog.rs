@@ -126,16 +126,26 @@ pub(crate) fn gates() -> Vec<Gate> {
                     &[
                         "test",
                         "--workspace",
+                        // Both of these need a database the `postgres` and
+                        // `chaos` gates provision. Running them here would make
+                        // this gate fail for want of a fixture rather than for
+                        // want of correctness.
                         "--exclude",
                         "capsulet-xtask",
                         "--exclude",
                         "capsulet-postgres",
+                        "--exclude",
+                        "capsulet-graph-worker",
                         "--locked",
                     ],
                 ),
                 command(
                     "cargo",
                     &["test", "-p", "capsulet-postgres", "--lib", "--locked"],
+                ),
+                command(
+                    "cargo",
+                    &["test", "-p", "capsulet-graph-worker", "--lib", "--locked"],
                 ),
             ],
         ),

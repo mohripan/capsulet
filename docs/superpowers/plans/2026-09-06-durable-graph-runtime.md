@@ -198,9 +198,9 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** ADR, `docs/contracts/`, claims registry, completion report
 
-- [ ] ADR for the durable runtime decisions and what was rejected.
-- [ ] Claims only for what the gates execute.
-- [ ] Completion report with the chaos transcript and M4 entry conditions.
+- [x] ADR for the durable runtime decisions and what was rejected.
+- [x] Claims only for what the gates execute.
+- [x] Completion report with the chaos transcript and M4 entry conditions.
 
 ## M3 exit criteria
 

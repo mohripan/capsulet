@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-REPLAY-001, CAP-REPLAY-002, CAP-ADAPTERS-001 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-REPLAY-001, CAP-REPLAY-002, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006 -->
 # Architecture Overview
 
 Capsulet is a correctness-first AI-agent workflow platform with three layers. The implemented
@@ -40,7 +40,40 @@ no I/O and reads no clock, which is what lets a certificate be checked somewhere
 that replays a bundle offline. `capsulet-ir-adapters` translates today's workflows, agent graphs,
 and governed-memory records into the IR, with a coverage report naming what translates with loss.
 
-Nothing executes from the IR yet; the durable runtime is M3.
+## The durable graph runtime
+
+As of M3, an IR definition runs. A run is executed by the graph worker
+(`capsulet-graph-worker`), and its state is a fold over an append-only event log rather than a status
+somebody updated. Recovery is that same fold, so the code that recovers a run after a crash is the
+code that advances it normally.
+
+Node providers and effect transports are M4. The worker ships an executor that refuses every node
+with `verifier_unavailable` rather than pretending to have run it; what M3 finishes is the durability
+around execution.
+
+Five properties carry the weight:
+
+- **The log is the run.** Status, progress, loop spending, and outstanding effects are all computed
+  from `ir_run_events`. `ir_runs.status` and the effect ledger are projections maintained by
+  database triggers, and a test folds the log and asserts they agree — a projection is allowed, a
+  second source of truth is not.
+- **Deciding is pure.** `capsulet-runtime` says what may happen next given a definition, a folded
+  state, and a time the caller supplies. It reads no clock and holds no connection, asserted over
+  its dependency closure, because a decision that depends on ambient state cannot be replayed and
+  recovery is replay.
+- **Effects are claimed before they happen.** A claim with no resolution after a crash means nobody
+  knows, and what happens next follows from the idempotency the IR declared. A non-idempotent effect
+  in that state stops the run; guessing about it is the failure this platform exists to prevent.
+- **Leases carry a fencing epoch.** Every event names the epoch it was written under, so a worker
+  that lost its lease finds out on its next append instead of corrupting a run somebody else owns.
+- **One orchestration path.** Only the graph worker advances an IR run, enforced by a contract test
+  rather than agreed. The scheduler keeps the compatibility job DAGs.
+
+`crates/graph-worker/tests/chaos.rs` kills the worker at every step boundary of a run in turn and
+checks, after each restart, that the run completes with no duplicated effect, no lost committed
+state, and a certificate that replays. It runs as the `chaos` gate. The contract is written up in
+[contracts/durable-run-execution.md](contracts/durable-run-execution.md), and the
+decisions in [ADR 0018](adr/0018-durable-graph-runtime.md).
 
 ## Dependency view
 

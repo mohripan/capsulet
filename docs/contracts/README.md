@@ -10,6 +10,10 @@ Capsulet's public-contract layer keeps product language tied to inspectable evid
 - `stability-and-versioning.md` defines public classes, deprecation, releases, and readers.
 - `database-migrations.md` defines forward upgrade, backup, restore, and rollback obligations.
 - `sdk-generation.md` defines generated transports and handwritten ergonomic boundaries.
+- `durable-run-execution.md` defines how an IR run is stored, advanced, and recovered.
+- `security-exceptions.md` lists every advisory a gate is told to ignore, with an owner and an expiry.
+- `m0-baseline.md`, `m2-completion.md`, and `m3-completion.md` record what each milestone delivered
+  and what its gates actually prove.
 
 Claim IDs are permanent and are never reused after retirement. Run
 `scripts/check-product-claims.ps1` after changing a public claim or surface, and regenerate the
