@@ -109,6 +109,10 @@ records it could not read back, so a run with a progress measure became unrecove
 restarted. The failure was silent on the way in and only appeared on recovery, which is the worst
 possible shape for a bug in a durability layer.
 
+**One event for "it did not happen" and "nobody knows".** Fewer variants, and wrong: only the second
+has to stop a run, and merging them would have made every ordinary refusal look like the case that
+stops everything. `effect_abandoned` and `effect_uncertain` are separate.
+
 **Killing an operating-system process in the chaos gate.** The shipped binary has no executor that
 can run a workflow until M4 brings providers, so there would be no process worth killing. The gate
 discards the worker and expires the lease it never released, which takes with it every line of state

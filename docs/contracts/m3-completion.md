@@ -78,7 +78,7 @@ Every claim registered for M3 names a test a gate runs:
 
 ## Verification run 2026-09-06
 
-Three things the gates found that review had not.
+Three things the gates found that review had not, and two that reading found afterwards.
 
 ### An internally-tagged event enum could not read back what it wrote
 
@@ -108,6 +108,25 @@ recovered attempt does not open the node twice.
 The graph-worker suite and the postgres suite each numbered their fixtures from one, ran against the
 same database, and produced two `tenant_1`s. A test leased another suite's run and failed in a way
 that looked exactly like a worker bug. Fixture names now carry the process id.
+
+### Two more, found by reading rather than by a gate
+
+Recorded because a completion report that only lists what the tests caught overstates how much the
+tests caught.
+
+**A refusal and a doubt were the same event.** The worker recorded `effect_uncertain` both when the
+far side refused outright and when nobody could say what happened. Only the second has to stop a
+run; the first is an ordinary node failure that a declared repair route should answer. Collapsing
+them would have made every refusal look like the case that stops everything, which is how a system
+learns to ignore the case that matters. Split into `effect_abandoned` and `effect_uncertain`, with
+the run failing on the second through `decide` — which also means anything the run still owes gets
+compensated before it ends.
+
+**An early timer signal made the worker spin.** A scheduler firing a timer before it was due left
+the signal in the inbox, which kept the run leasable, which made the worker take it and put it down
+again for as long as the timer had left to run. The signal is now answered "not yet" and consumed;
+the wake-up comes from the stored wake time, which is the durable mechanism and never needed the
+signal.
 
 ## Entry conditions for M4
 
