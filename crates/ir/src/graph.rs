@@ -309,6 +309,46 @@ impl Graph {
         self.nodes.get(id)
     }
 
+    /// The ordering constraints that carry no data.
+    pub fn control_edges(&self) -> impl Iterator<Item = &ControlEdge> {
+        self.control.iter()
+    }
+
+    /// The conditional branches, in canonical order.
+    pub fn branches(&self) -> impl Iterator<Item = &ConditionalBranch> {
+        self.branches.values()
+    }
+
+    /// The region a node belongs to, if any.
+    #[must_use]
+    pub fn region_of_node(&self, node: &Identifier) -> Option<&Region> {
+        self.regions.values().find(|region| region.contains(node))
+    }
+
+    /// The nodes that must finish before this one may start: the sources of
+    /// every edge feeding it, plus every control predecessor.
+    #[must_use]
+    pub fn predecessors_of(&self, node: &Identifier) -> BTreeSet<&Identifier> {
+        let mut predecessors = BTreeSet::new();
+        for edge in self.edges.values() {
+            let feeds_node = edge
+                .targets
+                .iter()
+                .filter_map(Endpoint::node)
+                .any(|target| target == node);
+            if feeds_node {
+                predecessors.extend(edge.sources.iter().filter_map(Endpoint::node));
+            }
+        }
+        for edge in &self.control {
+            if &edge.to == node {
+                predecessors.insert(&edge.from);
+            }
+        }
+        predecessors.remove(node);
+        predecessors
+    }
+
     /// Checks everything about this graph that is decidable from the graph and
     /// the capabilities granted to it.
     ///

@@ -13,6 +13,7 @@ members = [
     "crates/proposer",
     "crates/replay",
     "crates/runner",
+    "crates/runtime",
     "crates/scheduler",
     "crates/storage",
     "crates/worker",

@@ -524,6 +524,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "capsulet-runtime"
+version = "0.1.0"
+dependencies = [
+ "capsulet-ir",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "capsulet-scheduler"
 version = "0.1.0"
 dependencies = [
