@@ -33,18 +33,25 @@ foreach ($claim in $registry.claims) {
     }
     $ordered.Insert($at, [pscustomobject]@{ Key = $key; Claim = $claim })
 }
-$areaGroups = @($ordered | ForEach-Object { $_.Claim } | Group-Object area)
-foreach ($areaGroup in $areaGroups) {
-    $lines.Add("## $($areaGroup.Name)")
-    $lines.Add("")
-    $lines.Add("| ID | Maturity | Kind | Claim |")
-    $lines.Add("| --- | --- | --- | --- |")
-    foreach ($claim in $areaGroup.Group) {
-        $statement = $claim.statement.Replace("|", "\|").Replace("`r", " ").Replace("`n", " ")
-        $lines.Add("| ``$($claim.id)`` | $($claim.maturity) | $($claim.kind) | $statement |")
+# Sections are opened as the ordered list changes area, rather than by
+# Group-Object. Grouping is the last step whose ordering this script would not
+# control: the claims arrive here in a known order and leave in it, and a new
+# heading is simply where the area changes.
+$area = $null
+foreach ($entry in $ordered) {
+    $claim = $entry.Claim
+    if ([string]$claim.area -cne $area) {
+        if ($null -ne $area) { $lines.Add("") }
+        $area = [string]$claim.area
+        $lines.Add("## $area")
+        $lines.Add("")
+        $lines.Add("| ID | Maturity | Kind | Claim |")
+        $lines.Add("| --- | --- | --- | --- |")
     }
-    $lines.Add("")
+    $statement = $claim.statement.Replace("|", "\|").Replace("`r", " ").Replace("`n", " ")
+    $lines.Add("| ``$($claim.id)`` | $($claim.maturity) | $($claim.kind) | $statement |")
 }
+$lines.Add("")
 
 $rendered = ($lines -join "`n").TrimEnd() + "`n"
 if ($OutputPath) {
