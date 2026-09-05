@@ -131,8 +131,36 @@ finally {
     Remove-Item -LiteralPath $temporaryMarkdown -Force -ErrorAction SilentlyContinue
 }
 
+# The rendered order has to be a property of the registry, not of the machine.
+# Three separate components in the renderer have re-sorted these headings at one
+# time or another — Sort-Object, [Array]::Sort, and Group-Object — each of them
+# quietly, and each showing up much later as "the generated Markdown is stale" on
+# whichever platform rendered it second. Asserting the order here fails on the
+# machine where it goes wrong, and says what went wrong.
+$renderedForOrder = Join-Path ([System.IO.Path]::GetTempPath()) "capsulet-claim-order-$PID.md"
+try {
+    & $renderer -RegistryPath (Join-Path $repositoryRoot "docs/contracts/product-claims.json") `
+        -OutputPath $renderedForOrder
+    $headings = @(Get-Content -LiteralPath $renderedForOrder |
+        Where-Object { $_.StartsWith("## ") } |
+        ForEach-Object { $_.Substring(3) })
+    if ($headings.Count -lt 2) {
+        $failures += "rendered claims have $($headings.Count) sections; the order cannot be checked"
+    }
+    for ($index = 1; $index -lt $headings.Count; $index++) {
+        if ([string]::CompareOrdinal($headings[$index - 1], $headings[$index]) -ge 0) {
+            $failures += "rendered claim sections are not in ordinal order: " +
+                "'$($headings[$index - 1])' precedes '$($headings[$index])'"
+            break
+        }
+    }
+}
+finally {
+    Remove-Item -LiteralPath $renderedForOrder -Force -ErrorAction SilentlyContinue
+}
+
 if ($failures.Count -gt 0) {
     throw ($failures -join [Environment]::NewLine)
 }
 
-Write-Host "Product claim contract tests passed ($($invalidCases.Count + $invalidLifecycleCases.Count + 3) cases)."
+Write-Host "Product claim contract tests passed ($($invalidCases.Count + $invalidLifecycleCases.Count + 4) cases)."
