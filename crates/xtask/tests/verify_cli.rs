@@ -153,11 +153,25 @@ fn which(tool: &str) -> bool {
 #[test]
 fn every_silenced_advisory_is_owned_and_unexpired() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // Two tools silence advisories, so both configurations are checked. An
+    // exception documented for one and forgotten in the other is how a gate
+    // ends up disagreeing with itself.
     let audit = std::fs::read_to_string(root.join(".cargo/audit.toml")).unwrap_or_default();
+    let deny = std::fs::read_to_string(root.join("deny.toml")).unwrap_or_default();
     let document = std::fs::read_to_string(root.join("docs/contracts/security-exceptions.md"))
         .expect("the exceptions document is readable");
 
-    for advisory in silenced(&audit) {
+    let mut advisories = silenced(&audit);
+    advisories.extend(silenced(&deny));
+    advisories.sort();
+    advisories.dedup();
+    assert_eq!(
+        silenced(&audit),
+        silenced(&deny),
+        "cargo-audit and cargo-deny must silence the same advisories"
+    );
+
+    for advisory in advisories {
         let row = document
             .lines()
             .find(|line| line.contains(&format!("`{advisory}`")) && line.starts_with('|'))

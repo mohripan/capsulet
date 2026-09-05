@@ -305,14 +305,17 @@ pub(crate) fn gates() -> Vec<Gate> {
         ),
         gate(
             "security",
-            "dependency and source security checks",
-            &["cargo-audit", "npm"],
-            600,
+            "dependency, licence, and source security checks",
+            &["cargo-audit", "cargo-deny", "npm"],
+            900,
             &[Full],
             vec![
                 // `cargo audit` reads Cargo.lock by itself and rejects
                 // `--locked`, which is a cargo flag it does not forward.
                 command("cargo", &["audit"]),
+                // Licences and bans, which CI used to check and this gate did
+                // not — a divergence that only showed up as a red pipeline.
+                command("cargo", &["deny", "check"]),
                 in_dashboard(command("npm", &["audit", "--audit-level=high"])),
             ],
         ),

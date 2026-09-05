@@ -30,13 +30,11 @@ jobs:
       - name: Install cargo-deny
         uses: taiki-e/install-action@cargo-deny
 
-      # Exceptions live in .cargo/audit.toml with an owner and a review date,
-      # so CI and a developer machine silence exactly the same advisories.
-      - name: Audit advisories
-        run: cargo audit --deny warnings
-
-      - name: Check licenses and bans
-        run: cargo deny check
+      # One gate, so CI and a developer machine check the same things against
+      # the same exceptions. Those live in .cargo/audit.toml and deny.toml, each
+      # with an owner and a review date.
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate security
 
   images:
     runs-on: ubuntu-latest

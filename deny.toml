@@ -1,5 +1,12 @@
 [advisories]
-ignore = []
+# Kept in step with .cargo/audit.toml by
+# crates/xtask/tests/verify_cli.rs, which also fails the build when an entry
+# here is not documented in docs/contracts/security-exceptions.md with an owner
+# and an unexpired review date. Two tools, one set of exceptions.
+ignore = [
+  "RUSTSEC-2023-0071",
+  "RUSTSEC-2024-0436",
+]
 
 [licenses]
 version = 2
