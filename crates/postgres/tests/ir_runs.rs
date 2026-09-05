@@ -269,7 +269,7 @@ async fn an_event_at_a_position_already_taken_is_refused() {
         INSERT INTO ir_run_events (
             tenant_id, project_id, run_id, position, kind, payload, epoch, recorded_at
         )
-        VALUES ($1, $2, $3, 0, 'started', '{"event":"started","by":"impostor"}'::jsonb, 0, 1)
+        VALUES ($1, $2, $3, 0, 'started', '{"started":{"by":"impostor"}}'::jsonb, 0, 1)
         "#,
     )
     .bind(&tenant)

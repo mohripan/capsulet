@@ -296,9 +296,34 @@ pub(crate) fn gates() -> Vec<Gate> {
                 ),
                 command(
                     "cargo",
-                    &["test", "-p", "capsulet-graph-worker", "--locked"],
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-graph-worker",
+                        "--test",
+                        "worker",
+                        "--locked",
+                    ],
                 ),
             ],
+        ),
+        gate(
+            "chaos",
+            "an IR run survives the worker dying at every step boundary",
+            &["cargo", "docker"],
+            1_800,
+            &[Full],
+            vec![command(
+                "cargo",
+                &[
+                    "test",
+                    "-p",
+                    "capsulet-graph-worker",
+                    "--test",
+                    "chaos",
+                    "--locked",
+                ],
+            )],
         ),
         gate(
             "migrations",

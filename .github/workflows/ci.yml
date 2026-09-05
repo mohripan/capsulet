@@ -102,7 +102,7 @@ jobs:
       - name: Verify
         run: >
           cargo run -p capsulet-xtask --locked --
-          verify --gate postgres --gate migrations
+          verify --gate postgres --gate migrations --gate chaos
 
   dashboard:
     name: Dashboard

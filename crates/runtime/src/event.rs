@@ -86,8 +86,19 @@ pub enum RunFailure {
 }
 
 /// One thing that happened.
+///
+/// Externally tagged — `{"node_started": {...}}` — rather than carrying the
+/// kind as a field alongside the data. That is not a style choice. Serde reads
+/// an internally-tagged enum by buffering the whole object first, and its
+/// buffer cannot hold a 128-bit integer, which is exactly what a loop's
+/// progress measure is. An internally-tagged `RunEvent` therefore writes an
+/// iteration record it cannot read back, and a run with a progress measure
+/// becomes unrecoverable the moment it restarts.
+///
+/// The variant key is [`RunEvent::as_str`], so `payload -> kind` is the
+/// variant's own body — which is how the database triggers reach into it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum RunEvent {
     /// The run was admitted against a definition. Always first.
     Admitted {

@@ -202,7 +202,7 @@ fn execute(options: &Options) -> Result<(), String> {
 
 fn run_gate(gate: &Gate, root: &Path, log_path: &Path) -> Result<(), ProcessFailure> {
     let _cleanup = CleanupMarker::from_environment();
-    let mut fixture = if matches!(gate.name, "postgres" | "migrations") {
+    let mut fixture = if matches!(gate.name, "postgres" | "migrations" | "chaos") {
         Some(postgres::PostgresFixture::start().map_err(ProcessFailure::Io)?)
     } else {
         None

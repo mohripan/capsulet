@@ -5,7 +5,7 @@
 
 //! A store, a scripted executor, and a clock the test moves.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env::VarError;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
@@ -20,6 +20,8 @@ use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::{AssuranceMode, Definition};
 use capsulet_ir::effect::{Effect, EffectKind, Idempotency, Reversibility};
 use capsulet_ir::graph::{Combine, TrustDerivation};
+use capsulet_ir::loop_region::{Continuation, IterationRecord, LoopBudget, LoopSpec};
+use capsulet_ir::region::{Region, RegionKind};
 use capsulet_ir::value::LengthBounds;
 use capsulet_ir::{
     Endpoint, Graph, GraphBuilder, Hyperedge, Identifier, InputPort, Node, NodeKind, OutputPort,
@@ -207,6 +209,154 @@ pub fn reversible_effect_definition(name: &str) -> Definition {
         .expect("the fixture identifiers are distinct")
     };
     definition
+}
+
+/// A workflow with a bounded loop and a protected effect.
+///
+/// The two things a crash can damage in different ways: a loop can be handed
+/// its budget back, and an effect can happen twice.
+pub fn chaos_definition(name: &str, idempotency: Idempotency) -> Definition {
+    let graph = Graph::new(chaos_graph(idempotency)).expect("the fixture identifiers are distinct");
+    let mut definition = definition_with(
+        name,
+        graph,
+        CapabilitySet::new(vec![Capability {
+            id: id("github"),
+            grant: Grant::Network {
+                hosts: vec!["api.github.com".to_string()],
+            },
+        }])
+        .expect("the fixture grants are distinct"),
+    );
+    definition.budget = ResourceBudget {
+        wall_ms: 600_000,
+        tokens: 100_000,
+        cost_micro_units: 100_000,
+        effect_count: 4,
+    };
+    definition
+}
+
+/// The nodes and the loop region the chaos fixture executes.
+fn chaos_graph(idempotency: Idempotency) -> GraphBuilder {
+    let publish = Node {
+        id: id("publish"),
+        name: "Open the pull request".to_string(),
+        kind: NodeKind::Effect,
+        inputs: vec![],
+        outputs: vec![],
+        capabilities: vec![id("github")],
+        effects: vec![Effect {
+            id: id("open-pull-request"),
+            kind: EffectKind::Publication,
+            target: "github.com/mohripan/capsulet".to_string(),
+            capability: id("github"),
+            idempotency,
+            reversibility: Reversibility::Irreversible,
+        }],
+        budget: ResourceBudget {
+            wall_ms: 30_000,
+            tokens: 0,
+            cost_micro_units: 0,
+            effect_count: 1,
+        },
+        provider: None,
+        sub_workflow: None,
+    };
+
+    let region_node = |name: &str, kind: NodeKind, outputs: Vec<OutputPort>| Node {
+        id: id(name),
+        name: name.to_string(),
+        kind,
+        inputs: vec![InputPort::new(id("in"), text())],
+        outputs,
+        capabilities: vec![],
+        effects: vec![],
+        budget: ResourceBudget::deterministic(60_000),
+        provider: None,
+        sub_workflow: None,
+    };
+
+    let mut parts = GraphBuilder {
+        nodes: vec![
+            region_node(
+                "enter",
+                NodeKind::RegionEntry,
+                vec![OutputPort::new(id("out"), text())],
+            ),
+            region_node(
+                "check",
+                NodeKind::Verifier,
+                vec![OutputPort::new(id("keep-going"), ValueSchema::Bool)],
+            ),
+            region_node(
+                "leave",
+                NodeKind::RegionExit,
+                vec![OutputPort::new(id("out"), text())],
+            ),
+            publish,
+        ],
+        ..GraphBuilder::default()
+    };
+
+    let mut members = BTreeSet::new();
+    for member in ["enter", "check", "leave"] {
+        members.insert(id(member));
+    }
+    parts.regions.push(Region {
+        id: id("repair-loop"),
+        kind: RegionKind::Loop {
+            spec: Box::new(LoopSpec {
+                state: BTreeMap::new(),
+                exit: BTreeMap::new(),
+                continuation: Continuation {
+                    evaluated_by: id("check"),
+                    port: id("keep-going"),
+                },
+                budget: LoopBudget {
+                    max_iterations: 3,
+                    wall_ms: 300_000,
+                    tokens: 50_000,
+                    cost_micro_units: 50_000,
+                    effect_count: 0,
+                },
+                invariants: vec![],
+                progress: None,
+                repairs: vec![],
+            }),
+        },
+        parent: None,
+        entry: id("enter"),
+        exit: id("leave"),
+        nodes: members,
+        capabilities: CapabilitySet::empty(),
+        budget: ResourceBudget {
+            wall_ms: 300_000,
+            tokens: 50_000,
+            cost_micro_units: 50_000,
+            effect_count: 0,
+        },
+    });
+
+    parts
+}
+
+/// An iteration that spent a little and read the given progress measure.
+pub fn iteration(index: u32, progress: Option<i128>) -> IterationRecord {
+    IterationRecord {
+        index,
+        state_in: capsulet_ir::Digest::of(b"before"),
+        state_out: capsulet_ir::Digest::of(b"after"),
+        invariants: vec![],
+        progress,
+        spent: LoopBudget {
+            max_iterations: 1,
+            wall_ms: 10,
+            tokens: 0,
+            cost_micro_units: 0,
+            effect_count: 0,
+        },
+    }
 }
 
 pub fn admission(definition: &Definition) -> AdmissionRecord {

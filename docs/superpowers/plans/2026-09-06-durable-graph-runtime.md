@@ -185,10 +185,14 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/graph-worker/tests/chaos.rs`, `crates/xtask/src/verify/catalog.rs`
 
-- [ ] A looping workflow with a protected effect runs while the worker process is killed at each
-  phase boundary in turn; after every restart the run completes with no duplicated effect, no lost
-  committed state, and a certificate that replays.
-- [ ] The gate runs this as a required check.
+- [x] A looping workflow with a protected effect runs while the worker is killed at each step
+  boundary in turn; after every restart the run completes with no duplicated effect, no lost
+  committed state, and a certificate that replays. The kill discards the worker and expires the
+  lease it never released; it is not an operating-system kill, because the shipped binary has no
+  executor that can run a workflow until M4, so there would be no process worth killing. The loop
+  history is seeded rather than driven — the worker does not yet decide when an iteration begins —
+  and what the test proves about it is that a restart does not hand the budget back.
+- [x] The gate runs this as a required check.
 
 ### Task 12: Close M3
 

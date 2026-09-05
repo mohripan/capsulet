@@ -65,7 +65,11 @@ impl PostgresStore {
             definition: *definition_digest,
             mode,
         };
-        let payload = serde_json::to_value(&admitted)
+        // Serialized to text and cast, never through `serde_json::Value`: that
+        // intermediate cannot hold a 128-bit integer, and a loop's progress
+        // measure is one. Going straight to text keeps the encoder able to
+        // write every value the IR can express.
+        let payload = serde_json::to_string(&admitted)
             .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
 
         let mut transaction = self.pool.begin().await?;
@@ -134,7 +138,8 @@ impl PostgresStore {
         event: &RunEvent,
         at: RecordedTime,
     ) -> Result<RecordedEvent, PostgresStoreError> {
-        let payload = serde_json::to_value(event)
+        // Text, then cast. See the note in `create_ir_run`.
+        let payload = serde_json::to_string(event)
             .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
         let epoch_value =
             i64::try_from(epoch.0).map_err(|_| PostgresStoreError::Overflow("run epoch"))?;
@@ -205,7 +210,7 @@ impl PostgresStore {
     ) -> Result<Vec<RecordedEvent>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT position, epoch, recorded_at, payload
+            SELECT position, epoch, recorded_at, payload::text AS payload
             FROM ir_run_events
             WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3
             ORDER BY position
@@ -459,8 +464,8 @@ fn row_to_run(row: &sqlx::postgres::PgRow) -> Result<IrRunRecord, PostgresStoreE
 fn row_to_event(row: &sqlx::postgres::PgRow) -> Result<RecordedEvent, PostgresStoreError> {
     let position: i64 = row.get("position");
     let epoch: i64 = row.get("epoch");
-    let payload: serde_json::Value = row.get("payload");
-    let event: RunEvent = serde_json::from_value(payload)
+    let payload: String = row.get("payload");
+    let event: RunEvent = serde_json::from_str(&payload)
         .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
 
     Ok(RecordedEvent {
