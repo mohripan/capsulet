@@ -11,9 +11,12 @@ use capsulet_ir::capability::{Capability, Grant};
 use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::effect::{Effect, EffectKind, Idempotency, Reversibility};
 use capsulet_ir::graph::{Combine, TrustDerivation};
-use capsulet_ir::loop_region::{Continuation, LoopBudget, LoopSpec};
+use capsulet_ir::loop_region::{
+    Continuation, Invariant, InvariantOutcome, InvariantTiming, IterationRecord, LoopBudget,
+    LoopSpec, ProgressDirection, ProgressMeasure, RepairRoute,
+};
 use capsulet_ir::region::{Region, RegionKind};
-use capsulet_ir::value::LengthBounds;
+use capsulet_ir::value::{IntegerRange, LengthBounds};
 use capsulet_ir::{
     AssuranceMode, CapabilitySet, Definition, Digest, Endpoint, Graph, GraphBuilder, Hyperedge,
     Identifier, InputPort, Node, NodeKind, OutputPort, ResourceBudget, ValueSchema,
@@ -265,4 +268,164 @@ pub fn loop_definition() -> Definition {
 
     let graph = Graph::new(parts).expect("the fixture identifiers are distinct");
     definition_with(graph, CapabilitySet::empty())
+}
+
+/// What to vary about the loop fixture.
+#[derive(Default)]
+pub struct LoopShape {
+    pub max_iterations: u32,
+    pub invariants: Vec<Invariant>,
+    pub progress: Option<ProgressMeasure>,
+    pub repairs: Vec<RepairRoute>,
+}
+
+impl LoopShape {
+    /// Three iterations, no invariants, no measure, no routes.
+    #[must_use]
+    pub fn plain() -> Self {
+        Self {
+            max_iterations: 3,
+            ..Self::default()
+        }
+    }
+}
+
+/// The invariant the `check` node evaluates in these fixtures.
+#[must_use]
+pub fn fixture_invariant() -> Invariant {
+    Invariant {
+        id: id("state-is-consistent"),
+        description: "the repaired state still parses".to_string(),
+        evaluator: id("check"),
+        port: id("holds"),
+        timing: InvariantTiming::AfterIteration,
+    }
+}
+
+/// A measure that must fall every iteration.
+#[must_use]
+pub fn fixture_progress() -> ProgressMeasure {
+    ProgressMeasure {
+        id: id("findings-remaining"),
+        measured_by: id("check"),
+        port: id("remaining"),
+        direction: ProgressDirection::StrictlyDecreasing,
+    }
+}
+
+/// A loop region built to the given shape.
+///
+/// # Panics
+///
+/// Panics if the fixture identifiers collide.
+#[must_use]
+pub fn loop_definition_with(shape: LoopShape) -> Definition {
+    let mut parts = GraphBuilder {
+        nodes: vec![
+            node(
+                "enter",
+                NodeKind::RegionEntry,
+                vec![InputPort::new(id("in"), text())],
+                vec![OutputPort::new(id("out"), text())],
+            ),
+            node(
+                "check",
+                NodeKind::Verifier,
+                vec![InputPort::new(id("candidate"), text())],
+                vec![
+                    OutputPort::new(id("keep-going"), ValueSchema::Bool),
+                    OutputPort::new(id("holds"), ValueSchema::Bool),
+                    OutputPort::new(
+                        id("remaining"),
+                        ValueSchema::Integer {
+                            range: IntegerRange::new(0, 1_000),
+                        },
+                    ),
+                ],
+            ),
+            node(
+                "leave",
+                NodeKind::RegionExit,
+                vec![InputPort::new(id("in"), text())],
+                vec![OutputPort::new(id("out"), text())],
+            ),
+        ],
+        ..GraphBuilder::default()
+    };
+
+    let mut members = BTreeSet::new();
+    for member in ["enter", "check", "leave"] {
+        members.insert(id(member));
+    }
+    parts.regions.push(Region {
+        id: id("repair-loop"),
+        kind: RegionKind::Loop {
+            spec: Box::new(LoopSpec {
+                state: BTreeMap::new(),
+                exit: BTreeMap::new(),
+                continuation: Continuation {
+                    evaluated_by: id("check"),
+                    port: id("keep-going"),
+                },
+                budget: LoopBudget {
+                    max_iterations: shape.max_iterations,
+                    wall_ms: 900_000,
+                    tokens: 96_000,
+                    cost_micro_units: 150_000,
+                    effect_count: 0,
+                },
+                invariants: shape.invariants,
+                progress: shape.progress,
+                repairs: shape.repairs,
+            }),
+        },
+        parent: None,
+        entry: id("enter"),
+        exit: id("leave"),
+        nodes: members,
+        capabilities: CapabilitySet::empty(),
+        budget: ResourceBudget {
+            wall_ms: 900_000,
+            tokens: 96_000,
+            cost_micro_units: 150_000,
+            effect_count: 0,
+        },
+    });
+
+    let graph = Graph::new(parts).expect("the fixture identifiers are distinct");
+    definition_with(graph, CapabilitySet::empty())
+}
+
+/// An iteration record that spent nothing.
+///
+/// Budgets are exercised through the loop's iteration count in these tests;
+/// what varies here is the progress reading and whether the invariant held.
+#[must_use]
+pub fn iteration(
+    index: u32,
+    progress: Option<i128>,
+    invariant_held: Option<bool>,
+) -> IterationRecord {
+    IterationRecord {
+        index,
+        state_in: Digest::of(b"before"),
+        state_out: Digest::of(b"after"),
+        invariants: invariant_held
+            .map(|held| {
+                vec![InvariantOutcome {
+                    invariant: id("state-is-consistent"),
+                    held,
+                    timing: InvariantTiming::AfterIteration,
+                }]
+            })
+            .unwrap_or_default(),
+        progress,
+        spent: LoopBudget {
+            max_iterations: 1,
+            wall_ms: 10,
+            tokens: 0,
+            cost_micro_units: 0,
+            effect_count: 0,
+        },
+    }
 }

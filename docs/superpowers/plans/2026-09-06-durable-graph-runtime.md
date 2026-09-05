@@ -126,11 +126,11 @@ The conditions M3 exists to correct, from the product design's own audit:
 
 **Files:** `crates/runtime/src/loops.rs`, tests
 
-- [ ] Failing tests: iteration counts survive a fold; a budget exhausted before the crash stays
+- [x] Failing tests: iteration counts survive a fold; a budget exhausted before the crash stays
   exhausted; non-progress is detected across a restart; an invariant failure routes by the IR's
   declared repair route.
-- [ ] Iteration records appended per iteration, with the digests M2's `IterationRecord` defines.
-- [ ] Budgets computed from the log, never from memory.
+- [x] Iteration records appended per iteration, with the digests M2's `IterationRecord` defines.
+- [x] Budgets computed from the log, never from memory.
 
 ### Task 6: Durable waits
 

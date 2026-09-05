@@ -12,18 +12,21 @@
 //! because a finished run has nothing to decide. Outstanding effects next,
 //! because an effect nobody can account for outranks any amount of remaining
 //! work — proceeding past one would be the duplication this milestone exists to
-//! prevent.
+//! prevent. Then loops, then unanswered failures, and only then new work: a run
+//! that starts a fresh node while a failure sits unhandled is harder to explain
+//! afterwards than it was to write.
 
 use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::Definition;
 use capsulet_ir::effect::Idempotency;
 use capsulet_ir::id::Identifier;
-use capsulet_ir::loop_region::{BudgetKind, LoopSpec, StopReason};
+use capsulet_ir::loop_region::StopReason;
 use capsulet_ir::node::NodeKind;
 use capsulet_ir::region::RegionKind;
 
 use crate::event::{RunFailure, Wait};
-use crate::state::{RunState, RunStatus};
+use crate::loops::{self, Repair};
+use crate::state::{NodeFailure, RunState, RunStatus};
 
 /// Something the worker is permitted to do now.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +61,8 @@ pub enum Decision {
         region: Identifier,
         reason: StopReason,
     },
+    /// Suspend durably on something outside the run.
+    Suspend { wait: Wait },
     /// The wait the run is suspended on is due.
     ResumeWait { wait: Wait },
     /// Every node has finished.
@@ -101,6 +106,10 @@ pub fn decide(definition: &Definition, state: &RunState, now: RecordedTime) -> D
     }
 
     if let Some(decision) = decide_loop(definition, state) {
+        return decision;
+    }
+
+    if let Some(decision) = decide_failure(definition, state) {
         return decision;
     }
 
@@ -171,7 +180,7 @@ fn decide_outstanding_effect(definition: &Definition, state: &RunState) -> Optio
     }
 }
 
-/// Checks every loop's bounds against what the log says it has spent.
+/// Checks every loop's bounds, invariants, and progress against its log.
 fn decide_loop(definition: &Definition, state: &RunState) -> Option<Decision> {
     for region in definition.graph.regions() {
         let RegionKind::Loop { spec } = &region.kind else {
@@ -181,7 +190,16 @@ fn decide_loop(definition: &Definition, state: &RunState) -> Option<Decision> {
         if progress.stopped.is_some() {
             continue;
         }
-        if let Some(reason) = exhausted(spec, &progress, state) {
+
+        let reason = loops::exhausted(spec, &progress, state)
+            .or_else(|| loops::invariant_failure(&progress))
+            .or_else(|| {
+                spec.progress
+                    .as_ref()
+                    .and_then(|measure| loops::non_progress(measure, &progress))
+            });
+
+        if let Some(reason) = reason {
             return Some(Decision::StopLoop {
                 region: region.id.clone(),
                 reason,
@@ -191,46 +209,71 @@ fn decide_loop(definition: &Definition, state: &RunState) -> Option<Decision> {
     None
 }
 
-/// Which bound, if any, this loop has reached.
+/// Answers the first failure nobody has answered.
 ///
-/// Counted from iterations *started*, because an iteration that began and then
-/// crashed still spent what it spent.
-fn exhausted(
-    spec: &LoopSpec,
-    progress: &crate::state::LoopProgress,
-    state: &RunState,
-) -> Option<StopReason> {
-    let spent = state.spent();
-    if progress.started >= spec.budget.max_iterations {
-        return Some(StopReason::BudgetExhausted {
-            budget: BudgetKind::Iterations,
-        });
+/// A failed node that is neither running nor finished is waiting for a
+/// decision. Where the loop it sits in declared a route for that kind of
+/// failure, the route is the decision. Where it did not, the run fails —
+/// silence in a declaration is not consent to retry.
+fn decide_failure(definition: &Definition, state: &RunState) -> Option<Decision> {
+    let (node, failure) = state.unresolved_failures().into_iter().next()?;
+    let stop = || {
+        Some(Decision::Fail {
+            reason: RunFailure::Node {
+                node: node.clone(),
+                failure: failure.kind,
+                detail: failure.detail.clone(),
+            },
+        })
+    };
+
+    let Some(region) = definition.graph.region_of_node(node) else {
+        return stop();
+    };
+    let RegionKind::Loop { spec } = &region.kind else {
+        return stop();
+    };
+    // A loop that has already stopped is not going to repair anything.
+    if state.loop_progress(&region.id).stopped.is_some() {
+        return stop();
     }
-    if spent.wall_ms >= spec.budget.wall_ms {
-        return Some(StopReason::BudgetExhausted {
-            budget: BudgetKind::WallTime,
-        });
+
+    loops::repair(spec, state, node, failure.kind).map_or_else(
+        // The loop declared nothing for this failure kind.
+        stop,
+        |repair| Some(apply_repair(repair, &region.id, node, failure)),
+    )
+}
+
+/// Turns a declared route into the decision that carries it out.
+fn apply_repair(
+    repair: Repair,
+    region: &Identifier,
+    failed: &Identifier,
+    failure: &NodeFailure,
+) -> Decision {
+    match repair {
+        Repair::Retry { node, .. } | Repair::Hand { node } => Decision::StartNode { node },
+        // Escalation is a durable wait, not a spin: the run suspends until the
+        // named authority decides, and nothing is held in worker memory.
+        Repair::Escalate { to } => Decision::Suspend {
+            wait: Wait::HumanGate {
+                node: failed.clone(),
+                obligation: to,
+            },
+        },
+        Repair::Reject => Decision::Fail {
+            reason: RunFailure::Node {
+                node: failed.clone(),
+                failure: failure.kind,
+                detail: failure.detail.clone(),
+            },
+        },
+        Repair::Exhausted { failure } => Decision::StopLoop {
+            region: region.clone(),
+            reason: StopReason::RepairExhausted { failure },
+        },
     }
-    if spent.tokens >= spec.budget.tokens && spec.budget.tokens > 0 {
-        return Some(StopReason::BudgetExhausted {
-            budget: BudgetKind::Tokens,
-        });
-    }
-    if spent.cost_micro_units >= spec.budget.cost_micro_units && spec.budget.cost_micro_units > 0 {
-        return Some(StopReason::BudgetExhausted {
-            budget: BudgetKind::Cost,
-        });
-    }
-    // A measure that has not moved for two consecutive iterations is not
-    // progress, whichever worker observed them.
-    if let Some(measure) = &spec.progress
-        && progress.stalled >= 2
-    {
-        return Some(StopReason::NonProgress {
-            measure: measure.id.clone(),
-        });
-    }
-    None
 }
 
 /// The next node whose predecessors have all finished.

@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use capsulet_ir::definition::AssuranceMode;
 use capsulet_ir::digest::Digest;
 use capsulet_ir::id::Identifier;
-use capsulet_ir::loop_region::StopReason;
+use capsulet_ir::loop_region::{FailureKind, StopReason};
 use thiserror::Error;
 
 use crate::event::{Epoch, RecordedEvent, RunEvent, RunFailure, Wait};
@@ -72,9 +72,25 @@ pub struct LoopProgress {
     pub finished: u32,
     /// The last progress reading, where the loop declares a measure.
     pub last_progress: Option<i128>,
-    /// How many consecutive iterations failed to move the measure.
+    /// The reading before that. Kept because whether a measure moved the way it
+    /// was declared to move needs two readings and the declaration, and the
+    /// fold has no declaration — only [`crate::decide`] does.
+    pub previous_progress: Option<i128>,
+    /// How many consecutive iterations failed to move the measure at all.
     pub stalled: u32,
+    /// The invariant that did not hold in the most recent iteration.
+    ///
+    /// Cleared by an iteration in which every invariant held, so a loop that
+    /// repaired itself is not stopped for a failure it has since fixed.
+    pub failed_invariant: Option<Identifier>,
     pub stopped: Option<StopReason>,
+}
+
+/// A typed failure a node reported, and what it said about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeFailure {
+    pub kind: FailureKind,
+    pub detail: String,
 }
 
 /// What the run has consumed, summed from the log.
@@ -123,6 +139,7 @@ pub struct RunState {
     outstanding: Vec<OutstandingEffect>,
     completed_effects: BTreeSet<(Identifier, Identifier)>,
     loops: BTreeMap<Identifier, LoopProgress>,
+    failures: BTreeMap<Identifier, Vec<NodeFailure>>,
     spent: Spent,
     waiting_on: Option<Wait>,
     failure: Option<RunFailure>,
@@ -154,6 +171,7 @@ impl RunState {
             outstanding: Vec::new(),
             completed_effects: BTreeSet::new(),
             loops: BTreeMap::new(),
+            failures: BTreeMap::new(),
             spent: Spent::default(),
             waiting_on: None,
             failure: None,
@@ -207,8 +225,22 @@ impl RunState {
                 }
                 self.finished.insert(node.clone(), outputs.clone());
             }
-            RunEvent::NodeFailed { node, .. } => {
+            RunEvent::NodeFailed {
+                node,
+                failure,
+                detail,
+            } => {
                 self.running.remove(node);
+                // Kept, because how a node failed is what decides the route it
+                // takes, and how often it has failed is what decides whether
+                // that route is exhausted. Both have to survive a restart.
+                self.failures
+                    .entry(node.clone())
+                    .or_default()
+                    .push(NodeFailure {
+                        kind: *failure,
+                        detail: detail.clone(),
+                    });
             }
             RunEvent::EffectClaimed { .. }
             | RunEvent::EffectFinalized { .. }
@@ -298,14 +330,27 @@ impl RunState {
                 // A measure that did not move is what non-progress means, and it
                 // has to survive a restart, so it is counted here rather than
                 // held by whoever happened to be running the loop.
+                //
+                // Whether it moved the *declared* way is a separate question,
+                // answered where the declaration is: the fold has only events.
                 if let Some(reading) = record.progress {
                     if progress.last_progress == Some(reading) {
                         progress.stalled = progress.stalled.saturating_add(1);
                     } else {
                         progress.stalled = 0;
                     }
+                    progress.previous_progress = progress.last_progress;
                     progress.last_progress = Some(reading);
                 }
+
+                // An iteration in which everything held clears the last
+                // failure, so a loop is never stopped for a problem it has
+                // since repaired.
+                progress.failed_invariant = record
+                    .invariants
+                    .iter()
+                    .find(|outcome| !outcome.held)
+                    .map(|outcome| outcome.invariant.clone());
 
                 self.spent.wall_ms = self.spent.wall_ms.saturating_add(record.spent.wall_ms);
                 self.spent.tokens = self.spent.tokens.saturating_add(record.spent.tokens);
@@ -399,5 +444,48 @@ impl RunState {
     #[must_use]
     pub const fn failure(&self) -> Option<&RunFailure> {
         self.failure.as_ref()
+    }
+
+    /// Every failure a node has reported, oldest first.
+    #[must_use]
+    pub fn failures_of(&self, node: &Identifier) -> &[NodeFailure] {
+        self.failures.get(node).map_or(&[], Vec::as_slice)
+    }
+
+    /// How many times a node reported this kind of failure.
+    ///
+    /// This is what a declared retry budget is counted against, and it comes
+    /// from the log rather than a counter somebody kept, so a restart cannot
+    /// hand a route its attempts back.
+    #[must_use]
+    pub fn failure_count(&self, node: &Identifier, kind: FailureKind) -> u32 {
+        u32::try_from(
+            self.failures_of(node)
+                .iter()
+                .filter(|failure| failure.kind == kind)
+                .count(),
+        )
+        .unwrap_or(u32::MAX)
+    }
+
+    /// The most recent failure of a node that is not running and not finished.
+    ///
+    /// A node in that state is waiting for someone to decide what happens next,
+    /// which is exactly what a repair route is for.
+    #[must_use]
+    pub fn unresolved_failure(&self, node: &Identifier) -> Option<&NodeFailure> {
+        if self.running.contains(node) || self.finished.contains_key(node) {
+            return None;
+        }
+        self.failures_of(node).last()
+    }
+
+    /// Every node whose most recent failure nobody has answered yet.
+    #[must_use]
+    pub fn unresolved_failures(&self) -> Vec<(&Identifier, &NodeFailure)> {
+        self.failures
+            .keys()
+            .filter_map(|node| self.unresolved_failure(node).map(|failure| (node, failure)))
+            .collect()
     }
 }
