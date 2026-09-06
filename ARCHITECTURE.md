@@ -21,10 +21,20 @@ self-hosting, and operational integrations.
 
 **Experimental, new in M2:** the trust-typed verified-computation IR, structural admission,
 assurance policy decisions, platform certificates, offline replay, and adapters that describe
-today's workflows and agent graphs in the IR. Nothing executes from the IR yet.
+today's workflows and agent graphs in the IR.
 
-**Planned:** a dedicated durable graph worker executing the IR, the verifier and domain-pack
-ecosystem, generated clients, and the public-alpha release gate.
+**New in M3:** a dedicated durable graph worker executes the IR. A run's state is a fold over an
+append-only event log, so recovery after a crash is the ordinary path rather than a special one.
+
+**Hardened since M3:** the correctness kernel and the assurance gate were audited against their own
+documented guarantees. Three were not implemented — a boundary was satisfied by a certificate that
+proved something unrelated, a verified trust class could be minted from a hand-written record, and a
+deeply nested derivation ended the process instead of returning a verdict. Those are closed, and the
+guarantees that remain unmet are recorded as limitations in
+[the product claims](docs/contracts/product-claims.md) rather than left implied.
+
+**Planned:** the verifier and domain-pack ecosystem, generated clients, and the public-alpha release
+gate.
 
 PostgreSQL is the implemented durable event and coordination channel. Kafka remains an optional future scaling path. Hostile multi-tenant workloads should configure a sandboxed Kubernetes RuntimeClass such as gVisor or Kata in addition to the enforced pod security and default-deny network policy.
 
@@ -46,7 +56,7 @@ As of M2 it is defined, admitted, certified, and replayable. As of M3 it runs, t
 graph worker described below; no execution crate depends on the adapters, so translating a
 compatibility DAG into the IR stays a deliberate decision.
 
-Four properties carry the weight:
+Six properties carry the weight:
 
 - **Canonical bytes.** `capsulet-ir` defines the exact encoding every digest is taken over. Two
   authors who write the same definition produce the same digest, and there is no floating point
@@ -62,13 +72,31 @@ Four properties carry the weight:
   bounded loops, provenance, legal trust edges — apply in every assurance mode. Observe means the
   domain obligations were not evaluated, never that a malformed or unbounded definition may run.
   Passing produces an admission record, and a certificate cannot be assembled without one.
-- **Coverage is computed.** A boundary's required contract is satisfied by accounting for every
-  obligation that contract declares, read from the definition, with each obligation's own
-  attribution deciding which contract it covers — never by the certificate listing the contract.
-- **Offline replay.** A certificate plus the evidence it cites forms a bundle, and `capsulet-replay`
-  reaches its own verdict from that bundle alone, on a machine with no access to this installation.
-  It re-checks the seal and every evidence digest, re-decides the deterministic families, and says
-  plainly which external tools it did not re-run.
+- **A boundary is gated on what it asked for.** The required contract is satisfied by accounting
+  for every obligation that contract declares, read from the definition, with each obligation's own
+  attribution deciding which contract it covers — never by the certificate listing the contract. The
+  verdict is judged per contract, so an undecided obligation elsewhere in the run does not deny an
+  unrelated crossing, while an obligation that was checked and failed denies it wherever it sits. A
+  required verifier must have *run* and not rejected, at the version and in the environment the
+  policy pinned. A boundary may require the evidence to be no older than a stated age, and a
+  withdrawn certificate is refused however well formed it is. Time and revocations are arguments to
+  the decision, never read inside it.
+- **The kernel's decisions are total and exact.** `check` returns a verdict for every proposal,
+  including a hostile one: derivations nest, so totality rests on a stated depth bound rather than on
+  whatever stack the process happens to have. Arithmetic is fixed-point over integers, so a result
+  does not depend on the order of the operands and a value that cannot be represented exactly is
+  refused rather than rounded. A citation is judged on text rather than bytes — Unicode composition,
+  case and whitespace do not change what a document says — within a span small enough to be worth
+  pointing at. And the one rule no kernel can justify, interpretation, has to say why: a reading
+  without a rationale is refused, because a residual nobody can act on is not a smaller problem than
+  an unsound rule.
+- **Offline replay, which does not overstate.** A certificate plus the evidence it cites forms a
+  bundle, and `capsulet-replay` reaches its own verdict from that bundle alone, on a machine with no
+  access to this installation. It re-checks the seal and every evidence digest, re-decides the
+  deterministic families, and says plainly which external tools it did not re-run. A replay that
+  diverged yields no verdict at all — what the bundle would support is a separate question, asked
+  deliberately — inputs that are present and unreadable are reported apart from absent ones, and a
+  bundle with nothing in it says so rather than reproducing quietly.
 
 The crates are `capsulet-ir` (pure: no I/O, no clock, no randomness, asserted over its dependency
 closure), `capsulet-kernel` (certificate assembly, obligation families, replay), `capsulet-replay`
@@ -441,6 +469,21 @@ The API requires configured bearer credentials unless authentication is explicit
 - support multi-file and versioned bundles.
 
 These are extension paths beyond the implemented production baseline.
+
+The correctness plane has four limitations that are recorded rather than fixed, each with a claim
+and a test or source pointer:
+
+- a cited term is matched by substring containment, so a short term is grounded by a longer word that
+  contains it. Matching on word boundaries needs Unicode segmentation, because the obvious rule —
+  refuse a match flanked by letters — would reject correct citations in scripts written without
+  spaces (`CAP-CORRECTNESS-004`);
+- a kernel proposal is persisted inside bundles without a schema version of its own, so a bundle
+  written by a build whose proposal shape differed does not re-decide (`CAP-CORRECTNESS-008`);
+- whether a value reached a verification record without crossing an unmodelled boundary is supplied
+  by the caller, not derived: no certificate records provenance loss (`CAP-IR-006`);
+- a certificate does not record which verdict rule decided it, and the gate does not compare the
+  `policy_version` a certificate carries against the policy in force. Recording the rule on the body
+  would break every existing seal, so the rule is pinned by test instead (`CAP-ASSURANCE-006`).
 
 A larger change is planned for the agent runtime. Today node output moves between nodes as an
 opaque `state_json` string that nothing inspects, while `GraphDefinition::new` compares

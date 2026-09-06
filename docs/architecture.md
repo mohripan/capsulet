@@ -40,6 +40,18 @@ no I/O and reads no clock, which is what lets a certificate be checked somewhere
 that replays a bundle offline. `capsulet-ir-adapters` translates today's workflows, agent graphs,
 and governed-memory records into the IR, with a coverage report naming what translates with loss.
 
+Three rules describe what the correctness plane will and will not do. Nothing is established by
+being asserted: a trust class comes from a record admitted against a certificate that exists and
+covers the contract claimed, and a boundary's contract is satisfied by accounting for the obligations
+that contract declares rather than by a certificate naming it. Nothing is decided approximately:
+kernel arithmetic is exact fixed-point, citations are compared as text rather than bytes, and a
+derivation deeper than the stated bound is rejected rather than walked. And nothing claims more than
+it checked: a replay that diverged reports no verdict, and one that had nothing to check says so.
+
+What is *not* guaranteed is written down in the same place as what is —
+[the product claims](contracts/product-claims.md) carry limitations alongside capabilities, each
+with the test or source that backs it.
+
 ## The durable graph runtime
 
 As of M3, an IR definition runs. A run is executed by the graph worker

@@ -44,10 +44,17 @@ reader. Never edit a golden file to match new output.
 ## What a certificate says
 
 A certificate carries the definition it is about (by digest), the definition and policy versions, the
-kernel build that decided it, the mode it ran under, the contracts in play, the verifier records, the
-evidence digests, every obligation and what became of it, why any loop stopped, and the verdict.
+kernel build that decided it, the mode it ran under, the contracts it set out to satisfy, the
+verifier records, the evidence digests, every obligation and what became of it, why any loop stopped,
+and the verdict.
 
-Three rules govern how it may be read:
+The `contracts` list is descriptive, and no decision reads it. It is a claim the certificate makes
+about itself, and treating membership in it as coverage is exactly how a run that discharged one
+unrelated obligation used to cross a boundary protecting a different contract. Coverage is computed
+from the definition's contracts and each obligation's own attribution; see
+[assurance decisions](../architecture.md) and `CAP-ASSURANCE-003`.
+
+Four rules govern how it may be read:
 
 1. **The verdict is derived, not asserted.** It is computed from the obligations under the recorded
    mode. A certificate whose recorded verdict does not follow from its own contents cannot be
@@ -58,6 +65,16 @@ Three rules govern how it may be read:
 3. **The seal is checkable by anyone.** The digest covers the whole body and travels with it, so an
    edit is detectable by a holder of the document, not only by this installation. Deserialization
    re-checks it, which means a tampered certificate never becomes a certificate value.
+4. **An obligation is identified by its contract and its statement, not by its statement alone.**
+   Two contracts may each declare something called `compiles`; those are two obligations that share a
+   name, and a certificate covering both is well formed. The same obligation of the same contract
+   twice is not.
+
+One thing a certificate does *not* carry is which verdict rule decided it. `check` re-derives the
+verdict with the running build's rule, and deserialization runs that check, so a change to the rule
+decides whether certificates already sealed can still be opened. Recording the rule on the body would
+change the digest and break every existing seal, so it is pinned by test instead
+(`crates/ir/tests/verdict_rule.rs`, `CAP-ASSURANCE-006`).
 
 An obligation is discharged, assumed, waived, left residual, or failed. There is no absent case.
 Assumption and waiver are kept separate because one says nobody checked and the other says a named
@@ -83,6 +100,15 @@ and claiming otherwise would be the overstatement this design exists to avoid.
 Failures fail closed. Missing or mismatched evidence fails the obligations resting on it, and the
 verdict recomputes to `rejected`. An unknown checker claiming determinism is not trusted. An
 unreadable schema major supports no verdict at all.
+
+Replay is also careful about what it claims to have established. A divergent replay reports **no**
+verdict — what the bundle would support once the findings are addressed is a separate question, asked
+through `recomputed_verdict` — so a caller cannot read a positive answer out of a failed replay.
+Pinned inputs that are present and cannot be parsed are reported apart from absent ones and
+disqualify the result: absent inputs mean the bundle is incomplete, whereas unreadable ones mean the
+bytes are there and are not what they claim to be. And a certificate that pins no evidence and names
+no verifier replays clean because there is nothing to contradict it, so the outcome says that it
+checked nothing rather than letting "reproduced" stand for more than it did.
 
 ## Versioning and compatibility
 
