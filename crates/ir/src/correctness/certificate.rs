@@ -171,6 +171,14 @@ pub struct CertificateBody {
     pub policy_version: String,
     /// The kernel build that decided this. A replayer compares it to its own.
     pub kernel_version: String,
+    /// The contracts this run set out to satisfy, as the assembler labelled it.
+    ///
+    /// Descriptive only. No decision reads it, and none should: it is a claim a
+    /// certificate makes about itself, and for a while the boundary gate treated
+    /// membership in this list as coverage — so a run that discharged one
+    /// unrelated obligation could name any contract and cross. Coverage is now
+    /// computed from the definition's contracts and the obligations' own
+    /// attribution; see [`crate::coverage`].
     pub contracts: Vec<Identifier>,
     pub verifiers: Vec<VerifierRecord>,
     pub evidence: Vec<EvidenceRef>,

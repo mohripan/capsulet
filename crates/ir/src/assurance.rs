@@ -21,7 +21,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::correctness::certificate::{AssuranceVerdict, Certificate};
 use crate::correctness::obligation::{DischargeState, Obligation};
+use crate::coverage::{Coverage, coverage};
 use crate::definition::AssuranceMode;
+use crate::definition::Definition;
 use crate::id::Identifier;
 use crate::port::TrustLevel;
 use crate::trust::TrustClass;
@@ -127,11 +129,25 @@ pub enum DenialReason {
         required: AssuranceVerdict,
         found: AssuranceVerdict,
     },
-    /// The verdict was reached under a different contract than the one this
-    /// boundary is about. A passing check of the wrong property is not a pass.
+    /// The certificate does not account for every obligation the required
+    /// contract declares. `missing` names the ones it says nothing about,
+    /// computed from the definition rather than read off the list the
+    /// certificate wrote about itself.
     ContractNotCovered {
         required: Identifier,
-        covered: Vec<Identifier>,
+        missing: Vec<Identifier>,
+    },
+    /// The policy requires a contract the definition does not declare. Nothing
+    /// can cover it, so nothing may cross on the strength of it.
+    ContractNotInDefinition {
+        required: Identifier,
+    },
+    /// A value's trust was established under a different contract than the
+    /// destination requires. A passing check of the wrong property is not a
+    /// pass.
+    ContractMismatch {
+        required: Identifier,
+        established: Option<Identifier>,
     },
     MissingVerifier {
         identity: Identifier,
@@ -161,6 +177,8 @@ impl DenialReason {
             Self::NoCertificate { .. } => "no_certificate",
             Self::VerdictBelowMinimum { .. } => "verdict_below_minimum",
             Self::ContractNotCovered { .. } => "contract_not_covered",
+            Self::ContractNotInDefinition { .. } => "contract_not_in_definition",
+            Self::ContractMismatch { .. } => "contract_mismatch",
             Self::MissingVerifier { .. } => "missing_verifier",
             Self::MissingApproval { .. } => "missing_approval",
             Self::WaiverNotAuthorised { .. } => "waiver_not_authorised",
@@ -212,11 +230,16 @@ impl BoundaryDecision {
 /// `certificate` is an `Option` on purpose. The absent case is the one that
 /// matters most, and making callers pass it explicitly keeps "we did not check"
 /// from being indistinguishable from "we checked and it was fine".
+///
+/// `definition` is the whole definition rather than its digest, because a
+/// contract's obligations live on it and coverage cannot be computed without
+/// them. Passing only the digest is what forced the old gate to accept the
+/// certificate's own word about which contracts it covered.
 #[must_use]
 pub fn decide_boundary(
     policy: &AssurancePolicy,
     declared_mode: AssuranceMode,
-    definition: &crate::digest::Digest,
+    definition: &Definition,
     certificate: Option<&Certificate>,
     boundary: &Identifier,
 ) -> BoundaryDecision {
@@ -244,21 +267,29 @@ pub fn decide_boundary(
     };
     let body = certificate.body();
 
-    if &body.subject.definition != definition {
+    // A definition that will not canonically encode cannot be shown to be the
+    // one this certificate is about, so identity is not established and the
+    // boundary stays shut. `admit` encodes first, so an admitted definition
+    // never reaches the error arm.
+    let Ok(digest) = crate::digest_of(definition) else {
+        return BoundaryDecision::Denied {
+            reason: DenialReason::CertificateNotForThisDefinition,
+        };
+    };
+    if body.subject.definition != digest {
         return BoundaryDecision::Denied {
             reason: DenialReason::CertificateNotForThisDefinition,
         };
     }
 
-    if let Some(contract) = &required.contract
-        && !body.contracts.contains(contract)
-    {
-        return BoundaryDecision::Denied {
-            reason: DenialReason::ContractNotCovered {
-                required: contract.clone(),
-                covered: body.contracts.clone(),
-            },
-        };
+    // Every contract this crossing depends on: the one the boundary names, and
+    // the ones the policy requires of every crossing it governs. The second was
+    // declared and read by nothing at all.
+    let required_contracts = required.contract.iter().chain(&policy.required_contracts);
+    for contract in required_contracts {
+        if let Some(reason) = uncovered_reason(definition, contract, body) {
+            return BoundaryDecision::Denied { reason };
+        }
     }
 
     for identity in &policy.required_verifiers {
@@ -315,6 +346,24 @@ pub fn decide_boundary(
     }
 }
 
+/// The reason a contract is not covered, if it is not.
+fn uncovered_reason(
+    definition: &Definition,
+    contract: &Identifier,
+    body: &crate::correctness::certificate::CertificateBody,
+) -> Option<DenialReason> {
+    match coverage(definition, contract, body) {
+        Coverage::Complete => None,
+        Coverage::ContractNotInDefinition => Some(DenialReason::ContractNotInDefinition {
+            required: contract.clone(),
+        }),
+        Coverage::Missing(missing) => Some(DenialReason::ContractNotCovered {
+            required: contract.clone(),
+            missing,
+        }),
+    }
+}
+
 /// Decides whether a value of this trust class may reach a destination.
 ///
 /// The same rule as a boundary, applied to a value rather than an effect: a
@@ -354,13 +403,11 @@ pub fn check_trust_route(
             .contract()
             .is_some_and(|contract| contract == required.as_str());
         if !covered {
-            return Err(DenialReason::ContractNotCovered {
+            return Err(DenialReason::ContractMismatch {
                 required: required.clone(),
-                covered: class
+                established: class
                     .contract()
-                    .and_then(|contract| Identifier::parse(contract).ok())
-                    .into_iter()
-                    .collect(),
+                    .and_then(|contract| Identifier::parse(contract).ok()),
             });
         }
     }

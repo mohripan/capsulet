@@ -5,8 +5,9 @@
 > any code changes, so that a half-executed plan still leaves the project telling the truth.
 
 **Goal:** Make the correctness kernel and the assurance gate enforce the guarantees they already
-claim. Several of those guarantees are stated in doc comments and in the product-claims registry but
-are not implemented, and three of them are disproven by tests now in this repository.
+claim. Several were stated in doc comments and in the product-claims registry without being
+implemented, and three were disproven by tests written against this repository. Those three are
+closed; Tasks 4–13 remain.
 
 **The one mistake, in twelve places:** every finding below is the same error wearing a different
 hat — *a declaration is being read as a proof*. A certificate declares `contracts: [X]` and the gate
@@ -28,22 +29,23 @@ surfaces (M5).
 
 ## Evidence
 
-Three findings were confirmed by running code, not by reading it. The one still open is in the tree
-under `crates/ir/tests/known_gaps.rs`. Each asserts the **current, wrong** behaviour and says so;
-each is a tripwire that goes red exactly when its task lands, which forces the implementer to update
-the claim registry in the same commit. Finding 3's tripwire has already been through that cycle: it
-was retired when Task 1 landed and replaced by `crates/kernel/tests/depth.rs`, which asserts the
-behaviour the kernel now has.
+Three findings were confirmed by running code, not by reading it, and all three are now closed.
+Each began as a tripwire in `known_gaps.rs` asserting the **current, wrong** behaviour, so that a gap
+nothing failed on still had a shape CI held. Each went red exactly when its task landed, which forced
+the claim registry to be updated in the same commit. `known_gaps.rs` is gone; the behaviour each one
+described is now asserted the right way round in `crates/kernel/tests/depth.rs`,
+`crates/ir/tests/trust.rs` and `crates/ir/tests/assurance.rs`.
 
 | # | Finding | Status |
 |---|---------|--------|
-| 1 | A boundary requiring contract `no-secrets-leaked` opens for a certificate that discharged only an unrelated `house-style` obligation. | **Proven** |
+| 1 | A boundary requiring contract `no-secrets-leaked` opens for a certificate that discharged only an unrelated `house-style` obligation. | **Proven — fixed in Task 3** |
 | 2 | `TrustClass::Verified` is reachable from a hand-written record naming a certificate digest that resolves to nothing. | **Proven — fixed in Task 2** |
 | 3 | `check` does not terminate with a verdict on a deeply nested derivation; the process exits with `STATUS_STACK_OVERFLOW`. | **Proven — fixed in Task 1** |
 
-## Overclaims to correct
+## Overclaims corrected
 
-Documented guarantees that are stronger than the code, in three places:
+Three documented guarantees were stronger than the code. All three now hold; the history is kept
+because how each one survived is more instructive than the fix:
 
 - `crates/kernel/src/lib.rs:5` — "every check is total: `check` always terminates with a verdict",
   and `:45` — "Always terminates." Finding 3 disproved both. Restored in Task 1, now resting on a
@@ -65,10 +67,10 @@ catches *unread* fields, not vacuous ones.
 
 ## Chosen approach
 
-- **Coverage is computed, never declared.** `Contract` already carries `obligations:
-  Vec<ObligationStatement>`, and `Definition::contract(id)` already resolves one. The gate cannot use
-  any of it because `decide_boundary` receives only the definition's *digest*. Give it the definition
-  and coverage becomes a calculation over data that already exists.
+- **Coverage is computed, never declared.** `Contract` already carried its `obligations`, and
+  `Definition::contract(id)` already resolved one; the gate could use none of it because
+  `decide_boundary` received only the definition's *digest*. Given the definition, coverage is a
+  calculation over data that already existed. Done in Task 3, in `crates/ir/src/coverage.rs`.
 - **A record whose truth lives elsewhere cannot have a context-free `Deserialize`.** `Certificate`
   self-verifies because it carries its own seal. `VerificationRecord` cannot, because its truth lives
   in a certificate somewhere else — so it takes a resolver argument, the way `replay` already takes
@@ -188,22 +190,49 @@ lineage the certificate does not carry.
 **Files:** `crates/ir/src/assurance.rs`, `crates/ir/src/correctness/certificate.rs`,
 `crates/ir/tests/assurance.rs`
 
-- [ ] Failing tests: the Finding 1 probe, inverted — a boundary requiring `no-secrets-leaked` is
-  denied for a certificate that discharged only `house-style`; a certificate covering every statement
-  of the required contract is allowed; a certificate missing one statement is denied *naming the
-  missing statement*; an obligation attributed to another contract does not count;
-  `policy.required_contracts` is enforced.
-- [ ] `decide_boundary` takes the admitted `Definition` rather than a bare `Digest`. The digest
-  equality check stays — it is what ties the certificate to this definition.
-- [ ] Coverage of contract X = every `X.obligations[*].id` appears in `body.obligations` with
-  `contract == X`, in a state the mode accepts. This is the first code anywhere to read
-  `Obligation.contract`, which until now is written to Postgres and never consulted.
-- [ ] Replace `DenialReason::ContractNotCovered { required, covered }` — whose `covered` is a list of
-  the certificate's own declarations — with one carrying the statements actually missing.
-- [ ] `body.contracts` stops being an input to any decision. Either drop the field or verify at seal
-  time that it equals computed coverage.
-- [ ] `policy.required_contracts` is enforced through the same path. It is currently dead: declared,
-  set by two tests, read by nothing.
+- [x] Failing tests: the Finding 1 probe, inverted — a boundary is denied when the required
+  contract's obligations are unaccounted for, *naming* the missing ones; a contract the definition
+  never declared is denied; an obligation attributed to another contract does not count; obligations
+  beyond the contract do not block a crossing; `policy.required_contracts` is enforced.
+- [x] `decide_boundary` takes the admitted `Definition` rather than a bare `Digest`. The digest
+  equality check stays, now computed from the definition itself.
+- [x] Coverage of contract X = every `X.obligations[*].id` appears in `body.obligations` with
+  `contract == X`. This is the first code anywhere to read `Obligation.contract`.
+- [x] `DenialReason::ContractNotCovered` now carries `missing`, the statements actually unaccounted
+  for, instead of `covered`, which was a list of the certificate's own declarations.
+- [x] `body.contracts` is read by no decision. Kept and documented as descriptive.
+- [x] `policy.required_contracts` enforced through the same path.
+
+**Coverage is presence, not outcome.** Every obligation a contract declares must appear on the
+certificate, attributed to that contract. Whether each was discharged, waived or left open is what
+the verdict already says under the run's mode; deciding it a second time here would be a quieter
+copy of that rule, and the two would drift. A boundary wanting more than presence asks for it
+through its `minimum`.
+
+**Three corrections to this task as it was written.**
+
+*The blast radius was smaller than predicted.* The plan said `decide_boundary` is called from the
+API, the worker and the CLI. It is called from tests only — nothing executes from the IR through this
+gate yet. The signature change cost nothing outside the test suites.
+
+*`ContractNotCovered` had two meanings.* `check_trust_route` used the same variant to say something
+different: that a value's trust was established under another contract entirely. Reshaping the
+variant for coverage would have quietly changed what that denial meant, so the trust-route case got
+its own `ContractMismatch`, and a definition that never declared the contract gets
+`ContractNotInDefinition` rather than a "missing everything" answer that reads like a coverage gap.
+
+*The trust path needed it too.* Task 2 left `covers()` in `trust.rs` reading the declared list, with
+a comment promising this task would replace it. It could not be replaced in place: computing coverage
+needs the definition, which `VerificationRecord::admit` did not have. It now takes one, and checks
+the certificate is about that definition before reading its contracts — otherwise coverage would be
+computed against the wrong obligations. Leaving the weak check there would have undermined Task 2's
+own guarantee, since that record is what `check_trust_route` then reads.
+
+**What the existing tests showed.** The assurance suite already used the contract's declared
+obligation, so it kept passing. The two certificates *I* added in Task 2 did not — they attributed an
+obligation named `patch-compiles` to contract `patch-compiles`, when the declared statement is
+`compiles`. Nothing had ever compared the two, so the mismatch was invisible until coverage was
+computed.
 
 ### Task 4: Verdicts per contract
 
@@ -346,8 +375,6 @@ lineage the certificate does not carry.
 
 Every task lands with its tests. The plan is complete when:
 
-- the remaining tripwire in `crates/ir/tests/known_gaps.rs` has been inverted to assert the correct
-  behaviour (the kernel's was retired by Task 1, the trust one by Task 2);
 - `crates/kernel/tests/depth.rs` runs un-ignored;
 - the kernel's totality claim and `CAP-IR-002` are restored with evidence that earns them;
 - `verify --profile full` passes with the new `correctness` gate;

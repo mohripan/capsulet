@@ -140,6 +140,23 @@ pub fn contract() -> Contract {
     }
 }
 
+/// A second contract, for tests that need two distinct ones.
+#[must_use]
+pub fn scan_contract() -> Contract {
+    Contract {
+        id: id("scanned-under-named-rules"),
+        version: "1".to_string(),
+        inputs: BTreeMap::new(),
+        outputs: BTreeMap::new(),
+        allowed_effects: vec![EffectKind::Publication],
+        obligations: vec![ObligationStatement {
+            id: id("no-secrets-in-output"),
+            statement: "the output carries no secrets".to_string(),
+            owner: RepairOwner::Verifier,
+        }],
+    }
+}
+
 /// The publish boundary.
 #[must_use]
 pub fn boundary() -> ProtectedBoundary {
@@ -183,6 +200,18 @@ pub fn definition_in(mode: AssuranceMode) -> Definition {
         boundaries: vec![boundary()],
         contracts: vec![contract()],
     }
+}
+
+/// The definition, declaring both contracts.
+///
+/// # Panics
+///
+/// Panics if the fixture capabilities collide.
+#[must_use]
+pub fn definition_with_scan(mode: AssuranceMode) -> Definition {
+    let mut definition = definition_in(mode);
+    definition.contracts.push(scan_contract());
+    definition
 }
 
 /// The definition in `Enforce` mode, which is what most tests want.

@@ -28,7 +28,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::correctness::certificate::{AssuranceVerdict, Certificate};
+use crate::coverage::{Coverage, coverage};
+use crate::definition::Definition;
 use crate::digest::Digest;
+use crate::id::Identifier;
 
 /// Why a trust claim was refused.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -37,11 +40,16 @@ pub enum TrustError {
     MissingContract,
     #[error("no certificate resolves to {certificate}")]
     CertificateNotFound { certificate: Digest },
-    #[error("certificate {certificate} does not cover the contract `{contract}`")]
+    #[error("`{contract}` is not a contract this definition declares")]
+    ContractNotInDefinition { contract: String },
+    #[error("certificate {certificate} does not cover `{contract}`: {missing:?} unaccounted for")]
     ContractNotCovered {
         contract: String,
         certificate: Digest,
+        missing: Vec<Identifier>,
     },
+    #[error("certificate {certificate} is about a different definition")]
+    CertificateNotForThisDefinition { certificate: Digest },
 }
 
 /// Whether the value a record is about reached here without crossing a boundary
@@ -142,19 +150,24 @@ pub struct VerificationRecord {
 impl VerificationRecord {
     /// Admits a raw record against the certificate it names.
     ///
-    /// The certificate must resolve, and it must cover the contract claimed.
-    /// The verdict and the residual count are then read from it — not from
-    /// `raw`, which has no way to say either.
+    /// The certificate must resolve, be about `definition`, and cover the
+    /// contract claimed — cover meaning every obligation that contract declares
+    /// is accounted for, computed from the definition rather than taken from the
+    /// certificate's own list. The verdict and the residual count are then read
+    /// from the certificate, not from `raw`, which has no way to say either.
     ///
     /// # Errors
     ///
     /// [`TrustError::MissingContract`] when no contract is named,
-    /// [`TrustError::CertificateNotFound`] when nothing resolves the digest, and
-    /// [`TrustError::ContractNotCovered`] when the certificate says nothing
-    /// about the contract claimed.
+    /// [`TrustError::CertificateNotFound`] when nothing resolves the digest,
+    /// [`TrustError::CertificateNotForThisDefinition`] when it is about another
+    /// definition, [`TrustError::ContractNotInDefinition`] when the definition
+    /// never declared the contract, and [`TrustError::ContractNotCovered`] when
+    /// obligations of it are unaccounted for.
     pub fn admit(
         raw: RawVerificationRecord,
         certificates: &impl CertificateSource,
+        definition: &Definition,
         provenance: Provenance,
     ) -> Result<Self, TrustError> {
         if raw.contract.trim().is_empty() {
@@ -167,14 +180,37 @@ impl VerificationRecord {
             });
         };
 
-        if !covers(certificate, &raw.contract) {
-            return Err(TrustError::ContractNotCovered {
-                contract: raw.contract,
+        // The certificate has to be about the definition whose contracts we are
+        // about to read, or coverage would be computed against the wrong
+        // obligations entirely.
+        let body = certificate.body();
+        if crate::digest_of(definition).is_ok_and(|digest| body.subject.definition != digest) {
+            return Err(TrustError::CertificateNotForThisDefinition {
                 certificate: raw.certificate,
             });
         }
 
-        let body = certificate.body();
+        let Ok(contract) = Identifier::parse(&raw.contract) else {
+            return Err(TrustError::ContractNotInDefinition {
+                contract: raw.contract,
+            });
+        };
+        match coverage(definition, &contract, body) {
+            Coverage::Complete => {}
+            Coverage::ContractNotInDefinition => {
+                return Err(TrustError::ContractNotInDefinition {
+                    contract: raw.contract,
+                });
+            }
+            Coverage::Missing(missing) => {
+                return Err(TrustError::ContractNotCovered {
+                    contract: raw.contract,
+                    certificate: raw.certificate,
+                    missing,
+                });
+            }
+        }
+
         Ok(Self {
             contract: raw.contract,
             certificate: raw.certificate,
@@ -230,21 +266,6 @@ impl VerificationRecord {
             AssuranceVerdict::Rejected | AssuranceVerdict::Unverified => TrustClass::Unverified,
         }
     }
-}
-
-/// Whether a certificate covers a contract.
-///
-/// Today this reads the list the certificate declares, which is a weaker
-/// question than it looks: nothing checks that any obligation is *about* the
-/// contract. Task 3 of the correctness robustness plan replaces the body of this
-/// function with coverage computed from the definition, and it is a function so
-/// that there is one place to do it.
-fn covers(certificate: &Certificate, contract: &str) -> bool {
-    certificate
-        .body()
-        .contracts
-        .iter()
-        .any(|declared| declared.as_str() == contract)
 }
 
 /// The assurance attached to a value.

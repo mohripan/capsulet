@@ -477,16 +477,24 @@
           "selector": "the_dependency_closure_stays_offline"
         },
         {
-          "path": "crates/ir/tests/known_gaps.rs",
-          "selector": "gap_a_required_contract_is_covered_by_naming_it"
-        },
-        {
           "path": "crates/ir/tests/trust.rs",
           "selector": "a_record_naming_a_certificate_that_does_not_exist_is_refused"
         },
         {
           "path": "crates/ir/tests/trust.rs",
           "selector": "the_verdict_and_residual_count_come_from_the_certificate"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_for"
+        },
+        {
+          "path": "crates/ir/tests/trust.rs",
+          "selector": "an_obligation_attributed_to_another_contract_does_not_cover_this_one"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_policy_wide_required_contract_is_enforced"
         }
       ]
     },
@@ -1349,20 +1357,52 @@
     },
     {
       "id": "CAP-ASSURANCE-003",
-      "kind": "limitation",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Assurance decisions",
-      "statement": "A boundary's required contract is satisfied by the certificate listing it, not by covering it: no decision reads an obligation's contract or consults the contract's own obligations, so a certificate that discharged something unrelated crosses the boundary.",
+      "statement": "A boundary's required contract is satisfied by covering it, not by naming it: the gate reads the contract's obligations from the definition and denies the crossing when the certificate leaves any of them unaccounted for, naming which.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
+      "verification": [
+        {
+          "assertion": "an-uncovered-contract-denies-the-crossing",
+          "evidence_selectors": [
+            "a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_for"
+          ]
+        },
+        {
+          "assertion": "attribution-decides-which-contract-an-obligation-covers",
+          "evidence_selectors": [
+            "an_obligation_attributed_to_another_contract_does_not_cover_this_one"
+          ]
+        },
+        {
+          "assertion": "policy-wide-required-contracts-are-enforced",
+          "evidence_selectors": [
+            "a_policy_wide_required_contract_is_enforced"
+          ]
+        }
+      ],
       "evidence": [
         {
           "type": "test",
-          "path": "crates/ir/tests/known_gaps.rs",
+          "path": "crates/ir/tests/assurance.rs",
           "command": "cargo test -p capsulet-ir --locked",
-          "selector": "gap_a_required_contract_is_covered_by_naming_it"
+          "selector": "a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_for"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/trust.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "an_obligation_attributed_to_another_contract_does_not_cover_this_one"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_policy_wide_required_contract_is_enforced"
         }
       ]
     },

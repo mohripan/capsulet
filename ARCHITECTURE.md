@@ -62,6 +62,9 @@ Four properties carry the weight:
   bounded loops, provenance, legal trust edges — apply in every assurance mode. Observe means the
   domain obligations were not evaluated, never that a malformed or unbounded definition may run.
   Passing produces an admission record, and a certificate cannot be assembled without one.
+- **Coverage is computed.** A boundary's required contract is satisfied by accounting for every
+  obligation that contract declares, read from the definition, with each obligation's own
+  attribution deciding which contract it covers — never by the certificate listing the contract.
 - **Offline replay.** A certificate plus the evidence it cites forms a bundle, and `capsulet-replay`
   reaches its own verdict from that bundle alone, on a machine with no access to this installation.
   It re-checks the seal and every evidence digest, re-decides the deterministic families, and says

@@ -469,7 +469,7 @@ fn the_m2_gate_scenario_holds_end_to_end() {
     let denied = decide_boundary(
         &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
         AssuranceMode::Enforce,
-        admission.definition(),
+        &definition,
         Some(&certificate),
         &id("publish-boundary"),
     );
@@ -487,7 +487,7 @@ fn the_m2_gate_scenario_holds_end_to_end() {
     let observed = decide_boundary(
         &policy(AssuranceVerdict::Accepted, AssuranceMode::Verify),
         AssuranceMode::Verify,
-        admission.definition(),
+        &definition,
         Some(&certificate),
         &id("publish-boundary"),
     );

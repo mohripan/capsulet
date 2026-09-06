@@ -11,12 +11,12 @@ use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
 use capsulet_ir::correctness::{Certificate, CertificateBody, EvidenceRef};
 use capsulet_ir::trust::{CertificateMap, Provenance, RawVerificationRecord};
 use capsulet_ir::{
-    AssuranceMode, AssurancePolicy, AssuranceVerdict, CheckerVerdict, Digest, Identity, Obligation,
-    RecordedTime, TrustClass, TrustLevel, VerificationRecord, admit, check_trust_route,
+    AssuranceMode, AssurancePolicy, AssuranceVerdict, CheckerVerdict, Definition, Digest, Identity,
+    Obligation, RecordedTime, TrustClass, TrustLevel, VerificationRecord, admit, check_trust_route,
     decide_boundary,
 };
 
-use fixtures::{definition_in, id};
+use fixtures::{definition_in, definition_with_scan, id};
 
 fn evidence() -> EvidenceRef {
     let content = b"tests passed";
@@ -56,16 +56,28 @@ fn discharged(name: &str) -> Obligation {
 }
 
 fn certificate(mode: AssuranceMode, obligations: Vec<Obligation>) -> Certificate {
-    certificate_covering(mode, vec![id("patch-compiles")], obligations)
+    certificate_for(&definition_in(mode), mode, obligations)
 }
 
-fn certificate_covering(
+/// An obligation of a contract other than the default.
+fn obligation_of(name: &str, contract: &str) -> Obligation {
+    Obligation {
+        contract: id(contract),
+        ..discharged(name)
+    }
+}
+
+fn certificate_for(
+    definition: &Definition,
     mode: AssuranceMode,
-    contracts: Vec<capsulet_ir::Identifier>,
     obligations: Vec<Obligation>,
 ) -> Certificate {
-    let definition = definition_in(mode);
-    let admission = admit(&definition).expect("the fixture definition is admitted");
+    let admission = admit(definition).expect("the fixture definition is admitted");
+    let contracts = definition
+        .contracts
+        .iter()
+        .map(|contract| contract.id.clone())
+        .collect();
     let verdict = AssuranceVerdict::under_mode(mode, &obligations);
 
     Certificate::seal(CertificateBody {
@@ -121,12 +133,6 @@ fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
     }
 }
 
-fn definition_digest(mode: AssuranceMode) -> Digest {
-    *admit(&definition_in(mode))
-        .expect("the fixture definition is admitted")
-        .definition()
-}
-
 #[test]
 fn observe_never_reaches_accepted_however_well_the_run_went() {
     let observed = certificate(AssuranceMode::Observe, vec![discharged("compiles")]);
@@ -146,7 +152,7 @@ fn verify_reports_a_verdict_and_blocks_nothing() {
     let decision = decide_boundary(
         &policy(AssuranceVerdict::Accepted, AssuranceMode::Verify),
         AssuranceMode::Verify,
-        &definition_digest(AssuranceMode::Verify),
+        &definition_in(AssuranceMode::Verify),
         Some(&verified),
         &id("publish-boundary"),
     );
@@ -171,7 +177,7 @@ fn enforce_allows_a_crossing_that_meets_the_minimum() {
     let decision = decide_boundary(
         &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
         AssuranceMode::Enforce,
-        &definition_digest(AssuranceMode::Enforce),
+        &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("publish-boundary"),
     );
@@ -205,7 +211,7 @@ fn enforce_denies_a_verdict_below_the_minimum() {
     let decision = decide_boundary(
         &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
         AssuranceMode::Enforce,
-        &definition_digest(AssuranceMode::Enforce),
+        &definition_in(AssuranceMode::Enforce),
         Some(&conditional),
         &id("publish-boundary"),
     );
@@ -228,7 +234,7 @@ fn an_absent_certificate_is_unverified_and_never_satisfies_a_minimum() {
         let decision = decide_boundary(
             &policy(minimum, AssuranceMode::Enforce),
             AssuranceMode::Enforce,
-            &definition_digest(AssuranceMode::Enforce),
+            &definition_in(AssuranceMode::Enforce),
             None,
             &id("publish-boundary"),
         );
@@ -266,7 +272,7 @@ fn a_waiver_by_an_unauthorised_party_is_not_a_waiver() {
     let decision = decide_boundary(
         &policy(AssuranceVerdict::Conditional, AssuranceMode::Enforce),
         AssuranceMode::Enforce,
-        &definition_digest(AssuranceMode::Enforce),
+        &definition_in(AssuranceMode::Enforce),
         Some(&waived),
         &id("publish-boundary"),
     );
@@ -301,7 +307,7 @@ fn a_waiver_by_a_named_authority_stands() {
     let decision = decide_boundary(
         &policy(AssuranceVerdict::Conditional, AssuranceMode::Enforce),
         AssuranceMode::Enforce,
-        &definition_digest(AssuranceMode::Enforce),
+        &definition_in(AssuranceMode::Enforce),
         Some(&waived),
         &id("publish-boundary"),
     );
@@ -320,7 +326,7 @@ fn a_boundary_no_policy_governs_is_not_implicitly_open() {
     let decision = decide_boundary(
         &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
         AssuranceMode::Enforce,
-        &definition_digest(AssuranceMode::Enforce),
+        &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("some-other-boundary"),
     );
@@ -341,7 +347,11 @@ fn a_certificate_for_a_different_definition_does_not_count() {
     let decision = decide_boundary(
         &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
         AssuranceMode::Enforce,
-        &Digest::of(b"a different definition entirely"),
+        &{
+            let mut other = definition_in(AssuranceMode::Enforce);
+            other.version = "2".to_string();
+            other
+        },
         Some(&enforced),
         &id("publish-boundary"),
     );
@@ -363,7 +373,7 @@ fn a_required_verifier_that_did_not_run_denies_the_crossing() {
     let decision = decide_boundary(
         &demanding,
         AssuranceMode::Enforce,
-        &definition_digest(AssuranceMode::Enforce),
+        &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("publish-boundary"),
     );
@@ -391,7 +401,7 @@ fn a_required_approval_must_have_been_granted() {
     let decision = decide_boundary(
         &demanding,
         AssuranceMode::Enforce,
-        &definition_digest(AssuranceMode::Enforce),
+        &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("publish-boundary"),
     );
@@ -422,6 +432,134 @@ fn a_policy_may_tighten_a_definition_but_a_definition_may_not_loosen_a_policy() 
 }
 
 #[test]
+fn a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_for() {
+    // The run discharged something real, and nothing belonging to the contract
+    // the boundary is about. Before coverage was computed, listing the contract
+    // on the certificate was enough to cross here.
+    let both = definition_with_scan(AssuranceMode::Enforce);
+    let enforced = certificate_for(&both, AssuranceMode::Enforce, vec![discharged("compiles")]);
+
+    let mut policy = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+    policy.boundaries.insert(
+        id("publish-boundary"),
+        BoundaryPolicy {
+            minimum: AssuranceVerdict::Accepted,
+            contract: Some(id("scanned-under-named-rules")),
+            requires_approval: None,
+        },
+    );
+
+    let decision = decide_boundary(
+        &policy,
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::ContractNotCovered {
+                required: id("scanned-under-named-rules"),
+                missing: vec![id("no-secrets-in-output")],
+            }
+        },
+        "the denial should name the obligation nobody accounted for"
+    );
+}
+
+#[test]
+fn a_boundary_requiring_a_contract_the_definition_never_declared_is_denied() {
+    let enforced = certificate(AssuranceMode::Enforce, vec![discharged("compiles")]);
+
+    let mut policy = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+    policy.boundaries.insert(
+        id("publish-boundary"),
+        BoundaryPolicy {
+            minimum: AssuranceVerdict::Accepted,
+            contract: Some(id("no-secrets-leaked")),
+            requires_approval: None,
+        },
+    );
+
+    let decision = decide_boundary(
+        &policy,
+        AssuranceMode::Enforce,
+        &definition_in(AssuranceMode::Enforce),
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::ContractNotInDefinition {
+                required: id("no-secrets-leaked"),
+            }
+        }
+    );
+}
+
+#[test]
+fn a_policy_wide_required_contract_is_enforced() {
+    // `required_contracts` was declared, set by tests, and read by nothing.
+    let both = definition_with_scan(AssuranceMode::Enforce);
+    let enforced = certificate_for(&both, AssuranceMode::Enforce, vec![discharged("compiles")]);
+
+    let mut policy = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+    policy.required_contracts = vec![id("scanned-under-named-rules")];
+
+    let decision = decide_boundary(
+        &policy,
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::ContractNotCovered {
+                required: id("scanned-under-named-rules"),
+                missing: vec![id("no-secrets-in-output")],
+            }
+        }
+    );
+}
+
+#[test]
+fn obligations_beyond_the_contract_do_not_stop_a_crossing() {
+    // Coverage asks whether every declared obligation is accounted for, not
+    // whether the certificate confined itself to them.
+    let both = definition_with_scan(AssuranceMode::Enforce);
+    let enforced = certificate_for(
+        &both,
+        AssuranceMode::Enforce,
+        vec![
+            discharged("compiles"),
+            obligation_of("no-secrets-in-output", "scanned-under-named-rules"),
+        ],
+    );
+
+    let decision = decide_boundary(
+        &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Allowed {
+            verdict: AssuranceVerdict::Accepted
+        }
+    );
+}
+
+#[test]
 fn a_protected_destination_refuses_a_value_that_did_not_earn_its_way_in() {
     let mut governed = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
     governed.trust_routes.push(TrustRoute {
@@ -439,14 +577,19 @@ fn a_protected_destination_refuses_a_value_that_did_not_earn_its_way_in() {
     );
 
     let mut certificates = CertificateMap::new();
-    let compiles = certificates.insert(certificate(
+    let both = definition_with_scan(AssuranceMode::Enforce);
+    let compiles = certificates.insert(certificate_for(
+        &both,
         AssuranceMode::Enforce,
-        vec![discharged("patch-compiles")],
+        vec![discharged("compiles")],
     ));
-    let scanned = certificates.insert(certificate_covering(
+    let scanned = certificates.insert(certificate_for(
+        &both,
         AssuranceMode::Enforce,
-        vec![id("scanned-under-named-rules")],
-        vec![discharged("patch-compiles")],
+        vec![obligation_of(
+            "no-secrets-in-output",
+            "scanned-under-named-rules",
+        )],
     ));
 
     let record = VerificationRecord::admit(
@@ -455,6 +598,7 @@ fn a_protected_destination_refuses_a_value_that_did_not_earn_its_way_in() {
             certificate: compiles,
         },
         &certificates,
+        &both,
         Provenance::Complete,
     )
     .expect("the record is admitted");
@@ -475,6 +619,7 @@ fn a_protected_destination_refuses_a_value_that_did_not_earn_its_way_in() {
             certificate: scanned,
         },
         &certificates,
+        &both,
         Provenance::Complete,
     )
     .expect("the record is admitted");
@@ -484,7 +629,7 @@ fn a_protected_destination_refuses_a_value_that_did_not_earn_its_way_in() {
             &id("governed-memory"),
             &TrustClass::from_record(&elsewhere)
         ),
-        Err(DenialReason::ContractNotCovered { .. })
+        Err(DenialReason::ContractMismatch { .. })
     ));
 
     // A destination nothing protects lets anything through, and says so by

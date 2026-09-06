@@ -23,6 +23,7 @@ pub mod assurance;
 pub mod canonical;
 pub mod capability;
 pub mod correctness;
+pub mod coverage;
 pub mod definition;
 pub mod digest;
 pub mod effect;
@@ -49,6 +50,7 @@ pub use correctness::{
     Contract, DischargeState, EvidenceRef, Identity, Obligation, ObligationStatement, Producer,
     ProducerKind, Proposal, RecordedTime, RepairOwner, Subject, VerifierRecord, VerifierTrust,
 };
+pub use coverage::{Coverage, coverage};
 pub use definition::{AssuranceMode, Definition};
 pub use digest::{DIGEST_PREFIX, Digest, DigestError};
 pub use effect::{
