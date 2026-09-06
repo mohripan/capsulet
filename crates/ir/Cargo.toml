@@ -16,5 +16,11 @@ sha2.workspace = true
 thiserror.workspace = true
 unicode-normalization.workspace = true
 
+[dev-dependencies]
+# Tests only: the library itself carries no JSON codec, because the canonical
+# encoding is the one that matters. A round trip through serde is how the
+# deserialization-time checks get exercised.
+serde_json.workspace = true
+
 [lints]
 workspace = true

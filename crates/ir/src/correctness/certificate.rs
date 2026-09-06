@@ -228,6 +228,14 @@ impl CertificateBody {
     /// Returns [`CertificateError`] when the verdict does not follow from the
     /// obligations under the recorded mode, an obligation rests on evidence the
     /// certificate does not carry, or an obligation appears twice.
+    ///
+    /// The verdict is re-derived with **this build's** rule. A certificate
+    /// sealed under a different one would be refused here, and since
+    /// `Deserialize` runs this check, refused means unreadable — so changing
+    /// [`AssuranceVerdict::from_obligations`] is not a local edit, it decides
+    /// whether every stored certificate can still be opened. `verdict_rule.rs`
+    /// in the tests holds a sealed certificate against that happening by
+    /// accident.
     pub fn check(&self) -> Result<(), CertificateError> {
         let justified = AssuranceVerdict::under_mode(self.mode, &self.obligations);
         if justified != self.verdict {
@@ -238,15 +246,21 @@ impl CertificateBody {
             });
         }
 
-        let mut seen: Vec<&Identifier> = Vec::new();
+        // Keyed by contract *and* statement, because that pair is what
+        // identifies an obligation: two contracts may each declare something
+        // called `compiles`, and they are two obligations that share a name
+        // rather than one obligation recorded twice. Keying on the statement
+        // alone made a certificate covering both contracts unsealable.
+        let mut seen: Vec<(&Identifier, &Identifier)> = Vec::new();
         for obligation in &self.obligations {
-            if seen.contains(&&obligation.statement.id) {
+            let key = (&obligation.contract, &obligation.statement.id);
+            if seen.contains(&key) {
                 return Err(CertificateError::DuplicateObligation {
                     id: self.id.clone(),
                     obligation: obligation.statement.id.clone(),
                 });
             }
-            seen.push(&obligation.statement.id);
+            seen.push(key);
 
             for digest in obligation.state.evidence() {
                 if !self.carries(digest) {

@@ -413,15 +413,33 @@ reading.
 
 **Files:** `crates/ir/src/correctness/certificate.rs`, `crates/ir/src/version.rs`
 
-- [ ] Failing tests: a certificate sealed under verdict rule v1 still deserializes after v2 lands and
-  reports which rule decided it; a certificate whose verdict disagrees with *its own recorded* rule is
-  refused; a policy can require a minimum verdict-rule version.
-- [ ] `CertificateBody::check` re-derives the verdict with this build's rule, so any deliberate change
-  to `from_obligations` makes every historical certificate fail to deserialize — the archive becomes
-  unreadable as a side effect of a policy improvement.
-- [ ] `AdmissionRecord::rules_applied` already solved this problem in this codebase. Do the same:
-  record the verdict rule on the body and validate against the recorded one.
-- [ ] `policy_version` is recorded and never consulted. Either the gate reads it or the field goes.
+- [x] `crates/ir/tests/verdict_rule.rs` pins all four cases of the rule and round-trips a sealed
+  certificate through `Deserialize`, so a change to `from_obligations` fails loudly with an
+  explanation instead of silently closing the archive.
+- [x] `CertificateBody::check` now documents that it re-derives with *this build's* rule and what that
+  costs, at the place someone editing the rule would be standing.
+- [x] Duplicate detection keyed on contract *and* statement — see below.
+- [ ] Recording the rule on the body: **not done, and the reason is a real tension.** See below.
+- [ ] `policy_version` is recorded and never consulted. Still true; carried to a later task.
+
+**Recording the rule on the body would cause the harm it prevents.** The body is sealed: its digest
+covers every field, and `Deserialize` re-verifies that digest. Adding `verdict_rule` therefore changes
+the digest of every certificate, breaking every existing seal, which forces a
+`CERTIFICATE_SCHEMA_VERSION` major bump. And `read_compatible` refuses any major but its own — "unknown
+majors fail closed" is a stated principle of `version.rs` — so bumping makes v1 certificates
+unreadable *immediately and certainly*, to protect against them becoming unreadable *later and
+hypothetically*. A compatibility reader that reads older majors would change that principle, which is
+a decision about the version module rather than about verdicts.
+
+There is a good argument for doing it anyway: the archive is close to empty, since nothing has
+executed IR in production, so this is the cheapest moment it will ever be. That is an argument about
+*stored data this session cannot see*, so it is not mine to settle. The tripwire delivers the
+protection that does not depend on the answer.
+
+**A false rejection Task 3 created.** `check` keyed duplicate obligations on the statement id alone,
+while Task 3 made `(contract, statement)` the identity. Two contracts each declaring something called
+`compiles` are two obligations that share a name, not one recorded twice — and a certificate covering
+both could not be sealed at all. Fixed, with tests for both directions.
 
 ### Task 11: Certificates that can go stale or be withdrawn
 
