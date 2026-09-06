@@ -1,11 +1,23 @@
 //! Trust classes: what a value's assurance is, as a type.
 //!
-//! The rule this module exists to enforce is short. Trust never strengthens by
-//! assertion. Not by a cast, not by a setter, not by a field in a JSON document
-//! someone posted, and not because a model said the output looked right. The
-//! only way to reach [`TrustClass::Verified`] is to present a
-//! [`VerificationRecord`] that justifies it, and the only way to build one of
-//! those is [`VerificationRecord::admit`], which checks the claim it carries.
+//! The rule this module exists to enforce is short: trust never strengthens by
+//! assertion. **It does not yet enforce it.** What it enforces today is
+//! narrower — a document cannot claim a class stronger than its own
+//! [`VerificationRecord`] justifies.
+//!
+//! That check is weaker than it reads, because the record is part of the same
+//! document. `verdict`, `residual_count` and `provenance_complete` are all
+//! written by the sender, and `certificate` is never resolved, so a record may
+//! name a certificate that exists nowhere. A posted document asserting
+//! `accepted`, no residuals and complete provenance therefore reaches
+//! [`TrustClass::Verified`] on its own say-so — which is precisely the field in
+//! a document someone posted that this module set out to refuse.
+//!
+//! Closing it needs [`VerificationRecord::admit`] to resolve the certificate and
+//! derive those fields from it, which means the admission takes a resolver and
+//! [`TrustClass`] cannot keep a context-free `Deserialize`. See
+//! `crates/ir/tests/known_gaps.rs` and Task 2 of
+//! `docs/superpowers/plans/2026-09-06-correctness-kernel-robustness.md`.
 //!
 //! Weakening, by contrast, is always allowed. A value may be treated as less
 //! assured than it is; that is a conservative mistake, not an unsound one.
@@ -13,7 +25,8 @@
 //! Deserialization is the interesting boundary, because a wire document is
 //! whatever the sender wrote. [`RawTrustClass`] is the wire shape, and it is
 //! plain data with no privileges. It becomes a [`TrustClass`] only by passing
-//! the same admission every other path uses.
+//! the same admission every other path uses — an admission that currently
+//! checks the document's consistency with itself, and nothing beyond it.
 
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;

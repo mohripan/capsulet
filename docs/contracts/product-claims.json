@@ -471,6 +471,14 @@
         {
           "path": "crates/ir/tests/purity.rs",
           "selector": "the_dependency_closure_stays_offline"
+        },
+        {
+          "path": "crates/ir/tests/known_gaps.rs",
+          "selector": "gap_verified_trust_is_minted_by_asserting_it"
+        },
+        {
+          "path": "crates/ir/tests/known_gaps.rs",
+          "selector": "gap_a_required_contract_is_covered_by_naming_it"
         }
       ]
     },
@@ -1268,7 +1276,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Verified computation IR",
-      "statement": "A value's trust class cannot be strengthened by assertion: a document claiming a verdict its verification record does not justify is refused.",
+      "statement": "A trust class cannot exceed what its own verification record's recorded verdict justifies; a document claiming a stronger class is refused.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
@@ -1299,6 +1307,61 @@
           "path": "crates/ir/tests/trust.rs",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "combining_values_yields_the_weakest_relevant_trust"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IR-005",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Verified computation IR",
+      "statement": "A verification record is not resolved against the certificate it names, so its verdict, residual count and provenance flag are taken from the document that carries them; a posted record therefore reaches the verified trust class on its own say-so.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "gap_verified_trust_is_minted_by_asserting_it"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-003",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Assurance decisions",
+      "statement": "A boundary's required contract is satisfied by the certificate listing it, not by covering it: no decision reads an obligation's contract or consults the contract's own obligations, so a certificate that discharged something unrelated crosses the boundary.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "gap_a_required_contract_is_covered_by_naming_it"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-003",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "Kernel derivation is unbounded recursion over proposer-supplied input, so a sufficiently nested derivation exhausts the stack and ends the process rather than returning a verdict.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/kernel/tests/known_gaps.rs"
         }
       ]
     },

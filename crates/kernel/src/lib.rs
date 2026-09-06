@@ -1,9 +1,15 @@
 //! The correctness kernel.
 //!
 //! A proposer — a model, a retriever, anything untrusted — emits a [`Proposal`].
-//! The kernel decides it and issues a [`Certificate`]. Nothing here is learned,
-//! nothing here performs I/O, and every check is total: `check` always
-//! terminates with a verdict.
+//! The kernel decides it and issues a [`Certificate`]. Nothing here is learned
+//! and nothing here performs I/O.
+//!
+//! `check` is *not* total, though it is meant to be. [`Rule::Trust`] and
+//! [`Rule::Interpret`] nest, and `derive` walks them by recursion with no
+//! bound, so a sufficiently deep derivation exhausts the stack and takes the
+//! process with it. `Rule` is `Deserialize`, so the shape arrives from the
+//! proposer. See `crates/kernel/tests/known_gaps.rs` and Task 1 of
+//! `docs/superpowers/plans/2026-09-06-correctness-kernel-robustness.md`.
 //!
 //! The design boundary is deliberate. Provenance, arithmetic, record state and
 //! policy are mechanically decidable, so the kernel decides them. Whether a
@@ -42,9 +48,11 @@ const ARITH_EPSILON: f64 = 1e-9;
 
 /// Decides a proposal against a snapshot.
 ///
-/// Always terminates. A failure anywhere produces [`Verdict::Rejected`] with
-/// the specific reasons; an otherwise sound derivation that required a reading
-/// produces [`Verdict::Conditional`] with the readings recorded.
+/// Terminates for any derivation the stack can hold — see the crate docs for
+/// the bound this does not yet have. A failure anywhere produces
+/// [`Verdict::Rejected`] with the specific reasons; an otherwise sound
+/// derivation that required a reading produces [`Verdict::Conditional`] with
+/// the readings recorded.
 #[must_use]
 pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
     let mut state = CheckState::default();

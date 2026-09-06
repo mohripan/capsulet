@@ -2,6 +2,12 @@
 
 This file is generated from `docs/contracts/product-claims.json`. Do not edit it directly.
 
+## Assurance decisions
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-ASSURANCE-003` | implemented | limitation | A boundary's required contract is satisfied by the certificate listing it, not by covering it: no decision reads an obligation's contract or consults the contract's own obligations, so a certificate that discharged something unrelated crosses the boundary. |
+
 ## Assurance policy
 
 | ID | Maturity | Kind | Claim |
@@ -21,6 +27,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when it re-derives and contains the cited proposition. |
 | `CAP-CORRECTNESS-002` | implemented | limitation | Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance. |
+| `CAP-CORRECTNESS-003` | implemented | limitation | Kernel derivation is unbounded recursion over proposer-supplied input, so a sufficiently nested derivation exhausts the stack and ends the process rather than returning a verdict. |
 
 ## Crash recovery
 
@@ -164,9 +171,10 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
 | `CAP-IR-001` | implemented | capability | Two structurally equal IR documents produce identical canonical bytes and therefore one digest, and floating point is refused before any digest is computed. |
-| `CAP-IR-002` | implemented | capability | A value's trust class cannot be strengthened by assertion: a document claiming a verdict its verification record does not justify is refused. |
+| `CAP-IR-002` | implemented | capability | A trust class cannot exceed what its own verification record's recorded verdict justifies; a document claiming a stronger class is refused. |
 | `CAP-IR-003` | implemented | capability | Structural admission applies in every assurance mode, including observe, and returns a decision for every definition without panicking. |
 | `CAP-IR-004` | implemented | capability | A loop must declare finite bounds, and exhausting a budget is reported as a stop reason rather than as completion. |
+| `CAP-IR-005` | implemented | limitation | A verification record is not resolved against the certificate it names, so its verdict, residual count and provenance flag are taken from the document that carries them; a posted record therefore reaches the verified trust class on its own say-so. |
 
 ## Workflow compatibility
 

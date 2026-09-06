@@ -41,7 +41,7 @@ forces the implementer to update the claim registry in the same commit.
 
 ## Overclaims to correct
 
-Two documented guarantees are stronger than the code:
+Documented guarantees that are stronger than the code, in three places:
 
 - `crates/kernel/src/lib.rs:5` — "every check is total: `check` always terminates with a verdict",
   and `:45` — "Always terminates." Finding 3 disproves both.
@@ -90,15 +90,15 @@ Two documented guarantees are stronger than the code:
 **Files:** `crates/kernel/src/lib.rs`, `crates/ir/src/trust.rs`, `docs/contracts/product-claims.json`,
 `crates/ir/tests/known_gaps.rs`, `crates/kernel/tests/known_gaps.rs`
 
-- [ ] Restate `CAP-IR-002` to the guarantee that actually holds: a trust class cannot exceed what its
+- [x] Restate `CAP-IR-002` to the guarantee that actually holds: a trust class cannot exceed what its
   record's *recorded* verdict justifies. Drop the "cannot be strengthened by assertion" headline, and
   add it back in Task 2 with evidence that resolves a certificate.
-- [ ] Downgrade the kernel's totality doc comments to what holds: `check` returns a verdict for any
+- [x] Downgrade the kernel's totality doc comments to what holds: `check` returns a verdict for any
   derivation within the depth bound. Task 1 restores the unqualified claim.
-- [ ] Amend the `trust.rs` module doc so it stops promising the property Finding 2 disproves.
-- [ ] Land the three probes as documented tripwires. The kernel depth probe is `#[ignore]`d with its
+- [x] Amend the `trust.rs` module doc so it stops promising the property Finding 2 disproves.
+- [x] Land the three probes as documented tripwires. The kernel depth probe is `#[ignore]`d with its
   reason, because a stack overflow takes the whole test binary down with it.
-- [ ] `verify --profile full` still passes; the claims registry renders clean.
+- [x] `verify --profile full` still passes; the claims registry renders clean.
 
 ### Task 1: Make `check` total again
 

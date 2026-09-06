@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-REPLAY-001, CAP-REPLAY-002, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-005, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-REPLAY-001, CAP-REPLAY-002, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -55,7 +55,8 @@ Four properties carry the weight:
 - **Trust as a type.** A value's assurance is a `TrustClass`, reachable only from a verification
   record that justifies it. Combining values takes the weakest relevant trust, and combining values
   verified under different contracts yields nothing, because neither contract covers the
-  combination.
+  combination. The record is not yet resolved against the certificate it names, so today it
+  constrains a document only against itself — see `CAP-IR-005`.
 - **Mandatory admission.** Structural rules — graph validity, declared effects and capabilities,
   bounded loops, provenance, legal trust edges — apply in every assurance mode. Observe means the
   domain obligations were not evaluated, never that a malformed or unbounded definition may run.
