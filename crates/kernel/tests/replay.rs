@@ -212,7 +212,16 @@ fn one_changed_byte_of_evidence_turns_the_verdict_to_rejected() {
     tampered.insert_as(Digest::of(b"tests passed"), b"tests passed!".to_vec());
 
     let outcome = replay(&certificate, &tampered);
-    assert_eq!(outcome.verdict(), Some(AssuranceVerdict::Rejected));
+    assert_eq!(
+        outcome.verdict(),
+        None,
+        "a divergent replay establishes no verdict"
+    );
+    assert_eq!(
+        outcome.recomputed_verdict(),
+        Some(AssuranceVerdict::Rejected),
+        "asking what the bundle supports now is a separate, deliberate question"
+    );
     let ReplayOutcome::Diverged { findings, .. } = outcome else {
         panic!("tampered evidence must diverge");
     };
@@ -230,7 +239,11 @@ fn evidence_that_is_not_in_the_bundle_cannot_discharge_anything() {
     let empty = EvidenceMap::new();
 
     let outcome = replay(&certificate, &empty);
-    assert_eq!(outcome.verdict(), Some(AssuranceVerdict::Rejected));
+    assert_eq!(outcome.verdict(), None);
+    assert_eq!(
+        outcome.recomputed_verdict(),
+        Some(AssuranceVerdict::Rejected)
+    );
     let ReplayOutcome::Diverged { findings, .. } = outcome else {
         panic!("missing evidence must diverge");
     };
@@ -257,8 +270,12 @@ fn an_unknown_deterministic_verifier_fails_closed() {
     let outcome = replay(&certificate, &bundle);
     assert_eq!(
         outcome.verdict(),
-        Some(AssuranceVerdict::Rejected),
+        None,
         "an unknown checker claiming determinism is not trusted"
+    );
+    assert_eq!(
+        outcome.recomputed_verdict(),
+        Some(AssuranceVerdict::Rejected)
     );
     let ReplayOutcome::Diverged { findings, .. } = outcome else {
         panic!("an unknown deterministic verifier must diverge");
@@ -349,5 +366,89 @@ fn the_claim_reasoning_family_is_registered_and_re_decidable() {
             .iter()
             .any(|finding| matches!(finding, ReplayFinding::FamilyInputsMissing { .. })),
         "{findings:?}"
+    );
+}
+
+#[test]
+fn a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly() {
+    // A certificate that pins no evidence and names no verifier replays clean,
+    // because there is nothing to contradict it. "Reproduced" is true and says
+    // much less than it appears to, so the outcome says which one it is.
+    let admission = admission();
+    let certificate = certify(Assembly {
+        id: id("cert-empty"),
+        subject: Subject {
+            definition: *admission.definition(),
+            definition_version: "1".to_string(),
+            run: Some(id("run-empty")),
+            inputs: vec![],
+            outputs: vec![],
+        },
+        admission,
+        mode: AssuranceMode::Enforce,
+        policy_version: "release-policy/3".to_string(),
+        contracts: vec![id("patch-compiles")],
+        verifiers: vec![],
+        obligations: vec![Obligation {
+            statement: ObligationStatement {
+                id: id("compiles"),
+                statement: "the patch compiles".to_string(),
+                owner: RepairOwner::Verifier,
+            },
+            contract: id("patch-compiles"),
+            state: DischargeState::Discharged {
+                by: id("cargo-test"),
+                evidence: vec![],
+            },
+        }],
+        evidence: vec![],
+        loops: vec![],
+    })
+    .expect("the certificate seals");
+
+    let ReplayOutcome::Reproduced { notes, verdict } = replay(&certificate, &EvidenceMap::new())
+    else {
+        panic!("an empty bundle contradicts nothing, so it reproduces");
+    };
+    assert_eq!(verdict, AssuranceVerdict::Accepted);
+    assert!(
+        notes.contains(&ReplayNote::NothingWasReChecked),
+        "the outcome must say it checked nothing: {notes:?}"
+    );
+}
+
+#[test]
+fn inputs_that_are_present_and_unreadable_are_not_reported_as_missing() {
+    // Absent inputs mean the bundle is incomplete. Inputs that are there,
+    // digest correctly, and cannot be parsed mean something else entirely, and
+    // sending a reader to look for a file that is in front of them wastes the
+    // one thing replay is for.
+    let deterministic = VerifierRecord {
+        identity: Identity::new(id(CLAIM_REASONING), "1.0"),
+        environment: Digest::of(b"an image"),
+        inputs: vec![Digest::of(b"not a proposal"), Digest::of(b"not a snapshot")],
+        outputs: vec![],
+        trust: VerifierTrust::Deterministic,
+        verdict: CheckerVerdict::Accepted,
+    };
+    let (certificate, mut bundle) = certificate_with(vec![deterministic], b"tests passed");
+    bundle.insert(b"not a proposal".to_vec());
+    bundle.insert(b"not a snapshot".to_vec());
+
+    let ReplayOutcome::Diverged { findings, .. } = replay(&certificate, &bundle) else {
+        panic!("unreadable inputs must diverge");
+    };
+    assert!(
+        findings.iter().any(|finding| matches!(
+            finding,
+            ReplayFinding::FamilyInputsMalformed { identity, .. } if identity == CLAIM_REASONING
+        )),
+        "expected a malformed-input finding, got {findings:?}"
+    );
+    assert!(
+        !findings
+            .iter()
+            .any(|finding| matches!(finding, ReplayFinding::FamilyInputsMissing { .. })),
+        "the bytes are present; nothing is missing: {findings:?}"
     );
 }

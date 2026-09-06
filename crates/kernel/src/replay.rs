@@ -113,8 +113,16 @@ pub enum ReplayFinding {
         recomputed: CheckerVerdict,
     },
     /// A deterministic family could not be re-decided because its pinned inputs
-    /// were not in the bundle.
+    /// were not in the bundle. The bundle is incomplete; nothing here says the
+    /// certificate is wrong.
     FamilyInputsMissing { identity: String },
+    /// A family's pinned inputs were present and could not be read.
+    ///
+    /// A different statement from their being absent: the bytes are there, they
+    /// digest to what the certificate cites, and they are not what they claim to
+    /// be. Disqualifying, because an input nobody can parse cannot support the
+    /// decision that was recorded from it.
+    FamilyInputsMalformed { identity: String, detail: String },
     /// The verdict recomputed from the certificate's own contents differs from
     /// the one it records.
     VerdictDiffers {
@@ -134,6 +142,14 @@ pub enum ReplayNote {
     KernelVersionDiffers { recorded: String, replaying: String },
     /// A deterministic family was re-decided and agreed.
     FamilyReDecided { identity: String },
+    /// The certificate pinned no evidence and named no verifier, so replay
+    /// confirmed its verdict follows from its obligations and checked nothing
+    /// else.
+    ///
+    /// Said out loud, because "reproduced" over an empty bundle is a far weaker
+    /// statement than "reproduced" over a full one, and a reader given only the
+    /// word cannot tell the two apart.
+    NothingWasReChecked,
 }
 
 /// Why replay could not read the certificate at all.
@@ -171,9 +187,32 @@ impl ReplayOutcome {
         matches!(self, Self::Reproduced { .. })
     }
 
-    /// The verdict the evidence supports now.
+    /// The verdict this replay establishes, if it establishes one.
+    ///
+    /// `None` for a divergent replay, and that is the point. It used to hand the
+    /// recomputed verdict back here, which can be `Accepted`, so a caller who
+    /// read the verdict without also checking [`ReplayOutcome::reproduced`] got
+    /// a positive answer out of a failed replay. A verdict is a claim about what
+    /// was established, and a replay that diverged established nothing.
+    ///
+    /// The recomputed value is still available from
+    /// [`ReplayOutcome::recomputed_verdict`], where asking for it is deliberate.
     #[must_use]
     pub const fn verdict(&self) -> Option<AssuranceVerdict> {
+        match self {
+            Self::Reproduced { verdict, .. } => Some(*verdict),
+            Self::Diverged { .. } | Self::Unreadable { .. } => None,
+        }
+    }
+
+    /// What the bundle supports now, whether or not it reproduces the recorded
+    /// verdict.
+    ///
+    /// For a divergent replay this is diagnosis, not authority: it says what the
+    /// bundle would justify once the findings are addressed, and the findings
+    /// are why it does not justify it yet.
+    #[must_use]
+    pub const fn recomputed_verdict(&self) -> Option<AssuranceVerdict> {
         match self {
             Self::Reproduced { verdict, .. } => Some(*verdict),
             Self::Diverged { recomputed, .. } => Some(*recomputed),
@@ -215,6 +254,10 @@ pub fn replay(certificate: &Certificate, evidence: &impl EvidenceSource) -> Repl
 
     let unusable = check_evidence(body, evidence, &mut findings);
     check_verifiers(body, evidence, &mut findings, &mut notes);
+
+    if body.evidence.is_empty() && body.verifiers.is_empty() {
+        notes.push(ReplayNote::NothingWasReChecked);
+    }
 
     // An obligation that rested on evidence nobody can produce is not
     // discharged any more, whatever the certificate says.
@@ -307,6 +350,9 @@ fn check_verifiers(
                     Redecision::Missing => {
                         findings.push(ReplayFinding::FamilyInputsMissing { identity });
                     }
+                    Redecision::Malformed(detail) => {
+                        findings.push(ReplayFinding::FamilyInputsMalformed { identity, detail });
+                    }
                     Redecision::Verdict(recomputed) if recomputed != record.verdict => {
                         findings.push(ReplayFinding::FamilyDisagrees {
                             identity,
@@ -331,6 +377,7 @@ const fn is_disqualifying(finding: &ReplayFinding) -> bool {
         ReplayFinding::SealBroken
             | ReplayFinding::UnknownDeterministicVerifier { .. }
             | ReplayFinding::FamilyDisagrees { .. }
+            | ReplayFinding::FamilyInputsMalformed { .. }
     )
 }
 
@@ -354,7 +401,10 @@ fn downgrade_if_unusable(obligation: &Obligation, unusable: &[Digest]) -> Obliga
 }
 
 enum Redecision {
+    /// The pinned inputs are not in this source.
     Missing,
+    /// They are, and they could not be read.
+    Malformed(String),
     Verdict(CheckerVerdict),
 }
 
@@ -365,23 +415,40 @@ enum Redecision {
 /// rather than reading the recorded one.
 fn redecide(identity: &str, inputs: &[Digest], evidence: &impl EvidenceSource) -> Redecision {
     if identity != CLAIM_REASONING {
-        return Redecision::Missing;
+        return Redecision::Malformed(format!(
+            "`{identity}` is not a family this build can re-decide"
+        ));
     }
     let [proposal, snapshot] = inputs else {
-        return Redecision::Missing;
+        return Redecision::Malformed(format!(
+            "the claim-reasoning family pins two inputs; this record pins {}",
+            inputs.len()
+        ));
     };
     let (Some(proposal), Some(snapshot)) = (evidence.bytes(proposal), evidence.bytes(snapshot))
     else {
         return Redecision::Missing;
     };
-    let (Ok(proposal), Ok(document)) = (
-        serde_json::from_slice::<Proposal>(proposal),
-        serde_json::from_slice::<SnapshotDocument>(snapshot),
-    ) else {
-        return Redecision::Missing;
+
+    // Past here the bytes are present, so anything that goes wrong is a
+    // statement about the bytes rather than about the bundle. Reporting it as
+    // "missing" would send a reader looking for a file that is in front of them.
+    let proposal = match serde_json::from_slice::<Proposal>(proposal) {
+        Ok(proposal) => proposal,
+        Err(error) => return Redecision::Malformed(format!("the pinned proposal: {error}")),
     };
-    let Ok(snapshot) = document.rebuild() else {
-        return Redecision::Missing;
+    let document = match serde_json::from_slice::<SnapshotDocument>(snapshot) {
+        Ok(document) => document,
+        Err(error) => return Redecision::Malformed(format!("the pinned snapshot: {error}")),
+    };
+    let snapshot = match document.rebuild() {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            return Redecision::Malformed(format!(
+                "the pinned snapshot does not rebuild: {}",
+                error.detail
+            ));
+        }
     };
 
     Redecision::Verdict(ClaimReasoning::decide(&proposal, &snapshot).verdict)

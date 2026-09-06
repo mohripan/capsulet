@@ -458,18 +458,26 @@ both could not be sealed at all. Fixed, with tests for both directions.
 
 **Files:** `crates/kernel/src/replay.rs`, tests
 
-- [ ] Failing tests: a divergent outcome cannot be read as a positive verdict through `.verdict()`;
-  malformed pinned inputs are reported differently from absent ones; a certificate with no evidence
-  and no verifiers reports that it had nothing to check rather than reproducing cleanly.
-- [ ] `redecide` collapses "bytes missing", "bytes malformed", and "snapshot would not rebuild" into
-  one `Redecision::Missing`, so tampering that breaks parsing is indistinguishable from a bundle that
-  was merely incomplete.
-- [ ] `ReplayOutcome::Diverged { recomputed }` can hold `Accepted`, and `verdict()` hands it out. A
-  caller that reads the verdict without checking `reproduced()` gets a positive answer from a failed
-  replay.
-- [ ] Replay checks only what a certificate chose to claim: a body with empty `evidence` and empty
-  `verifiers` passes every check trivially. `Reproduced` should carry what was actually re-decided, so
-  a thorough replay is distinguishable from a vacuous one.
+- [x] Failing tests: a divergent outcome yields no verdict from `verdict()`; inputs that are present
+  and unreadable are not reported as missing; a bundle with nothing in it says so.
+- [x] `redecide` distinguishes absent inputs from present-but-unreadable ones, and carries the reason.
+  `ReplayFinding::FamilyInputsMalformed` is **disqualifying**: an input nobody can parse cannot
+  support the decision recorded from it, whereas an absent one only says the bundle is incomplete.
+- [x] `verdict()` returns `None` for a divergent replay. `recomputed_verdict()` still gives the
+  diagnosis, where asking is a deliberate act rather than something a caller falls into.
+- [x] `ReplayNote::NothingWasReChecked` when a certificate pins no evidence and names no verifier —
+  "reproduced" over an empty bundle is a far weaker statement than over a full one, and the word alone
+  cannot tell them apart.
+
+**The existing tests were relying on the overstatement.** Three of them read `verdict()` on an outcome
+they had just asserted was divergent, and expected `Some(Rejected)`. They now ask `verdict()` for
+`None` and `recomputed_verdict()` for the detail, which is the distinction the change is about: a
+replay that diverged established nothing, and what the bundle *would* support is a separate question.
+
+**This also sharpens Task 6's residual.** A bundle written before the arithmetic change carries a
+proposal shape this build cannot parse. Its bytes are present and digest correctly, so it now reports
+as malformed with the parse error rather than as missing inputs — the right message, though the
+underlying gap (`CAP-CORRECTNESS-008`: proposals carry no schema version of their own) is unchanged.
 
 ### Task 13: A gate that notices dead policy
 

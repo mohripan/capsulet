@@ -334,6 +334,14 @@
         {
           "path": "crates/kernel/tests/arithmetic.rs",
           "selector": "a_result_that_would_not_be_exact_is_refused_rather_than_rounded"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
         }
       ]
     },
@@ -2027,6 +2035,45 @@
           "path": "crates/ir/tests/purity.rs",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "the_dependency_closure_stays_offline"
+        }
+      ]
+    },
+    {
+      "id": "CAP-REPLAY-003",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Offline replay",
+      "statement": "Replay does not overstate what it established: a divergent replay yields no verdict, inputs that are present and unreadable are reported separately from absent ones and disqualify the result, and a bundle with nothing to check says so.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "an-empty-bundle-does-not-pass-for-a-full-one",
+          "evidence_selectors": [
+            "a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly"
+          ]
+        },
+        {
+          "assertion": "unreadable-is-not-absent",
+          "evidence_selectors": [
+            "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
         }
       ]
     },

@@ -138,6 +138,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-REPLAY-001` | implemented | capability | A certificate bundle replays offline to its recorded verdict, and one changed byte of evidence makes replay report rejected instead. |
 | `CAP-REPLAY-002` | implemented | capability | The replay binary cannot reach a database, an HTTP client, an async runtime, or a model provider, asserted over its resolved dependency closure. |
 
+## Offline replay
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-REPLAY-003` | implemented | capability | Replay does not overstate what it established: a divergent replay yields no verdict, inputs that are present and unreadable are reported separately from absent ones and disqualify the result, and a bundle with nothing to check says so. |
+
 ## Once-only effects
 
 | ID | Maturity | Kind | Claim |

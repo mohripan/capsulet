@@ -114,6 +114,9 @@ fn describe_finding(finding: &ReplayFinding) -> String {
         ReplayFinding::FamilyInputsMissing { identity } => {
             format!("`{identity}` cannot be re-decided: its pinned inputs are not in the bundle")
         }
+        ReplayFinding::FamilyInputsMalformed { identity, detail } => format!(
+            "`{identity}` cannot be re-decided: its pinned inputs are in the bundle and cannot be              read — {detail}"
+        ),
         ReplayFinding::VerdictDiffers {
             recorded,
             recomputed,
@@ -137,6 +140,10 @@ fn describe_note(note: &ReplayNote) -> String {
         } => format!("recorded by `{recorded}`, replayed by `{replaying}`"),
         ReplayNote::FamilyReDecided { identity } => {
             format!("`{identity}` was re-decided here and agreed")
+        }
+        ReplayNote::NothingWasReChecked => {
+            "this certificate pins no evidence and names no verifier, so nothing was re-checked"
+                .to_string()
         }
     }
 }
