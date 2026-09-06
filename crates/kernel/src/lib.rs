@@ -474,6 +474,20 @@ fn derive_interpret(
     depth: u32,
 ) -> Option<Judgment> {
     let inner = derive(premise, snapshot, state, depth + 1)?;
+
+    // A residual is a question put to a person, and one that does not say what
+    // was read or why is not a question — it is a blank the reviewer is asked to
+    // sign. The rule that discharges nothing has to at least say what it did.
+    if rationale.trim().is_empty() {
+        state
+            .errors
+            .push(CheckError::InterpretationWithoutARationale {
+                from: inner.canonical(),
+                to: proposition.canonical(),
+            });
+        return None;
+    }
+
     state.residuals.push(Residual {
         from: inner.canonical(),
         to: proposition.clone(),

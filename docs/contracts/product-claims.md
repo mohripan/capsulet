@@ -32,6 +32,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-CORRECTNESS-003` | implemented | capability | The kernel decides every proposal it is given: a derivation nested past the depth bound it states is rejected with that reason, rather than exhausting the stack. |
 | `CAP-CORRECTNESS-004` | implemented | limitation | A cited term is matched by substring containment within a bounded span, so a short term is grounded by a longer word that contains it; matching on word boundaries needs Unicode segmentation, because a flanking-character rule would reject correct citations in scripts written without spaces. |
 | `CAP-CORRECTNESS-005` | implemented | capability | A citation is judged on text, not bytes: Unicode composition, case and whitespace run-length do not change whether a document says something, and a span too large to point at anything in particular is not a citation. |
+| `CAP-CORRECTNESS-006` | implemented | capability | An interpretation must say why: a reading recorded without a rationale is refused, the residual it leaves names the premise, the conclusion and the evidence to re-read, and no level of source authority discharges it. |
 
 ## Crash recovery
 

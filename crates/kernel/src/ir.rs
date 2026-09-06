@@ -135,10 +135,16 @@ pub enum Rule {
     },
     /// Lifts an already-active claim out of memory. Concludes `Holds(P)`.
     Attest { claim_id: String },
-    /// Turns attributed content into an assertion. The only rule that can.
+    /// Turns attributed content into an assertion, and the only rule that can
+    /// do so *and be discharged*.
     ///
     /// Concludes `Holds(P)` from `Says(s, P)` once the source clears the
-    /// configured authority floor.
+    /// configured authority floor. [`Rule::Interpret`] reaches the same shape of
+    /// conclusion, but never discharges: it records a residual, and a
+    /// certificate carrying one is `conditional`. Authority says a source is
+    /// worth believing; it does not say that a particular reading of it is
+    /// right, which is why clearing the floor is not something interpretation
+    /// can borrow.
     Trust {
         premise: Box<Rule>,
         min_authority: String,

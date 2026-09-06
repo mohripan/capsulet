@@ -355,14 +355,36 @@ own rather than a line in this task. Recorded as `CAP-CORRECTNESS-004`.
 
 **Files:** `crates/kernel/src/{lib.rs,ir.rs}`
 
-- [ ] Failing tests: an `Interpret` whose conclusion shares no subject with its premise is refused;
-  the residual names both premise and conclusion; a chain of `Interpret` steps is bounded.
-- [ ] `derive_interpret` returns `Judgment::Holds { proposition }` for whatever proposition it was
-  handed, so one valid `Cite` plus one `Interpret` reaches *any* goal at `Conditional`. That is weaker
-  than the design intends: the residual is meant to mark a reviewable leap, not license an arbitrary
-  one.
-- [ ] Keep `Interpret` unsound by design — it is the step no kernel can take. Make its residual carry
-  enough to review, and stop it from being unbounded.
+- [x] Failing tests: a reading without a rationale is refused; the residual names premise, conclusion
+  and evidence; a chain of readings is bounded; a reading never reaches `accepted` at any authority.
+- [x] A rationale is required. `CheckError::InterpretationWithoutARationale`.
+- [x] `Interpret` stays unsound by design — it is the step no kernel can take.
+
+**Most of this task was already done, and its one novel bullet was wrong.**
+
+*The residual was already reviewable.* It carries the premise's own judgment, the conclusion, the
+rationale and the cited evidence ids — enough to go straight to the passage and see the leap. A test
+now pins that rather than leaving it to survive by luck.
+
+*The chain was already bounded*, by Task 1. `MAX_DERIVATION_DEPTH` caps readings along with
+everything else, so an unbounded pile of questions nobody would work through is not reachable.
+
+*Requiring the conclusion to share a subject with the premise would refuse true readings.* "The
+agreement states 30 days' notice" read as "Acme must notify within 30 days" changes the subject and
+is exactly the kind of reading this rule exists to record. Syntactic overlap is not what makes an
+interpretation honest.
+
+**What was actually missing was the rationale.** It was never validated, so an empty one produced a
+residual that told a reviewer nothing — a question with the question left out. That is not a smaller
+problem than an unsound rule; it is the same problem, filed.
+
+**And a doc contradiction.** `Rule::Trust` said it was "the only rule that can" turn attributed
+content into an assertion, while `Interpret` reaches `Holds` too. The real distinction is discharge,
+not conclusion: `Trust` clears an authority floor and can be discharged, `Interpret` never is, and a
+certificate carrying its residual is `conditional`. Authority says a source is worth believing, not
+that a particular reading of it is right — which is why clearing the floor is not something
+interpretation can borrow. Corrected in `ir.rs`, with a test pinning that no authority discharges a
+reading.
 
 ### Task 10: Record the rule, not just the result
 

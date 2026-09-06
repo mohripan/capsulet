@@ -310,6 +310,18 @@
         {
           "path": "crates/kernel/tests/grounding.rs",
           "selector": "an_excerpt_longer_than_the_bound_is_not_a_citation"
+        },
+        {
+          "path": "crates/kernel/tests/interpretation.rs",
+          "selector": "a_reading_without_a_rationale_is_refused"
+        },
+        {
+          "path": "crates/kernel/tests/interpretation.rs",
+          "selector": "the_residual_names_the_premise_the_conclusion_and_the_evidence"
+        },
+        {
+          "path": "crates/kernel/tests/interpretation.rs",
+          "selector": "a_reading_never_reaches_accepted_however_authoritative_the_source"
         }
       ]
     },
@@ -1627,6 +1639,57 @@
           "path": "crates/kernel/tests/grounding.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "an_excerpt_longer_than_the_bound_is_not_a_citation"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-006",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "An interpretation must say why: a reading recorded without a rationale is refused, the residual it leaves names the premise, the conclusion and the evidence to re-read, and no level of source authority discharges it.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-reading-must-state-its-reason",
+          "evidence_selectors": [
+            "a_reading_without_a_rationale_is_refused"
+          ]
+        },
+        {
+          "assertion": "the-residual-is-reviewable",
+          "evidence_selectors": [
+            "the_residual_names_the_premise_the_conclusion_and_the_evidence"
+          ]
+        },
+        {
+          "assertion": "authority-does-not-discharge-a-reading",
+          "evidence_selectors": [
+            "a_reading_never_reaches_accepted_however_authoritative_the_source"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/interpretation.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_reading_without_a_rationale_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/interpretation.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "the_residual_names_the_premise_the_conclusion_and_the_evidence"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/interpretation.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_reading_never_reaches_accepted_however_authoritative_the_source"
         }
       ]
     },
