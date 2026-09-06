@@ -4,7 +4,9 @@ mod fixtures;
 
 use std::collections::BTreeMap;
 
-use capsulet_ir::assurance::{BoundaryDecision, BoundaryPolicy, DenialReason, TrustRoute};
+use capsulet_ir::assurance::{
+    BoundaryDecision, BoundaryPolicy, DenialReason, TrustRoute, VerifierRequirement,
+};
 use capsulet_ir::correctness::certificate::{Subject, VerifierRecord, VerifierTrust};
 use capsulet_ir::correctness::obligation::{DischargeState, ObligationStatement, RepairOwner};
 use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
@@ -95,11 +97,34 @@ fn failed_of(name: &str, contract: &str) -> Obligation {
     }
 }
 
-fn certificate_for(
+/// One verifier record.
+fn verifier(name: &str, version: &str, verdict: CheckerVerdict) -> VerifierRecord {
+    VerifierRecord {
+        identity: Identity::new(id(name), version),
+        environment: Digest::of(b"an image"),
+        inputs: vec![],
+        outputs: vec![],
+        trust: VerifierTrust::Deterministic,
+        verdict,
+    }
+}
+
+fn certificate_with_verifiers(
     definition: &Definition,
     mode: AssuranceMode,
     obligations: Vec<Obligation>,
+    verifiers: Vec<VerifierRecord>,
 ) -> Certificate {
+    let mut body = seal_body(definition, mode, obligations);
+    body.verifiers = verifiers;
+    Certificate::seal(body).expect("the certificate seals")
+}
+
+fn seal_body(
+    definition: &Definition,
+    mode: AssuranceMode,
+    obligations: Vec<Obligation>,
+) -> CertificateBody {
     let admission = admit(definition).expect("the fixture definition is admitted");
     let contracts = definition
         .contracts
@@ -108,7 +133,7 @@ fn certificate_for(
         .collect();
     let verdict = AssuranceVerdict::under_mode(mode, &obligations);
 
-    Certificate::seal(CertificateBody {
+    CertificateBody {
         schema_version: Certificate::current_schema_version(),
         id: id("cert-1"),
         admission: admission.clone(),
@@ -123,20 +148,20 @@ fn certificate_for(
         policy_version: "release-policy/3".to_string(),
         kernel_version: "capsulet-kernel 0.1.0".to_string(),
         contracts,
-        verifiers: vec![VerifierRecord {
-            identity: Identity::new(id("cargo-test"), "1.96"),
-            environment: Digest::of(b"an image"),
-            inputs: vec![],
-            outputs: vec![],
-            trust: VerifierTrust::Deterministic,
-            verdict: CheckerVerdict::Accepted,
-        }],
+        verifiers: vec![verifier("cargo-test", "1.96", CheckerVerdict::Accepted)],
         evidence: vec![evidence()],
         obligations,
         loops: vec![],
         verdict,
-    })
-    .expect("the certificate seals")
+    }
+}
+
+fn certificate_for(
+    definition: &Definition,
+    mode: AssuranceMode,
+    obligations: Vec<Obligation>,
+) -> Certificate {
+    Certificate::seal(seal_body(definition, mode, obligations)).expect("the certificate seals")
 }
 
 fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
@@ -154,7 +179,7 @@ fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
         version: "3".to_string(),
         mode,
         required_contracts: vec![id("patch-compiles")],
-        required_verifiers: vec![id("cargo-test")],
+        required_verifiers: vec![VerifierRequirement::named(id("cargo-test"))],
         boundaries,
         waiver_authorities: vec![id("platform-admin")],
         trust_routes: vec![],
@@ -396,7 +421,9 @@ fn a_certificate_for_a_different_definition_does_not_count() {
 fn a_required_verifier_that_did_not_run_denies_the_crossing() {
     let enforced = certificate(AssuranceMode::Enforce, vec![discharged("compiles")]);
     let mut demanding = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
-    demanding.required_verifiers.push(id("cargo-audit"));
+    demanding
+        .required_verifiers
+        .push(VerifierRequirement::named(id("cargo-audit")));
 
     let decision = decide_boundary(
         &demanding,
@@ -413,6 +440,161 @@ fn a_required_verifier_that_did_not_run_denies_the_crossing() {
                 identity: id("cargo-audit")
             }
         }
+    );
+}
+
+#[test]
+fn a_required_verifier_that_ran_and_failed_does_not_satisfy_the_requirement() {
+    // The gap this task closes: the requirement was a name match, so a scanner
+    // that ran, concluded `rejected`, and said so out loud satisfied a policy
+    // that required the scanner.
+    let both = definition_in(AssuranceMode::Enforce);
+    let enforced = certificate_with_verifiers(
+        &both,
+        AssuranceMode::Enforce,
+        vec![discharged("compiles")],
+        vec![verifier("cargo-test", "1.96", CheckerVerdict::Rejected)],
+    );
+
+    let decision = decide_boundary(
+        &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::VerifierDidNotPass {
+                identity: id("cargo-test"),
+                required: AssuranceVerdict::Conditional,
+                found: CheckerVerdict::Rejected,
+            }
+        }
+    );
+}
+
+#[test]
+fn a_required_verifier_at_the_wrong_version_does_not_satisfy_the_requirement() {
+    let both = definition_in(AssuranceMode::Enforce);
+    let enforced = certificate_with_verifiers(
+        &both,
+        AssuranceMode::Enforce,
+        vec![discharged("compiles")],
+        vec![verifier("cargo-test", "1.90", CheckerVerdict::Accepted)],
+    );
+
+    let mut pinned = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+    pinned.required_verifiers = vec![VerifierRequirement {
+        name: id("cargo-test"),
+        version: Some("1.96".to_string()),
+        environment: None,
+        minimum: AssuranceVerdict::Accepted,
+    }];
+
+    let decision = decide_boundary(
+        &pinned,
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::VerifierVersionMismatch {
+                identity: id("cargo-test"),
+                required: "1.96".to_string(),
+                found: vec!["1.90".to_string()],
+            }
+        }
+    );
+}
+
+#[test]
+fn a_required_verifier_from_the_wrong_environment_does_not_satisfy_the_requirement() {
+    // Same tool, same version, different image. The environment is what makes a
+    // deterministic verifier's word reproducible, so a policy that pins one is
+    // not satisfied by a run somewhere else.
+    let both = definition_in(AssuranceMode::Enforce);
+    let enforced = certificate_with_verifiers(
+        &both,
+        AssuranceMode::Enforce,
+        vec![discharged("compiles")],
+        vec![verifier("cargo-test", "1.96", CheckerVerdict::Accepted)],
+    );
+
+    let mut pinned = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+    pinned.required_verifiers = vec![VerifierRequirement {
+        name: id("cargo-test"),
+        version: None,
+        environment: Some(Digest::of(b"a different image")),
+        minimum: AssuranceVerdict::Accepted,
+    }];
+
+    let decision = decide_boundary(
+        &pinned,
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert!(matches!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::VerifierEnvironmentMismatch { .. }
+        }
+    ));
+}
+
+#[test]
+fn a_policy_may_demand_more_of_a_verifier_than_the_default() {
+    // The default minimum lets a qualified result through, because the
+    // certificate's verdict already carries that qualification and the
+    // boundary's own minimum is where it is judged. A policy that wants this
+    // particular verifier to have accepted outright says so.
+    let both = definition_in(AssuranceMode::Enforce);
+    let enforced = certificate_with_verifiers(
+        &both,
+        AssuranceMode::Enforce,
+        vec![discharged("compiles")],
+        vec![verifier("cargo-test", "1.96", CheckerVerdict::Conditional)],
+    );
+
+    let mut lenient = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+    lenient.required_verifiers = vec![VerifierRequirement {
+        name: id("cargo-test"),
+        version: None,
+        environment: None,
+        minimum: AssuranceVerdict::Conditional,
+    }];
+
+    assert!(
+        decide_boundary(
+            &lenient,
+            AssuranceMode::Enforce,
+            &both,
+            Some(&enforced),
+            &id("publish-boundary"),
+        )
+        .permits_crossing()
+    );
+
+    let mut strict = lenient.clone();
+    strict.required_verifiers[0].minimum = AssuranceVerdict::Accepted;
+    assert!(
+        !decide_boundary(
+            &strict,
+            AssuranceMode::Enforce,
+            &both,
+            Some(&enforced),
+            &id("publish-boundary"),
+        )
+        .permits_crossing()
     );
 }
 

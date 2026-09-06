@@ -265,12 +265,23 @@ with the certificate it was reading would be worse than either rule alone.
 
 **Files:** `crates/ir/src/assurance.rs`, tests
 
-- [ ] Failing tests: a required verifier present under a different version is denied; one whose own
-  verdict was `Rejected` does not satisfy the requirement; an environment mismatch is denied; a policy
-  can demand a minimum version.
-- [ ] `required_verifiers: Vec<VerifierRequirement>` carrying name, version requirement, environment,
-  and minimum verdict. Today the match is `record.identity.name == identity`, so a scanner that ran,
-  failed, and said so satisfies a policy that requires the scanner.
+- [x] Failing tests: a required verifier at a different version is denied; one whose own verdict was
+  `Rejected` does not satisfy the requirement; an environment mismatch is denied; a policy can demand
+  more than the default.
+- [x] `required_verifiers: Vec<VerifierRequirement>` carrying name, optional version, optional
+  environment, and a minimum verdict. The old match was `record.identity.name == identity`, so a
+  scanner that ran, failed, and said so satisfied a policy that required the scanner.
+- [x] Selection then judgement: name, pinned version and pinned environment narrow the records down,
+  and *every* record still standing must meet the minimum. A verifier that ran twice and rejected once
+  has rejected; picking the run that agrees with you is the whole failure mode.
+
+**The default minimum is `Conditional`, not `Accepted`.** The replay gate scenario caught this: its
+`cargo-test` concluded `conditional`, and an `Accepted` default denied the crossing on the verifier
+requirement rather than on the run's verdict — the same denial, reported less usefully. A verifier
+returning `conditional` has done its job and reported a qualified result; that qualification already
+flows into the certificate's verdict, where the boundary's own `minimum` judges it. The gap this task
+closes is rejection being counted as satisfaction, and the default now closes exactly that and no
+more. A policy wanting a particular verifier to have accepted outright sets `minimum` itself.
 
 ### Task 6: No floating point in the kernel
 

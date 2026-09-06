@@ -507,6 +507,18 @@
         {
           "path": "crates/ir/tests/assurance.rs",
           "selector": "a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_required_verifier_that_ran_and_failed_does_not_satisfy_the_requirement"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_required_verifier_at_the_wrong_version_does_not_satisfy_the_requirement"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_required_verifier_from_the_wrong_environment_does_not_satisfy_the_requirement"
         }
       ]
     },
@@ -1466,6 +1478,52 @@
           "path": "crates/ir/tests/assurance.rs",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-005",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Assurance decisions",
+      "statement": "A required verifier is satisfied by a run, not by a name: a verifier that concluded rejected, or ran at a version or in an environment the policy did not pin, does not meet the requirement.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-rejecting-verifier-does-not-satisfy",
+          "evidence_selectors": [
+            "a_required_verifier_that_ran_and_failed_does_not_satisfy_the_requirement"
+          ]
+        },
+        {
+          "assertion": "version-and-environment-select-which-runs-count",
+          "evidence_selectors": [
+            "a_required_verifier_at_the_wrong_version_does_not_satisfy_the_requirement",
+            "a_required_verifier_from_the_wrong_environment_does_not_satisfy_the_requirement"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_required_verifier_that_ran_and_failed_does_not_satisfy_the_requirement"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_required_verifier_at_the_wrong_version_does_not_satisfy_the_requirement"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_required_verifier_from_the_wrong_environment_does_not_satisfy_the_requirement"
         }
       ]
     },

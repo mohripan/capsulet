@@ -32,7 +32,7 @@ use capsulet_ir::{
     AssuranceMode, AssurancePolicy, AssuranceVerdict, CapabilitySet, CheckerVerdict, Definition,
     Digest, Endpoint, Graph, GraphBuilder, Hyperedge, Identifier, Identity, InputPort, Node,
     NodeKind, Obligation, OutputPort, ProviderBinding, RecordedTime, ResourceBudget, ValueSchema,
-    admit, decide_boundary,
+    VerifierRequirement, admit, decide_boundary,
 };
 use capsulet_kernel::bundle::Bundle;
 use capsulet_kernel::replay::EvidenceMap;
@@ -293,7 +293,7 @@ fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
         version: "3".to_string(),
         mode,
         required_contracts: vec![id("patch-compiles")],
-        required_verifiers: vec![id("cargo-test")],
+        required_verifiers: vec![VerifierRequirement::named(id("cargo-test"))],
         boundaries,
         waiver_authorities: vec![id("platform-admin")],
         trust_routes: vec![],

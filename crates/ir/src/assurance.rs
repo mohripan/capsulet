@@ -19,11 +19,13 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::correctness::certificate::{AssuranceVerdict, Certificate};
+use crate::correctness::certificate::{
+    AssuranceVerdict, Certificate, CheckerVerdict, VerifierRecord,
+};
 use crate::correctness::obligation::{DischargeState, Obligation};
 use crate::coverage::{Coverage, coverage};
-use crate::definition::AssuranceMode;
-use crate::definition::Definition;
+use crate::definition::{AssuranceMode, Definition};
+use crate::digest::Digest;
 use crate::id::Identifier;
 use crate::port::TrustLevel;
 use crate::trust::TrustClass;
@@ -116,6 +118,61 @@ impl AssuranceVerdict {
     }
 }
 
+/// What a policy demands of a verifier.
+///
+/// A bare name was not enough, and the gap it left was the quiet kind: the gate
+/// asked only whether a record with the right name was present, so a scanner
+/// that ran, concluded `rejected`, and recorded that faithfully *satisfied* a
+/// policy requiring the scanner. The requirement is now about the run, not the
+/// roll call.
+///
+/// `version` and `environment` select which records count; `minimum` is what
+/// every selected record has to have concluded. Both selectors are optional
+/// because pinning them is a real cost — a policy that pins a version has to be
+/// edited whenever the tool moves — and a policy that pins neither is still
+/// stronger than a name, because the verdict is checked either way.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerifierRequirement {
+    pub name: Identifier,
+    /// The exact version required, when the policy pins one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// The environment digest required, when the policy pins one.
+    ///
+    /// An environment is what makes a deterministic verifier's word
+    /// reproducible; the same tool at the same version in a different image is
+    /// not the same check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<Digest>,
+    /// The weakest conclusion that counts as this verifier having passed.
+    pub minimum: AssuranceVerdict,
+}
+
+impl VerifierRequirement {
+    /// A requirement that the named verifier ran and did not reject.
+    ///
+    /// The default minimum is `Conditional`, which is exactly the gap this type
+    /// closes and no more: a verifier that ran, concluded `rejected`, and said so
+    /// no longer counts as having satisfied the policy. It is deliberately not
+    /// `Accepted`. A verifier that returns `conditional` has done its job and
+    /// reported a qualified result; that qualification already flows into the
+    /// certificate's verdict, and the boundary's own `minimum` is where it
+    /// belongs. Demanding `Accepted` here as well would deny the same crossing
+    /// twice and report the less informative of the two reasons.
+    ///
+    /// A policy that wants a particular verifier to have accepted outright can
+    /// set `minimum` itself.
+    #[must_use]
+    pub const fn named(name: Identifier) -> Self {
+        Self {
+            name,
+            version: None,
+            environment: None,
+            minimum: AssuranceVerdict::Conditional,
+        }
+    }
+}
+
 /// What a policy demands before one boundary may be crossed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoundaryPolicy {
@@ -147,7 +204,7 @@ pub struct AssurancePolicy {
     /// definition cannot loosen a policy.
     pub mode: AssuranceMode,
     pub required_contracts: Vec<Identifier>,
-    pub required_verifiers: Vec<Identifier>,
+    pub required_verifiers: Vec<VerifierRequirement>,
     pub boundaries: BTreeMap<Identifier, BoundaryPolicy>,
     /// Who may waive an obligation. A waiver by anyone else is not a waiver.
     pub waiver_authorities: Vec<Identifier>,
@@ -200,8 +257,27 @@ pub enum DenialReason {
         required: Identifier,
         established: Option<Identifier>,
     },
+    /// No verifier of that name ran at all.
     MissingVerifier {
         identity: Identifier,
+    },
+    /// It ran, and did not reach the conclusion the policy required.
+    VerifierDidNotPass {
+        identity: Identifier,
+        required: AssuranceVerdict,
+        found: CheckerVerdict,
+    },
+    /// It ran, at a version the policy does not accept.
+    VerifierVersionMismatch {
+        identity: Identifier,
+        required: String,
+        found: Vec<String>,
+    },
+    /// It ran, somewhere the policy does not accept.
+    VerifierEnvironmentMismatch {
+        identity: Identifier,
+        required: Digest,
+        found: Vec<Digest>,
     },
     MissingApproval {
         obligation: Identifier,
@@ -231,6 +307,9 @@ impl DenialReason {
             Self::ContractNotInDefinition { .. } => "contract_not_in_definition",
             Self::ContractMismatch { .. } => "contract_mismatch",
             Self::MissingVerifier { .. } => "missing_verifier",
+            Self::VerifierDidNotPass { .. } => "verifier_did_not_pass",
+            Self::VerifierVersionMismatch { .. } => "verifier_version_mismatch",
+            Self::VerifierEnvironmentMismatch { .. } => "verifier_environment_mismatch",
             Self::MissingApproval { .. } => "missing_approval",
             Self::WaiverNotAuthorised { .. } => "waiver_not_authorised",
             Self::CertificateNotForThisDefinition => "certificate_not_for_this_definition",
@@ -343,17 +422,9 @@ pub fn decide_boundary(
         }
     }
 
-    for identity in &policy.required_verifiers {
-        if !body
-            .verifiers
-            .iter()
-            .any(|record| &record.identity.name == identity)
-        {
-            return BoundaryDecision::Denied {
-                reason: DenialReason::MissingVerifier {
-                    identity: identity.clone(),
-                },
-            };
+    for requirement in &policy.required_verifiers {
+        if let Some(reason) = unmet_verifier(requirement, &body.verifiers) {
+            return BoundaryDecision::Denied { reason };
         }
     }
 
@@ -404,6 +475,78 @@ pub fn decide_boundary(
             },
         }
     }
+}
+
+/// The reason a verifier requirement is not met, if it is not.
+///
+/// Selection then judgement: the name, then the pinned version, then the pinned
+/// environment narrow the records down, and every record still standing has to
+/// have reached the minimum. All of them, not one — a verifier that ran twice
+/// and rejected once has rejected, and picking the run that agrees with you is
+/// the whole failure mode.
+fn unmet_verifier(
+    requirement: &VerifierRequirement,
+    records: &[VerifierRecord],
+) -> Option<DenialReason> {
+    let named: Vec<&VerifierRecord> = records
+        .iter()
+        .filter(|record| record.identity.name == requirement.name)
+        .collect();
+    if named.is_empty() {
+        return Some(DenialReason::MissingVerifier {
+            identity: requirement.name.clone(),
+        });
+    }
+
+    let at_version = match &requirement.version {
+        None => named,
+        Some(version) => {
+            let matching: Vec<&VerifierRecord> = named
+                .iter()
+                .copied()
+                .filter(|record| &record.identity.version == version)
+                .collect();
+            if matching.is_empty() {
+                return Some(DenialReason::VerifierVersionMismatch {
+                    identity: requirement.name.clone(),
+                    required: version.clone(),
+                    found: named
+                        .iter()
+                        .map(|record| record.identity.version.clone())
+                        .collect(),
+                });
+            }
+            matching
+        }
+    };
+
+    let selected = match &requirement.environment {
+        None => at_version,
+        Some(environment) => {
+            let matching: Vec<&VerifierRecord> = at_version
+                .iter()
+                .copied()
+                .filter(|record| &record.environment == environment)
+                .collect();
+            if matching.is_empty() {
+                return Some(DenialReason::VerifierEnvironmentMismatch {
+                    identity: requirement.name.clone(),
+                    required: *environment,
+                    found: at_version.iter().map(|record| record.environment).collect(),
+                });
+            }
+            matching
+        }
+    };
+
+    selected
+        .iter()
+        .find(|record| !AssuranceVerdict::from(record.verdict).satisfies(requirement.minimum))
+        .map(|record| DenialReason::VerifierDidNotPass {
+            identity: requirement.name.clone(),
+            required: requirement.minimum,
+            found: record.verdict,
+        })
 }
 
 /// The reason a contract is not covered, if it is not.
