@@ -307,20 +307,49 @@ more. A policy wanting a particular verifier to have accepted outright sets `min
   the canonical encoding the rest of the system is built on, nor survives an encoding failure — every
   failed proposal collapses to the digest of `""`, and so to each other.
 
+**Blocked on Task 6.** The canonical encoder refuses floating point outright — that is `CAP-IR-001`,
+and `serialize_f64` returns an error. While `Rule::Arith` carries `f64`, switching `replay_digest` to
+it would refuse every arithmetic proposal rather than digest it. The two tasks are one change in
+practice: remove the floats, then the canonical encoder becomes usable here.
+
+The reachable collision today is the same floats: `serde_json` refuses to serialize `NaN`, so an
+`Arith` rule carrying one hits `unwrap_or_default()` and every such proposal digests to the empty
+string — and therefore to each other, in the field that ties a certificate to the proposal it
+decided.
+
 ### Task 8: Grounding that means containment
 
 **Files:** `crates/kernel/src/lib.rs`
 
-- [ ] Failing tests: NFC-equivalent text matches (`é` as one codepoint against `e` plus a combining
-  accent); a match spanning a sentence boundary is refused; an object matching only as a fragment
-  inside a longer word is refused; a span longer than its declared bound is refused; case folding is
-  Unicode-aware rather than ASCII.
-- [ ] `normalize` collapses whitespace and lowercases, nothing more.
-  `unicode-normalization` is already a dependency of `capsulet-ir` and used there; the kernel should
-  not be doing weaker text handling than the layer beneath it.
-- [ ] Containment with no locality constraint means a long document grounds nearly any short object.
-  A bound on the span, and a requirement that a match not straddle a sentence boundary, is the minimum
-  that makes `Cite` mean what its doc comment says.
+- [x] Failing tests: NFC-equivalent text matches, in both directions; an excerpt longer than the bound
+  is not a citation; an excerpt exactly at the bound still is; case and whitespace still do not
+  matter.
+- [x] `normalize` now folds Unicode composition as well as case and whitespace. NFC rather than NFD,
+  to agree with the IR's canonical encoding — two layers normalising differently would disagree about
+  whether the same document says the same thing.
+- [x] `MAX_CITED_EXCERPT_BYTES = 4096`, with `CheckError::CitedSpanTooLong`. Checked after provenance,
+  so a span that does not re-derive is reported as the fabrication it is rather than as a size
+  complaint.
+
+**Two of these bullets were wrong.**
+
+*Case folding was already Unicode-aware.* `str::to_lowercase` is a full Unicode mapping, not an ASCII
+one — measured: Turkish dotted I folds to `i` plus a combining dot, Greek final sigma folds
+correctly, `ß` is handled. There was nothing to fix, and "fixing" it would have been churn against a
+correct implementation.
+
+*Refusing a match that spans a sentence boundary would reject true citations.* A verbatim quotation of
+two consecutive sentences is a perfectly good citation, and the rule as written would refuse it. The
+real concern underneath was locality — subject and object are matched independently, so they could sit
+pages apart in a long excerpt and still both be "contained". The honest control for that is the size
+of the span, not where sentences fall inside it, which is what the bound does.
+
+**Not shipped: word-boundary matching.** An object of `cat` is still grounded by a document containing
+`concatenate`. The obvious fix — require the match not to be flanked by alphanumerics — silently
+breaks every script that does not put spaces between words, so it would trade a narrow false
+acceptance for a broad false rejection across Chinese, Japanese and Thai. Doing it properly needs
+Unicode word segmentation (`unicode-segmentation`), which is a dependency and a design decision of its
+own rather than a line in this task. Recorded as `CAP-CORRECTNESS-004`.
 
 ### Task 9: `Interpret` says what it assumed
 

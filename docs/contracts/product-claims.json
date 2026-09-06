@@ -302,6 +302,14 @@
         {
           "path": "crates/kernel/tests/depth.rs",
           "selector": "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "composition_does_not_change_what_a_document_says"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "an_excerpt_longer_than_the_bound_is_not_a_citation"
         }
       ]
     },
@@ -1563,6 +1571,62 @@
           "path": "crates/kernel/tests/depth.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-004",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "A cited term is matched by substring containment within a bounded span, so a short term is grounded by a longer word that contains it; matching on word boundaries needs Unicode segmentation, because a flanking-character rule would reject correct citations in scripts written without spaces.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/kernel/src/lib.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-005",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "A citation is judged on text, not bytes: Unicode composition, case and whitespace run-length do not change whether a document says something, and a span too large to point at anything in particular is not a citation.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "composition-does-not-decide-a-citation",
+          "evidence_selectors": [
+            "composition_does_not_change_what_a_document_says"
+          ]
+        },
+        {
+          "assertion": "a-cited-span-is-bounded",
+          "evidence_selectors": [
+            "an_excerpt_longer_than_the_bound_is_not_a_citation"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "composition_does_not_change_what_a_document_says"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "an_excerpt_longer_than_the_bound_is_not_a_citation"
         }
       ]
     },

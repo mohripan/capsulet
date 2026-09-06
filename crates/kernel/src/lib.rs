@@ -74,6 +74,19 @@ const ARITH_EPSILON: f64 = 1e-9;
 /// where it is used.
 pub const MAX_DERIVATION_DEPTH: u32 = 64;
 
+/// The longest cited span the kernel will treat as a citation.
+///
+/// A citation points at a span, and containment in that span is the whole of
+/// what [`Rule::Cite`] establishes. A span the size of a document points at
+/// nothing in particular: almost any short phrase is "contained" in it, so
+/// containment stops being evidence that the document says the proposition and
+/// becomes evidence only that the words exist somewhere in it.
+///
+/// Four kilobytes is roughly a page — long enough for any passage worth quoting
+/// and short enough that a reader can check the citation by looking at it, which
+/// is the point of a citation.
+pub const MAX_CITED_EXCERPT_BYTES: usize = 4096;
+
 /// Decides a proposal against a snapshot.
 ///
 /// Always terminates, for every proposal including a hostile one: a derivation
@@ -286,6 +299,18 @@ fn derive_cite(
         return None;
     }
 
+    // Checked after provenance, so a span that does not re-derive is reported as
+    // the fabrication it is rather than as a size complaint.
+    let excerpt = evidence.excerpt();
+    if excerpt.len() > MAX_CITED_EXCERPT_BYTES {
+        state.errors.push(CheckError::CitedSpanTooLong {
+            evidence_id: evidence_id.to_string(),
+            limit: MAX_CITED_EXCERPT_BYTES,
+            found: excerpt.len(),
+        });
+        return None;
+    }
+
     // Both endpoints of the relation must be present, not just the object.
     // Checking only the object lets a proposer attach any subject it likes to a
     // span that happens to contain a matching string — "Contoso acquired-by X"
@@ -491,12 +516,30 @@ fn contains_normalized(excerpt: &str, object: &str) -> bool {
     normalize(excerpt).contains(&needle)
 }
 
+/// The form two pieces of text are compared in.
+///
+/// Three forgivenesses, and no more. Whitespace run-length, because models
+/// reflow quotations. Case, because they change it — `str::to_lowercase` is a
+/// full Unicode mapping, not an ASCII one, so Turkish dotted I and Greek final
+/// sigma fold correctly without help. And Unicode composition, because "é"
+/// written as one codepoint and as "e" plus a combining acute are the same text
+/// by any reading a person would give it, and a citation that turned on which
+/// encoding the quoter happened to use would be rejecting a true statement
+/// about the document.
+///
+/// NFC rather than NFD: it is the form the IR's canonical encoding already
+/// uses, and two layers that normalise differently would disagree about whether
+/// the same document says the same thing.
 fn normalize(value: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+
     value
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
+        .nfc()
+        .collect()
 }
 
 fn parse_authority(value: &str) -> Option<Authority> {

@@ -95,6 +95,14 @@ pub enum CheckError {
     TrustPremiseNotAttributed { found: String },
     #[error("the derivation nests deeper than the {limit} rules this kernel will walk")]
     DerivationTooDeep { limit: u32 },
+    #[error(
+        "the cited span for evidence {evidence_id} is {found} bytes, beyond the {limit} a citation          may point at"
+    )]
+    CitedSpanTooLong {
+        evidence_id: String,
+        limit: usize,
+        found: usize,
+    },
     #[error("the derivation concludes {derived}, which is not the stated goal {goal}")]
     GoalNotDerived { derived: String, goal: String },
 }
@@ -116,6 +124,7 @@ impl CheckError {
             | Self::UnknownAuthority { .. }
             | Self::TrustPremiseNotAttributed { .. }
             | Self::DerivationTooDeep { .. }
+            | Self::CitedSpanTooLong { .. }
             | Self::GoalNotDerived { .. } => RepairOwner::Proposer,
         }
     }
@@ -137,6 +146,7 @@ impl CheckError {
             Self::UnknownAuthority { .. } => "unknown_authority",
             Self::TrustPremiseNotAttributed { .. } => "trust_premise_not_attributed",
             Self::DerivationTooDeep { .. } => "derivation_too_deep",
+            Self::CitedSpanTooLong { .. } => "cited_span_too_long",
             Self::GoalNotDerived { .. } => "goal_not_derived",
         }
     }
