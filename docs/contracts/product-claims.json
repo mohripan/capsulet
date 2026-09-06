@@ -563,6 +563,18 @@
         {
           "path": "crates/ir/tests/verdict_rule.rs",
           "selector": "the_verdict_rule_this_build_applies_is_the_one_the_archive_was_sealed_under"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_certificate_older_than_the_boundary_allows_does_not_cross"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_revoked_certificate_does_not_cross_however_well_formed_it_is"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_certificate_with_nothing_to_date_it_by_is_not_fresh"
         }
       ]
     },
@@ -1587,6 +1599,57 @@
           "path": "crates/ir/tests/verdict_rule.rs",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "the_verdict_rule_this_build_applies_is_the_one_the_archive_was_sealed_under"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-007",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Assurance decisions",
+      "statement": "A certificate can go stale or be withdrawn: a boundary may require the evidence behind it to be no older than a stated age, one that cannot be dated is not fresh, and a revoked certificate is refused however well formed it is. Time and revocations are arguments to the decision, never read inside it.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-stale-certificate-does-not-cross",
+          "evidence_selectors": [
+            "a_certificate_older_than_the_boundary_allows_does_not_cross"
+          ]
+        },
+        {
+          "assertion": "a-withdrawn-certificate-does-not-cross",
+          "evidence_selectors": [
+            "a_revoked_certificate_does_not_cross_however_well_formed_it_is"
+          ]
+        },
+        {
+          "assertion": "undatable-is-not-fresh",
+          "evidence_selectors": [
+            "a_certificate_with_nothing_to_date_it_by_is_not_fresh"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_certificate_older_than_the_boundary_allows_does_not_cross"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_revoked_certificate_does_not_cross_however_well_formed_it_is"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_certificate_with_nothing_to_date_it_by_is_not_fresh"
         }
       ]
     },

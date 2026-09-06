@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::correctness::certificate::{
     AssuranceVerdict, Certificate, CheckerVerdict, VerifierRecord,
 };
+use crate::correctness::evidence::RecordedTime;
 use crate::correctness::obligation::{DischargeState, Obligation};
 use crate::coverage::{Coverage, coverage};
 use crate::definition::{AssuranceMode, Definition};
@@ -118,6 +119,38 @@ impl AssuranceVerdict {
     }
 }
 
+/// When a boundary decision is being made, and what has been withdrawn.
+///
+/// Both are arguments rather than things `decide_boundary` reaches for. A clock
+/// read inside the decision would make it unreplayable, which is the same reason
+/// the runtime's decision core has none; a revocation list fetched inside it
+/// would make it depend on a service being up. The caller holds both, and the
+/// decision stays a pure function of what it was given.
+#[derive(Debug, Clone, Copy)]
+pub struct DecisionContext<'a> {
+    /// The moment the crossing is being decided.
+    pub now: RecordedTime,
+    /// Certificates that have been withdrawn, by their own digest.
+    pub revoked: &'a [Digest],
+}
+
+impl<'a> DecisionContext<'a> {
+    /// A decision at `now`, with nothing revoked.
+    #[must_use]
+    pub const fn at(now: RecordedTime) -> Self {
+        Self { now, revoked: &[] }
+    }
+
+    /// The same decision, against a revocation list.
+    #[must_use]
+    pub const fn revoking(self, revoked: &'a [Digest]) -> Self {
+        Self {
+            now: self.now,
+            revoked,
+        }
+    }
+}
+
 /// What a policy demands of a verifier.
 ///
 /// A bare name was not enough, and the gap it left was the quiet kind: the gate
@@ -183,6 +216,17 @@ pub struct BoundaryPolicy {
     pub contract: Option<Identifier>,
     /// An obligation that must be discharged, used for human approvals.
     pub requires_approval: Option<Identifier>,
+    /// How stale the evidence behind a certificate may be, in milliseconds.
+    ///
+    /// Dated by the *newest* evidence the certificate carries: the moment its
+    /// picture of the world was last refreshed. Not by when it was sealed —
+    /// there is no such field, and it would be the wrong question anyway, since
+    /// re-sealing old evidence would make a stale certificate look new.
+    ///
+    /// A certificate carrying no evidence cannot be dated, so it cannot be shown
+    /// to be fresh, so it does not cross a boundary that asks for freshness.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_age_ms: Option<i64>,
 }
 
 /// Which values may reach a named destination.
@@ -287,6 +331,18 @@ pub enum DenialReason {
         obligation: Identifier,
         authority: Identifier,
     },
+    /// The evidence behind the certificate is older than the boundary allows.
+    CertificateStale {
+        age_ms: i64,
+        max_age_ms: i64,
+    },
+    /// The boundary asks for freshness and the certificate carries no evidence,
+    /// so there is nothing to date it by. Fails closed: undatable is not fresh.
+    CertificateUndatable,
+    /// The certificate has been withdrawn.
+    CertificateRevoked {
+        certificate: Digest,
+    },
     /// The certificate is about a different definition than the one being run.
     CertificateNotForThisDefinition,
     /// The policy says nothing about this boundary, and a protected boundary
@@ -312,6 +368,9 @@ impl DenialReason {
             Self::VerifierEnvironmentMismatch { .. } => "verifier_environment_mismatch",
             Self::MissingApproval { .. } => "missing_approval",
             Self::WaiverNotAuthorised { .. } => "waiver_not_authorised",
+            Self::CertificateStale { .. } => "certificate_stale",
+            Self::CertificateUndatable => "certificate_undatable",
+            Self::CertificateRevoked { .. } => "certificate_revoked",
             Self::CertificateNotForThisDefinition => "certificate_not_for_this_definition",
             Self::BoundaryNotGoverned { .. } => "boundary_not_governed",
         }
@@ -372,6 +431,7 @@ pub fn decide_boundary(
     definition: &Definition,
     certificate: Option<&Certificate>,
     boundary: &Identifier,
+    context: DecisionContext<'_>,
 ) -> BoundaryDecision {
     let mode = policy.effective_mode(declared_mode);
     let verdict = certificate.map_or(AssuranceVerdict::Unverified, Certificate::verdict);
@@ -410,6 +470,32 @@ pub fn decide_boundary(
         return BoundaryDecision::Denied {
             reason: DenialReason::CertificateNotForThisDefinition,
         };
+    }
+
+    // Withdrawal outranks everything the certificate says about itself. A
+    // revoked certificate may be perfectly well formed and still name evidence
+    // nobody should be relying on any more, which is the case deleting it — the
+    // only remedy there used to be — would have left no record of.
+    if context.revoked.contains(certificate.replay_digest()) {
+        return BoundaryDecision::Denied {
+            reason: DenialReason::CertificateRevoked {
+                certificate: *certificate.replay_digest(),
+            },
+        };
+    }
+
+    if let Some(max_age_ms) = required.max_age_ms {
+        let Some(dated_at) = newest_evidence(body) else {
+            return BoundaryDecision::Denied {
+                reason: DenialReason::CertificateUndatable,
+            };
+        };
+        let age_ms = context.now.epoch_millis() - dated_at.epoch_millis();
+        if age_ms > max_age_ms {
+            return BoundaryDecision::Denied {
+                reason: DenialReason::CertificateStale { age_ms, max_age_ms },
+            };
+        }
     }
 
     // Every contract this crossing depends on: the one the boundary names, and
@@ -475,6 +561,21 @@ pub fn decide_boundary(
             },
         }
     }
+}
+
+/// When the certificate last looked at the world, if it can be dated.
+///
+/// The newest piece of evidence, because that is the most recent moment any of
+/// this was observed. An older piece alongside it is not staleness — a contract
+/// signed years ago is exactly as true as it was — so the oldest would refuse
+/// perfectly good citations of durable documents.
+fn newest_evidence(
+    body: &crate::correctness::certificate::CertificateBody,
+) -> Option<RecordedTime> {
+    body.evidence
+        .iter()
+        .map(|evidence| evidence.captured_at)
+        .max_by_key(|recorded| recorded.epoch_millis())
 }
 
 /// The reason a verifier requirement is not met, if it is not.

@@ -5,7 +5,8 @@ mod fixtures;
 use std::collections::BTreeMap;
 
 use capsulet_ir::assurance::{
-    BoundaryDecision, BoundaryPolicy, DenialReason, TrustRoute, VerifierRequirement,
+    BoundaryDecision, BoundaryPolicy, DecisionContext, DenialReason, TrustRoute,
+    VerifierRequirement,
 };
 use capsulet_ir::correctness::certificate::{Subject, VerifierRecord, VerifierTrust};
 use capsulet_ir::correctness::obligation::{DischargeState, ObligationStatement, RepairOwner};
@@ -19,6 +20,14 @@ use capsulet_ir::{
 };
 
 use fixtures::{definition_in, definition_with_scan, id};
+
+/// The moment the fixture evidence was captured, which is when these tests
+/// pretend to be deciding unless they say otherwise.
+const CAPTURED_AT: i64 = 1_772_000_000_000;
+
+fn now() -> DecisionContext<'static> {
+    DecisionContext::at(RecordedTime(CAPTURED_AT))
+}
 
 fn evidence() -> EvidenceRef {
     let content = b"tests passed";
@@ -172,6 +181,7 @@ fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
             minimum,
             contract: Some(id("patch-compiles")),
             requires_approval: None,
+            max_age_ms: None,
         },
     );
     AssurancePolicy {
@@ -208,6 +218,7 @@ fn verify_reports_a_verdict_and_blocks_nothing() {
         &definition_in(AssuranceMode::Verify),
         Some(&verified),
         &id("publish-boundary"),
+        now(),
     );
 
     assert!(decision.permits_crossing());
@@ -233,6 +244,7 @@ fn enforce_allows_a_crossing_that_meets_the_minimum() {
         &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -267,6 +279,7 @@ fn enforce_denies_a_verdict_below_the_minimum() {
         &definition_in(AssuranceMode::Enforce),
         Some(&conditional),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -290,6 +303,7 @@ fn an_absent_certificate_is_unverified_and_never_satisfies_a_minimum() {
             &definition_in(AssuranceMode::Enforce),
             None,
             &id("publish-boundary"),
+            now(),
         );
         assert_eq!(
             decision,
@@ -328,6 +342,7 @@ fn a_waiver_by_an_unauthorised_party_is_not_a_waiver() {
         &definition_in(AssuranceMode::Enforce),
         Some(&waived),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -363,6 +378,7 @@ fn a_waiver_by_a_named_authority_stands() {
         &definition_in(AssuranceMode::Enforce),
         Some(&waived),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -382,6 +398,7 @@ fn a_boundary_no_policy_governs_is_not_implicitly_open() {
         &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("some-other-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -407,6 +424,7 @@ fn a_certificate_for_a_different_definition_does_not_count() {
         },
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -431,6 +449,7 @@ fn a_required_verifier_that_did_not_run_denies_the_crossing() {
         &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -462,6 +481,7 @@ fn a_required_verifier_that_ran_and_failed_does_not_satisfy_the_requirement() {
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -500,6 +520,7 @@ fn a_required_verifier_at_the_wrong_version_does_not_satisfy_the_requirement() {
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -541,6 +562,7 @@ fn a_required_verifier_from_the_wrong_environment_does_not_satisfy_the_requireme
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert!(matches!(
@@ -580,6 +602,7 @@ fn a_policy_may_demand_more_of_a_verifier_than_the_default() {
             &both,
             Some(&enforced),
             &id("publish-boundary"),
+            now(),
         )
         .permits_crossing()
     );
@@ -593,6 +616,7 @@ fn a_policy_may_demand_more_of_a_verifier_than_the_default() {
             &both,
             Some(&enforced),
             &id("publish-boundary"),
+            now(),
         )
         .permits_crossing()
     );
@@ -614,6 +638,7 @@ fn a_required_approval_must_have_been_granted() {
         &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -656,6 +681,7 @@ fn a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_
             minimum: AssuranceVerdict::Accepted,
             contract: Some(id("scanned-under-named-rules")),
             requires_approval: None,
+            max_age_ms: None,
         },
     );
 
@@ -665,6 +691,7 @@ fn a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -690,6 +717,7 @@ fn a_boundary_requiring_a_contract_the_definition_never_declared_is_denied() {
             minimum: AssuranceVerdict::Accepted,
             contract: Some(id("no-secrets-leaked")),
             requires_approval: None,
+            max_age_ms: None,
         },
     );
 
@@ -699,6 +727,7 @@ fn a_boundary_requiring_a_contract_the_definition_never_declared_is_denied() {
         &definition_in(AssuranceMode::Enforce),
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -726,6 +755,7 @@ fn a_policy_wide_required_contract_is_enforced() {
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -759,6 +789,7 @@ fn obligations_beyond_the_contract_do_not_stop_a_crossing() {
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -797,6 +828,7 @@ fn a_residual_on_another_contract_does_not_deny_this_boundary() {
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -826,6 +858,7 @@ fn a_residual_on_this_contract_still_denies_the_boundary() {
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -862,6 +895,7 @@ fn a_failure_anywhere_denies_however_well_this_contract_went() {
         &both,
         Some(&enforced),
         &id("publish-boundary"),
+        now(),
     );
 
     assert_eq!(
@@ -915,6 +949,155 @@ fn a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted() {
         ),
         AssuranceVerdict::Unverified
     );
+}
+
+#[test]
+fn a_certificate_older_than_the_boundary_allows_does_not_cross() {
+    // The certificate is unchanged and still says what it said. What changed is
+    // how long ago anyone looked.
+    let enforced = certificate(AssuranceMode::Enforce, vec![discharged("compiles")]);
+    let mut hourly = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+    hourly
+        .boundaries
+        .get_mut(&id("publish-boundary"))
+        .expect("the fixture boundary")
+        .max_age_ms = Some(3_600_000);
+
+    let a_day_later = DecisionContext::at(RecordedTime(CAPTURED_AT + 86_400_000));
+    let decision = decide_boundary(
+        &hourly,
+        AssuranceMode::Enforce,
+        &definition_in(AssuranceMode::Enforce),
+        Some(&enforced),
+        &id("publish-boundary"),
+        a_day_later,
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::CertificateStale {
+                age_ms: 86_400_000,
+                max_age_ms: 3_600_000,
+            }
+        }
+    );
+
+    // Within the horizon, the same certificate crosses.
+    let a_minute_later = DecisionContext::at(RecordedTime(CAPTURED_AT + 60_000));
+    assert!(
+        decide_boundary(
+            &hourly,
+            AssuranceMode::Enforce,
+            &definition_in(AssuranceMode::Enforce),
+            Some(&enforced),
+            &id("publish-boundary"),
+            a_minute_later,
+        )
+        .permits_crossing()
+    );
+}
+
+#[test]
+fn a_certificate_with_nothing_to_date_it_by_is_not_fresh() {
+    // Undatable is not fresh. A boundary that asks how recently the world was
+    // looked at gets no answer here, and no answer is a denial.
+    let both = definition_with_scan(AssuranceMode::Enforce);
+    let mut body = seal_body(&both, AssuranceMode::Enforce, vec![discharged("compiles")]);
+    body.evidence = vec![];
+    body.obligations = vec![obligation(
+        "compiles",
+        DischargeState::Discharged {
+            by: id("cargo-test"),
+            evidence: vec![],
+        },
+    )];
+    body.verdict = AssuranceVerdict::under_mode(AssuranceMode::Enforce, &body.obligations);
+    let undatable = Certificate::seal(body).expect("seals");
+
+    let mut hourly = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+    hourly
+        .boundaries
+        .get_mut(&id("publish-boundary"))
+        .expect("the fixture boundary")
+        .max_age_ms = Some(3_600_000);
+
+    assert_eq!(
+        decide_boundary(
+            &hourly,
+            AssuranceMode::Enforce,
+            &both,
+            Some(&undatable),
+            &id("publish-boundary"),
+            now(),
+        ),
+        BoundaryDecision::Denied {
+            reason: DenialReason::CertificateUndatable
+        }
+    );
+}
+
+#[test]
+fn a_revoked_certificate_does_not_cross_however_well_formed_it_is() {
+    // Withdrawal outranks everything the certificate says about itself. Before
+    // this, the only way to stop relying on a certificate was to delete it,
+    // which leaves no record that anyone decided to.
+    let enforced = certificate(AssuranceMode::Enforce, vec![discharged("compiles")]);
+    let withdrawn = [*enforced.replay_digest()];
+
+    assert!(
+        decide_boundary(
+            &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
+            AssuranceMode::Enforce,
+            &definition_in(AssuranceMode::Enforce),
+            Some(&enforced),
+            &id("publish-boundary"),
+            now(),
+        )
+        .permits_crossing(),
+        "the certificate crosses while it stands"
+    );
+
+    assert_eq!(
+        decide_boundary(
+            &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
+            AssuranceMode::Enforce,
+            &definition_in(AssuranceMode::Enforce),
+            Some(&enforced),
+            &id("publish-boundary"),
+            now().revoking(&withdrawn),
+        ),
+        BoundaryDecision::Denied {
+            reason: DenialReason::CertificateRevoked {
+                certificate: *enforced.replay_digest(),
+            }
+        },
+        "and not once it is withdrawn"
+    );
+}
+
+#[test]
+fn a_boundary_that_asks_for_no_freshness_ignores_the_clock() {
+    // Time is an argument, and a policy that says nothing about age is not
+    // quietly given one. The decision has to be a function of what it was
+    // handed, or replaying it later would reach a different answer.
+    let enforced = certificate(AssuranceMode::Enforce, vec![discharged("compiles")]);
+    let governing = policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce);
+
+    for offset in [0, 86_400_000, 86_400_000 * 365 * 10] {
+        assert!(
+            decide_boundary(
+                &governing,
+                AssuranceMode::Enforce,
+                &definition_in(AssuranceMode::Enforce),
+                Some(&enforced),
+                &id("publish-boundary"),
+                DecisionContext::at(RecordedTime(CAPTURED_AT + offset)),
+            )
+            .permits_crossing(),
+            "offset {offset} should not matter to a boundary that asked nothing about age"
+        );
+    }
 }
 
 #[test]

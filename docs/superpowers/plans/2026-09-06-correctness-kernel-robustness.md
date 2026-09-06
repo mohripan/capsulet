@@ -445,14 +445,28 @@ both could not be sealed at all. Fixed, with tests for both directions.
 
 **Files:** `crates/ir/src/assurance.rs`, tests
 
-- [ ] Failing tests: a certificate past its boundary's freshness horizon does not open it; a revoked
-  certificate is denied naming the revocation; revocation is append-only and replays; freshness is
-  decided from a passed-in time.
-- [ ] `BoundaryPolicy.max_age` plus a revocation set resolved the way evidence is. A certificate is
-  currently valid forever, and evidence later found to be poisoned cannot be untrusted — the only
-  remedy today is to delete the certificate, which is exactly the unauditable action the append-only
-  design exists to avoid.
-- [ ] `decide_boundary` stays pure: time is an argument, never a clock read.
+- [x] Failing tests: a certificate past the boundary's horizon does not cross and the same one within
+  it does; a certificate with nothing to date it by is not fresh; a revoked certificate is denied
+  naming the revocation; a boundary that asks for no freshness ignores the clock entirely.
+- [x] `BoundaryPolicy.max_age_ms` and a revocation list, both reaching the gate through
+  `DecisionContext`.
+- [x] `decide_boundary` stays pure: `now` and `revoked` are arguments, never fetched.
+
+**Freshness is dated by evidence, because a certificate has no timestamp.** There is no `sealed_at`
+field, and adding one hits the same wall as Task 10 — the body is sealed, so a new field breaks every
+existing seal. Dating by the *newest* evidence turns out to be the better question anyway: it is the
+moment the certificate's picture of the world was last refreshed, and re-sealing old evidence could
+not make a stale certificate look new. The *oldest* would have been wrong in the other direction — a
+contract signed years ago is exactly as true as it was, and citing it is not staleness.
+
+**Undatable is not fresh.** A certificate carrying no evidence cannot be shown recent, so it does not
+cross a boundary that asks for recency. That is the same fail-closed shape as a contract the
+definition never declared: absence of an answer is not an answer.
+
+**Withdrawal outranks the certificate's own account of itself**, so it is checked before coverage or
+verdict. A revoked certificate may be perfectly well formed and still name evidence nobody should
+rely on any more — and until now the only way to stop relying on one was to delete it, which leaves
+no record that anyone decided to.
 
 ### Task 12: Replay that does not overstate
 

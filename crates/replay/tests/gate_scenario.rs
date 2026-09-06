@@ -29,10 +29,10 @@ use capsulet_ir::loop_region::{
 use capsulet_ir::region::{Region, RegionKind};
 use capsulet_ir::value::LengthBounds;
 use capsulet_ir::{
-    AssuranceMode, AssurancePolicy, AssuranceVerdict, CapabilitySet, CheckerVerdict, Definition,
-    Digest, Endpoint, Graph, GraphBuilder, Hyperedge, Identifier, Identity, InputPort, Node,
-    NodeKind, Obligation, OutputPort, ProviderBinding, RecordedTime, ResourceBudget, ValueSchema,
-    VerifierRequirement, admit, decide_boundary,
+    AssuranceMode, AssurancePolicy, AssuranceVerdict, CapabilitySet, CheckerVerdict,
+    DecisionContext, Definition, Digest, Endpoint, Graph, GraphBuilder, Hyperedge, Identifier,
+    Identity, InputPort, Node, NodeKind, Obligation, OutputPort, ProviderBinding, RecordedTime,
+    ResourceBudget, ValueSchema, VerifierRequirement, admit, decide_boundary,
 };
 use capsulet_kernel::bundle::Bundle;
 use capsulet_kernel::replay::EvidenceMap;
@@ -286,6 +286,7 @@ fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
             minimum,
             contract: Some(id("patch-compiles")),
             requires_approval: None,
+            max_age_ms: None,
         },
     );
     AssurancePolicy {
@@ -472,6 +473,7 @@ fn the_m2_gate_scenario_holds_end_to_end() {
         &definition,
         Some(&certificate),
         &id("publish-boundary"),
+        DecisionContext::at(RecordedTime(1_772_000_000_000)),
     );
     assert_eq!(
         denied,
@@ -490,6 +492,7 @@ fn the_m2_gate_scenario_holds_end_to_end() {
         &definition,
         Some(&certificate),
         &id("publish-boundary"),
+        DecisionContext::at(RecordedTime(1_772_000_000_000)),
     );
     assert!(observed.permits_crossing());
     assert!(

@@ -40,7 +40,7 @@ pub mod version;
 
 pub use admission::{AdmissionCode, AdmissionRecord, AdmissionRefusal, admit};
 pub use assurance::{
-    AssurancePolicy, BoundaryDecision, BoundaryPolicy, DenialReason, TrustRoute,
+    AssurancePolicy, BoundaryDecision, BoundaryPolicy, DecisionContext, DenialReason, TrustRoute,
     VerifierRequirement, check_trust_route, decide_boundary,
 };
 pub use canonical::{CanonicalError, CanonicalValue, Decimal, to_canonical_bytes};
