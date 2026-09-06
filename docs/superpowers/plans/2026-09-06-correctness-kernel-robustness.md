@@ -331,9 +331,10 @@ not in tension with Task 8: a *document* is whatever was ingested and its compos
 a citation, while a *proposal* enters a digest and is asked to be normalised rather than having it
 done for it — which would make the digest depend on who did the normalising. Both directions have
 tests.
-- [ ] `replay_digest` calls `serde_json::to_string(proposal).unwrap_or_default()`, so it neither uses
-  the canonical encoding the rest of the system is built on, nor survives an encoding failure — every
-  failed proposal collapses to the digest of `""`, and so to each other.
+The behaviour this replaced: `replay_digest` called
+`serde_json::to_string(proposal).unwrap_or_default()`, so it used neither the canonical encoding the
+rest of the system is built on, nor survived an encoding failure — every failed proposal collapsed to
+the digest of `""`, and so to each other.
 
 **This was blocked on Task 6, and the plan did not say so.** The canonical encoder refuses floating
 point outright — `CAP-IR-001`, and `serialize_f64` returns an error — so while `Rule::Arith` carried
@@ -550,3 +551,40 @@ Every task lands with its tests. The plan is complete when:
 - **Task 8 may reject citations that pass today.** That is the intent, but it will surface as
   previously-accepted runs going `Conditional`. Worth a dry run over stored certificates before it
   lands.
+
+---
+
+## Where this landed
+
+Tasks 0 through 13 are done. `verify --profile full` passes at 16/16 after each one, and each landed
+as its own commit.
+
+The three findings the plan opened with — a boundary satisfied by a certificate that proved something
+else, `Verified` trust minted from a hand-written record, and a `check` that ended the process — are
+closed, and `known_gaps.rs` is gone. Six overclaims in doc comments and the product-claims registry
+are either true now or restated as limitations with tests attached.
+
+**Three things are deliberately not done, and each is written up where it belongs:**
+
+- *Recording the verdict rule on the certificate body* (Task 10). It would break every existing seal
+  and force a schema major bump, making certificates unreadable now to prevent them becoming
+  unreadable later. Whether that trade is right depends on how much is stored, which this work could
+  not see. The tripwire delivers the protection that does not depend on the answer.
+- *Comparing `policy_version`* (Task 10). A certificate records the policy it was decided under and
+  the gate never checks it, so a certificate produced under an older policy crosses a boundary
+  governed by a newer one. Recorded, tracked, unfixed.
+- *Fuzz targets* (Task 13). `cargo-fuzz` needs nightly; this workspace is stable-only across every
+  gate. A target CI cannot run is a claim of coverage rather than coverage.
+
+**What the work kept teaching.** Nine of the fourteen tasks turned up something the plan had wrong,
+and the corrections are recorded next to the tasks rather than quietly applied. Twice a prescription
+would have caused the harm it meant to prevent; three times the fix was already in place and the
+task's job was to pin it; twice a rule as written would have refused correct behaviour — a
+multi-sentence quotation, a reading that changes its subject. The plan was written from a careful
+reading of the code, and a careful reading was not enough. What settled each question was running
+something.
+
+**Where the remaining risk sits.** Every gap closed here was a decision reading a field its subject
+could write. The ones left are quieter: a proposal that enters a digest without a schema version, a
+provenance flag the caller still asserts, a policy version nobody compares. None of them is a hole
+today. Each is the same shape as the ones that were.
