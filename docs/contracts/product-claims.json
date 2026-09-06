@@ -322,6 +322,18 @@
         {
           "path": "crates/kernel/tests/interpretation.rs",
           "selector": "a_reading_never_reaches_accepted_however_authoritative_the_source"
+        },
+        {
+          "path": "crates/kernel/tests/arithmetic.rs",
+          "selector": "the_classic_float_sum_is_exact_here"
+        },
+        {
+          "path": "crates/kernel/tests/arithmetic.rs",
+          "selector": "neighbouring_values_are_distinguished_at_any_magnitude"
+        },
+        {
+          "path": "crates/kernel/tests/arithmetic.rs",
+          "selector": "a_result_that_would_not_be_exact_is_refused_rather_than_rounded"
         }
       ]
     },
@@ -1690,6 +1702,74 @@
           "path": "crates/kernel/tests/interpretation.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "a_reading_never_reaches_accepted_however_authoritative_the_source"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-007",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "Kernel arithmetic is exact fixed-point, not floating point: the result does not depend on the order of the operands, neighbouring values are distinguished at any magnitude, and a result that could not be represented exactly is refused rather than rounded.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "decimal-arithmetic-is-exact",
+          "evidence_selectors": [
+            "the_classic_float_sum_is_exact_here"
+          ]
+        },
+        {
+          "assertion": "precision-does-not-fall-away-at-scale",
+          "evidence_selectors": [
+            "neighbouring_values_are_distinguished_at_any_magnitude"
+          ]
+        },
+        {
+          "assertion": "an-inexact-result-is-refused",
+          "evidence_selectors": [
+            "a_result_that_would_not_be_exact_is_refused_rather_than_rounded"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/arithmetic.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "the_classic_float_sum_is_exact_here"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/arithmetic.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "neighbouring_values_are_distinguished_at_any_magnitude"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/arithmetic.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_result_that_would_not_be_exact_is_refused_rather_than_rounded"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-008",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "A kernel proposal is persisted inside certificate bundles without a schema version of its own, so a bundle written by a build whose proposal shape differed does not re-decide and is reported as having missing inputs rather than an unreadable shape.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/kernel/src/ir.rs"
         }
       ]
     },

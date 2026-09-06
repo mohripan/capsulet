@@ -475,7 +475,13 @@ fn special_certificate_schema(name: &str) -> Option<Value> {
                 ("code", string_schema()),
                 ("message", string_schema()),
                 ("repair_owner", string_schema()),
-                ("corrected_value", json!({"type": ["number", "null"]})),
+                // A fixed-point decimal as text, never a JSON number: the
+                // kernel computes exactly, and a number here would invite a
+                // float back into a pipeline that refuses them.
+                (
+                    "corrected_value",
+                    json!({"type": ["string", "null"], "example": "46"}),
+                ),
             ],
         ),
         "Certificate" => certificate_schema(),

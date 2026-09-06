@@ -506,8 +506,9 @@
             "type": "string"
           },
           "corrected_value": {
+            "example": "46",
             "type": [
-              "number",
+              "string",
               "null"
             ]
           },

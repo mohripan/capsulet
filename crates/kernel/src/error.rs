@@ -5,6 +5,8 @@
 //! variants are repairable with no model call at all.
 
 use capsulet_core::ProvenanceError;
+
+use crate::quantity::Quantity;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -77,9 +79,14 @@ pub enum CheckError {
     #[error("{op} of {operands:?} is {computed}, not the claimed {claimed}")]
     ArithMismatch {
         op: &'static str,
-        operands: Vec<f64>,
-        claimed: f64,
-        computed: f64,
+        operands: Vec<Quantity>,
+        claimed: Quantity,
+        computed: Quantity,
+    },
+    #[error("{op} of {operands:?} has no exact result")]
+    ArithNotExact {
+        op: &'static str,
+        operands: Vec<Quantity>,
     },
     #[error("{op} has no operands to compute")]
     ArithNoOperands { op: &'static str },
@@ -95,6 +102,8 @@ pub enum CheckError {
     TrustPremiseNotAttributed { found: String },
     #[error("a reading of {from} as {to} was recorded without saying why")]
     InterpretationWithoutARationale { from: String, to: String },
+    #[error("the proposal has no canonical encoding, so it cannot be pinned: {detail}")]
+    ProposalNotEncodable { detail: String },
     #[error("the derivation nests deeper than the {limit} rules this kernel will walk")]
     DerivationTooDeep { limit: u32 },
     #[error(
@@ -123,9 +132,11 @@ impl CheckError {
             Self::AuthorityBelowFloor { .. } => RepairOwner::Policy,
             Self::TermNotInSpan { .. }
             | Self::ArithNoOperands { .. }
+            | Self::ArithNotExact { .. }
             | Self::UnknownAuthority { .. }
             | Self::TrustPremiseNotAttributed { .. }
             | Self::InterpretationWithoutARationale { .. }
+            | Self::ProposalNotEncodable { .. }
             | Self::DerivationTooDeep { .. }
             | Self::CitedSpanTooLong { .. }
             | Self::GoalNotDerived { .. } => RepairOwner::Proposer,
@@ -144,11 +155,13 @@ impl CheckError {
             Self::TermNotInSpan { .. } => "term_not_in_span",
             Self::ClaimNotActive { .. } => "claim_not_active",
             Self::ArithMismatch { .. } => "arith_mismatch",
+            Self::ArithNotExact { .. } => "arith_not_exact",
             Self::ArithNoOperands { .. } => "arith_no_operands",
             Self::AuthorityBelowFloor { .. } => "authority_below_floor",
             Self::UnknownAuthority { .. } => "unknown_authority",
             Self::TrustPremiseNotAttributed { .. } => "trust_premise_not_attributed",
             Self::InterpretationWithoutARationale { .. } => "interpretation_without_a_rationale",
+            Self::ProposalNotEncodable { .. } => "proposal_not_encodable",
             Self::DerivationTooDeep { .. } => "derivation_too_deep",
             Self::CitedSpanTooLong { .. } => "cited_span_too_long",
             Self::GoalNotDerived { .. } => "goal_not_derived",
@@ -160,7 +173,7 @@ impl CheckError {
     /// Present only for [`RepairOwner::AutoRepairable`] failures, which is what
     /// makes those repairable without calling a model.
     #[must_use]
-    pub fn corrected_value(&self) -> Option<f64> {
+    pub fn corrected_value(&self) -> Option<Quantity> {
         match self {
             Self::ArithMismatch { computed, .. } => Some(*computed),
             _ => None,

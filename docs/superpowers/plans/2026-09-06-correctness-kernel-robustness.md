@@ -287,35 +287,58 @@ more. A policy wanting a particular verifier to have accepted outright sets `min
 
 **Files:** `crates/kernel/src/{ir.rs,lib.rs}`, `crates/kernel/src/tests.rs`
 
-- [ ] Failing tests: summation is order-independent; two values differing by less than the old epsilon
-  are distinguished; at a magnitude where `1e-9` falls below the representable gap, a value no longer
-  compares equal to its neighbour; an unrepresentable decimal is refused rather than rounded.
-- [ ] Replace `operands: Vec<f64>` and `claimed: f64` with an exact scaled integer
-  (`{ units: i128, scale: u8 }`), consistent with the IR's stated no-float rule and the runtime's
-  `i128` progress measure.
-- [ ] Delete `ARITH_EPSILON`. Equality becomes exact, which is the only kind a kernel can defend.
-- [ ] Schema major bump with a compatibility reader. Land with Task 10 to spend one migration.
+- [x] Failing tests: summation is order-independent; `0.1 + 0.2` is exactly `0.3`; neighbouring values
+  are distinguished at a magnitude where the old epsilon fell below the representable gap; a result
+  that would not be exact is refused rather than rounded; trailing zeros round-trip without changing
+  the value.
+- [x] `Quantity` — an `i128` of units and a `u8` scale — replaces `f64` in `Rule::Arith`,
+  `CheckError::ArithMismatch` and `CertificateError::corrected_value`.
+- [x] `ARITH_EPSILON` deleted. Equality is exact, which is the only kind a kernel can defend.
+- [x] `CheckError::ArithNotExact`, because "operands but no exact answer" is not a mismatch: reporting
+  it as one would name a computed value the kernel does not have.
+
+**The wire form is a decimal string, not `{units, scale}`.** `capsulet_ir::Decimal` already
+establishes the convention and says why — "encoded as a JSON string, never as a JSON number: a number
+would invite a float somewhere in the pipeline". Two decimal representations in one repository would
+be a question every reader has to answer twice.
+
+**No division, so no rounding policy.** `Sum`, `Difference`, `Product`, `Min` and `Max` are all
+exactly representable. `MAX_SCALE = 18` keeps a product of two maximally-scaled operands inside an
+`i128`; past that there is no exact answer and the kernel says so rather than rounding.
+
+**No schema bump; the honest signal is coarser than it should be.** The kernel's `Proposal` is a
+persisted document — bundles carry it as a pinned deterministic-family input — and it has no schema
+version of its own, contrary to what `version.rs` states as the rule for every persisted root object.
+So a bundle produced before this change no longer re-decides, and replay reports it as *inputs
+missing* rather than as a shape it cannot read. That fails closed, which is the right direction, but
+the reason is wrong; Task 12 is where that message gets sharpened. Giving `Proposal` its own schema
+version is the real fix and is a task of its own. Recorded as `CAP-CORRECTNESS-007`.
 
 ### Task 7: Canonical bytes for the replay digest
 
 **Files:** `crates/kernel/src/lib.rs`
 
-- [ ] Failing tests: two proposals differing only in map ordering digest identically; a proposal that
-  fails to encode is refused rather than digesting the empty string; the digest agrees with the IR's
-  canonical encoder.
+- [x] `replay_digest` is `capsulet_ir::digest_of`, and its `Result` is handled: a proposal that has no
+  canonical encoding is refused with `CheckError::ProposalNotEncodable` rather than digesting the
+  empty string.
+- [x] The reachable collision is gone with the floats — `serde_json` refuses `NaN`, which was the one
+  input that reached `unwrap_or_default()`.
+
+**Switching encoders changed behaviour, and the change is correct.** The canonical encoder *refuses*
+text that is not Unicode NFC rather than normalising it, so that two spellings of one string cannot
+produce two digests. A proposal carrying decomposed text is therefore now refused outright. That is
+not in tension with Task 8: a *document* is whatever was ingested and its composition must not decide
+a citation, while a *proposal* enters a digest and is asked to be normalised rather than having it
+done for it — which would make the digest depend on who did the normalising. Both directions have
+tests.
 - [ ] `replay_digest` calls `serde_json::to_string(proposal).unwrap_or_default()`, so it neither uses
   the canonical encoding the rest of the system is built on, nor survives an encoding failure — every
   failed proposal collapses to the digest of `""`, and so to each other.
 
-**Blocked on Task 6.** The canonical encoder refuses floating point outright — that is `CAP-IR-001`,
-and `serialize_f64` returns an error. While `Rule::Arith` carries `f64`, switching `replay_digest` to
-it would refuse every arithmetic proposal rather than digest it. The two tasks are one change in
-practice: remove the floats, then the canonical encoder becomes usable here.
-
-The reachable collision today is the same floats: `serde_json` refuses to serialize `NaN`, so an
-`Arith` rule carrying one hits `unwrap_or_default()` and every such proposal digests to the empty
-string — and therefore to each other, in the field that ties a certificate to the proposal it
-decided.
+**This was blocked on Task 6, and the plan did not say so.** The canonical encoder refuses floating
+point outright — `CAP-IR-001`, and `serialize_f64` returns an error — so while `Rule::Arith` carried
+`f64`, switching to it would have refused every arithmetic proposal rather than digesting it. The two
+are one change, and landed as one.
 
 ### Task 8: Grounding that means containment
 

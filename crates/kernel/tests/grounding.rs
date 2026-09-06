@@ -70,30 +70,51 @@ fn decide(document: &str, subject: &str, object: &str) -> Verdict {
 
 #[test]
 fn composition_does_not_change_what_a_document_says() {
-    // The same word, written two ways Unicode considers equivalent: "é" as one
-    // codepoint, and "e" followed by a combining acute. A model quoting from a
-    // decomposed source and a store holding the composed form are quoting the
-    // same text, and a citation that turns on which encoding was used is
-    // rejecting a true statement about the document.
-    let composed = "Acme renewed the caf\u{00E9} contract.";
-    let decomposed_object = "cafe\u{0301}";
+    // The stored document is whatever was ingested, and a source that writes "é"
+    // as "e" plus a combining acute says the same thing as one that writes it as
+    // a single codepoint. A citation that turned on which encoding the document
+    // happened to use would be rejecting a true statement about it.
+    let decomposed_document = "Acme renewed the cafe\u{0301} contract.";
+    let composed_object = "caf\u{00E9}";
 
     assert!(
-        !composed.contains(decomposed_object),
+        !decomposed_document.contains(composed_object),
         "the fixture is only meaningful if the two forms differ byte for byte"
     );
 
     assert_eq!(
-        decide(composed, "Acme", decomposed_object),
+        decide(decomposed_document, "Acme", composed_object),
         Verdict::Accepted,
         "a citation should survive a difference in Unicode composition"
     );
 }
 
 #[test]
-fn composition_is_normalised_in_both_directions() {
-    let decomposed = "Acme renewed the cafe\u{0301} contract.";
-    assert_eq!(decide(decomposed, "Acme", "caf\u{00E9}"), Verdict::Accepted);
+fn a_proposal_that_is_not_normalised_cannot_be_pinned() {
+    // The other direction is not symmetric, and should not be. A *document* is
+    // whatever it is; a *proposal* enters a digest, and the IR's canonical
+    // encoding refuses text that is not NFC so that two spellings of one string
+    // cannot produce two digests. A proposer emitting decomposed text is asked
+    // to normalise it rather than having it normalised for them, which would
+    // make the digest depend on who did the normalising.
+    let document = "Acme renewed the caf\u{00E9} contract.";
+    let decomposed_object = "cafe\u{0301}";
+
+    let certificate = check(&cite("Acme", decomposed_object), &snapshot_over(document));
+
+    assert_eq!(certificate.verdict, Verdict::Rejected);
+    assert!(
+        certificate
+            .errors
+            .iter()
+            .any(|error| error.code == "proposal_not_encodable"),
+        "expected the refusal to be about pinning, got {:?}",
+        certificate
+            .errors
+            .iter()
+            .map(|error| error.code.as_str())
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]

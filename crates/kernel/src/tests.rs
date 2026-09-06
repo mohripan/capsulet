@@ -3,7 +3,12 @@ use capsulet_core::{
     EvidenceSpan, MemoryScope, Source, SourceContent, SourceId,
 };
 
+use crate::quantity::Quantity;
 use crate::{ArithOp, Proposal, Proposition, Rule, Snapshot, Verdict, check, error::RepairOwner};
+
+fn q(text: &str) -> Quantity {
+    Quantity::parse(text).expect("a fixed-point decimal")
+}
 
 const DOC: &str = "Acme renewed the Contoso contract on 2026-03-01. Notice is 30 days.";
 
@@ -249,8 +254,8 @@ fn recomputes_arithmetic_and_reports_the_correct_value() {
         goal: goal.clone(),
         derivation: Rule::Arith {
             op: ArithOp::Sum,
-            operands: vec![20.0, 26.0],
-            claimed: 47.0,
+            operands: vec![q("20"), q("26")],
+            claimed: q("47"),
             proposition: goal,
         },
     };
@@ -260,7 +265,7 @@ fn recomputes_arithmetic_and_reports_the_correct_value() {
     assert_eq!(certificate.verdict, Verdict::Rejected);
     assert_eq!(certificate.errors[0].code, "arith_mismatch");
     // The kernel already knows the answer, so no model call is needed to fix it.
-    assert_eq!(certificate.errors[0].corrected_value, Some(46.0));
+    assert_eq!(certificate.errors[0].corrected_value, Some(q("46")));
     assert!(certificate.is_auto_repairable());
 }
 
@@ -272,8 +277,8 @@ fn accepts_arithmetic_that_recomputes() {
         goal: goal.clone(),
         derivation: Rule::Arith {
             op: ArithOp::Sum,
-            operands: vec![20.0, 26.0],
-            claimed: 46.0,
+            operands: vec![q("20"), q("26")],
+            claimed: q("46"),
             proposition: goal,
         },
     };

@@ -22,6 +22,7 @@ pub mod certificate;
 pub mod error;
 pub mod family;
 pub mod ir;
+pub mod quantity;
 pub mod replay;
 pub mod snapshot;
 pub mod snapshot_document;
@@ -34,16 +35,11 @@ pub use certificate::{Certificate, CertificateError, DischargedStep, Residual, V
 pub use error::{CheckError, RepairOwner};
 pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};
 pub use ir::{ArithOp, Judgment, Proposal, Proposition, Rule};
+pub use quantity::{MAX_SCALE, Quantity, QuantityError};
 pub use replay::{EvidenceMap, EvidenceSource, ReplayFinding, ReplayNote, ReplayOutcome, replay};
 pub use snapshot::Snapshot;
 pub use snapshot_document::SnapshotDocument;
 pub use workflow::{Assembly, KERNEL_VERSION, certify};
-
-/// Difference below which two computed numbers are considered equal.
-///
-/// Proposers emit decimal literals, so exact float equality would reject
-/// arithmetic that is correct to every digit anyone wrote down.
-const ARITH_EPSILON: f64 = 1e-9;
 
 /// The deepest chain of nested rules the kernel will walk.
 ///
@@ -104,6 +100,13 @@ pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
         return refused_as_too_deep(proposal);
     }
 
+    // Computed before any checking, because a proposal nobody can pin is one no
+    // certificate can be about.
+    let replay_digest = match replay_digest(proposal) {
+        Ok(digest) => digest,
+        Err(source) => return refused_as_unencodable(proposal, &source),
+    };
+
     let mut state = CheckState::default();
     let outcome = derive(&proposal.derivation, snapshot, &mut state, 1);
 
@@ -141,9 +144,20 @@ pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
                 corrected_value: error.corrected_value(),
             })
             .collect(),
-        replay_digest: replay_digest(proposal),
+        replay_digest,
         derivation_depth_limit: Some(MAX_DERIVATION_DEPTH),
     }
+}
+
+/// The certificate for a proposal the kernel could not pin.
+fn refused_as_unencodable(
+    proposal: &Proposal,
+    source: &capsulet_ir::CanonicalError,
+) -> Certificate {
+    let error = CheckError::ProposalNotEncodable {
+        detail: source.to_string(),
+    };
+    refusal(proposal, "proposal-not-encodable", &error)
 }
 
 /// Whether the derivation nests past [`MAX_DERIVATION_DEPTH`].
@@ -177,6 +191,16 @@ fn refused_as_too_deep(proposal: &Proposal) -> Certificate {
     let error = CheckError::DerivationTooDeep {
         limit: MAX_DERIVATION_DEPTH,
     };
+    refusal(proposal, "derivation-too-deep", &error)
+}
+
+/// A certificate for a proposal the kernel turned away without reading.
+///
+/// The derivation is not digested — encoding it is the very thing that could not
+/// be done, or must not be — so the digest covers the goal and the reason. That
+/// is an honest identifier for a proposal refused at the door, rather than one
+/// pretending to pin bytes nobody looked at.
+fn refusal(proposal: &Proposal, reason: &str, error: &CheckError) -> Certificate {
     Certificate {
         verdict: Verdict::Rejected,
         goal: proposal.goal.clone(),
@@ -189,7 +213,7 @@ fn refused_as_too_deep(proposal: &Proposal) -> Certificate {
             corrected_value: error.corrected_value(),
         }],
         replay_digest: capsulet_core::content_digest(
-            format!("derivation-too-deep|{}", proposal.goal.canonical()).as_bytes(),
+            format!("{reason}|{}", proposal.goal.canonical()).as_bytes(),
         ),
         derivation_depth_limit: Some(MAX_DERIVATION_DEPTH),
     }
@@ -429,18 +453,29 @@ fn derive_trust(
 /// right one is already known.
 fn derive_arith(
     op: ArithOp,
-    operands: &[f64],
-    claimed: f64,
+    operands: &[Quantity],
+    claimed: Quantity,
     proposition: &Proposition,
     state: &mut CheckState,
 ) -> Option<Judgment> {
-    let Some(computed) = op.apply(operands) else {
+    if operands.is_empty() {
         state
             .errors
             .push(CheckError::ArithNoOperands { op: op.as_str() });
         return None;
+    }
+    let Some(computed) = op.apply(operands) else {
+        // Operands there were, but no exact answer to be had. Reporting that as
+        // a mismatch would name a "computed" value the kernel does not have.
+        state.errors.push(CheckError::ArithNotExact {
+            op: op.as_str(),
+            operands: operands.to_vec(),
+        });
+        return None;
     };
-    if (computed - claimed).abs() > ARITH_EPSILON {
+    // Exact equality, because the values are exact. There is no tolerance left
+    // to tune and nothing for a rounding difference to hide behind.
+    if computed != claimed {
         state.errors.push(CheckError::ArithMismatch {
             op: op.as_str(),
             operands: operands.to_vec(),
@@ -574,9 +609,21 @@ const fn authority_rank(authority: Authority) -> u8 {
 }
 
 /// Digest over the proposal, so a certificate names the exact input it decided.
-fn replay_digest(proposal: &Proposal) -> String {
-    let serialized = serde_json::to_string(proposal).unwrap_or_default();
-    capsulet_core::content_digest(serialized.as_bytes())
+/// The digest that ties a certificate to the exact proposal it decided.
+///
+/// Over the IR's canonical bytes, not `serde_json`. Two encoders that disagree
+/// about byte order or number formatting produce two digests for one proposal,
+/// and the digest is the thing that says which proposal this was.
+///
+/// It used to be `serde_json::to_string(proposal).unwrap_or_default()`, which
+/// had a sharper edge than the encoder choice: on failure it digested the empty
+/// string, so *every* proposal that would not serialize shared one digest. The
+/// reachable case was a float — `serde_json` refuses `NaN` — which the exact
+/// quantities have since removed. The `Result` is handled either way, because a
+/// proposal that cannot be encoded cannot be pinned, and pretending otherwise is
+/// how the collision existed in the first place.
+fn replay_digest(proposal: &Proposal) -> Result<String, capsulet_ir::CanonicalError> {
+    capsulet_ir::digest_of(proposal).map(|digest| digest.to_string())
 }
 
 #[cfg(test)]

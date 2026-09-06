@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::quantity::Quantity;
+
 /// A statement about the world, in subject-predicate-object form.
 ///
 /// Kept deliberately flat: the kernel's job is to decide whether a proposition
@@ -92,20 +94,31 @@ pub enum ArithOp {
 }
 
 impl ArithOp {
+    /// The exact result, or `None` when there is not one.
+    ///
+    /// `None` covers both an empty operand list and a result that would not fit
+    /// exactly. Neither has an honest answer, and returning an approximate one
+    /// is what this type exists to stop.
     #[must_use]
-    pub fn apply(self, operands: &[f64]) -> Option<f64> {
-        if operands.is_empty() {
-            return None;
+    pub fn apply(self, operands: &[Quantity]) -> Option<Quantity> {
+        let (first, rest) = operands.split_first()?;
+        let mut accumulated = *first;
+        for operand in rest {
+            accumulated = match self {
+                Self::Sum => accumulated.checked_add(*operand)?,
+                Self::Difference => accumulated.checked_sub(*operand)?,
+                Self::Product => accumulated.checked_mul(*operand)?,
+                Self::Min | Self::Max => {
+                    let ordering = accumulated.partial_cmp_exact(*operand)?;
+                    let take_operand = match self {
+                        Self::Min => ordering.is_gt(),
+                        _ => ordering.is_lt(),
+                    };
+                    if take_operand { *operand } else { accumulated }
+                }
+            };
         }
-        Some(match self {
-            Self::Sum => operands.iter().sum(),
-            Self::Difference => operands[1..]
-                .iter()
-                .fold(operands[0], |acc, value| acc - value),
-            Self::Product => operands.iter().product(),
-            Self::Min => operands.iter().copied().fold(f64::INFINITY, f64::min),
-            Self::Max => operands.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-        })
+        Some(accumulated)
     }
 
     #[must_use]
@@ -152,8 +165,8 @@ pub enum Rule {
     /// Recomputes a numeric result rather than trusting the proposer's value.
     Arith {
         op: ArithOp,
-        operands: Vec<f64>,
-        claimed: f64,
+        operands: Vec<Quantity>,
+        claimed: Quantity,
         proposition: Proposition,
     },
     /// The step no kernel can take.

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{error::RepairOwner, ir::Proposition};
+use crate::{error::RepairOwner, ir::Proposition, quantity::Quantity};
 
 /// The three-valued outcome.
 ///
@@ -57,8 +57,13 @@ pub struct CertificateError {
     pub code: String,
     pub message: String,
     pub repair_owner: String,
+    /// The value the kernel computed, when it knows the right answer.
+    ///
+    /// A decimal string, never a JSON number: this travels to clients and into
+    /// digests, and a number would invite a float back into a pipeline that
+    /// refuses them.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub corrected_value: Option<f64>,
+    pub corrected_value: Option<Quantity>,
 }
 
 /// The kernel's decision on one proposal.
