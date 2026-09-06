@@ -7,6 +7,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
 | `CAP-ASSURANCE-003` | implemented | capability | A boundary's required contract is satisfied by covering it, not by naming it: the gate reads the contract's obligations from the definition and denies the crossing when the certificate leaves any of them unaccounted for, naming which. |
+| `CAP-ASSURANCE-004` | implemented | capability | A boundary is judged on the contract it names: an undecided obligation of another contract does not deny the crossing, while an obligation that was checked and failed denies it wherever it sits, and a contract the certificate says nothing about is unverified. |
 
 ## Assurance policy
 

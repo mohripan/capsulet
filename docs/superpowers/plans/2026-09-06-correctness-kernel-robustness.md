@@ -238,13 +238,28 @@ computed.
 
 **Files:** `crates/ir/src/correctness/certificate.rs`, `crates/ir/src/assurance.rs`, tests
 
-- [ ] Failing tests: a certificate whose only residual is on contract Y still opens a boundary
-  requiring X at `minimum: Accepted`; the overall verdict remains the meet of the per-contract
-  verdicts; a residual on X denies an X boundary.
-- [ ] `AssuranceVerdict::for_contract(mode, contract, obligations)`, with the global verdict derived
-  from it rather than the other way round.
-- [ ] The motivating failure is a false *denial*, which is the safe direction but pushes operators to
+- [x] Failing tests: a certificate whose only residual is on contract Y still opens a boundary
+  requiring X at `minimum: Accepted`; the overall verdict is the weakest of the per-contract
+  verdicts; a residual on X denies an X boundary; a failure anywhere denies; a contract the
+  certificate is silent about is `Unverified`.
+- [x] `AssuranceVerdict::for_contract(mode, contract, obligations)`, used by the gate whenever the
+  boundary names a contract.
+- [x] The motivating failure is a false *denial*, which is the safe direction but pushes operators to
   lower a boundary's minimum to get unrelated work through — trading a precise gate for a blunt one.
+
+**Residuals are scoped; failures are not.** An undecided obligation of another contract is an absence
+of information about this one. An obligation that was *checked and did not hold* is information: the
+run produced something known to be wrong, and releasing an effect from it on the strength of an
+unrelated contract would be the same passing-check-of-the-wrong-property this layer exists to refuse.
+So `for_contract` scopes residuals to their contract and lets a failure anywhere reject.
+
+**Silence is not acceptance.** A contract with no obligations on the certificate is `Unverified`,
+never `Accepted` — the vacuous reading is the same shape as the hole Task 3 closed, and
+`from_obligations` already had the right instinct for the empty case.
+
+**The global verdict is unchanged.** It stays the run's summary and remains the weakest of the
+per-contract verdicts; nothing about sealing or `CertificateBody::check` moves. A gate that disagreed
+with the certificate it was reading would be worse than either rule alone.
 
 ### Task 5: Verifier identity means identity
 

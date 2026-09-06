@@ -495,6 +495,18 @@
         {
           "path": "crates/ir/tests/assurance.rs",
           "selector": "a_policy_wide_required_contract_is_enforced"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_residual_on_another_contract_does_not_deny_this_boundary"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_failure_anywhere_denies_however_well_this_contract_went"
+        },
+        {
+          "path": "crates/ir/tests/assurance.rs",
+          "selector": "a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted"
         }
       ]
     },
@@ -1403,6 +1415,57 @@
           "path": "crates/ir/tests/assurance.rs",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_policy_wide_required_contract_is_enforced"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-004",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Assurance decisions",
+      "statement": "A boundary is judged on the contract it names: an undecided obligation of another contract does not deny the crossing, while an obligation that was checked and failed denies it wherever it sits, and a contract the certificate says nothing about is unverified.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "residuals-are-scoped-to-their-contract",
+          "evidence_selectors": [
+            "a_residual_on_another_contract_does_not_deny_this_boundary"
+          ]
+        },
+        {
+          "assertion": "failures-are-not-scoped",
+          "evidence_selectors": [
+            "a_failure_anywhere_denies_however_well_this_contract_went"
+          ]
+        },
+        {
+          "assertion": "silence-is-not-acceptance",
+          "evidence_selectors": [
+            "a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_residual_on_another_contract_does_not_deny_this_boundary"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_failure_anywhere_denies_however_well_this_contract_went"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/assurance.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted"
         }
       ]
     },

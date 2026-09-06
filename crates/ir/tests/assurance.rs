@@ -67,6 +67,34 @@ fn obligation_of(name: &str, contract: &str) -> Obligation {
     }
 }
 
+/// An obligation of a named contract, left open.
+fn open_of(name: &str, contract: &str) -> Obligation {
+    Obligation {
+        contract: id(contract),
+        ..obligation(
+            name,
+            DischargeState::Residual {
+                rationale: "nobody has checked this".to_string(),
+                evidence: vec![],
+            },
+        )
+    }
+}
+
+/// An obligation of a named contract, checked and found not to hold.
+fn failed_of(name: &str, contract: &str) -> Obligation {
+    Obligation {
+        contract: id(contract),
+        ..obligation(
+            name,
+            DischargeState::Failed {
+                reason: "it did not hold".to_string(),
+                owner: RepairOwner::Verifier,
+            },
+        )
+    }
+}
+
 fn certificate_for(
     definition: &Definition,
     mode: AssuranceMode,
@@ -556,6 +584,154 @@ fn obligations_beyond_the_contract_do_not_stop_a_crossing() {
         BoundaryDecision::Allowed {
             verdict: AssuranceVerdict::Accepted
         }
+    );
+}
+
+#[test]
+fn a_residual_on_another_contract_does_not_deny_this_boundary() {
+    // Everything the boundary's contract asked for is discharged. Something
+    // else in the run was never decided. Before verdicts were per-contract the
+    // global `conditional` denied this crossing — a false denial, and the kind
+    // that pushes an operator to lower the boundary's minimum and lose the
+    // precision entirely.
+    let both = definition_with_scan(AssuranceMode::Enforce);
+    let enforced = certificate_for(
+        &both,
+        AssuranceMode::Enforce,
+        vec![
+            discharged("compiles"),
+            open_of("no-secrets-in-output", "scanned-under-named-rules"),
+        ],
+    );
+    assert_eq!(
+        enforced.verdict(),
+        AssuranceVerdict::Conditional,
+        "the run as a whole is conditional"
+    );
+
+    let decision = decide_boundary(
+        &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Allowed {
+            verdict: AssuranceVerdict::Accepted
+        },
+        "the boundary is about `patch-compiles`, and `patch-compiles` was fully discharged"
+    );
+}
+
+#[test]
+fn a_residual_on_this_contract_still_denies_the_boundary() {
+    let both = definition_with_scan(AssuranceMode::Enforce);
+    let enforced = certificate_for(
+        &both,
+        AssuranceMode::Enforce,
+        vec![
+            open_of("compiles", "patch-compiles"),
+            obligation_of("no-secrets-in-output", "scanned-under-named-rules"),
+        ],
+    );
+
+    let decision = decide_boundary(
+        &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::VerdictBelowMinimum {
+                required: AssuranceVerdict::Accepted,
+                found: AssuranceVerdict::Conditional,
+            }
+        }
+    );
+}
+
+#[test]
+fn a_failure_anywhere_denies_however_well_this_contract_went() {
+    // The asymmetry is deliberate. An undecided obligation of another contract
+    // says nothing about this one. An obligation that was checked and did not
+    // hold says the run produced something known to be wrong, and letting an
+    // effect out of it on the strength of an unrelated contract is the "passing
+    // check of the wrong property" this gate exists to refuse.
+    let both = definition_with_scan(AssuranceMode::Enforce);
+    let enforced = certificate_for(
+        &both,
+        AssuranceMode::Enforce,
+        vec![
+            discharged("compiles"),
+            failed_of("no-secrets-in-output", "scanned-under-named-rules"),
+        ],
+    );
+
+    let decision = decide_boundary(
+        &policy(AssuranceVerdict::Accepted, AssuranceMode::Enforce),
+        AssuranceMode::Enforce,
+        &both,
+        Some(&enforced),
+        &id("publish-boundary"),
+    );
+
+    assert_eq!(
+        decision,
+        BoundaryDecision::Denied {
+            reason: DenialReason::VerdictBelowMinimum {
+                required: AssuranceVerdict::Accepted,
+                found: AssuranceVerdict::Rejected,
+            }
+        }
+    );
+}
+
+#[test]
+fn the_overall_verdict_is_the_weakest_of_the_per_contract_verdicts() {
+    // The global verdict is not replaced by the per-contract one; it stays the
+    // summary, and it is exactly the meet. A drift between the two would mean
+    // the gate and the certificate disagreed about the same run.
+    let obligations = vec![
+        discharged("compiles"),
+        open_of("no-secrets-in-output", "scanned-under-named-rules"),
+    ];
+    let compiles =
+        AssuranceVerdict::for_contract(AssuranceMode::Enforce, &id("patch-compiles"), &obligations);
+    let scanned = AssuranceVerdict::for_contract(
+        AssuranceMode::Enforce,
+        &id("scanned-under-named-rules"),
+        &obligations,
+    );
+
+    assert_eq!(compiles, AssuranceVerdict::Accepted);
+    assert_eq!(scanned, AssuranceVerdict::Conditional);
+    assert_eq!(
+        AssuranceVerdict::under_mode(AssuranceMode::Enforce, &obligations),
+        AssuranceVerdict::Conditional,
+        "the weaker of the two"
+    );
+}
+
+#[test]
+fn a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted() {
+    // Vacuous truth is the trap here: no obligations of a contract must not
+    // read as "every obligation of it was discharged".
+    let obligations = vec![discharged("compiles")];
+
+    assert_eq!(
+        AssuranceVerdict::for_contract(
+            AssuranceMode::Enforce,
+            &id("scanned-under-named-rules"),
+            &obligations,
+        ),
+        AssuranceVerdict::Unverified
     );
 }
 

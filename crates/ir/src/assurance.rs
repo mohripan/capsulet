@@ -63,6 +63,57 @@ impl AssuranceVerdict {
             Self::Unverified
         }
     }
+
+    /// The verdict one contract's obligations justify.
+    ///
+    /// A boundary asks about a particular property, and the run's other
+    /// properties are not evidence about it either way. An obligation of some
+    /// other contract that nobody got round to deciding says nothing here, and
+    /// letting it drag this verdict down produces a *false denial* — safe in
+    /// direction, but it pushes an operator to lower the boundary's minimum to
+    /// get unrelated work through, trading a precise gate for a blunt one.
+    ///
+    /// A failure is treated differently, and the asymmetry is deliberate. An
+    /// undecided obligation is an absence of information. An obligation that was
+    /// checked and did not hold is information: the run produced something known
+    /// to be wrong, and releasing an effect from it on the strength of an
+    /// unrelated contract is exactly the passing check of the wrong property
+    /// this layer exists to refuse. So residuals are scoped to their contract
+    /// and failures are not.
+    ///
+    /// A contract the certificate says nothing about is `Unverified`, never
+    /// `Accepted`. "No obligations of this contract" must not read as "every
+    /// obligation of it was discharged" — that vacuous truth is the shape of the
+    /// hole [`crate::coverage`] closed.
+    #[must_use]
+    pub fn for_contract(
+        mode: AssuranceMode,
+        contract: &Identifier,
+        obligations: &[Obligation],
+    ) -> Self {
+        if !mode.evaluates_obligations() {
+            return Self::Unverified;
+        }
+        if obligations.iter().any(Obligation::has_failed) {
+            return Self::Rejected;
+        }
+
+        let mut seen = false;
+        let mut outstanding = false;
+        for obligation in obligations
+            .iter()
+            .filter(|obligation| &obligation.contract == contract)
+        {
+            seen = true;
+            outstanding |= obligation.is_outstanding();
+        }
+
+        match (seen, outstanding) {
+            (false, _) => Self::Unverified,
+            (true, true) => Self::Conditional,
+            (true, false) => Self::Accepted,
+        }
+    }
 }
 
 /// What a policy demands before one boundary may be crossed.
@@ -334,13 +385,22 @@ pub fn decide_boundary(
         }
     }
 
-    if verdict.satisfies(required.minimum) {
-        BoundaryDecision::Allowed { verdict }
+    // Judged on the contract this boundary is about, under the mode the
+    // certificate was decided in — so the gate and the certificate cannot
+    // disagree about the same run. A boundary naming no contract is judged on
+    // the run as a whole, which is all there is to go on.
+    let gated = match &required.contract {
+        Some(contract) => AssuranceVerdict::for_contract(body.mode, contract, &body.obligations),
+        None => verdict,
+    };
+
+    if gated.satisfies(required.minimum) {
+        BoundaryDecision::Allowed { verdict: gated }
     } else {
         BoundaryDecision::Denied {
             reason: DenialReason::VerdictBelowMinimum {
                 required: required.minimum,
-                found: verdict,
+                found: gated,
             },
         }
     }
