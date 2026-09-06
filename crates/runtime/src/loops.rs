@@ -18,6 +18,8 @@
 //! Nothing here executes an iteration. It produces the events a worker appends
 //! and reads the ones already appended.
 
+use std::collections::BTreeSet;
+
 use capsulet_ir::id::Identifier;
 use capsulet_ir::loop_region::{
     BudgetKind, FailureKind, IterationRecord, LoopSpec, ProgressDirection, ProgressMeasure, Route,
@@ -94,18 +96,17 @@ pub fn repair(
     }
 }
 
-/// Which bound, if any, a loop has reached.
+/// Which consumption bound, if any, a loop has reached.
 ///
-/// Counted from iterations *started*, because an iteration that began and then
-/// crashed still spent what it spent.
+/// Wall time, tokens, cost, and effects are spent continuously, so reaching one
+/// stops the loop wherever it is. The iteration count is not: it bounds how
+/// many times the loop may go round, and is checked when one is about to start
+/// by [`iterations_exhausted`]. Checking it here too would stop the last
+/// permitted iteration half-way through, throwing away the work it had done and
+/// leaving no record that it ran.
 #[must_use]
-pub fn exhausted(spec: &LoopSpec, progress: &LoopProgress, state: &RunState) -> Option<StopReason> {
+pub fn exhausted(spec: &LoopSpec, state: &RunState) -> Option<StopReason> {
     let spent = state.spent();
-    if progress.started >= spec.budget.max_iterations {
-        return Some(StopReason::BudgetExhausted {
-            budget: BudgetKind::Iterations,
-        });
-    }
     if spent.wall_ms >= spec.budget.wall_ms {
         return Some(StopReason::BudgetExhausted {
             budget: BudgetKind::WallTime,
@@ -127,6 +128,18 @@ pub fn exhausted(spec: &LoopSpec, progress: &LoopProgress, state: &RunState) -> 
         });
     }
     None
+}
+
+/// Whether another iteration would exceed the declared count.
+///
+/// Counted from iterations *started*, because one that began and then crashed
+/// still spent what it spent. A restart that handed the count back would let a
+/// crash loop go round forever inside a bound that says it cannot.
+#[must_use]
+pub fn iterations_exhausted(spec: &LoopSpec, progress: &LoopProgress) -> Option<StopReason> {
+    (progress.started >= spec.budget.max_iterations).then_some(StopReason::BudgetExhausted {
+        budget: BudgetKind::Iterations,
+    })
 }
 
 /// The invariant that did not hold, if one did not.
@@ -170,11 +183,20 @@ pub fn non_progress(measure: &ProgressMeasure, progress: &LoopProgress) -> Optio
 /// Written before the iteration runs, so a crash inside it still spent the
 /// iteration. That is deliberate: a budget that only counts what finished is a
 /// budget a crash loop can spend forever.
+///
+/// `members` are the region's nodes. Opening an iteration resets them so they
+/// can run again, and naming them in the event lets the fold do that without a
+/// definition to consult.
 #[must_use]
-pub fn iteration_started(region: &Identifier, index: u32) -> RunEvent {
+pub fn iteration_started(
+    region: &Identifier,
+    index: u32,
+    members: BTreeSet<Identifier>,
+) -> RunEvent {
     RunEvent::IterationStarted {
         region: region.clone(),
         index,
+        members,
     }
 }
 

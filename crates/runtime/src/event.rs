@@ -13,7 +13,7 @@
 //! Every event carries the fencing epoch it was written under, so a worker that
 //! lost its lease and did not notice cannot append to a run it no longer owns.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::AssuranceMode;
@@ -36,6 +36,45 @@ impl Epoch {
     #[must_use]
     pub const fn next(self) -> Self {
         Self(self.0 + 1)
+    }
+}
+
+/// A value a decision has to be taken on.
+///
+/// Node outputs travel as digests, so a large one does not end up in the log.
+/// That is right for a value the run carries and wrong for a value the run has
+/// to *read*: nobody can evaluate a loop's continuation condition from a
+/// digest. The IR already names exactly which ports are decision-relevant — a
+/// continuation, an invariant, a progress measure — and those, and only those,
+/// are recorded as values.
+///
+/// Both cases are exact. There is no floating point here for the same reason
+/// there is none in the IR: a decision that depends on a value nobody can
+/// reproduce bit-for-bit is a decision nobody can replay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ControlValue {
+    Bool { value: bool },
+    Integer { value: i128 },
+}
+
+impl ControlValue {
+    /// The boolean this is, if it is one.
+    #[must_use]
+    pub const fn as_bool(self) -> Option<bool> {
+        match self {
+            Self::Bool { value } => Some(value),
+            Self::Integer { .. } => None,
+        }
+    }
+
+    /// The integer this is, if it is one.
+    #[must_use]
+    pub const fn as_integer(self) -> Option<i128> {
+        match self {
+            Self::Integer { value } => Some(value),
+            Self::Bool { .. } => None,
+        }
     }
 }
 
@@ -73,6 +112,19 @@ pub enum RunFailure {
     },
     /// A budget ran out at the run level.
     BudgetExhausted { resource: String },
+    /// A loop declared a continuation, an invariant, or a progress measure, and
+    /// the node that was supposed to evaluate it reported nothing.
+    ///
+    /// The run stops rather than assuming a value. Assuming `true` would loop
+    /// forever on a check that never ran; assuming `false` would report a loop
+    /// as finished when nothing checked whether it was.
+    ControlMissing {
+        region: Identifier,
+        node: Identifier,
+        port: String,
+        /// What kind of reading the declaration needed.
+        expected: String,
+    },
     /// A loop stopped for a reason that is not the loop finishing its work.
     ///
     /// Carried rather than flattened into a message, because "the repair budget
@@ -115,6 +167,11 @@ pub enum RunEvent {
         node: Identifier,
         /// Output values by port, content-addressed.
         outputs: BTreeMap<String, Digest>,
+        /// The decision-relevant readings this node produced, by port. Only the
+        /// ports a loop declares as its continuation, an invariant, or a
+        /// progress measure belong here; everything else is an output.
+        #[serde(default)]
+        control: BTreeMap<String, ControlValue>,
     },
     NodeFailed {
         node: Identifier,
@@ -158,6 +215,14 @@ pub enum RunEvent {
     IterationStarted {
         region: Identifier,
         index: u32,
+        /// The region's nodes, named here rather than looked up.
+        ///
+        /// Starting an iteration resets them so they can run again, and the
+        /// fold has no definition to ask which nodes those are. Carrying them
+        /// makes the log say what it did without a reader needing the
+        /// definition to interpret it.
+        #[serde(default)]
+        members: BTreeSet<Identifier>,
     },
     IterationFinished {
         region: Identifier,

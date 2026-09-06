@@ -10,28 +10,31 @@
 //!
 //! The executor is deliberately *not* discarded between restarts. It stands in
 //! for the world outside the run, and the world does not restart when a worker
-//! does. That is what makes "the effect happened twice" observable here.
+//! does. That is what makes "the effect happened twice" observable here — and
+//! what makes "the loop went round an extra time" observable too, since the
+//! executor counts how often the body ran.
 
 mod support;
 
 use std::sync::Arc;
 
-use capsulet_graph_worker::{EffectOutcome, GraphWorker, Progress, WorkerConfig};
-use capsulet_ir::correctness::evidence::RecordedTime;
+use capsulet_graph_worker::{EffectOutcome, GraphWorker, NodeOutcome, Progress, WorkerConfig};
 use capsulet_ir::effect::Idempotency;
+use capsulet_ir::loop_region::StopReason;
 use capsulet_postgres::PostgresStore;
-use capsulet_runtime::{RunEvent, RunState, RunStatus};
+use capsulet_runtime::event::ControlValue;
+use capsulet_runtime::{RunState, RunStatus};
 
 use support::{
-    NOW, ScriptedExecutor, TestClock, admission, chaos_definition, fixture_id, id, iteration,
-    seeded_run, store,
+    NOW, ScriptedExecutor, TestClock, admission, chaos_definition, fixture_id, id, seeded_run,
+    store,
 };
 
 /// How many decisions in the worker is killed, across the scenarios.
 ///
-/// Twelve is past the end of the longest run this fixture produces, so the last
-/// few scenarios are the uninterrupted case — which is worth running too.
-const KILL_POINTS: u32 = 12;
+/// Past the end of the longest run this fixture produces, so the last few
+/// scenarios are the uninterrupted case — which is worth running too.
+const KILL_POINTS: u32 = 24;
 
 /// Simulates the crash: the worker is dropped, and the lease it never released
 /// ages out so somebody else can take the run.
@@ -57,11 +60,25 @@ async fn a_run_survives_the_worker_dying_at_every_step_boundary() {
             },
         );
         let (tenant, project, run_id) = seeded_run(&store, &definition).await;
-        seed_loop_history(&store, &tenant, &project, &run_id).await;
 
         // One executor for the whole scenario. It is the far side, and the far
         // side does not forget what it was asked to do when a worker dies.
         let executor = Arc::new(ScriptedExecutor::new());
+        // The loop goes round twice and then says stop. Nothing seeds that
+        // history: the worker opens each iteration, runs the body, and reads
+        // the answer the executor gave.
+        executor.node_sequence(
+            "check",
+            (0..=2)
+                .map(|round| NodeOutcome::Finished {
+                    outputs: std::collections::BTreeMap::new(),
+                    control: std::collections::BTreeMap::from([(
+                        "keep-going".to_string(),
+                        ControlValue::Bool { value: round < 2 },
+                    )]),
+                })
+                .collect(),
+        );
         executor.effects(vec![
             // The first attempt is the awkward one: the request went out and
             // the answer never came back.
@@ -121,57 +138,6 @@ async fn a_run_survives_the_worker_dying_at_every_step_boundary() {
     }
 }
 
-/// Puts two finished loop iterations into the log before the worker touches it.
-///
-/// The worker does not drive loop iterations yet — deciding when one begins is
-/// region-execution semantics that arrives with node providers — so the loop
-/// history is seeded rather than produced. What is under test here is that the
-/// history survives every restart, which is a property of the log and the fold
-/// and is exactly as real either way.
-async fn seed_loop_history(store: &PostgresStore, tenant: &str, project: &str, run_id: &str) {
-    let lease = store
-        .lease_next_ir_run("setup", 60, Some(tenant), NOW)
-        .await
-        .expect("lease")
-        .expect("available");
-    let events = vec![
-        RunEvent::Started { by: id("setup") },
-        RunEvent::IterationStarted {
-            region: id("repair-loop"),
-            index: 0,
-        },
-        RunEvent::IterationFinished {
-            region: id("repair-loop"),
-            record: Box::new(iteration(0, Some(4))),
-        },
-        RunEvent::IterationStarted {
-            region: id("repair-loop"),
-            index: 1,
-        },
-        RunEvent::IterationFinished {
-            region: id("repair-loop"),
-            record: Box::new(iteration(1, Some(2))),
-        },
-    ];
-    for (offset, event) in events.into_iter().enumerate() {
-        store
-            .append_ir_run_event(
-                tenant,
-                project,
-                run_id,
-                lease.epoch,
-                &event,
-                RecordedTime(NOW + i64::try_from(offset).expect("the fixture is small")),
-            )
-            .await
-            .expect("append");
-    }
-    store
-        .release_ir_run_lease(tenant, project, run_id, "setup", lease.epoch)
-        .await
-        .expect("release");
-}
-
 /// Everything the milestone promises about a run that survived a crash.
 async fn assert_run_is_intact(
     store: &PostgresStore,
@@ -187,14 +153,22 @@ async fn assert_run_is_intact(
         .expect("read the log");
     let state = RunState::fold(&events).expect("the log folds after every restart");
 
-    assert_eq!(state.status(), RunStatus::Completed);
+    assert_eq!(
+        state.status(),
+        RunStatus::Completed,
+        "the run did not finish: {:?}",
+        state.failure()
+    );
 
-    // No committed state was lost: what the loop spent before the crash is
-    // still spent afterwards.
+    // No committed state was lost: the loop ran the number of times its
+    // condition called for, whatever a restart interrupted.
     let progress = state.loop_progress(&id("repair-loop"));
-    assert_eq!(progress.started, 2, "iterations a restart handed back");
-    assert_eq!(progress.finished, 2);
-    assert_eq!(progress.last_progress, Some(2));
+    assert_eq!(
+        progress.started, 3,
+        "two rounds saying keep going, then one saying stop — and no restart added or dropped one"
+    );
+    assert_eq!(progress.finished, 3);
+    assert_eq!(progress.stopped, Some(StopReason::ConditionFalse));
 
     // The log is gapless, which is the other half of losing nothing.
     let positions: Vec<u64> = events.iter().map(|recorded| recorded.position).collect();
@@ -207,6 +181,18 @@ async fn assert_run_is_intact(
     // No duplicated effect. It was performed more than once — the first attempt
     // left a question — but every attempt presented the same key, so the far
     // side saw one effect, and the run finalized it once.
+    // The body ran once per iteration and not once more. A restart that
+    // replayed an iteration would show up here before it showed up in a counter.
+    assert_eq!(
+        executor
+            .nodes_run()
+            .iter()
+            .filter(|node| *node == "check")
+            .count(),
+        3,
+        "the loop body ran exactly as many times as the loop went round"
+    );
+
     let performed = executor.effects_performed();
     assert!(!performed.is_empty());
     let keys: Vec<Option<String>> = performed.iter().map(|(_, _, key)| key.clone()).collect();

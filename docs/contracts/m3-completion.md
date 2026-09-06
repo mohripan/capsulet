@@ -78,7 +78,7 @@ Every claim registered for M3 names a test a gate runs:
 
 ## Verification run 2026-09-06
 
-Three things the gates found that review had not, and three that reading found afterwards.
+Four things the gates found that review had not, and three that reading found afterwards.
 
 ### An internally-tagged event enum could not read back what it wrote
 
@@ -108,6 +108,23 @@ recovered attempt does not open the node twice.
 The graph-worker suite and the postgres suite each numbered their fixtures from one, ran against the
 same database, and produced two `tenant_1`s. A test leased another suite's run and failed in a way
 that looked exactly like a worker bug. Fixture names now carry the process id.
+
+### The loop the gate ran was not a loop the worker drove
+
+The first version of this milestone stopped short of driving loop iterations: `decide` checked a
+loop's budgets and invariants, and nothing ever opened an iteration. The chaos gate seeded two
+finished iterations into the log and checked they survived a restart, which is a real property of
+the fold and not a property of a running loop.
+
+Closing that turned up three decisions the obvious implementation gets wrong, each now written up in
+[durable-run-execution.md](durable-run-execution.md#loops): a continuation cannot be read from a
+digest, the iteration count must be checked when one is about to start rather than continuously or
+before the continuation is read, and a node after a loop has to wait for the loop rather than for one
+iteration. The last two were found by the chaos gate refusing to go green — the loop stopped one
+iteration early and reported a budget as the reason a loop that had finished its work stopped.
+
+The chaos gate now drives a real loop through every kill point, and counts how many times the body
+ran: a restart that replayed an iteration shows up there before it shows up in any counter.
 
 ### Two more, found by reading rather than by a gate
 
@@ -149,12 +166,9 @@ container verifier protocol, and the validator SDK. The `Executor` trait in
 `crates/graph-worker/src/execute.rs` is the seam they plug into, and its typed outcomes —
 `Performed`, `Failed`, `Uncertain` — are what the declared idempotency is matched against.
 
-Two things M3 left for later, deliberately:
+One thing M3 leaves for later, deliberately:
 
-- **The worker does not drive loop iterations.** Deciding when an iteration begins is
-  region-execution semantics that needs a running body, so the chaos gate seeds the loop history
-  rather than producing it. What is proven is that the history survives a restart, which is the
-  durability property; what is not yet proven is that a live loop produces it.
-- **Region entry and exit beyond loop budgets.** A loop that stops for any reason other than its
-  condition becoming false fails the run. A graph that continues past a completed region needs the
-  region semantics above.
+- **Per-iteration resource accounting.** An iteration record carries the wall time its own events
+  span, read from the log, but reports zero tokens and zero cost. Only an executor knows what a node
+  spent, and there is no executor yet. Zero here says "nothing measured this", not "this cost
+  nothing", and the loop budgets that depend on those figures cannot bind until M4 supplies them.

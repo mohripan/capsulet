@@ -33,6 +33,7 @@ fn uninterrupted() -> Vec<capsulet_runtime::RecordedEvent> {
             RunEvent::NodeFinished {
                 node: id(node),
                 outputs: BTreeMap::from([("out".to_string(), Digest::of(node.as_bytes()))]),
+                control: std::collections::BTreeMap::new(),
             },
         ));
     }
@@ -106,6 +107,7 @@ fn the_certificate_names_every_loop_stop_reason_the_log_recorded() {
         RunEvent::IterationStarted {
             region: id("repair-loop"),
             index: 0,
+            members: std::collections::BTreeSet::new(),
         },
     ));
     events.push(event(
@@ -120,6 +122,7 @@ fn the_certificate_names_every_loop_stop_reason_the_log_recorded() {
         RunEvent::IterationStarted {
             region: id("repair-loop"),
             index: 1,
+            members: std::collections::BTreeSet::new(),
         },
     ));
     events.push(event(
@@ -179,6 +182,7 @@ fn a_loop_that_is_still_running_is_not_reported_as_having_stopped() {
         RunEvent::IterationStarted {
             region: id("repair-loop"),
             index: 0,
+            members: std::collections::BTreeSet::new(),
         },
     ));
 

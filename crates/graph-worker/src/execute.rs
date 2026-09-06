@@ -20,6 +20,7 @@ use capsulet_ir::effect::Effect;
 use capsulet_ir::id::Identifier;
 use capsulet_ir::loop_region::FailureKind;
 use capsulet_ir::node::Node;
+use capsulet_runtime::event::ControlValue;
 
 /// Everything an executor is told about the work it has been asked to do.
 #[derive(Debug, Clone, Copy)]
@@ -27,6 +28,9 @@ pub struct NodeRequest<'a> {
     pub run: &'a str,
     pub definition: &'a Definition,
     pub node: &'a Node,
+    /// Which iteration of which loop region this is, when the node sits inside
+    /// one. A node that runs several times needs to know which time it is.
+    pub iteration: Option<(&'a Identifier, u32)>,
 }
 
 /// How running a node came out.
@@ -36,6 +40,14 @@ pub enum NodeOutcome {
         /// Output values by port, content-addressed. Digests rather than values
         /// so a large output does not travel through the log.
         outputs: BTreeMap<String, Digest>,
+        /// Readings for the ports a loop declares as decision-relevant: a
+        /// continuation, an invariant, a progress measure.
+        ///
+        /// Separate from `outputs` because nobody can evaluate a loop condition
+        /// from a digest. An executor that reports none of these for a node a
+        /// loop depends on stops the run rather than having a value assumed for
+        /// it.
+        control: BTreeMap<String, ControlValue>,
     },
     Failed {
         failure: FailureKind,
@@ -102,4 +114,15 @@ pub trait Executor: Send + Sync {
     /// as an effect that might or might not have landed, and pretending
     /// otherwise would put the uncertainty somewhere nobody looks.
     async fn compensate(&self, request: CompensationRequest<'_>) -> EffectOutcome;
+}
+
+impl NodeOutcome {
+    /// A node that finished with outputs and nothing a loop reads.
+    #[must_use]
+    pub fn finished(outputs: BTreeMap<String, Digest>) -> Self {
+        Self::Finished {
+            outputs,
+            control: BTreeMap::new(),
+        }
+    }
 }

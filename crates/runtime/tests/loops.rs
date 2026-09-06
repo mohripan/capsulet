@@ -11,7 +11,7 @@ use capsulet_ir::loop_region::{
     BudgetKind, FailureKind, InvariantOutcome, InvariantTiming, ProgressDirection, ProgressMeasure,
     RepairRoute, Route, StopReason,
 };
-use capsulet_runtime::event::RunFailure;
+use capsulet_runtime::event::{ControlValue, RunFailure};
 use capsulet_runtime::{Decision, RunEvent, RunState, Wait, decide, loops};
 
 use fixtures::{
@@ -39,6 +39,7 @@ fn ran_iteration(
         RunEvent::IterationStarted {
             region: id("repair-loop"),
             index,
+            members: std::collections::BTreeSet::new(),
         },
     ));
     events.push(event(
@@ -80,18 +81,55 @@ fn an_iteration_that_started_and_crashed_still_spent_an_iteration() {
     });
     let mut events = running();
     ran_iteration(&mut events, 0, None, None);
-    // The second iteration began, and the worker died inside it.
+    // The second iteration began, and the worker died inside it. Whoever picks
+    // the run up finishes that iteration rather than abandoning the work it had
+    // already done.
     events.push(event(
         4,
         RunEvent::IterationStarted {
             region: id("repair-loop"),
             index: 1,
+            members: std::collections::BTreeSet::new(),
         },
     ));
 
     let state = RunState::fold(&events).expect("folds");
     assert_eq!(state.loop_progress(&id("repair-loop")).started, 2);
     assert_eq!(state.loop_progress(&id("repair-loop")).finished, 1);
+    assert_ne!(
+        decide(&definition, &state, at(0)),
+        Decision::StopLoop {
+            region: id("repair-loop"),
+            reason: StopReason::BudgetExhausted {
+                budget: BudgetKind::Iterations
+            }
+        },
+        "the open iteration is one the loop was entitled to run; stopping it half-way would throw          away its work and leave no record that it happened"
+    );
+
+    // Once it finishes, the budget is spent — counted from iterations started,
+    // so the one that crashed still counts and a third is refused. The loop
+    // would have gone round again, which is what makes the budget the reason.
+    events.push(event(
+        5,
+        RunEvent::IterationFinished {
+            region: id("repair-loop"),
+            record: Box::new(iteration(1, None, None)),
+        },
+    ));
+    events.push(event(6, RunEvent::NodeStarted { node: id("check") }));
+    events.push(event(
+        7,
+        RunEvent::NodeFinished {
+            node: id("check"),
+            outputs: std::collections::BTreeMap::new(),
+            control: std::collections::BTreeMap::from([(
+                "keep-going".to_string(),
+                ControlValue::Bool { value: true },
+            )]),
+        },
+    ));
+    let state = RunState::fold(&events).expect("folds");
     assert_eq!(
         decide(&definition, &state, at(0)),
         Decision::StopLoop {
@@ -442,7 +480,8 @@ fn a_failure_answered_by_starting_the_node_stops_being_unresolved() {
 
 #[test]
 fn the_recording_helpers_produce_the_events_the_fold_expects() {
-    let started = loops::iteration_started(&id("repair-loop"), 0);
+    let started =
+        loops::iteration_started(&id("repair-loop"), 0, std::collections::BTreeSet::new());
     let finished = loops::iteration_finished(&id("repair-loop"), iteration(0, Some(3), Some(true)));
     let stopped = loops::loop_stopped(&id("repair-loop"), StopReason::ConditionFalse);
 

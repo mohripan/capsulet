@@ -21,10 +21,14 @@ use std::time::Duration;
 
 use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::Definition;
+use capsulet_ir::digest::Digest;
 use capsulet_ir::id::Identifier;
+use capsulet_ir::loop_region::{InvariantOutcome, IterationRecord, LoopBudget};
+use capsulet_ir::region::RegionKind;
 use capsulet_postgres::{IrRunRecord, PostgresStore, PostgresStoreError, SignalOutcome};
 use capsulet_runtime::effect::{EffectAttempt, EffectContext};
 use capsulet_runtime::failure::{self, Compensation};
+use capsulet_runtime::loops;
 use capsulet_runtime::wait::{self, WaitError};
 use capsulet_runtime::{Decision, RunEvent, RunFailure, RunState, decide};
 
@@ -93,6 +97,16 @@ pub enum WorkerError {
     Unfoldable { run: String, reason: String },
     #[error("run {run} declares an effect this runtime cannot perform: {reason}")]
     Undeliverable { run: String, reason: String },
+    /// The decision core asked for something the definition does not contain.
+    /// Unreachable unless the two have drifted apart, and worth saying plainly
+    /// rather than blaming the log for a disagreement it had no part in.
+    #[error("run {run} was asked to do something its definition does not describe: {reason}")]
+    Inconsistent { run: String, reason: String },
+    /// A node finished without reporting a value the definition says it
+    /// evaluates. The loop cannot be recorded, because the record would have to
+    /// contain an answer nobody produced.
+    #[error("run {run} has a loop reading nobody reported: {reason}")]
+    ControlMissing { run: String, reason: String },
 }
 
 /// A worker that advances IR runs.
@@ -232,7 +246,9 @@ impl GraphWorker {
                 self.append(lease, &RunEvent::Started { by: worker }, now)
                     .await
             }
-            Decision::StartNode { node } => self.run_node(lease, definition, &node, now).await,
+            Decision::StartNode { node } => {
+                self.run_node(lease, definition, state, &node, now).await
+            }
             Decision::PerformEffect {
                 node,
                 effect,
@@ -284,6 +300,14 @@ impl GraphWorker {
                 self.append(lease, &RunEvent::LoopStopped { region, reason }, now)
                     .await
             }
+            Decision::StartIteration { region, index } => {
+                self.start_iteration(lease, definition, &region, index, now)
+                    .await
+            }
+            Decision::FinishIteration { region, index } => {
+                self.finish_iteration(lease, definition, state, &region, index, now)
+                    .await
+            }
             Decision::TimeOutNode { node } => {
                 let Some(timed_out) = failure::timed_out_node(definition, state, now) else {
                     // It finished between the decision and here, which is a
@@ -327,11 +351,12 @@ impl GraphWorker {
         &self,
         lease: &IrRunRecord,
         definition: &Definition,
+        state: &RunState,
         node: &Identifier,
         now: RecordedTime,
     ) -> Result<bool, WorkerError> {
         let Some(declared) = definition.graph.node(node) else {
-            return Err(WorkerError::Unfoldable {
+            return Err(WorkerError::Inconsistent {
                 run: lease.id.clone(),
                 reason: format!("`{node}` is not in the definition"),
             });
@@ -346,19 +371,25 @@ impl GraphWorker {
             return Ok(false);
         }
 
+        let iteration = definition.graph.region_of_node(node).and_then(|region| {
+            matches!(region.kind, RegionKind::Loop { .. })
+                .then(|| (&region.id, state.loop_progress(&region.id).finished))
+        });
         let outcome = self
             .executor
             .run_node(NodeRequest {
                 run: &lease.id,
                 definition,
                 node: declared,
+                iteration,
             })
             .await;
 
         let event = match outcome {
-            NodeOutcome::Finished { outputs } => RunEvent::NodeFinished {
+            NodeOutcome::Finished { outputs, control } => RunEvent::NodeFinished {
                 node: node.clone(),
                 outputs,
+                control,
             },
             NodeOutcome::Failed { failure, detail } => RunEvent::NodeFailed {
                 node: node.clone(),
@@ -389,7 +420,7 @@ impl GraphWorker {
             .graph
             .node(node)
             .and_then(|declared| declared.effects.iter().find(|each| &each.id == effect))
-            .ok_or_else(|| WorkerError::Unfoldable {
+            .ok_or_else(|| WorkerError::Inconsistent {
                 run: lease.id.clone(),
                 reason: format!("`{effect}` is not declared on `{node}`"),
             })?;
@@ -451,6 +482,7 @@ impl GraphWorker {
                     &RunEvent::NodeFinished {
                         node: node.clone(),
                         outputs: std::collections::BTreeMap::new(),
+                        control: std::collections::BTreeMap::new(),
                     },
                     at,
                 )
@@ -486,6 +518,129 @@ impl GraphWorker {
         }
     }
 
+    /// Opens an iteration, naming the nodes it resets.
+    ///
+    /// The members travel in the event so the fold can reset them without a
+    /// definition to consult, which keeps the log readable on its own.
+    async fn start_iteration(
+        &self,
+        lease: &IrRunRecord,
+        definition: &Definition,
+        region: &Identifier,
+        index: u32,
+        now: RecordedTime,
+    ) -> Result<bool, WorkerError> {
+        let members = definition
+            .graph
+            .regions()
+            .find(|each| &each.id == region)
+            .map(|each| each.nodes.clone())
+            .unwrap_or_default();
+        self.append(
+            lease,
+            &loops::iteration_started(region, index, members),
+            now,
+        )
+        .await
+    }
+
+    /// Closes an iteration, recording what it did.
+    ///
+    /// Everything in the record comes from the log: the state digests from the
+    /// region's entry and exit outputs, the invariant outcomes and the progress
+    /// reading from what the nodes reported. Nothing is remembered between
+    /// steps, so a worker that took over mid-loop writes the same record the
+    /// one before it would have.
+    async fn finish_iteration(
+        &self,
+        lease: &IrRunRecord,
+        definition: &Definition,
+        state: &RunState,
+        region_id: &Identifier,
+        index: u32,
+        now: RecordedTime,
+    ) -> Result<bool, WorkerError> {
+        let inconsistent = |reason: String| WorkerError::Inconsistent {
+            run: lease.id.clone(),
+            reason,
+        };
+        let unreported = |reason: String| WorkerError::ControlMissing {
+            run: lease.id.clone(),
+            reason,
+        };
+        let region = definition
+            .graph
+            .regions()
+            .find(|each| &each.id == region_id)
+            .ok_or_else(|| {
+                inconsistent(format!("`{region_id}` is not a region of this definition"))
+            })?;
+        let RegionKind::Loop { spec } = &region.kind else {
+            return Err(inconsistent(format!("`{region_id}` is not a loop")));
+        };
+
+        // An invariant or a progress measure the executor did not report is a
+        // check that did not run. Recording it as held, or as unchanged, would
+        // be inventing the answer.
+        let mut invariants = Vec::with_capacity(spec.invariants.len());
+        for invariant in &spec.invariants {
+            let held = state
+                .control_value(&invariant.evaluator, invariant.port.as_str())
+                .and_then(capsulet_runtime::event::ControlValue::as_bool)
+                .ok_or_else(|| {
+                    unreported(format!(
+                        "`{}` reported no boolean on `{}` for invariant `{}`",
+                        invariant.evaluator, invariant.port, invariant.id
+                    ))
+                })?;
+            invariants.push(InvariantOutcome {
+                invariant: invariant.id.clone(),
+                held,
+                timing: invariant.timing,
+            });
+        }
+
+        let progress = match &spec.progress {
+            Some(measure) => Some(
+                state
+                    .control_value(&measure.measured_by, measure.port.as_str())
+                    .and_then(capsulet_runtime::event::ControlValue::as_integer)
+                    .ok_or_else(|| {
+                        unreported(format!(
+                            "`{}` reported no integer on `{}` for measure `{}`",
+                            measure.measured_by, measure.port, measure.id
+                        ))
+                    })?,
+            ),
+            None => None,
+        };
+
+        let record = IterationRecord {
+            index,
+            state_in: outputs_digest(state, &region.entry),
+            state_out: outputs_digest(state, &region.exit),
+            invariants,
+            progress,
+            spent: LoopBudget {
+                max_iterations: 1,
+                // What an iteration spent in wall time is the span its own
+                // events cover. Measured from the log rather than from a timer
+                // the worker held, so a handover does not lose it.
+                wall_ms: iteration_wall_ms(state, region_id, now),
+                // Tokens and cost are what a node spent, and only the executor
+                // knows that. Reporting zero says "nothing measured this"
+                // rather than "this cost nothing"; providers arrive in M4 and
+                // bring the measurement with them.
+                tokens: 0,
+                cost_micro_units: 0,
+                effect_count: 0,
+            },
+        };
+
+        self.append(lease, &loops::iteration_finished(region_id, record), now)
+            .await
+    }
+
     /// Undoes an effect that happened, before the run is allowed to end.
     async fn compensate(
         &self,
@@ -501,7 +656,7 @@ impl GraphWorker {
                     .iter()
                     .find(|each| each.id == compensation.effect)
             })
-            .ok_or_else(|| WorkerError::Unfoldable {
+            .ok_or_else(|| WorkerError::Inconsistent {
                 run: lease.id.clone(),
                 reason: format!(
                     "`{}` is not declared on `{}`",
@@ -673,4 +828,21 @@ impl GraphWorker {
         Identifier::parse(&self.config.worker_id)
             .unwrap_or_else(|_| Identifier::parse("graph-worker").expect("a legal identifier"))
     }
+}
+
+/// A digest over what a node produced, as its contribution to loop state.
+///
+/// Derived from the log rather than carried in memory, so the same iteration
+/// record comes out whichever worker writes it.
+fn outputs_digest(state: &RunState, node: &Identifier) -> Digest {
+    let outputs = state.outputs_of(node);
+    capsulet_ir::to_canonical_bytes(&outputs)
+        .map_or_else(|_| Digest::of(&[]), |bytes| Digest::of(&bytes))
+}
+
+/// How long the open iteration has been running, in milliseconds.
+fn iteration_wall_ms(state: &RunState, region: &Identifier, now: RecordedTime) -> u64 {
+    state.loop_progress(region).opened_at.map_or(0, |opened| {
+        u64::try_from(now.epoch_millis().saturating_sub(opened.epoch_millis())).unwrap_or(0)
+    })
 }

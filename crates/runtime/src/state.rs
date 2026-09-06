@@ -18,7 +18,7 @@ use capsulet_ir::id::Identifier;
 use capsulet_ir::loop_region::{FailureKind, StopReason};
 use thiserror::Error;
 
-use crate::event::{Epoch, RecordedEvent, RunEvent, RunFailure, Wait};
+use crate::event::{ControlValue, Epoch, RecordedEvent, RunEvent, RunFailure, Wait};
 
 /// Where a run is, as an execution concept. Never an assurance verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -79,6 +79,10 @@ pub struct LoopProgress {
     pub previous_progress: Option<i128>,
     /// How many consecutive iterations failed to move the measure at all.
     pub stalled: u32,
+    /// When the open iteration began, where one is open. An iteration's wall
+    /// time is the span its own events cover, and taking it from the log rather
+    /// than from a timer the worker held is what lets a handover keep it.
+    pub opened_at: Option<RecordedTime>,
     /// The invariant that did not hold in the most recent iteration.
     ///
     /// Cleared by an iteration in which every invariant held, so a loop that
@@ -123,6 +127,8 @@ pub enum FoldError {
     },
     #[error("iteration {index} of `{region}` finished without starting")]
     IterationWithoutStart { region: Identifier, index: u32 },
+    #[error("iteration {index} of `{region}` began while another was still open")]
+    IterationAlreadyOpen { region: Identifier, index: u32 },
     #[error("resumed a wait the run was not suspended on")]
     ResumedWithoutWait,
 }
@@ -151,6 +157,10 @@ pub struct RunState {
     uncertain: Vec<(Identifier, Identifier)>,
     loops: BTreeMap<Identifier, LoopProgress>,
     failures: BTreeMap<Identifier, Vec<NodeFailure>>,
+    /// The decision-relevant readings nodes have reported, by node and port.
+    /// Reset with the node when an iteration reopens it, so a loop never reads
+    /// last time round's answer.
+    control: BTreeMap<(Identifier, String), ControlValue>,
     spent: Spent,
     waiting_on: Option<Wait>,
     failure: Option<RunFailure>,
@@ -188,6 +198,7 @@ impl RunState {
             uncertain: Vec::new(),
             loops: BTreeMap::new(),
             failures: BTreeMap::new(),
+            control: BTreeMap::new(),
             spent: Spent::default(),
             waiting_on: None,
             failure: None,
@@ -240,11 +251,18 @@ impl RunState {
                 }
                 self.status = RunStatus::Running;
             }
-            RunEvent::NodeFinished { node, outputs } => {
+            RunEvent::NodeFinished {
+                node,
+                outputs,
+                control,
+            } => {
                 if self.running.remove(node).is_none() {
                     return Err(FoldError::FinishedWithoutStarting { node: node.clone() });
                 }
                 self.finished.insert(node.clone(), outputs.clone());
+                for (port, value) in control {
+                    self.control.insert((node.clone(), port.clone()), *value);
+                }
             }
             RunEvent::NodeFailed {
                 node,
@@ -268,7 +286,7 @@ impl RunState {
             | RunEvent::EffectAbandoned { .. }
             | RunEvent::EffectUncertain { .. } => self.apply_effect(&recorded.event)?,
             RunEvent::IterationStarted { .. } | RunEvent::IterationFinished { .. } => {
-                self.apply_iteration(&recorded.event)?;
+                self.apply_iteration(&recorded.event, recorded.at)?;
             }
             RunEvent::LoopStopped { region, reason } => {
                 self.loops.entry(region.clone()).or_default().stopped = Some(reason.clone());
@@ -345,11 +363,36 @@ impl RunState {
     }
 
     /// Loop iterations, and the budgets and progress they spend.
-    fn apply_iteration(&mut self, event: &RunEvent) -> Result<(), FoldError> {
+    fn apply_iteration(&mut self, event: &RunEvent, at: RecordedTime) -> Result<(), FoldError> {
         match event {
-            RunEvent::IterationStarted { region, .. } => {
+            RunEvent::IterationStarted {
+                region,
+                index,
+                members,
+            } => {
                 let progress = self.loops.entry(region.clone()).or_default();
+                // Two open iterations of one region is not a history any run
+                // produces, and a fold that accepted it would be reconstructing
+                // something that never happened.
+                if progress.started > progress.finished {
+                    return Err(FoldError::IterationAlreadyOpen {
+                        region: region.clone(),
+                        index: *index,
+                    });
+                }
                 progress.started = progress.started.saturating_add(1);
+                progress.opened_at = Some(at);
+
+                // Opening an iteration resets the region's nodes so they can run
+                // again, and clears the readings they reported last time round.
+                // A loop that read a stale continuation would keep going on an
+                // answer from an iteration that has already ended.
+                for member in members {
+                    self.finished.remove(member);
+                    self.running.remove(member);
+                    self.failures.remove(member);
+                    self.control.retain(|(node, _), _| node != member);
+                }
             }
             RunEvent::IterationFinished { region, record } => {
                 let progress = self.loops.entry(region.clone()).or_default();
@@ -487,6 +530,18 @@ impl RunState {
     pub fn effect_completed(&self, node: &Identifier, effect: &Identifier) -> bool {
         self.completed_effects
             .contains(&(node.clone(), effect.clone()))
+    }
+
+    /// What one finished node produced, by port.
+    #[must_use]
+    pub fn outputs_of(&self, node: &Identifier) -> BTreeMap<String, Digest> {
+        self.finished.get(node).cloned().unwrap_or_default()
+    }
+
+    /// A reading a node reported for one of its ports.
+    #[must_use]
+    pub fn control_value(&self, node: &Identifier, port: &str) -> Option<ControlValue> {
+        self.control.get(&(node.clone(), port.to_string())).copied()
     }
 
     /// Every output every finished node produced, keyed `node.port`.

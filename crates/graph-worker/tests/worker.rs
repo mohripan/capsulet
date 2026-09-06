@@ -521,6 +521,7 @@ async fn a_cancelled_run_undoes_what_it_published_before_it_stops() {
             RunEvent::NodeFinished {
                 node: id("publish"),
                 outputs: std::collections::BTreeMap::new(),
+                control: std::collections::BTreeMap::new(),
             },
             capsulet_runtime::failure::request_cancellation(id("operator")),
         ],

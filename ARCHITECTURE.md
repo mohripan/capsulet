@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-REPLAY-001, CAP-REPLAY-002, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-REPLAY-001, CAP-REPLAY-002, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -100,6 +100,9 @@ Five properties carry the weight:
   rather than agreed. The scheduler keeps the compatibility job DAGs.
 - **Starting a run.** `POST /v1/ir/runs` enqueues a run of a registered definition version, and
   `GET /v1/ir/runs/{id}/events` returns its log. The API enqueues; only the graph worker advances.
+- **Loops the worker drives.** It opens an iteration, runs the body, reads the continuation the body
+  reported, and decides whether to go round again. A node after the loop waits for the loop rather
+  than for one iteration.
 
 `crates/graph-worker/tests/chaos.rs` kills the worker at every step boundary of a run in turn and
 checks, after each restart, that the run completes with no duplicated effect, no lost committed

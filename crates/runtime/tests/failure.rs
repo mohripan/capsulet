@@ -284,6 +284,7 @@ fn a_reversible_effect_that_happened_is_compensated_before_the_run_ends() {
         RunEvent::NodeFinished {
             node: id("publish"),
             outputs: std::collections::BTreeMap::new(),
+            control: std::collections::BTreeMap::new(),
         },
     ));
     events.push(event(

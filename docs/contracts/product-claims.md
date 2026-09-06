@@ -26,7 +26,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-RUNTIME-004` | implemented | capability | Killing the worker at every step boundary of a run in turn leaves no duplicated effect, no lost committed state, and a certificate that replays. |
+| `CAP-RUNTIME-004` | implemented | capability | Killing the worker at every step boundary of a run that drives a bounded loop and performs a protected effect leaves no duplicated effect, no repeated or lost iteration, no lost committed state, and a certificate that replays. |
 
 ## Dashboard and SDK
 
@@ -103,6 +103,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
 | `CAP-RUNTIME-005` | implemented | capability | What a loop spent before a crash is still spent after it, and a measure that stopped moving — or moved against its declared direction — stops the loop. |
+
+## Loops the worker drives
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-RUNTIME-008` | implemented | capability | The graph worker runs a declared loop until its continuation goes false or its iteration budget refuses another round, and a node after the loop waits for the loop rather than for one iteration. |
 
 ## Observability and operations
 

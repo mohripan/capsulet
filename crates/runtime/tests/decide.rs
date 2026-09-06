@@ -6,10 +6,12 @@ use std::collections::BTreeMap;
 
 use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::loop_region::{BudgetKind, StopReason};
-use capsulet_runtime::event::{RunFailure, Wait};
+use capsulet_runtime::event::{ControlValue, RunFailure, Wait};
 use capsulet_runtime::{Decision, Epoch, FoldError, RunEvent, RunState, RunStatus, decide};
 
-use fixtures::{admitted, at, effect_definition, event, id, loop_definition, pipeline_definition};
+use fixtures::{
+    admitted, at, effect_definition, event, id, iteration, loop_definition, pipeline_definition,
+};
 
 #[test]
 fn a_log_that_does_not_open_with_admission_is_refused() {
@@ -84,6 +86,7 @@ fn a_node_cannot_finish_without_starting_or_start_twice() {
         RunEvent::NodeFinished {
             node: id("normalize"),
             outputs: BTreeMap::new(),
+            control: std::collections::BTreeMap::new(),
         },
     ));
     assert_eq!(
@@ -140,6 +143,7 @@ fn a_run_advances_through_its_graph_in_dependency_order() {
         RunEvent::NodeFinished {
             node: id("normalize"),
             outputs: BTreeMap::new(),
+            control: std::collections::BTreeMap::new(),
         },
     ));
     let state = RunState::fold(&events).expect("folds");
@@ -162,6 +166,7 @@ fn a_run_advances_through_its_graph_in_dependency_order() {
         RunEvent::NodeFinished {
             node: id("summarize"),
             outputs: BTreeMap::new(),
+            control: std::collections::BTreeMap::new(),
         },
     ));
     let state = RunState::fold(&events).expect("folds");
@@ -317,16 +322,44 @@ fn a_loop_budget_spent_before_a_crash_stays_spent() {
     let mut events = admitted();
     events.push(event(1, RunEvent::Started { by: id("worker-1") }));
 
-    // Three iterations started, which is the whole budget.
-    for (position, index) in (2..).zip(0..3) {
+    // Three iterations ran, which is the whole budget. Whether the worker that
+    // ran them is the one asking now makes no difference: the count is in the
+    // log.
+    let mut position = 2;
+    for index in 0..3 {
         events.push(event(
             position,
             RunEvent::IterationStarted {
                 region: id("repair-loop"),
                 index,
+                members: std::collections::BTreeSet::new(),
             },
         ));
+        events.push(event(
+            position + 1,
+            RunEvent::IterationFinished {
+                region: id("repair-loop"),
+                record: Box::new(iteration(index, None, None)),
+            },
+        ));
+        position += 2;
     }
+
+    // And the loop would go round again if it could: the continuation says so.
+    // Without that the runtime could not attribute the stop to the budget,
+    // because a loop whose condition had gone false did not exhaust anything.
+    events.push(event(position, RunEvent::NodeStarted { node: id("check") }));
+    events.push(event(
+        position + 1,
+        RunEvent::NodeFinished {
+            node: id("check"),
+            outputs: std::collections::BTreeMap::new(),
+            control: std::collections::BTreeMap::from([(
+                "keep-going".to_string(),
+                ControlValue::Bool { value: true },
+            )]),
+        },
+    ));
 
     let state = RunState::fold(&events).expect("folds");
     assert_eq!(state.loop_progress(&id("repair-loop")).started, 3);
@@ -339,6 +372,31 @@ fn a_loop_budget_spent_before_a_crash_stays_spent() {
             }
         },
         "a restart must not hand the loop its budget back"
+    );
+}
+
+#[test]
+fn two_iterations_of_one_loop_cannot_be_open_at_once() {
+    let mut events = admitted();
+    events.push(event(1, RunEvent::Started { by: id("worker-1") }));
+    for (position, index) in [(2, 0), (3, 1)] {
+        events.push(event(
+            position,
+            RunEvent::IterationStarted {
+                region: id("repair-loop"),
+                index,
+                members: std::collections::BTreeSet::new(),
+            },
+        ));
+    }
+
+    assert_eq!(
+        RunState::fold(&events),
+        Err(FoldError::IterationAlreadyOpen {
+            region: id("repair-loop"),
+            index: 1
+        }),
+        "a fold that accepted this would be reconstructing a run that never happened"
     );
 }
 

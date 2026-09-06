@@ -82,6 +82,16 @@ Compensation runs before a run ends, for reversible effects that actually happen
 an irreversible effect has no compensation and is not pretended to have one. Escalation suspends on
 a human gate that opens only for somebody holding the authority it names.
 
+### A loop's control values are recorded, not digested
+
+Node outputs are digests. The ports a loop reads — its continuation, its invariants, its progress
+measure — are recorded as exact values, because no decision can be taken on a digest. The IR already
+names exactly which ports those are, so the set is closed rather than "whatever looked small".
+
+A node that reports none of them for a loop that declares them stops the run. There is no default:
+assuming the loop should continue loops forever on a check that never ran, and assuming it should
+stop reports a loop as finished when nothing checked whether it was.
+
 ## What was rejected
 
 **A status column as the source of truth.** Simpler, faster, and the reason the previous design
@@ -113,6 +123,16 @@ possible shape for a bug in a durability layer.
 has to stop a run, and merging them would have made every ordinary refusal look like the case that
 stops everything. `effect_abandoned` and `effect_uncertain` are separate.
 
+**Checking a loop's iteration count continuously.** It reads as the safe choice and is not: a loop
+stopped half-way through its last permitted iteration has thrown away the work it did and left no
+record that it ran. The count is checked when an iteration is about to start, and only after the
+continuation has been read — a loop whose condition has gone false did not exhaust anything, and
+naming a budget as its reason for stopping would be a false statement about a loop that finished.
+
+**Treating a loop's members as ordinary nodes.** They finish once per iteration, and finishing is
+not being done. A downstream node that started on one iteration's output would be acting on a value
+the loop was still working on.
+
 **Killing an operating-system process in the chaos gate.** The shipped binary has no executor that
 can run a workflow until M4 brings providers, so there would be no process worth killing. The gate
 discards the worker and expires the lease it never released, which takes with it every line of state
@@ -125,9 +145,9 @@ a real crash would.
   every step boundary in turn and checks all three.
 - Certificates are assembled from the log, so a killed-and-resumed run and an uninterrupted one
   certify the same.
-- The worker does not yet drive loop iterations or execute nodes. Deciding when an iteration begins
-  is region-execution semantics, and running a node needs a provider; both arrive with M4. What
-  exists is the durability around them, which is the part that has to be right before there is
-  anything to be durable about.
+- The worker drives loops: it opens an iteration, runs the body, reads the continuation the body
+  reported, and decides whether to go round again. What it cannot yet do is run a node, which needs
+  a provider and arrives with M4. What exists is the durability around that, which is the part that
+  has to be right before there is anything to be durable about.
 - Compatibility job DAGs keep their execution path. Converging them onto the IR is a migration that
   happens after the IR runtime is proven.

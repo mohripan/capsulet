@@ -20,9 +20,9 @@ use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::Definition;
 use capsulet_ir::effect::Idempotency;
 use capsulet_ir::id::Identifier;
-use capsulet_ir::loop_region::StopReason;
+use capsulet_ir::loop_region::{LoopSpec, StopReason};
 use capsulet_ir::node::NodeKind;
-use capsulet_ir::region::RegionKind;
+use capsulet_ir::region::{Region, RegionKind};
 
 use crate::event::{RunFailure, Wait};
 use crate::failure::{self, Compensation};
@@ -62,6 +62,11 @@ pub enum Decision {
         region: Identifier,
         reason: StopReason,
     },
+    /// Open an iteration of a loop region, resetting its nodes so they run
+    /// again.
+    StartIteration { region: Identifier, index: u32 },
+    /// Close the open iteration, recording what it did.
+    FinishIteration { region: Identifier, index: u32 },
     /// Undo a reversible effect that happened, before the run ends.
     Compensate { compensation: Compensation },
     /// End the run because somebody asked, at a point where stopping is safe.
@@ -182,6 +187,12 @@ fn decide_next(definition: &Definition, state: &RunState, now: RecordedTime) -> 
         return decision;
     }
 
+    // Loop regions before ordinary nodes: a region's body only runs inside an
+    // iteration, and opening one is what makes those nodes ready at all.
+    if let Some(decision) = decide_iteration(definition, state) {
+        return decision;
+    }
+
     if let Some(node) = next_ready_node(definition, state) {
         let declared = definition.graph.node(&node);
         // An effect node's whole purpose is its effect, so starting it means
@@ -271,7 +282,7 @@ fn decide_loop(definition: &Definition, state: &RunState) -> Option<Decision> {
             });
         }
 
-        let reason = loops::exhausted(spec, &progress, state)
+        let reason = loops::exhausted(spec, state)
             .or_else(|| loops::invariant_failure(&progress))
             .or_else(|| {
                 spec.progress
@@ -356,6 +367,109 @@ fn apply_repair(
     }
 }
 
+/// Opens, closes, and ends loop iterations.
+///
+/// A region's body is not ordinary graph work. Its nodes run once per
+/// iteration, and between iterations they are reset, so "has this node
+/// finished" is a question about the current iteration rather than about the
+/// run. Deciding that here — before the ordinary readiness check — is what
+/// keeps the two from being confused.
+fn decide_iteration(definition: &Definition, state: &RunState) -> Option<Decision> {
+    // Every loop region gets a look. Returning early on the first one with an
+    // iteration in flight would leave a sibling loop unable to start, because
+    // its nodes are only ready while it has an iteration open.
+    definition
+        .graph
+        .regions()
+        .find_map(|region| match &region.kind {
+            RegionKind::Loop { spec } => decide_one_loop(definition, state, region, spec),
+            RegionKind::Plain => None,
+        })
+}
+
+/// What one loop region's next step is, if it has one.
+fn decide_one_loop(
+    definition: &Definition,
+    state: &RunState,
+    region: &Region,
+    spec: &LoopSpec,
+) -> Option<Decision> {
+    let progress = state.loop_progress(&region.id);
+    if progress.stopped.is_some() {
+        return None;
+    }
+
+    // An iteration is open when one has started and not finished. It closes
+    // when the region's exit has run; until then the body is still going, and
+    // ordinary readiness takes it from here, restricted to this region's nodes.
+    if progress.started > progress.finished {
+        return state
+            .has_finished(&region.exit)
+            .then(|| Decision::FinishIteration {
+                region: region.id.clone(),
+                index: progress.finished,
+            });
+    }
+
+    // No iteration open, and the loop has not run at all.
+    if progress.finished == 0 {
+        return region_is_reachable(definition, state, region).then(|| Decision::StartIteration {
+            region: region.id.clone(),
+            index: 0,
+        });
+    }
+
+    // The last iteration finished, so the continuation says what happens next.
+    let continuation = &spec.continuation;
+    let reading = state
+        .control_value(&continuation.evaluated_by, continuation.port.as_str())
+        .and_then(crate::event::ControlValue::as_bool);
+    let Some(keep_going) = reading else {
+        return Some(Decision::Fail {
+            reason: RunFailure::ControlMissing {
+                region: region.id.clone(),
+                node: continuation.evaluated_by.clone(),
+                port: continuation.port.as_str().to_string(),
+                expected: "a boolean continuation".to_string(),
+            },
+        });
+    };
+
+    if !keep_going {
+        // The only stop reason that means the loop finished its work.
+        return Some(Decision::StopLoop {
+            region: region.id.clone(),
+            reason: StopReason::ConditionFalse,
+        });
+    }
+
+    // The count is checked here: not before the continuation is read, because a
+    // loop whose condition has gone false did not exhaust anything and naming a
+    // budget as its reason would be a false statement about a loop that
+    // finished; and not continuously, because stopping mid-iteration throws
+    // away the work it did and leaves no record that it ran.
+    Some(loops::iterations_exhausted(spec, &progress).map_or_else(
+        || Decision::StartIteration {
+            region: region.id.clone(),
+            index: progress.finished,
+        },
+        |reason| Decision::StopLoop {
+            region: region.id.clone(),
+            reason,
+        },
+    ))
+}
+
+/// Whether everything the region depends on from outside it has finished.
+fn region_is_reachable(definition: &Definition, state: &RunState, region: &Region) -> bool {
+    definition
+        .graph
+        .predecessors_of(&region.entry)
+        .into_iter()
+        .filter(|node| !region.nodes.contains(*node))
+        .all(|node| state.has_finished(node))
+}
+
 /// The next node whose predecessors have all finished.
 ///
 /// Canonical order, so two workers folding the same log choose the same node
@@ -366,12 +480,59 @@ fn next_ready_node(definition: &Definition, state: &RunState) -> Option<Identifi
         .nodes()
         .filter(|node| !state.has_finished(&node.id))
         .filter(|node| !state.running().contains_key(&node.id))
+        // A node inside a loop region runs as part of an iteration, never on
+        // its own. Without this a region's body would run once as ordinary
+        // graph work and the loop would never get to drive it.
+        .filter(|node| iteration_is_open_for(definition, state, &node.id))
         .find(|node| {
             definition
                 .graph
                 .predecessors_of(&node.id)
                 .into_iter()
-                .all(|predecessor| state.has_finished(predecessor))
+                .all(|predecessor| predecessor_is_settled(definition, state, &node.id, predecessor))
         })
         .map(|node| node.id.clone())
+}
+
+/// Whether a predecessor has finished in a way the dependent node can rely on.
+///
+/// A node inside a loop finishes once per iteration, and finishing is not the
+/// same as being done: the next iteration resets it and runs it again. Within
+/// the loop that is exactly what the next node wants — it is reading this
+/// iteration's value. Outside it, it is not: a node downstream of the region
+/// that started on the strength of one iteration's output would be acting on a
+/// value the loop was still working on. So a predecessor inside a loop counts
+/// for its own region's nodes at once, and for everybody else only once the
+/// loop has stopped.
+fn predecessor_is_settled(
+    definition: &Definition,
+    state: &RunState,
+    dependent: &Identifier,
+    predecessor: &Identifier,
+) -> bool {
+    if !state.has_finished(predecessor) {
+        return false;
+    }
+    let Some(region) = definition.graph.region_of_node(predecessor) else {
+        return true;
+    };
+    if !matches!(region.kind, RegionKind::Loop { .. }) || region.nodes.contains(dependent) {
+        return true;
+    }
+    state.loop_progress(&region.id).stopped.is_some()
+}
+
+/// Whether a node may run right now, given the region it sits in.
+///
+/// A node outside every loop region always may. One inside a loop may only
+/// while that loop has an iteration open.
+fn iteration_is_open_for(definition: &Definition, state: &RunState, node: &Identifier) -> bool {
+    let Some(region) = definition.graph.region_of_node(node) else {
+        return true;
+    };
+    if !matches!(region.kind, RegionKind::Loop { .. }) {
+        return true;
+    }
+    let progress = state.loop_progress(&region.id);
+    progress.stopped.is_none() && progress.started > progress.finished
 }

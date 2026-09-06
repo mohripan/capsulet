@@ -472,6 +472,7 @@ async fn the_stored_status_is_what_folding_the_log_says_it_is() {
         RunEvent::NodeFinished {
             node: id("prepare"),
             outputs: BTreeMap::new(),
+            control: std::collections::BTreeMap::new(),
         },
         RunEvent::Suspended {
             wait: Wait::Event {

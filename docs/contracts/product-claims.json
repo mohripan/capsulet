@@ -580,6 +580,23 @@
           "selector": "a_run_of_a_definition_nobody_registered_is_refused"
         }
       ]
+    },
+    {
+      "command": "cargo test -p capsulet-graph-worker --locked --test loops",
+      "tests": [
+        {
+          "path": "crates/graph-worker/tests/loops.rs",
+          "selector": "a_node_after_a_loop_waits_for_the_loop_rather_than_for_one_iteration"
+        },
+        {
+          "path": "crates/graph-worker/tests/loops.rs",
+          "selector": "a_restart_mid_loop_neither_repeats_an_iteration_nor_loses_one"
+        },
+        {
+          "path": "crates/graph-worker/tests/loops.rs",
+          "selector": "the_worker_runs_a_loop_until_its_condition_goes_false"
+        }
+      ]
     }
   ],
   "claims": [
@@ -1675,7 +1692,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Crash recovery",
-      "statement": "Killing the worker at every step boundary of a run in turn leaves no duplicated effect, no lost committed state, and a certificate that replays.",
+      "statement": "Killing the worker at every step boundary of a run that drives a bounded loop and performs a protected effect leaves no duplicated effect, no repeated or lost iteration, no lost committed state, and a certificate that replays.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
@@ -1811,6 +1828,57 @@
           "path": "crates/api/src/tests.rs",
           "command": "cargo test -p capsulet-api --locked --lib",
           "selector": "a_run_of_a_definition_nobody_registered_is_refused"
+        }
+      ]
+    },
+    {
+      "id": "CAP-RUNTIME-008",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Loops the worker drives",
+      "statement": "The graph worker runs a declared loop until its continuation goes false or its iteration budget refuses another round, and a node after the loop waits for the loop rather than for one iteration.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-loop-runs-until-its-condition-goes-false",
+          "evidence_selectors": [
+            "the_worker_runs_a_loop_until_its_condition_goes_false"
+          ]
+        },
+        {
+          "assertion": "a-restart-neither-repeats-nor-loses-an-iteration",
+          "evidence_selectors": [
+            "a_restart_mid_loop_neither_repeats_an_iteration_nor_loses_one"
+          ]
+        },
+        {
+          "assertion": "downstream-waits-for-the-loop",
+          "evidence_selectors": [
+            "a_node_after_a_loop_waits_for_the_loop_rather_than_for_one_iteration"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/loops.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test loops",
+          "selector": "the_worker_runs_a_loop_until_its_condition_goes_false"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/loops.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test loops",
+          "selector": "a_restart_mid_loop_neither_repeats_an_iteration_nor_loses_one"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/loops.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test loops",
+          "selector": "a_node_after_a_loop_waits_for_the_loop_rather_than_for_one_iteration"
         }
       ]
     }

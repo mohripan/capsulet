@@ -74,6 +74,37 @@ the effect is due. The supported sources are `run_id`, `run_id+node_id`, and
 
 Checked by: `verify --gate ir` and `verify --gate postgres`.
 
+## Loops
+
+The worker drives a loop region: it opens an iteration, runs the body, reads what the body reported,
+and decides whether to go round again. Opening an iteration resets the region's nodes so they run
+again, and the event names them so the fold can do that without consulting the definition.
+
+Three rules are worth stating because the obvious implementation gets each of them wrong.
+
+**A continuation is a value, not a digest.** Node outputs travel as digests so a large one does not
+end up in the log, and nobody can evaluate a loop condition from a digest. The ports the IR declares
+as decision-relevant — a continuation, an invariant, a progress measure — are recorded as exact
+values instead. An executor that reports none of them for a node the loop depends on stops the run
+rather than having a value assumed for it: assuming `true` loops forever on a check that never ran,
+and assuming `false` reports a loop as finished when nothing checked whether it was.
+
+**The iteration count is checked when one is about to start.** Not continuously: a loop stopped
+half-way through its last permitted iteration has thrown away the work it did and left no record
+that it ran. And not before the continuation is read: a loop whose condition has gone false did not
+exhaust anything, so reporting a budget as the reason it stopped would be a false statement about a
+loop that finished its work. The other budgets — wall time, tokens, cost, effects — are spent
+continuously and do stop a loop wherever it is.
+
+**A node after a loop waits for the loop, not for an iteration.** A region member finishes once per
+iteration, and finishing is not being done. Anything downstream that started on the strength of one
+iteration's output would be acting on a value the loop was still working on, so a predecessor inside
+a loop counts for that loop's own nodes at once and for everybody else only once the loop has
+stopped.
+
+Checked by: `verify --gate postgres` (`crates/graph-worker/tests/loops.rs`) and `verify --gate
+chaos`, which drives a real loop through every kill point.
+
 ## Stopping
 
 - **Cancellation** is a request. The run stops at the next point where stopping is safe, which is
@@ -93,7 +124,5 @@ Checked by: `verify --gate ir` (`crates/runtime/tests/failure.rs`) and `verify -
 
 - Node execution and effect transports are not implemented. The deployed worker ships an executor
   that refuses every node with `verifier_unavailable`; providers arrive in M4.
-- Region entry and exit semantics beyond loop budgets are not implemented. A loop that stops for any
-  reason other than its condition becoming false fails the run.
 - A certificate is assembled from the log, but obligations and verifier records are supplied by the
   caller. Nothing here produces them, because nothing here checks anything yet.

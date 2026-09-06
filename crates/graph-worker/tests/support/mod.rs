@@ -211,6 +211,151 @@ pub fn reversible_effect_definition(name: &str) -> Definition {
     definition
 }
 
+/// A workflow that is nothing but a bounded loop: `enter -> check -> leave`.
+///
+/// `check` is the node the loop asks whether to go round again.
+pub fn loop_definition(name: &str, max_iterations: u32) -> Definition {
+    let member = |id_of: &str, kind: NodeKind, outputs: Vec<OutputPort>| Node {
+        id: id(id_of),
+        name: id_of.to_string(),
+        kind,
+        inputs: vec![InputPort::new(id("in"), text())],
+        outputs,
+        capabilities: vec![],
+        effects: vec![],
+        budget: ResourceBudget::deterministic(60_000),
+        provider: None,
+        sub_workflow: None,
+    };
+
+    let edge = |id_of: &str, from: &str, from_port: &str, to: &str| Hyperedge {
+        id: id(id_of),
+        sources: vec![Endpoint::Port {
+            node: id(from),
+            port: id(from_port),
+        }],
+        targets: vec![Endpoint::Port {
+            node: id(to),
+            port: id("in"),
+        }],
+        combine: Combine::Forward,
+        trust: TrustDerivation::Weakest,
+    };
+
+    let mut parts = GraphBuilder {
+        nodes: vec![
+            member(
+                "enter",
+                NodeKind::RegionEntry,
+                vec![OutputPort::new(id("out"), text())],
+            ),
+            member(
+                "check",
+                NodeKind::Verifier,
+                vec![
+                    OutputPort::new(id("keep-going"), ValueSchema::Bool),
+                    OutputPort::new(id("out"), text()),
+                ],
+            ),
+            member(
+                "leave",
+                NodeKind::RegionExit,
+                vec![OutputPort::new(id("out"), text())],
+            ),
+        ],
+        edges: vec![
+            edge("enter-to-check", "enter", "out", "check"),
+            edge("check-to-leave", "check", "out", "leave"),
+        ],
+        ..GraphBuilder::default()
+    };
+
+    let mut members = BTreeSet::new();
+    for each in ["enter", "check", "leave"] {
+        members.insert(id(each));
+    }
+    parts.regions.push(Region {
+        id: id("repair-loop"),
+        kind: RegionKind::Loop {
+            spec: Box::new(LoopSpec {
+                state: BTreeMap::new(),
+                exit: BTreeMap::new(),
+                continuation: Continuation {
+                    evaluated_by: id("check"),
+                    port: id("keep-going"),
+                },
+                budget: LoopBudget {
+                    max_iterations,
+                    wall_ms: 300_000,
+                    tokens: 50_000,
+                    cost_micro_units: 50_000,
+                    effect_count: 0,
+                },
+                invariants: vec![],
+                progress: None,
+                repairs: vec![],
+            }),
+        },
+        parent: None,
+        entry: id("enter"),
+        exit: id("leave"),
+        nodes: members,
+        capabilities: CapabilitySet::empty(),
+        budget: ResourceBudget {
+            wall_ms: 300_000,
+            tokens: 50_000,
+            cost_micro_units: 50_000,
+            effect_count: 0,
+        },
+    });
+
+    let graph = Graph::new(parts).expect("the fixture identifiers are distinct");
+    definition_with(name, graph, CapabilitySet::empty())
+}
+
+/// The same loop, with a node after it that depends on the region's exit.
+///
+/// The node exists to prove it does not run until the loop has stopped: acting
+/// on one iteration's output would be acting on a value the loop was still
+/// working on.
+pub fn loop_definition_with_successor(name: &str, max_iterations: u32) -> Definition {
+    let looping = loop_definition(name, max_iterations);
+    let mut parts = GraphBuilder {
+        nodes: looping.graph.nodes().cloned().collect(),
+        edges: looping.graph.edges().cloned().collect(),
+        regions: looping.graph.regions().cloned().collect(),
+        ..GraphBuilder::default()
+    };
+    parts.nodes.push(Node {
+        id: id("summarise"),
+        name: "summarise".to_string(),
+        kind: NodeKind::PureComputation,
+        inputs: vec![InputPort::new(id("in"), text())],
+        outputs: vec![],
+        capabilities: vec![],
+        effects: vec![],
+        budget: ResourceBudget::deterministic(60_000),
+        provider: None,
+        sub_workflow: None,
+    });
+    parts.edges.push(Hyperedge {
+        id: id("leave-to-summarise"),
+        sources: vec![Endpoint::Port {
+            node: id("leave"),
+            port: id("out"),
+        }],
+        targets: vec![Endpoint::Port {
+            node: id("summarise"),
+            port: id("in"),
+        }],
+        combine: Combine::Forward,
+        trust: TrustDerivation::Weakest,
+    });
+
+    let graph = Graph::new(parts).expect("the fixture identifiers are distinct");
+    definition_with(name, graph, CapabilitySet::empty())
+}
+
 /// A workflow with a bounded loop and a protected effect.
 ///
 /// The two things a crash can damage in different ways: a loop can be handed
@@ -237,9 +382,9 @@ pub fn chaos_definition(name: &str, idempotency: Idempotency) -> Definition {
     definition
 }
 
-/// The nodes and the loop region the chaos fixture executes.
-fn chaos_graph(idempotency: Idempotency) -> GraphBuilder {
-    let publish = Node {
+/// The effect node the chaos fixture publishes with.
+fn publish_node(idempotency: Idempotency) -> Node {
+    Node {
         id: id("publish"),
         name: "Open the pull request".to_string(),
         kind: NodeKind::Effect,
@@ -262,8 +407,12 @@ fn chaos_graph(idempotency: Idempotency) -> GraphBuilder {
         },
         provider: None,
         sub_workflow: None,
-    };
+    }
+}
 
+/// The nodes and the loop region the chaos fixture executes.
+fn chaos_graph(idempotency: Idempotency) -> GraphBuilder {
+    let publish = publish_node(idempotency);
     let region_node = |name: &str, kind: NodeKind, outputs: Vec<OutputPort>| Node {
         id: id(name),
         name: name.to_string(),
@@ -277,6 +426,20 @@ fn chaos_graph(idempotency: Idempotency) -> GraphBuilder {
         sub_workflow: None,
     };
 
+    let edge = |id_of: &str, from: &str, from_port: &str, to: &str| Hyperedge {
+        id: id(id_of),
+        sources: vec![Endpoint::Port {
+            node: id(from),
+            port: id(from_port),
+        }],
+        targets: vec![Endpoint::Port {
+            node: id(to),
+            port: id("in"),
+        }],
+        combine: Combine::Forward,
+        trust: TrustDerivation::Weakest,
+    };
+
     let mut parts = GraphBuilder {
         nodes: vec![
             region_node(
@@ -287,7 +450,10 @@ fn chaos_graph(idempotency: Idempotency) -> GraphBuilder {
             region_node(
                 "check",
                 NodeKind::Verifier,
-                vec![OutputPort::new(id("keep-going"), ValueSchema::Bool)],
+                vec![
+                    OutputPort::new(id("keep-going"), ValueSchema::Bool),
+                    OutputPort::new(id("out"), text()),
+                ],
             ),
             region_node(
                 "leave",
@@ -295,6 +461,10 @@ fn chaos_graph(idempotency: Idempotency) -> GraphBuilder {
                 vec![OutputPort::new(id("out"), text())],
             ),
             publish,
+        ],
+        edges: vec![
+            edge("enter-to-check", "enter", "out", "check"),
+            edge("check-to-leave", "check", "out", "leave"),
         ],
         ..GraphBuilder::default()
     };
@@ -419,6 +589,7 @@ impl Clock for TestClock {
 #[derive(Debug, Default)]
 pub struct ScriptedExecutor {
     node: Mutex<BTreeMap<String, NodeOutcome>>,
+    node_sequences: Mutex<BTreeMap<String, Vec<NodeOutcome>>>,
     effect: Mutex<Vec<EffectOutcome>>,
     compensation: Mutex<Vec<EffectOutcome>>,
     steal: Mutex<Option<(PostgresStore, String)>>,
@@ -439,6 +610,17 @@ impl ScriptedExecutor {
             .lock()
             .expect("the scripted outcomes are not poisoned")
             .insert(name.to_string(), outcome);
+    }
+
+    /// What a node should do on each successive run, in order.
+    ///
+    /// A node inside a loop runs once per iteration, and a loop is only
+    /// interesting when the answers change.
+    pub fn node_sequence(&self, name: &str, outcomes: Vec<NodeOutcome>) {
+        self.node_sequences
+            .lock()
+            .expect("the scripted outcomes are not poisoned")
+            .insert(name.to_string(), outcomes);
     }
 
     /// Take the run over while the worker is inside the executor.
@@ -517,14 +699,22 @@ impl Executor for ScriptedExecutor {
             .expect("the record is not poisoned")
             .push(name.clone());
         self.steal_if_asked().await;
+        if let Some(outcome) = self
+            .node_sequences
+            .lock()
+            .expect("the scripted outcomes are not poisoned")
+            .get_mut(&name)
+            .filter(|remaining| !remaining.is_empty())
+            .map(|remaining| remaining.remove(0))
+        {
+            return outcome;
+        }
         self.node
             .lock()
             .expect("the scripted outcomes are not poisoned")
             .get(&name)
             .cloned()
-            .unwrap_or(NodeOutcome::Finished {
-                outputs: BTreeMap::new(),
-            })
+            .unwrap_or_else(|| NodeOutcome::finished(BTreeMap::new()))
     }
 
     async fn perform_effect(&self, request: EffectRequest<'_>) -> EffectOutcome {
