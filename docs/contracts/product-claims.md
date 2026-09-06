@@ -11,6 +11,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-ASSURANCE-005` | implemented | capability | A required verifier is satisfied by a run, not by a name: a verifier that concluded rejected, or ran at a version or in an environment the policy did not pin, does not meet the requirement. |
 | `CAP-ASSURANCE-006` | implemented | limitation | A certificate does not record which verdict rule decided it, so a change to that rule would make already-sealed certificates fail to deserialize; the rule is pinned by test rather than by the document, because recording it on the sealed body would break every existing seal. |
 | `CAP-ASSURANCE-007` | implemented | capability | A certificate can go stale or be withdrawn: a boundary may require the evidence behind it to be no older than a stated age, one that cannot be dated is not fresh, and a revoked certificate is refused however well formed it is. Time and revocations are arguments to the decision, never read inside it. |
+| `CAP-ASSURANCE-008` | implemented | capability | Every field of an assurance policy is accounted for by a test that shows it changing a decision, or documented as descriptive; a field added without either stops the check compiling. |
 
 ## Assurance policy
 

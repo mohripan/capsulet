@@ -342,6 +342,10 @@
         {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
+        },
+        {
+          "path": "crates/kernel/tests/totality.rs",
+          "selector": "every_derivation_shape_reaches_a_verdict"
         }
       ]
     },
@@ -575,6 +579,10 @@
         {
           "path": "crates/ir/tests/assurance.rs",
           "selector": "a_certificate_with_nothing_to_date_it_by_is_not_fresh"
+        },
+        {
+          "path": "crates/ir/tests/policy_is_read.rs",
+          "selector": "every_field_of_an_assurance_policy_is_accounted_for"
         }
       ]
     },
@@ -1654,6 +1662,33 @@
       ]
     },
     {
+      "id": "CAP-ASSURANCE-008",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Assurance decisions",
+      "statement": "Every field of an assurance policy is accounted for by a test that shows it changing a decision, or documented as descriptive; a field added without either stops the check compiling.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "no-policy-field-is-silently-unread",
+          "evidence_selectors": [
+            "every_field_of_an_assurance_policy_is_accounted_for"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/policy_is_read.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "every_field_of_an_assurance_policy_is_accounted_for"
+        }
+      ]
+    },
+    {
       "id": "CAP-CORRECTNESS-003",
       "kind": "capability",
       "maturity": "implemented",
@@ -1675,6 +1710,12 @@
           "evidence_selectors": [
             "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
           ]
+        },
+        {
+          "assertion": "every-derivation-shape-decides",
+          "evidence_selectors": [
+            "every_derivation_shape_reaches_a_verdict"
+          ]
         }
       ],
       "evidence": [
@@ -1689,6 +1730,12 @@
           "path": "crates/kernel/tests/depth.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/totality.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "every_derivation_shape_reaches_a_verdict"
         }
       ]
     },

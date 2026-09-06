@@ -497,17 +497,35 @@ underlying gap (`CAP-CORRECTNESS-008`: proposals carry no schema version of thei
 
 **Files:** `crates/xtask/src/verify/catalog.rs`, `crates/ir/tests/`, `fuzz/`
 
-- [ ] Failing tests: a field added to `AssurancePolicy` and read by no decision fails the gate; the
-  gate passes once it is read.
-- [ ] Property tests: `check` decides every generated `Rule` without panicking; `decide_boundary`
-  never returns `Allowed` for a certificate that does not cover the required contract; canonical
-  encoding round-trips.
-- [ ] Fuzz targets for `Rule` deserialization and `check`, since both take proposer-shaped input under
-  an explicit bound once Task 1 lands.
-- [ ] A `correctness` gate in the fast and full profiles.
-- [ ] This is the task that would have caught `required_contracts`: a field declared on the policy, set
-  by two tests, and read by nothing. The tests made it look covered, which is worse than it not
-  existing.
+- [x] `crates/ir/tests/policy_is_read.rs` destructures `AssurancePolicy` and `BoundaryPolicy`
+  exhaustively and shows each field changing a decision. Adding a field stops the file compiling, so
+  whoever adds it has to say which decision reads it — or state plainly that none does, and why.
+- [x] `crates/kernel/tests/totality.rs` sweeps every leaf rule against every wrapper at eight depths,
+  either side of the bound, and asserts only that `check` returned.
+- [x] Covered by the existing `unit` and `ir` gates.
+- [ ] Fuzz targets — not added. See below.
+
+**No new gate.** `unit` already runs the workspace and `ir` runs `capsulet-ir`, so these files are
+gated the moment they exist. A `correctness` gate would run the same crates under a second name, and
+this repository already decided that question once: M3 folded the runtime's checks into `ir` rather
+than giving them their own, because "a gate per crate is a gate nobody reads".
+
+**Two corrections the tests made to themselves.** Both first drafts asserted a field was read and
+were wrong about *why* the decision changed. Setting `policy.mode` to observe changed nothing,
+because a policy's mode only ever tightens what a definition declared — `strictest` wins — so seeing
+it read needs a definition that declared observe. And the `minimum` case used a certificate with no
+obligations, which is denied for coverage long before any verdict is compared; isolating the field
+needs a certificate that *covers* the contract and reaches only `conditional`. A test that passes for
+the wrong reason is the same failure this plan is about, one level up.
+
+**The sweep is deterministic, not random.** A generated corpus that differs per run turns a failure
+into a story about a seed. Anyone can re-run this and see the same thing.
+
+**Fuzzing is not here.** `cargo-fuzz` needs a nightly toolchain, and this workspace pins
+`rust-version = "1.96"` on stable across every gate. Adding a target nothing in CI can run would be a
+claim of coverage rather than coverage. The deterministic sweep covers the shapes that motivated it —
+depth either side of the bound, every rule, every wrapper — and a real fuzzing story is a toolchain
+decision to take deliberately.
 
 ---
 
