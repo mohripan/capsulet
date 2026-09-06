@@ -438,10 +438,6 @@
         },
         {
           "path": "crates/ir/tests/trust.rs",
-          "selector": "deserializing_cannot_assert_a_class_the_record_does_not_justify"
-        },
-        {
-          "path": "crates/ir/tests/trust.rs",
           "selector": "combining_values_yields_the_weakest_relevant_trust"
         },
         {
@@ -482,11 +478,15 @@
         },
         {
           "path": "crates/ir/tests/known_gaps.rs",
-          "selector": "gap_verified_trust_is_minted_by_asserting_it"
+          "selector": "gap_a_required_contract_is_covered_by_naming_it"
         },
         {
-          "path": "crates/ir/tests/known_gaps.rs",
-          "selector": "gap_a_required_contract_is_covered_by_naming_it"
+          "path": "crates/ir/tests/trust.rs",
+          "selector": "a_record_naming_a_certificate_that_does_not_exist_is_refused"
+        },
+        {
+          "path": "crates/ir/tests/trust.rs",
+          "selector": "the_verdict_and_residual_count_come_from_the_certificate"
         }
       ]
     },
@@ -1284,16 +1284,22 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Verified computation IR",
-      "statement": "A trust class cannot exceed what its own verification record's recorded verdict justifies; a document claiming a stronger class is refused.",
+      "statement": "A value's trust class cannot be strengthened by assertion: establishing one requires a verification record admitted against a certificate that exists and covers the contract claimed, and the verdict and residual count are read from that certificate rather than from the document.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
       "verification": [
         {
-          "assertion": "trust-requires-a-record",
+          "assertion": "a-record-must-name-a-certificate-that-exists",
           "evidence_selectors": [
-            "deserializing_cannot_assert_a_class_the_record_does_not_justify"
+            "a_record_naming_a_certificate_that_does_not_exist_is_refused"
+          ]
+        },
+        {
+          "assertion": "the-decided-fields-come-from-the-certificate",
+          "evidence_selectors": [
+            "the_verdict_and_residual_count_come_from_the_certificate"
           ]
         },
         {
@@ -1308,7 +1314,13 @@
           "type": "test",
           "path": "crates/ir/tests/trust.rs",
           "command": "cargo test -p capsulet-ir --locked",
-          "selector": "deserializing_cannot_assert_a_class_the_record_does_not_justify"
+          "selector": "a_record_naming_a_certificate_that_does_not_exist_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/trust.rs",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "the_verdict_and_residual_count_come_from_the_certificate"
         },
         {
           "type": "test",
@@ -1319,21 +1331,19 @@
       ]
     },
     {
-      "id": "CAP-IR-005",
+      "id": "CAP-IR-006",
       "kind": "limitation",
       "maturity": "implemented",
       "area": "Verified computation IR",
-      "statement": "A verification record is not resolved against the certificate it names, so its verdict, residual count and provenance flag are taken from the document that carries them; a posted record therefore reaches the verified trust class on its own say-so.",
+      "statement": "Whether a value reached a verification record without crossing an unmodelled boundary is supplied by the caller, not derived: no certificate records provenance loss, so that one input to the verified trust class is taken on trust.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
       "evidence": [
         {
-          "type": "test",
-          "path": "crates/ir/tests/known_gaps.rs",
-          "command": "cargo test -p capsulet-ir --locked",
-          "selector": "gap_verified_trust_is_minted_by_asserting_it"
+          "type": "source",
+          "path": "crates/ir/src/trust.rs"
         }
       ]
     },

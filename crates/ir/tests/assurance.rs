@@ -9,7 +9,7 @@ use capsulet_ir::correctness::certificate::{Subject, VerifierRecord, VerifierTru
 use capsulet_ir::correctness::obligation::{DischargeState, ObligationStatement, RepairOwner};
 use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
 use capsulet_ir::correctness::{Certificate, CertificateBody, EvidenceRef};
-use capsulet_ir::trust::{RawVerificationRecord, RecordVerdict};
+use capsulet_ir::trust::{CertificateMap, Provenance, RawVerificationRecord};
 use capsulet_ir::{
     AssuranceMode, AssurancePolicy, AssuranceVerdict, CheckerVerdict, Digest, Identity, Obligation,
     RecordedTime, TrustClass, TrustLevel, VerificationRecord, admit, check_trust_route,
@@ -56,6 +56,14 @@ fn discharged(name: &str) -> Obligation {
 }
 
 fn certificate(mode: AssuranceMode, obligations: Vec<Obligation>) -> Certificate {
+    certificate_covering(mode, vec![id("patch-compiles")], obligations)
+}
+
+fn certificate_covering(
+    mode: AssuranceMode,
+    contracts: Vec<capsulet_ir::Identifier>,
+    obligations: Vec<Obligation>,
+) -> Certificate {
     let definition = definition_in(mode);
     let admission = admit(&definition).expect("the fixture definition is admitted");
     let verdict = AssuranceVerdict::under_mode(mode, &obligations);
@@ -74,7 +82,7 @@ fn certificate(mode: AssuranceMode, obligations: Vec<Obligation>) -> Certificate
         },
         policy_version: "release-policy/3".to_string(),
         kernel_version: "capsulet-kernel 0.1.0".to_string(),
-        contracts: vec![id("patch-compiles")],
+        contracts,
         verifiers: vec![VerifierRecord {
             identity: Identity::new(id("cargo-test"), "1.96"),
             environment: Digest::of(b"an image"),
@@ -430,13 +438,25 @@ fn a_protected_destination_refuses_a_value_that_did_not_earn_its_way_in() {
         })
     );
 
-    let record = VerificationRecord::admit(RawVerificationRecord {
-        contract: "patch-compiles".to_string(),
-        certificate: Digest::of(b"a certificate"),
-        verdict: RecordVerdict::Accepted,
-        residual_count: 0,
-        provenance_complete: true,
-    })
+    let mut certificates = CertificateMap::new();
+    let compiles = certificates.insert(certificate(
+        AssuranceMode::Enforce,
+        vec![discharged("patch-compiles")],
+    ));
+    let scanned = certificates.insert(certificate_covering(
+        AssuranceMode::Enforce,
+        vec![id("scanned-under-named-rules")],
+        vec![discharged("patch-compiles")],
+    ));
+
+    let record = VerificationRecord::admit(
+        RawVerificationRecord {
+            contract: "patch-compiles".to_string(),
+            certificate: compiles,
+        },
+        &certificates,
+        Provenance::Complete,
+    )
     .expect("the record is admitted");
     assert_eq!(
         check_trust_route(
@@ -449,13 +469,14 @@ fn a_protected_destination_refuses_a_value_that_did_not_earn_its_way_in() {
 
     // Verified, but under a different contract: still not what this space asked
     // for.
-    let elsewhere = VerificationRecord::admit(RawVerificationRecord {
-        contract: "scanned-under-named-rules".to_string(),
-        certificate: Digest::of(b"another certificate"),
-        verdict: RecordVerdict::Accepted,
-        residual_count: 0,
-        provenance_complete: true,
-    })
+    let elsewhere = VerificationRecord::admit(
+        RawVerificationRecord {
+            contract: "scanned-under-named-rules".to_string(),
+            certificate: scanned,
+        },
+        &certificates,
+        Provenance::Complete,
+    )
     .expect("the record is admitted");
     assert!(matches!(
         check_trust_route(

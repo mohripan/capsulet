@@ -21,7 +21,6 @@ use capsulet_ir::correctness::obligation::{DischargeState, ObligationStatement, 
 use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
 use capsulet_ir::correctness::{Certificate, CertificateBody, EvidenceRef};
 use capsulet_ir::digest::Digest;
-use capsulet_ir::trust::{RawTrustClass, RawVerificationRecord, RecordVerdict, TrustClass};
 use capsulet_ir::{
     AssuranceMode, AssurancePolicy, AssuranceVerdict, Identity, Obligation, RecordedTime, admit,
     decide_boundary,
@@ -132,41 +131,4 @@ fn gap_a_required_contract_is_covered_by_naming_it() {
         "GAP: the boundary opened for a certificate that proved nothing about the contract it \
          required. Task 3 makes this a denial naming the uncovered statements."
     );
-}
-
-/// Gap 2: `Verified` trust is minted by asserting it.
-///
-/// `trust.rs` opens by saying trust never strengthens by assertion — "not by a
-/// cast, not by a setter, not by a field in a JSON document someone posted".
-/// `RawTrustClass` is that posted document's shape, and `TryFrom` is the
-/// admission every path uses, including `Deserialize`.
-///
-/// The admission compares the document's claimed class against the document's
-/// own `verdict`, `residual_count`, and `provenance_complete` fields. All three
-/// are written by the sender. The `certificate` digest is never resolved, so
-/// the record need not correspond to any certificate that exists.
-///
-/// Fixed by Task 2.
-#[test]
-fn gap_verified_trust_is_minted_by_asserting_it() {
-    // Nothing here was produced by a verifier. Every field is typed out, and
-    // the digest names no certificate anywhere.
-    let posted = RawTrustClass::Verified {
-        record: RawVerificationRecord {
-            contract: "no-secrets-leaked".to_string(),
-            certificate: Digest::of(b"not a certificate"),
-            verdict: RecordVerdict::Accepted,
-            residual_count: 0,
-            provenance_complete: true,
-        },
-    };
-
-    let trust = TrustClass::try_from(posted).expect("GAP: admission accepted it");
-
-    assert!(
-        matches!(trust, TrustClass::Verified { .. }),
-        "GAP: assertion alone reached Verified. Task 2 resolves the certificate and derives these \
-         fields from it, so a record naming nothing is refused."
-    );
-    assert_eq!(trust.contract(), Some("no-secrets-leaked"));
 }

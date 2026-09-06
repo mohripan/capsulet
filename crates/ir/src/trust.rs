@@ -1,36 +1,33 @@
 //! Trust classes: what a value's assurance is, as a type.
 //!
-//! The rule this module exists to enforce is short: trust never strengthens by
-//! assertion. **It does not yet enforce it.** What it enforces today is
-//! narrower — a document cannot claim a class stronger than its own
-//! [`VerificationRecord`] justifies.
-//!
-//! That check is weaker than it reads, because the record is part of the same
-//! document. `verdict`, `residual_count` and `provenance_complete` are all
-//! written by the sender, and `certificate` is never resolved, so a record may
-//! name a certificate that exists nowhere. A posted document asserting
-//! `accepted`, no residuals and complete provenance therefore reaches
-//! [`TrustClass::Verified`] on its own say-so — which is precisely the field in
-//! a document someone posted that this module set out to refuse.
-//!
-//! Closing it needs [`VerificationRecord::admit`] to resolve the certificate and
-//! derive those fields from it, which means the admission takes a resolver and
-//! [`TrustClass`] cannot keep a context-free `Deserialize`. See
-//! `crates/ir/tests/known_gaps.rs` and Task 2 of
-//! `docs/superpowers/plans/2026-09-06-correctness-kernel-robustness.md`.
+//! The rule this module enforces is short. Trust never strengthens by
+//! assertion. Not by a cast, not by a setter, and not by a field in a document
+//! someone posted. The only way to reach [`TrustClass::Verified`] is to present
+//! a [`VerificationRecord`], and the only way to build one of those is
+//! [`VerificationRecord::admit`], which resolves the certificate the record
+//! names and takes every field it decides on from that certificate rather than
+//! from the document.
 //!
 //! Weakening, by contrast, is always allowed. A value may be treated as less
 //! assured than it is; that is a conservative mistake, not an unsound one.
 //!
-//! Deserialization is the interesting boundary, because a wire document is
-//! whatever the sender wrote. [`RawTrustClass`] is the wire shape, and it is
-//! plain data with no privileges. It becomes a [`TrustClass`] only by passing
-//! the same admission every other path uses — an admission that currently
-//! checks the document's consistency with itself, and nothing beyond it.
+//! [`TrustClass`] has no [`serde::Deserialize`], and that absence is the design.
+//! A wire document is whatever the sender wrote, and a type whose invariant
+//! lives in a certificate somewhere else cannot re-establish it from bytes
+//! alone. [`Certificate`] *can* have one, because it carries its own seal and
+//! re-checks it. A verification record has no seal of its own, so it is admitted
+//! against a [`CertificateSource`] the same way replay resolves evidence
+//! against an evidence source.
+//!
+//! What a document may still say is which certificate and which contract. Both
+//! are then checked, and neither can be made true by writing it down.
 
-use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::correctness::certificate::{AssuranceVerdict, Certificate};
 use crate::digest::Digest;
 
 /// Why a trust claim was refused.
@@ -38,53 +35,94 @@ use crate::digest::Digest;
 pub enum TrustError {
     #[error("a verification record must name the contract it discharged")]
     MissingContract,
-    #[error(
-        "a `{claimed}` trust class needs a record that justifies it, but this record justifies at \
-         most `{justified}`"
-    )]
-    Unjustified {
-        claimed: &'static str,
-        justified: &'static str,
+    #[error("no certificate resolves to {certificate}")]
+    CertificateNotFound { certificate: Digest },
+    #[error("certificate {certificate} does not cover the contract `{contract}`")]
+    ContractNotCovered {
+        contract: String,
+        certificate: Digest,
     },
-    #[error("verdict `{found}` cannot support any strengthened trust class")]
-    VerdictTooWeak { found: String },
 }
 
-/// What a verifier concluded, as it appears inside a verification record.
+/// Whether the value a record is about reached here without crossing a boundary
+/// the model does not describe.
 ///
-/// This mirrors the platform verdict rather than redefining it; the record only
-/// needs to know whether the conclusion can carry trust.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// Deliberately *not* part of the wire record, and deliberately not read off the
+/// certificate. A certificate says what a run proved; whether a particular value
+/// travelled here intact is a property of that value's path, which only the code
+/// that moved it knows. Passing it separately keeps it out of documents, where
+/// it would be exactly the unearned strengthening this module exists to refuse.
+///
+/// It is still an input rather than a derivation. See `CAP-IR-006`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum RecordVerdict {
-    Unverified,
-    Rejected,
-    Conditional,
-    Accepted,
+pub enum Provenance {
+    /// No unmodelled hop; the value that is here is the value that was checked.
+    Complete,
+    /// The value crossed a boundary this model does not describe.
+    Lost,
 }
 
-impl RecordVerdict {
+/// Where an admission resolves the certificate a record names.
+///
+/// A trait rather than a store handle, for the reason [`crate::correctness`]
+/// replay takes one: admission must work the same against a bundle on disk, a
+/// database, or a fixture, and a trait with one method is hard to accidentally
+/// give network access.
+pub trait CertificateSource {
+    /// The certificate with this digest, if this source has it.
+    fn certificate(&self, digest: &Digest) -> Option<&Certificate>;
+}
+
+/// The simplest source: certificates held in memory, keyed by their own digest.
+#[derive(Debug, Clone, Default)]
+pub struct CertificateMap {
+    by_digest: BTreeMap<Digest, Certificate>,
+}
+
+impl CertificateMap {
+    /// An empty source.
     #[must_use]
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Unverified => "unverified",
-            Self::Rejected => "rejected",
-            Self::Conditional => "conditional",
-            Self::Accepted => "accepted",
-        }
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a certificate, keyed by its own replay digest.
+    pub fn insert(&mut self, certificate: Certificate) -> Digest {
+        let digest = *certificate.replay_digest();
+        self.by_digest.insert(digest, certificate);
+        digest
+    }
+
+    /// How many certificates this source holds.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.by_digest.len()
+    }
+
+    /// Whether the source is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_digest.is_empty()
+    }
+}
+
+impl CertificateSource for CertificateMap {
+    fn certificate(&self, digest: &Digest) -> Option<&Certificate> {
+        self.by_digest.get(digest)
     }
 }
 
 /// The wire shape of a verification record.
 ///
-/// Plain data with no authority. It has to be admitted before it means anything.
+/// Two fields, because two is all a sender may usefully say: *which* certificate
+/// and *which* contract. Everything a decision reads — the verdict, how many
+/// obligations are still open — is taken from the certificate once it resolves.
+/// A document cannot make any of that true by stating it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawVerificationRecord {
     pub contract: String,
     pub certificate: Digest,
-    pub verdict: RecordVerdict,
-    pub residual_count: u32,
-    pub provenance_complete: bool,
 }
 
 /// An admitted statement that a specific certificate discharged a specific
@@ -96,27 +134,53 @@ pub struct RawVerificationRecord {
 pub struct VerificationRecord {
     contract: String,
     certificate: Digest,
-    verdict: RecordVerdict,
+    verdict: AssuranceVerdict,
     residual_count: u32,
-    provenance_complete: bool,
+    provenance: Provenance,
 }
 
 impl VerificationRecord {
-    /// Admits a raw record.
+    /// Admits a raw record against the certificate it names.
+    ///
+    /// The certificate must resolve, and it must cover the contract claimed.
+    /// The verdict and the residual count are then read from it — not from
+    /// `raw`, which has no way to say either.
     ///
     /// # Errors
     ///
-    /// Returns [`TrustError::MissingContract`] when no contract is named.
-    pub fn admit(raw: RawVerificationRecord) -> Result<Self, TrustError> {
+    /// [`TrustError::MissingContract`] when no contract is named,
+    /// [`TrustError::CertificateNotFound`] when nothing resolves the digest, and
+    /// [`TrustError::ContractNotCovered`] when the certificate says nothing
+    /// about the contract claimed.
+    pub fn admit(
+        raw: RawVerificationRecord,
+        certificates: &impl CertificateSource,
+        provenance: Provenance,
+    ) -> Result<Self, TrustError> {
         if raw.contract.trim().is_empty() {
             return Err(TrustError::MissingContract);
         }
+
+        let Some(certificate) = certificates.certificate(&raw.certificate) else {
+            return Err(TrustError::CertificateNotFound {
+                certificate: raw.certificate,
+            });
+        };
+
+        if !covers(certificate, &raw.contract) {
+            return Err(TrustError::ContractNotCovered {
+                contract: raw.contract,
+                certificate: raw.certificate,
+            });
+        }
+
+        let body = certificate.body();
         Ok(Self {
             contract: raw.contract,
             certificate: raw.certificate,
-            verdict: raw.verdict,
-            residual_count: raw.residual_count,
-            provenance_complete: raw.provenance_complete,
+            verdict: certificate.verdict(),
+            residual_count: u32::try_from(body.residuals().count()).unwrap_or(u32::MAX),
+            provenance,
         })
     }
 
@@ -132,10 +196,16 @@ impl VerificationRecord {
         &self.certificate
     }
 
-    /// The verdict recorded.
+    /// The verdict, as the named certificate recorded it.
     #[must_use]
-    pub const fn verdict(&self) -> RecordVerdict {
+    pub const fn verdict(&self) -> AssuranceVerdict {
         self.verdict
+    }
+
+    /// How many of that certificate's obligations are still open.
+    #[must_use]
+    pub const fn residual_count(&self) -> u32 {
+        self.residual_count
     }
 
     /// The strongest trust class this record justifies.
@@ -147,24 +217,49 @@ impl VerificationRecord {
     #[must_use]
     pub fn justifies(&self) -> TrustClass {
         match self.verdict {
-            RecordVerdict::Accepted if self.residual_count == 0 && self.provenance_complete => {
+            AssuranceVerdict::Accepted
+                if self.residual_count == 0 && self.provenance == Provenance::Complete =>
+            {
                 TrustClass::Verified {
                     record: Box::new(self.clone()),
                 }
             }
-            RecordVerdict::Accepted | RecordVerdict::Conditional => TrustClass::Conditional {
+            AssuranceVerdict::Accepted | AssuranceVerdict::Conditional => TrustClass::Conditional {
                 record: Box::new(self.clone()),
             },
-            RecordVerdict::Rejected | RecordVerdict::Unverified => TrustClass::Unverified,
+            AssuranceVerdict::Rejected | AssuranceVerdict::Unverified => TrustClass::Unverified,
         }
     }
 }
 
+/// Whether a certificate covers a contract.
+///
+/// Today this reads the list the certificate declares, which is a weaker
+/// question than it looks: nothing checks that any obligation is *about* the
+/// contract. Task 3 of the correctness robustness plan replaces the body of this
+/// function with coverage computed from the definition, and it is a function so
+/// that there is one place to do it.
+fn covers(certificate: &Certificate, contract: &str) -> bool {
+    certificate
+        .body()
+        .contracts
+        .iter()
+        .any(|declared| declared.as_str() == contract)
+}
+
 /// The assurance attached to a value.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+///
+/// No `Deserialize`, on purpose — see the module documentation. A value read
+/// from a document starts at [`TrustClass::Unverified`] and strengthens only
+/// through [`TrustClass::from_record`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TrustClass {
     /// Nothing checked this value, or what checked it failed.
+    ///
+    /// The default, so that anywhere a class is absent — including a field a
+    /// document is not allowed to set — lands on the weakest answer.
+    #[default]
     Unverified,
     /// Justified only under named residuals or with incomplete provenance.
     Conditional { record: Box<VerificationRecord> },
@@ -177,6 +272,20 @@ impl TrustClass {
     #[must_use]
     pub fn from_record(record: &VerificationRecord) -> Self {
         record.justifies()
+    }
+
+    /// The same record, held at a weaker class than it justifies.
+    ///
+    /// Treating a value as less assured than it is stays available, because it
+    /// is the safe direction. There is no matching way up.
+    #[must_use]
+    pub fn weakened(&self) -> Self {
+        match self {
+            Self::Unverified | Self::Conditional { .. } => Self::Unverified,
+            Self::Verified { record } => Self::Conditional {
+                record: record.clone(),
+            },
+        }
     }
 
     /// A short name, used in messages and certificates.
@@ -266,65 +375,4 @@ impl TrustClass {
 pub struct ProvenanceLoss {
     pub reason: String,
     pub lost_class: String,
-}
-
-/// The wire shape of a trust class.
-///
-/// A strengthened class must carry the record that justifies it. A document
-/// that simply says `verified` and stops does not deserialize, which is the
-/// point.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum RawTrustClass {
-    Unverified,
-    Conditional { record: RawVerificationRecord },
-    Verified { record: RawVerificationRecord },
-}
-
-impl TryFrom<RawTrustClass> for TrustClass {
-    type Error = TrustError;
-
-    fn try_from(raw: RawTrustClass) -> Result<Self, Self::Error> {
-        match raw {
-            RawTrustClass::Unverified => Ok(Self::Unverified),
-            RawTrustClass::Conditional { record } => admit_claim(record, "conditional", 1),
-            RawTrustClass::Verified { record } => admit_claim(record, "verified", 2),
-        }
-    }
-}
-
-fn admit_claim(
-    raw: RawVerificationRecord,
-    claimed: &'static str,
-    claimed_level: u8,
-) -> Result<TrustClass, TrustError> {
-    let verdict = raw.verdict;
-    let record = VerificationRecord::admit(raw)?;
-    let justified = record.justifies();
-    if justified.level() < claimed_level {
-        if matches!(justified, TrustClass::Unverified) {
-            return Err(TrustError::VerdictTooWeak {
-                found: verdict.as_str().to_string(),
-            });
-        }
-        return Err(TrustError::Unjustified {
-            claimed,
-            justified: justified.level_name(),
-        });
-    }
-    // A claim weaker than the record justifies is honest, so keep the claim.
-    Ok(match claimed_level {
-        2 => justified,
-        1 => TrustClass::Conditional {
-            record: Box::new(record),
-        },
-        _ => TrustClass::Unverified,
-    })
-}
-
-impl<'de> Deserialize<'de> for TrustClass {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = RawTrustClass::deserialize(deserializer)?;
-        Self::try_from(raw).map_err(serde::de::Error::custom)
-    }
 }

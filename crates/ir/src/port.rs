@@ -141,6 +141,16 @@ impl InputPort {
 pub struct OutputPort {
     pub id: Identifier,
     pub schema: ValueSchema,
+    /// Written out so a reader can see what a port claims, never read back in.
+    ///
+    /// A derived `Deserialize` sets private fields — being private stops a
+    /// caller assigning this, not a document. A definition is a declaration of
+    /// structure, and nothing about it has run yet, so a posted definition
+    /// asserting that a node produces verified output would be establishing
+    /// trust before anything checked anything. Reading always lands on
+    /// [`TrustClass::Unverified`]; only [`OutputPort::established`] strengthens
+    /// it, and only from a record.
+    #[serde(skip_deserializing)]
     produces: TrustClass,
 }
 

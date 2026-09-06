@@ -69,8 +69,8 @@ pub use port::{InputPort, OutputPort, TrustLevel, TrustRequirement};
 pub use reader::{from_json_slice, verify_canonical};
 pub use region::{Region, RegionError, RegionKind};
 pub use trust::{
-    ProvenanceLoss, RawTrustClass, RawVerificationRecord, RecordVerdict, TrustClass, TrustError,
-    VerificationRecord,
+    CertificateMap, CertificateSource, Provenance, ProvenanceLoss, RawVerificationRecord,
+    TrustClass, TrustError, VerificationRecord,
 };
 pub use value::{Field, IntegerRange, LengthBounds, SchemaMismatch, ValueSchema};
 pub use version::{

@@ -54,6 +54,10 @@ pub struct Artifact {
     pub byte_length: u64,
     /// The assurance this artifact carries. Established by a record or not at
     /// all; see [`crate::trust`].
+    ///
+    /// Written out, never read back in: an artifact reconstituted from a
+    /// document has not shown anything, whatever the document says about it.
+    #[serde(skip_deserializing)]
     pub trust: TrustClass,
     /// The artifacts and evidence this was derived from, by digest, so lineage
     /// is walkable without a side index.

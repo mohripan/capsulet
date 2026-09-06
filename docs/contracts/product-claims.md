@@ -171,10 +171,10 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
 | `CAP-IR-001` | implemented | capability | Two structurally equal IR documents produce identical canonical bytes and therefore one digest, and floating point is refused before any digest is computed. |
-| `CAP-IR-002` | implemented | capability | A trust class cannot exceed what its own verification record's recorded verdict justifies; a document claiming a stronger class is refused. |
+| `CAP-IR-002` | implemented | capability | A value's trust class cannot be strengthened by assertion: establishing one requires a verification record admitted against a certificate that exists and covers the contract claimed, and the verdict and residual count are read from that certificate rather than from the document. |
 | `CAP-IR-003` | implemented | capability | Structural admission applies in every assurance mode, including observe, and returns a decision for every definition without panicking. |
 | `CAP-IR-004` | implemented | capability | A loop must declare finite bounds, and exhausting a budget is reported as a stop reason rather than as completion. |
-| `CAP-IR-005` | implemented | limitation | A verification record is not resolved against the certificate it names, so its verdict, residual count and provenance flag are taken from the document that carries them; a posted record therefore reaches the verified trust class on its own say-so. |
+| `CAP-IR-006` | implemented | limitation | Whether a value reached a verification record without crossing an unmodelled boundary is supplied by the caller, not derived: no certificate records provenance loss, so that one input to the verified trust class is taken on trust. |
 
 ## Workflow compatibility
 

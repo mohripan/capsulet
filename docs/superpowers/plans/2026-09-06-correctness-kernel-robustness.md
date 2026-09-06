@@ -28,7 +28,7 @@ surfaces (M5).
 
 ## Evidence
 
-Three findings were confirmed by running code, not by reading it. The two still open are in the tree
+Three findings were confirmed by running code, not by reading it. The one still open is in the tree
 under `crates/ir/tests/known_gaps.rs`. Each asserts the **current, wrong** behaviour and says so;
 each is a tripwire that goes red exactly when its task lands, which forces the implementer to update
 the claim registry in the same commit. Finding 3's tripwire has already been through that cycle: it
@@ -38,7 +38,7 @@ behaviour the kernel now has.
 | # | Finding | Status |
 |---|---------|--------|
 | 1 | A boundary requiring contract `no-secrets-leaked` opens for a certificate that discharged only an unrelated `house-style` obligation. | **Proven** |
-| 2 | `TrustClass::Verified` is reachable from a hand-written record naming a certificate digest that resolves to nothing. | **Proven** |
+| 2 | `TrustClass::Verified` is reachable from a hand-written record naming a certificate digest that resolves to nothing. | **Proven — fixed in Task 2** |
 | 3 | `check` does not terminate with a verdict on a deeply nested derivation; the process exits with `STATUS_STACK_OVERFLOW`. | **Proven — fixed in Task 1** |
 
 ## Overclaims to correct
@@ -50,13 +50,18 @@ Documented guarantees that are stronger than the code, in three places:
   stated bound rather than on nothing.
 - `CAP-IR-002`, maturity `implemented`, listed on the public surfaces `ARCHITECTURE.md` and
   `docs/architecture.md`: *"A value's trust class cannot be strengthened by assertion."* Finding 2
-  disproves the headline. Its qualifying clause — "a document claiming a verdict its verification
-  record does not justify is refused" — is true, and is all the evidence tests check. The claim
+  disproved the headline. Its qualifying clause — "a document claiming a verdict its verification
+  record does not justify is refused" — was true, and was all the evidence tests checked. The claim
   passed the registry's staleness gate because the clause is a tautology: the record is part of the
-  same document, so the check compares a document against itself.
+  same document, so the check compared a document against itself. Restored in Task 2, with evidence
+  that resolves a certificate.
 - `crates/ir/src/trust.rs:3` — "Trust never strengthens by assertion. Not by a cast, not by a
-  setter, not by a field in a JSON document someone posted." The third of those is exactly what
-  Finding 2 does.
+  setter, not by a field in a JSON document someone posted." The third of those was exactly what
+  Finding 2 did. Also restored in Task 2.
+
+The tautology is the pattern worth remembering: every gate this repository has was green while the
+headline was false, because the claim's own qualifying clause asked nothing of the world. Task 13
+catches *unread* fields, not vacuous ones.
 
 ## Chosen approach
 
@@ -149,16 +154,34 @@ and a migration; it belongs with Task 10's schema work rather than on its own.
 
 **Files:** `crates/ir/src/trust.rs`, `crates/ir/tests/trust.rs`, `docs/contracts/product-claims.json`
 
-- [ ] Failing tests: a record naming a digest that resolves to no certificate is refused; a record
-  whose verdict disagrees with the resolved certificate is refused; a record naming a contract the
-  certificate does not cover is refused; `residual_count` and `provenance_complete` come from the
-  certificate, and a document that disagrees is refused.
-- [ ] `VerificationRecord::admit(raw, &impl CertificateSource)`. The raw document supplies only
-  *which* certificate and *which* contract; every field a decision reads is derived from the resolved
-  certificate.
-- [ ] Remove the context-free `Deserialize for TrustClass`. A type whose invariant lives elsewhere
-  cannot honestly have one, and leaving it in place is what makes the forgery a one-liner.
-- [ ] Restore the `CAP-IR-002` headline, with evidence that resolves a certificate.
+- [x] Failing tests: a record naming a digest that resolves to no certificate is refused; a record
+  naming a contract the certificate does not cover is refused; the verdict and residual count come
+  from the certificate.
+- [x] `VerificationRecord::admit(raw, &impl CertificateSource, provenance)`. The raw document supplies
+  only *which* certificate and *which* contract; `RawVerificationRecord` lost its other three fields
+  because a document has no standing to state them.
+- [x] Remove the context-free `Deserialize for TrustClass`, along with `RawTrustClass` and
+  `RecordVerdict`, which existed only to serve it.
+- [x] Restore the `CAP-IR-002` headline, with evidence that resolves a certificate.
+
+**What the removal found.** The plan expected the compile errors to be the audit, and they were, but
+not where predicted. `Artifact` was one site and is unused. The other was `OutputPort::produces`,
+which is inside `Graph`, inside `Definition` — a document that arrives over the wire. The field is
+private, and `new()` defaults it to `Unverified`, but a derived `Deserialize` sets private fields, so
+a posted definition could declare that a node produces verified output. `graph.rs` then meets those
+classes to decide whether a downstream trust requirement is satisfied. The same forgery, one layer
+down, and reachable from the API rather than only from a hand-written record.
+
+Both sites now carry `#[serde(skip_deserializing)]`: the class is still written out, so a reader can
+see what a port claims, and reading always lands on `Unverified`. That is the module's own rule about
+which direction is safe, applied to serde — weakening on the way in is sound, strengthening is not.
+`TrustClass` gained a `Default` of `Unverified` so the skipped field has somewhere honest to land.
+
+**Residual, recorded as `CAP-IR-006`.** `provenance_complete` is the one field that could not be
+derived, because nothing on a certificate records provenance loss — it is a property of the value's
+path, not of the run. It is now a typed `Provenance` argument to `admit` rather than a document
+field, so it cannot arrive over the wire, but it is still the caller's word. Deriving it needs
+lineage the certificate does not carry.
 
 ### Task 3: Compute contract coverage from the definition
 
@@ -323,8 +346,8 @@ and a migration; it belongs with Task 10's schema work rather than on its own.
 
 Every task lands with its tests. The plan is complete when:
 
-- the two remaining tripwires in `crates/ir/tests/known_gaps.rs` have been inverted to assert the
-  correct behaviour (the kernel's was retired by Task 1);
+- the remaining tripwire in `crates/ir/tests/known_gaps.rs` has been inverted to assert the correct
+  behaviour (the kernel's was retired by Task 1, the trust one by Task 2);
 - `crates/kernel/tests/depth.rs` runs un-ignored;
 - the kernel's totality claim and `CAP-IR-002` are restored with evidence that earns them;
 - `verify --profile full` passes with the new `correctness` gate;
