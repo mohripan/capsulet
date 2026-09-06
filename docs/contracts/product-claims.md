@@ -27,7 +27,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when it re-derives and contains the cited proposition. |
 | `CAP-CORRECTNESS-002` | implemented | limitation | Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance. |
-| `CAP-CORRECTNESS-003` | implemented | limitation | Kernel derivation is unbounded recursion over proposer-supplied input, so a sufficiently nested derivation exhausts the stack and ends the process rather than returning a verdict. |
+| `CAP-CORRECTNESS-003` | implemented | capability | The kernel decides every proposal it is given: a derivation nested past the depth bound it states is rejected with that reason, rather than exhausting the stack. |
 
 ## Crash recovery
 

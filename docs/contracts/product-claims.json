@@ -294,6 +294,14 @@
         {
           "path": "crates/kernel/src/tests.rs",
           "selector": "accepts_a_citation_that_re_derives_and_contains_its_object"
+        },
+        {
+          "path": "crates/kernel/tests/depth.rs",
+          "selector": "a_derivation_far_past_the_bound_is_still_only_a_rejection"
+        },
+        {
+          "path": "crates/kernel/tests/depth.rs",
+          "selector": "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
         }
       ]
     },
@@ -1350,18 +1358,40 @@
     },
     {
       "id": "CAP-CORRECTNESS-003",
-      "kind": "limitation",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "Kernel derivation is unbounded recursion over proposer-supplied input, so a sufficiently nested derivation exhausts the stack and ends the process rather than returning a verdict.",
+      "statement": "The kernel decides every proposal it is given: a derivation nested past the depth bound it states is rejected with that reason, rather than exhausting the stack.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
+      "verification": [
+        {
+          "assertion": "a-hostile-depth-is-rejected-not-fatal",
+          "evidence_selectors": [
+            "a_derivation_far_past_the_bound_is_still_only_a_rejection"
+          ]
+        },
+        {
+          "assertion": "the-bound-is-the-kernels-own",
+          "evidence_selectors": [
+            "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
+          ]
+        }
+      ],
       "evidence": [
         {
-          "type": "source",
-          "path": "crates/kernel/tests/known_gaps.rs"
+          "type": "test",
+          "path": "crates/kernel/tests/depth.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_derivation_far_past_the_bound_is_still_only_a_rejection"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/depth.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
         }
       ]
     },

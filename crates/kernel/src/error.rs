@@ -93,6 +93,8 @@ pub enum CheckError {
     UnknownAuthority { value: String },
     #[error("trust requires attributed content, but its premise concludes {found}")]
     TrustPremiseNotAttributed { found: String },
+    #[error("the derivation nests deeper than the {limit} rules this kernel will walk")]
+    DerivationTooDeep { limit: u32 },
     #[error("the derivation concludes {derived}, which is not the stated goal {goal}")]
     GoalNotDerived { derived: String, goal: String },
 }
@@ -113,6 +115,7 @@ impl CheckError {
             | Self::ArithNoOperands { .. }
             | Self::UnknownAuthority { .. }
             | Self::TrustPremiseNotAttributed { .. }
+            | Self::DerivationTooDeep { .. }
             | Self::GoalNotDerived { .. } => RepairOwner::Proposer,
         }
     }
@@ -133,6 +136,7 @@ impl CheckError {
             Self::AuthorityBelowFloor { .. } => "authority_below_floor",
             Self::UnknownAuthority { .. } => "unknown_authority",
             Self::TrustPremiseNotAttributed { .. } => "trust_premise_not_attributed",
+            Self::DerivationTooDeep { .. } => "derivation_too_deep",
             Self::GoalNotDerived { .. } => "goal_not_derived",
         }
     }

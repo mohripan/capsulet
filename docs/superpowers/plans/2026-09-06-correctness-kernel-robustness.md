@@ -28,23 +28,26 @@ surfaces (M5).
 
 ## Evidence
 
-Three findings were confirmed by running code, not by reading it. The probes are in the tree under
-`crates/ir/tests/known_gaps.rs` and `crates/kernel/tests/known_gaps.rs`. Each asserts the **current,
-wrong** behaviour and says so; each is a tripwire that goes red exactly when its task lands, which
-forces the implementer to update the claim registry in the same commit.
+Three findings were confirmed by running code, not by reading it. The two still open are in the tree
+under `crates/ir/tests/known_gaps.rs`. Each asserts the **current, wrong** behaviour and says so;
+each is a tripwire that goes red exactly when its task lands, which forces the implementer to update
+the claim registry in the same commit. Finding 3's tripwire has already been through that cycle: it
+was retired when Task 1 landed and replaced by `crates/kernel/tests/depth.rs`, which asserts the
+behaviour the kernel now has.
 
 | # | Finding | Status |
 |---|---------|--------|
 | 1 | A boundary requiring contract `no-secrets-leaked` opens for a certificate that discharged only an unrelated `house-style` obligation. | **Proven** |
 | 2 | `TrustClass::Verified` is reachable from a hand-written record naming a certificate digest that resolves to nothing. | **Proven** |
-| 3 | `check` does not terminate with a verdict on a deeply nested derivation; the process exits with `STATUS_STACK_OVERFLOW`. | **Proven** |
+| 3 | `check` does not terminate with a verdict on a deeply nested derivation; the process exits with `STATUS_STACK_OVERFLOW`. | **Proven — fixed in Task 1** |
 
 ## Overclaims to correct
 
 Documented guarantees that are stronger than the code, in three places:
 
 - `crates/kernel/src/lib.rs:5` — "every check is total: `check` always terminates with a verdict",
-  and `:45` — "Always terminates." Finding 3 disproves both.
+  and `:45` — "Always terminates." Finding 3 disproved both. Restored in Task 1, now resting on a
+  stated bound rather than on nothing.
 - `CAP-IR-002`, maturity `implemented`, listed on the public surfaces `ARCHITECTURE.md` and
   `docs/architecture.md`: *"A value's trust class cannot be strengthened by assertion."* Finding 2
   disproves the headline. Its qualifying clause — "a document claiming a verdict its verification
@@ -104,17 +107,43 @@ Documented guarantees that are stronger than the code, in three places:
 
 **Files:** `crates/kernel/src/{lib.rs,ir.rs,error.rs}`, `crates/kernel/tests/depth.rs`
 
-- [ ] Failing tests: a derivation nested 100,000 deep returns a certificate rejecting it rather than
-  killing the process; a derivation at exactly the bound still decides; the bound appears in the
-  certificate's errors; a wire document nested past the bound is refused during deserialization.
-- [ ] `CheckError::DepthExceeded { limit }`, and `derive` carries a depth it refuses to exceed.
-- [ ] Deserialization is the second door and needs its own bound. `Rule` is `Deserialize` and serde
-  recurses before the kernel is ever called, so a fix inside `derive` alone leaves the process just
-  as killable.
-- [ ] Prefer an explicit work stack over recursion, so the bound expresses policy rather than
-  whatever stack the host thread happened to have.
-- [ ] Record the limit on the certificate, so a reader knows what bound a decision was made under
+- [x] Failing tests: a derivation far past the bound returns a certificate rejecting it rather than
+  killing the process; a derivation at exactly the bound still decides; the bound is recorded on the
+  certificate; the kernel reaches the same answer without the parser's help.
+- [x] `CheckError::DerivationTooDeep { limit }`, and `derive` carries a depth it refuses to exceed.
+- [x] `MAX_DERIVATION_DEPTH = 64`, stated by the kernel rather than inherited from the host stack.
+- [x] Record the limit on the certificate, so a reader knows what bound a decision was made under
   rather than assuming today's constant.
+
+**Two corrections to this task as it was written.**
+
+*Deserialization was not a second open door.* The bullet said serde recurses before the kernel is
+entered, so a fix in `derive` alone leaves the process killable. Measured: `serde_json` enforces a
+recursion limit of 128, and each `Trust` costs two levels of JSON, so it refuses at roughly 64
+nested rules — shallower than anything that threatens the stack. The kernel is bounded on the JSON
+path whatever it does. That is a property of the format the caller chose, not a decision the kernel
+made, so the kernel now states its own bound and `the_kernel_does_not_rely_on_the_transport_to_bound_depth`
+pins the distinction. No parse-boundary work was needed.
+
+*The walk was not the only recursion.* Bounding `derive` was not sufficient: `check` also calls
+`replay_digest`, which serializes the whole proposal, and a serializer has no depth limit of its
+own. The first fix left `check` still dying — before it returned — on the original case. The bound
+is therefore measured iteratively at the top of `check`, before anything reads the derivation, and
+an over-deep proposal is refused without being encoded.
+
+**Two residuals, for follow-on tasks.**
+
+`Rule` is a recursive type, so `drop`, `clone` and `serialize` still recurse in code the kernel does
+not own — measured to break between 10,000 and 50,000 rules. `check` refuses such a value without
+reading it and no supported transport can deliver one, so nothing is exposed today. The durable fix
+is a validated constructor that bounds depth where a `Rule` is built rather than where it is used,
+which would also let the pre-screen go away.
+
+The recorded bound does not survive storage. `derivation_depth_limit` is `Option<u32>` because
+`crates/postgres/src/certificates.rs` rebuilds a certificate from columns and has none for it, so a
+reloaded certificate honestly reports `None` rather than being backfilled with the running build's
+constant — which is the same mistake Task 10 exists to fix, in miniature. Persisting it is a column
+and a migration; it belongs with Task 10's schema work rather than on its own.
 
 ### Task 2: Bind a trust record to a certificate that exists
 
@@ -294,7 +323,8 @@ Documented guarantees that are stronger than the code, in three places:
 
 Every task lands with its tests. The plan is complete when:
 
-- the three tripwires in `known_gaps.rs` have been inverted to assert the correct behaviour;
+- the two remaining tripwires in `crates/ir/tests/known_gaps.rs` have been inverted to assert the
+  correct behaviour (the kernel's was retired by Task 1);
 - `crates/kernel/tests/depth.rs` runs un-ignored;
 - the kernel's totality claim and `CAP-IR-002` are restored with evidence that earns them;
 - `verify --profile full` passes with the new `correctness` gate;

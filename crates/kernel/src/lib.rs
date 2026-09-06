@@ -4,12 +4,11 @@
 //! The kernel decides it and issues a [`Certificate`]. Nothing here is learned
 //! and nothing here performs I/O.
 //!
-//! `check` is *not* total, though it is meant to be. [`Rule::Trust`] and
-//! [`Rule::Interpret`] nest, and `derive` walks them by recursion with no
-//! bound, so a sufficiently deep derivation exhausts the stack and takes the
-//! process with it. `Rule` is `Deserialize`, so the shape arrives from the
-//! proposer. See `crates/kernel/tests/known_gaps.rs` and Task 1 of
-//! `docs/superpowers/plans/2026-09-06-correctness-kernel-robustness.md`.
+//! Every check is total: `check` always terminates with a verdict. Derivations
+//! nest — [`Rule::Trust`] and [`Rule::Interpret`] each carry a premise, and the
+//! proposer chooses how deep to go — so totality rests on
+//! [`MAX_DERIVATION_DEPTH`], a bound the kernel states rather than inherits
+//! from whatever stack it happens to run on.
 //!
 //! The design boundary is deliberate. Provenance, arithmetic, record state and
 //! policy are mechanically decidable, so the kernel decides them. Whether a
@@ -46,17 +45,54 @@ pub use workflow::{Assembly, KERNEL_VERSION, certify};
 /// arithmetic that is correct to every digit anyone wrote down.
 const ARITH_EPSILON: f64 = 1e-9;
 
+/// The deepest chain of nested rules the kernel will walk.
+///
+/// [`Rule::Trust`] and [`Rule::Interpret`] each carry a premise, so a
+/// derivation is a chain and a proposer chooses its length. Without a bound the
+/// kernel recurses as far as it is asked and a deep enough proposal exhausts
+/// the stack — which ends the process rather than producing a verdict, so no
+/// caller can catch it and nothing is recorded about why.
+///
+/// The value is deliberately far above any real derivation. Grounding a claim
+/// takes a citation, a trust step, and sometimes a reading: three rules, not
+/// sixty-four. A bound this loose refuses nothing anyone would write and still
+/// keeps the walk to a depth any thread's stack holds comfortably.
+///
+/// A caller passing JSON is *also* bounded by `serde_json`, whose own recursion
+/// limit gives up at a shallower depth than this. That is a property of the
+/// format the caller happened to choose, not a decision this kernel made, so
+/// the kernel does not rely on it: a format without such a limit, or a value
+/// built in process, reaches [`check`] directly.
+///
+/// What this bound covers is the kernel's own reading of a derivation. It does
+/// not make [`Rule`] itself safe at any depth: the type is recursive, so
+/// dropping, cloning or encoding a value built far past this bound still
+/// recurses in code the kernel does not own — measured here at tens of
+/// thousands of rules. Nothing that arrives through a supported transport gets
+/// near it, and [`check`] refuses such a value without reading it, but the
+/// durable fix is to bound depth where a `Rule` is constructed rather than
+/// where it is used.
+pub const MAX_DERIVATION_DEPTH: u32 = 64;
+
 /// Decides a proposal against a snapshot.
 ///
-/// Terminates for any derivation the stack can hold — see the crate docs for
-/// the bound this does not yet have. A failure anywhere produces
-/// [`Verdict::Rejected`] with the specific reasons; an otherwise sound
-/// derivation that required a reading produces [`Verdict::Conditional`] with
-/// the readings recorded.
+/// Always terminates, for every proposal including a hostile one: a derivation
+/// nested past [`MAX_DERIVATION_DEPTH`] is rejected rather than walked. A
+/// failure anywhere produces [`Verdict::Rejected`] with the specific reasons;
+/// an otherwise sound derivation that required a reading produces
+/// [`Verdict::Conditional`] with the readings recorded.
 #[must_use]
 pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
+    // Measured before anything reads the derivation, because walking it is not
+    // the only recursion over it: `replay_digest` serializes the proposal, and
+    // a serializer has no depth limit of its own. A bound that only guarded the
+    // walk would still hand a hostile derivation to the encoder.
+    if exceeds_depth_bound(&proposal.derivation) {
+        return refused_as_too_deep(proposal);
+    }
+
     let mut state = CheckState::default();
-    let outcome = derive(&proposal.derivation, snapshot, &mut state);
+    let outcome = derive(&proposal.derivation, snapshot, &mut state, 1);
 
     if let Some(judgment) = &outcome {
         let derived = judgment.proposition().canonical();
@@ -93,6 +129,56 @@ pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
             })
             .collect(),
         replay_digest: replay_digest(proposal),
+        derivation_depth_limit: Some(MAX_DERIVATION_DEPTH),
+    }
+}
+
+/// Whether the derivation nests past [`MAX_DERIVATION_DEPTH`].
+///
+/// Iterative on purpose: a recursive measurement would be the recursion it is
+/// meant to detect. Each rule carries at most one premise, so the chain walks
+/// with a single borrow and no stack. Stopping at the bound rather than
+/// measuring the whole chain also means a hostile derivation costs work
+/// proportional to the bound, not to the length the proposer chose.
+fn exceeds_depth_bound(rule: &Rule) -> bool {
+    let mut depth: u32 = 1;
+    let mut current = rule;
+    while let Rule::Trust { premise, .. } | Rule::Interpret { premise, .. } = current {
+        depth += 1;
+        if depth > MAX_DERIVATION_DEPTH {
+            return true;
+        }
+        current = premise;
+    }
+    false
+}
+
+/// The certificate for a derivation the kernel refused to read.
+///
+/// The derivation is not digested. Encoding it is the recursion this refusal
+/// exists to avoid, so the digest covers the goal and says plainly that the
+/// derivation was never read — an honest identifier for a proposal that was
+/// turned away at the door, rather than one that pretends to pin bytes nobody
+/// looked at.
+fn refused_as_too_deep(proposal: &Proposal) -> Certificate {
+    let error = CheckError::DerivationTooDeep {
+        limit: MAX_DERIVATION_DEPTH,
+    };
+    Certificate {
+        verdict: Verdict::Rejected,
+        goal: proposal.goal.clone(),
+        discharged: Vec::new(),
+        residuals: Vec::new(),
+        errors: vec![CertificateError {
+            code: error.code().to_string(),
+            message: error.to_string(),
+            repair_owner: error.repair_owner().as_str().to_string(),
+            corrected_value: error.corrected_value(),
+        }],
+        replay_digest: capsulet_core::content_digest(
+            format!("derivation-too-deep|{}", proposal.goal.canonical()).as_bytes(),
+        ),
+        derivation_depth_limit: Some(MAX_DERIVATION_DEPTH),
     }
 }
 
@@ -113,9 +199,25 @@ impl CheckState {
     }
 }
 
-/// Evaluates one rule. Returns `None` when the step could not be taken at all,
-/// after recording why.
-fn derive(rule: &Rule, snapshot: &Snapshot, state: &mut CheckState) -> Option<Judgment> {
+/// Evaluates one rule, `depth` rules into the derivation. Returns `None` when
+/// the step could not be taken at all, after recording why.
+///
+/// The bound is checked on the way in rather than before the walk, so a
+/// derivation is refused for being too deep only if the kernel actually reaches
+/// that depth — and refusing costs one frame, not a traversal of whatever is
+/// left below it.
+fn derive(
+    rule: &Rule,
+    snapshot: &Snapshot,
+    state: &mut CheckState,
+    depth: u32,
+) -> Option<Judgment> {
+    if depth > MAX_DERIVATION_DEPTH {
+        state.errors.push(CheckError::DerivationTooDeep {
+            limit: MAX_DERIVATION_DEPTH,
+        });
+        return None;
+    }
     match rule {
         Rule::Cite {
             evidence_id,
@@ -125,7 +227,7 @@ fn derive(rule: &Rule, snapshot: &Snapshot, state: &mut CheckState) -> Option<Ju
         Rule::Trust {
             premise,
             min_authority,
-        } => derive_trust(premise, min_authority, snapshot, state),
+        } => derive_trust(premise, min_authority, snapshot, state, depth),
         Rule::Arith {
             op,
             operands,
@@ -136,7 +238,7 @@ fn derive(rule: &Rule, snapshot: &Snapshot, state: &mut CheckState) -> Option<Ju
             premise,
             proposition,
             rationale,
-        } => derive_interpret(premise, proposition, rationale, snapshot, state),
+        } => derive_interpret(premise, proposition, rationale, snapshot, state, depth),
     }
 }
 
@@ -258,8 +360,9 @@ fn derive_trust(
     min_authority: &str,
     snapshot: &Snapshot,
     state: &mut CheckState,
+    depth: u32,
 ) -> Option<Judgment> {
-    let inner = derive(premise, snapshot, state)?;
+    let inner = derive(premise, snapshot, state, depth + 1)?;
     let Judgment::Says {
         source_id,
         proposition,
@@ -343,8 +446,9 @@ fn derive_interpret(
     rationale: &str,
     snapshot: &Snapshot,
     state: &mut CheckState,
+    depth: u32,
 ) -> Option<Judgment> {
-    let inner = derive(premise, snapshot, state)?;
+    let inner = derive(premise, snapshot, state, depth + 1)?;
     state.residuals.push(Residual {
         from: inner.canonical(),
         to: proposition.clone(),

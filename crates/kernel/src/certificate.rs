@@ -72,6 +72,20 @@ pub struct Certificate {
     /// Digest over the goal and the derivation, so a certificate can be tied
     /// back to the exact proposal that produced it.
     pub replay_digest: String,
+    /// How deep a derivation the kernel would walk when it decided this.
+    ///
+    /// Recorded rather than looked up from the kernel version, because a build
+    /// with a tighter bound may reject a proposal this one accepted, and a
+    /// reader comparing two certificates should be able to see that without
+    /// knowing which constant each build carried.
+    ///
+    /// `None` means the bound was not recorded — a certificate decided before
+    /// this field existed, or reloaded from a store that does not keep it. That
+    /// is deliberately not the same as today's bound: filling in the running
+    /// build's constant would claim something about a decision this build did
+    /// not make.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derivation_depth_limit: Option<u32>,
 }
 
 impl Certificate {

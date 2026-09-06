@@ -117,6 +117,10 @@ fn row_to_certificate(
             residuals: from_json(row.try_get("residuals")?)?,
             errors: from_json(row.try_get("errors")?)?,
             replay_digest: row.try_get("replay_digest")?,
+            // Not a stored column. The bound this certificate was decided
+            // under is genuinely unknown here, and saying so beats filling in
+            // the running build's constant as though it had been recorded.
+            derivation_depth_limit: None,
         },
         alphabet_digest: row.try_get("alphabet_digest")?,
         model: row.try_get("model")?,
