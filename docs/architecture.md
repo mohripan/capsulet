@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
 # Architecture Overview
 
 Capsulet is a correctness-first AI-agent workflow platform with three layers. The implemented
@@ -47,6 +47,13 @@ that contract declares rather than by a certificate naming it. Nothing is decide
 kernel arithmetic is exact fixed-point, citations are compared as text rather than bytes, and a
 derivation deeper than the stated bound is rejected rather than walked. And nothing claims more than
 it checked: a replay that diverged reports no verdict, and one that had nothing to check says so.
+
+The kernel's citation rule does not meet the first of those yet. A citation checks that a
+proposition's subject and object occur in the cited span, then concludes the whole proposition,
+predicate included; the goal a derivation is checked against is compared as a rendered string; and
+the authority floor a trust step enforces is the one the proposal asks for. Each is recorded as a
+limitation (`CAP-CORRECTNESS-009`, `CAP-CORRECTNESS-010`, `CAP-CORRECTNESS-011`), and the term
+matching beneath them as `CAP-CORRECTNESS-004`.
 
 What is *not* guaranteed is written down in the same place as what is —
 [the product claims](contracts/product-claims.md) carry limitations alongside capabilities, each

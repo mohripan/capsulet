@@ -141,7 +141,9 @@ pub enum Rule {
     ///
     /// Concludes `Says(source, P)`. The kernel checks that the evidence exists,
     /// that its span re-derives from the stored source bytes, and that the
-    /// proposition's object appears literally within the cited excerpt.
+    /// proposition's subject and object both occur within the cited excerpt.
+    /// The predicate is not checked: the conclusion carries it, but nothing in
+    /// the span was found to state it (`CAP-CORRECTNESS-009`).
     Cite {
         evidence_id: String,
         proposition: Proposition,

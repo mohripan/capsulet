@@ -346,6 +346,62 @@
         {
           "path": "crates/kernel/tests/totality.rs",
           "selector": "every_derivation_shape_reaches_a_verdict"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_term_inside_a_longer_word_is_found"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_number_inside_a_longer_number_is_found"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_number_written_another_way_is_not_found"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_date_written_another_way_is_not_found"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "another_name_for_the_entity_is_not_found"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_typographic_apostrophe_is_not_an_apostrophe"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "sharp_s_does_not_match_double_s"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_negated_statement_is_accepted_as_the_statement"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "reversed_roles_are_accepted_as_the_statement"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_different_relation_between_the_same_terms_is_accepted"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_hedged_statement_is_accepted_as_the_statement"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "two_propositions_with_one_rendering_satisfy_each_other"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_bare_citation_reaches_the_goal_without_trust"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "the_authority_floor_is_whatever_the_proposal_asks_for"
         }
       ]
     },
@@ -747,7 +803,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "The deterministic kernel accepts a pinned citation when it re-derives and contains the cited proposition.",
+      "statement": "The deterministic kernel accepts a pinned citation when its excerpt re-derives byte for byte from the stored source and contains both the proposition's subject and its object.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -1744,12 +1800,54 @@
       "kind": "limitation",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "A cited term is matched by substring containment within a bounded span, so a short term is grounded by a longer word that contains it; matching on word boundaries needs Unicode segmentation, because a flanking-character rule would reject correct citations in scripts written without spaces.",
+      "statement": "A cited term is matched by substring containment over lowercased, whitespace-collapsed NFC text, so a term is found inside a longer word or number that contains it, and the same value written another way — another number or date format, another name for the entity, a typographic apostrophe, ß for SS — is not found.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
       "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_term_inside_a_longer_word_is_found"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_number_inside_a_longer_number_is_found"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_number_written_another_way_is_not_found"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_date_written_another_way_is_not_found"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "another_name_for_the_entity_is_not_found"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_typographic_apostrophe_is_not_an_apostrophe"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "sharp_s_does_not_match_double_s"
+        },
         {
           "type": "source",
           "path": "crates/kernel/src/lib.rs"
@@ -1911,6 +2009,95 @@
         {
           "type": "source",
           "path": "crates/kernel/src/ir.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-009",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "A citation grounds a proposition's subject and object but not its predicate, so a span that negates, reverses, hedges, or states a different relation between the same two terms is accepted as stating the proposition.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_negated_statement_is_accepted_as_the_statement"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "reversed_roles_are_accepted_as_the_statement"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_different_relation_between_the_same_terms_is_accepted"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_hedged_statement_is_accepted_as_the_statement"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-010",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "A derivation is checked against its goal by comparing subject|predicate|object renderings, so attribution stands in for assertion — a bare citation with no trust step reaches the goal — and two propositions whose terms contain the separator can satisfy each other.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "two_propositions_with_one_rendering_satisfy_each_other"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_bare_citation_reaches_the_goal_without_trust"
+        },
+        {
+          "type": "source",
+          "path": "crates/kernel/src/ir.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-011",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "The authority floor a trust step enforces is supplied by the proposal itself, and the shipped proposer always asks for low, so every source in the snapshot clears it.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "the_authority_floor_is_whatever_the_proposal_asks_for"
+        },
+        {
+          "type": "source",
+          "path": "crates/proposer/src/ollama.rs"
         }
       ]
     },

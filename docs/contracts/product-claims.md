@@ -30,14 +30,17 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when it re-derives and contains the cited proposition. |
+| `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when its excerpt re-derives byte for byte from the stored source and contains both the proposition's subject and its object. |
 | `CAP-CORRECTNESS-002` | implemented | limitation | Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance. |
 | `CAP-CORRECTNESS-003` | implemented | capability | The kernel decides every proposal it is given: a derivation nested past the depth bound it states is rejected with that reason, rather than exhausting the stack. |
-| `CAP-CORRECTNESS-004` | implemented | limitation | A cited term is matched by substring containment within a bounded span, so a short term is grounded by a longer word that contains it; matching on word boundaries needs Unicode segmentation, because a flanking-character rule would reject correct citations in scripts written without spaces. |
+| `CAP-CORRECTNESS-004` | implemented | limitation | A cited term is matched by substring containment over lowercased, whitespace-collapsed NFC text, so a term is found inside a longer word or number that contains it, and the same value written another way — another number or date format, another name for the entity, a typographic apostrophe, ß for SS — is not found. |
 | `CAP-CORRECTNESS-005` | implemented | capability | A citation is judged on text, not bytes: Unicode composition, case and whitespace run-length do not change whether a document says something, and a span too large to point at anything in particular is not a citation. |
 | `CAP-CORRECTNESS-006` | implemented | capability | An interpretation must say why: a reading recorded without a rationale is refused, the residual it leaves names the premise, the conclusion and the evidence to re-read, and no level of source authority discharges it. |
 | `CAP-CORRECTNESS-007` | implemented | capability | Kernel arithmetic is exact fixed-point, not floating point: the result does not depend on the order of the operands, neighbouring values are distinguished at any magnitude, and a result that could not be represented exactly is refused rather than rounded. |
 | `CAP-CORRECTNESS-008` | implemented | limitation | A kernel proposal is persisted inside certificate bundles without a schema version of its own, so a bundle written by a build whose proposal shape differed does not re-decide and is reported as having missing inputs rather than an unreadable shape. |
+| `CAP-CORRECTNESS-009` | implemented | limitation | A citation grounds a proposition's subject and object but not its predicate, so a span that negates, reverses, hedges, or states a different relation between the same two terms is accepted as stating the proposition. |
+| `CAP-CORRECTNESS-010` | implemented | limitation | A derivation is checked against its goal by comparing subject\|predicate\|object renderings, so attribution stands in for assertion — a bare citation with no trust step reaches the goal — and two propositions whose terms contain the separator can satisfy each other. |
+| `CAP-CORRECTNESS-011` | implemented | limitation | The authority floor a trust step enforces is supplied by the proposal itself, and the shipped proposer always asks for low, so every source in the snapshot clears it. |
 
 ## Crash recovery
 

@@ -88,7 +88,7 @@ closed and small:
 
 | Rule | Concludes | The kernel checks |
 | --- | --- | --- |
-| `Cite(evidence, span)` | `Says(source, P)` | the span exists and covers the quoted literal |
+| `Cite(evidence, span)` | `Says(source, P)` | the span re-derives from the source and contains `P`'s subject and object — not yet its relation; see below |
 | `Attest(claim)` | `Holds(...)` | the claim is active and within its validity interval |
 | `Arith(op, premises)` | a numeric fact | recomputes the value itself |
 | `Temporal(P, interval)` | a time-bounded fact | performs the interval algebra itself |
@@ -106,7 +106,9 @@ model, or an independent second reading can discharge later.
 
 Because of `Interpret`, a verdict is not a boolean:
 
-- **Accepted** — every step discharged mechanically, no interpretation required. A real guarantee.
+- **Accepted** — every step discharged mechanically, no interpretation required. A real guarantee,
+  of exactly what each step checked — which for a citation is less than it concludes today; see
+  *What the implemented kernel does and does not guarantee*.
 - **Conditional** — sound given N named readings, each pinned to a specific span. The honest
   answer for most real questions, and it points at exactly what to review.
 - **Rejected** — a premise failed. The error names which one, and which subsystem owns the repair.
@@ -190,6 +192,17 @@ the model attached the subject `Contoso` to a sentence about anniversary dates,
 purely because a matching string appeared there, and the kernel accepted it.
 Grounding both endpoints rejects that. It still does not establish that the span
 *entails* the proposition — that remains `Interpret`, and remains a residual.
+
+**That boundary is described, not enforced.** `Cite` concludes `Says(source, P)`
+with the whole proposition, predicate included, after checking only the two
+endpoints, and `Trust` lifts that to `Holds(P)` with no residual. Whether a
+reading was needed is decided by the proposer — today by the model's own
+`needs_interpretation` flag — so a span that negates, reverses or hedges the
+statement is `accepted` whenever the proposer says it quoted. Measured, and
+recorded as `CAP-CORRECTNESS-009` with tripwires in
+`crates/kernel/tests/known_gaps.rs`; the
+[citation grounding plan](../superpowers/plans/2026-10-04-citation-grounding.md)
+closes it by accepting a statement only in a phrasing the contract declares.
 
 **Relevance is not checked at all.** Asked the same unanswerable question after
 the fix, the model returned `Dana Whitfield | is the named account owner |

@@ -15,7 +15,8 @@
 //! passage *means* what a proposition says is not decidable over natural
 //! language, so the kernel refuses to pretend: [`Rule::Interpret`] discharges
 //! nothing and records a [`Residual`], which is what makes a verdict
-//! [`Verdict::Conditional`] rather than [`Verdict::Accepted`].
+//! [`Verdict::Conditional`] rather than [`Verdict::Accepted`]. A citation does
+//! not hold to that boundary yet: see [`Rule::Cite`].
 
 pub mod bundle;
 pub mod certificate;
@@ -281,10 +282,15 @@ fn derive(
 
 /// `Cite` is where fabrication is caught.
 ///
-/// It establishes only that a source *said* something, and only when the
-/// evidence re-derives from the stored bytes and the proposition's object
-/// appears literally within the cited span. That is containment, not entailment
-/// — reaching the proposition's meaning still requires [`Rule::Interpret`].
+/// It checks that the evidence re-derives from the stored bytes and that the
+/// proposition's subject and object both occur within the cited span. That is
+/// containment of two terms, not entailment — and not even a statement of the
+/// relation between them, because nothing here reads the predicate.
+///
+/// The conclusion is wider than the check: `Says(source, P)` carries the whole
+/// proposition, predicate included, and [`Rule::Trust`] lifts it to `Holds(P)`
+/// with no residual. So a span that negates or reverses the statement grounds
+/// it (`CAP-CORRECTNESS-009`, pinned in `tests/known_gaps.rs`).
 fn derive_cite(
     evidence_id: &str,
     proposition: &Proposition,
@@ -339,7 +345,8 @@ fn derive_cite(
     // Checking only the object lets a proposer attach any subject it likes to a
     // span that happens to contain a matching string — "Contoso acquired-by X"
     // grounded on a sentence about anniversary dates. The predicate is exempt:
-    // it is an ontology label, not a quotation.
+    // it is an ontology label, not a quotation — and being exempt from the span,
+    // it is checked by nothing, although the judgment below carries it.
     for (role, value) in [
         ("subject", &proposition.subject),
         ("object", &proposition.object),

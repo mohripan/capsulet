@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -87,9 +87,11 @@ Six properties carry the weight:
   does not depend on the order of the operands and a value that cannot be represented exactly is
   refused rather than rounded. A citation is judged on text rather than bytes — Unicode composition,
   case and whitespace do not change what a document says — within a span small enough to be worth
-  pointing at. And the one rule no kernel can justify, interpretation, has to say why: a reading
-  without a rationale is refused, because a residual nobody can act on is not a smaller problem than
-  an unsound rule.
+  pointing at. What a citation checks is narrower than what it concludes: that the proposition's
+  subject and object occur in the span, not that the span states the relation between them
+  (`CAP-CORRECTNESS-009`, below). And the one rule no kernel can justify, interpretation, has to say
+  why: a reading without a rationale is refused, because a residual nobody can act on is not a
+  smaller problem than an unsound rule.
 - **Offline replay, which does not overstate.** A certificate plus the evidence it cites forms a
   bundle, and `capsulet-replay` reaches its own verdict from that bundle alone, on a machine with no
   access to this installation. It re-checks the seal and every evidence digest, re-decides the
@@ -470,13 +472,20 @@ The API requires configured bearer credentials unless authentication is explicit
 
 These are extension paths beyond the implemented production baseline.
 
-The correctness plane has four limitations that are recorded rather than fixed, each with a claim
+The correctness plane has seven limitations that are recorded rather than fixed, each with a claim
 and a test or source pointer:
 
-- a cited term is matched by substring containment, so a short term is grounded by a longer word that
-  contains it. Matching on word boundaries needs Unicode segmentation, because the obvious rule —
-  refuse a match flanked by letters — would reject correct citations in scripts written without
-  spaces (`CAP-CORRECTNESS-004`);
+- a citation grounds a proposition's subject and object, never its predicate, so a span that
+  negates, reverses or hedges a statement, or states a different relation between the same two
+  terms, is accepted as stating it (`CAP-CORRECTNESS-009`);
+- a cited term is matched by substring containment over lowercased text, so it is found inside a
+  longer word or number, and the same value written another way — another number or date format,
+  another name for the entity, a typographic apostrophe — is not found (`CAP-CORRECTNESS-004`);
+- a derivation is checked against its goal by comparing rendered strings, so a citation that skips
+  the trust step still reaches the goal, and two propositions whose terms contain the separator can
+  satisfy each other (`CAP-CORRECTNESS-010`);
+- the authority floor a trust step enforces comes from the proposal, and the shipped proposer always
+  asks for the lowest (`CAP-CORRECTNESS-011`);
 - a kernel proposal is persisted inside bundles without a schema version of its own, so a bundle
   written by a build whose proposal shape differed does not re-decide (`CAP-CORRECTNESS-008`);
 - whether a value reached a verification record without crossing an unmodelled boundary is supplied

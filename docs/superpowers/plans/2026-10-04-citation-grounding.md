@@ -132,16 +132,16 @@ Task 0 restates each of these to what holds today:
 `docs/contracts/product-claims.json`, `docs/contracts/product-claims.md`, `ARCHITECTURE.md`,
 `docs/architecture.md`, `docs/design/correctness-architecture.md`
 
-- [ ] Land rows 1–14 as tripwires in `known_gaps.rs`, each asserting today's verdict with what a
+- [x] Land rows 1–14 as tripwires in `known_gaps.rs`, each asserting today's verdict with what a
   reader would say beside it. Each goes red exactly when the task that fixes it lands, which forces
   the claim registry to change in the same commit.
-- [ ] Restate `CAP-CORRECTNESS-001` to what is checked.
-- [ ] Record limitations: `CAP-CORRECTNESS-009`, the predicate is not checked; `CAP-CORRECTNESS-010`,
+- [x] Restate `CAP-CORRECTNESS-001` to what is checked.
+- [x] Record limitations: `CAP-CORRECTNESS-009`, the predicate is not checked; `CAP-CORRECTNESS-010`,
   the goal is compared as a rendering, so attribution stands in for assertion; `CAP-CORRECTNESS-011`,
   the proposer chooses its own authority floor. Restate `CAP-CORRECTNESS-004` to cover both
   directions of the text relation, with the tripwires as its evidence.
-- [ ] Correct the doc comments on `Rule::Cite` and `derive_cite`.
-- [ ] `verify --profile fast` passes; the registry renders clean.
+- [x] Correct the doc comments on `Rule::Cite` and `derive_cite`.
+- [x] `verify --profile fast` passes; the registry renders clean.
 
 ### Task 1: Name the rules a decision was made under
 
