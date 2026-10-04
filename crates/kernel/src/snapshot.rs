@@ -8,6 +8,8 @@ use std::collections::HashMap;
 
 use capsulet_core::{Authority, Claim, Evidence, Source, SourceContent};
 
+use crate::phrasing::Phrasebook;
+
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     evidence: HashMap<String, Evidence>,
@@ -22,6 +24,10 @@ pub struct Snapshot {
     /// with the proposal: the party a check constrains does not get to set it. A
     /// proposal may still ask for more, and gets the stricter of the two.
     authority_floor: Authority,
+    /// How a relation is stated in text: the phrasings and cues a citation is
+    /// judged against. Empty unless a contract supplies them, and then nothing
+    /// is stated — a citation can only mention its terms.
+    phrasebook: Phrasebook,
 }
 
 impl Default for Snapshot {
@@ -34,6 +40,7 @@ impl Default for Snapshot {
             contents: HashMap::new(),
             claims: HashMap::new(),
             authority_floor: Authority::Low,
+            phrasebook: Phrasebook::new(),
         }
     }
 }
@@ -86,6 +93,18 @@ impl Snapshot {
     #[must_use]
     pub const fn authority_floor(&self) -> Authority {
         self.authority_floor
+    }
+
+    /// Judges every citation decided against this snapshot by `phrasebook`.
+    #[must_use]
+    pub fn with_phrasebook(mut self, phrasebook: Phrasebook) -> Self {
+        self.phrasebook = phrasebook;
+        self
+    }
+
+    #[must_use]
+    pub const fn phrasebook(&self) -> &Phrasebook {
+        &self.phrasebook
     }
 
     #[must_use]

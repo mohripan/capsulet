@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
 # Architecture Overview
 
 Capsulet is a correctness-first AI-agent workflow platform with three layers. The implemented
@@ -48,14 +48,14 @@ kernel arithmetic is exact fixed-point, citations are compared as text rather th
 derivation deeper than the stated bound is rejected rather than walked. And nothing claims more than
 it checked: a replay that diverged reports no verdict, and one that had nothing to check says so.
 
-The kernel's citation rule does not meet the first of those yet. A citation checks that a
-proposition's subject and object occur in the cited span, then concludes the whole proposition,
-predicate included. That is recorded as a limitation (`CAP-CORRECTNESS-009`), and so is a term
-written another way than the document writes it — another number or date format, another name
-(`CAP-CORRECTNESS-004`). Two neighbouring gaps are closed: a goal is reached only by
-concluding that it holds, so a citation that skips the trust step no longer stands in for one that
-took it (`CAP-CORRECTNESS-010`), and the authority floor that step enforces is the caller's policy,
-which a proposal can raise and cannot lower (`CAP-CORRECTNESS-011`).
+A citation used to be the exception to the first rule: it checked a proposition's subject and object
+and concluded the whole statement. It now states a relation only in a phrasing its contract
+declares, and otherwise records that the terms are mentioned, which a trust step will not lift
+(`CAP-CORRECTNESS-009`). A goal is reached only by concluding that it holds
+(`CAP-CORRECTNESS-010`), and the authority floor is the caller's policy, which a proposal can raise
+and cannot lower (`CAP-CORRECTNESS-011`). What remains is recorded: a value written another way than
+the document writes it (`CAP-CORRECTNESS-004`), and a denial in words no cue list carries
+(`CAP-CORRECTNESS-012`).
 
 What is *not* guaranteed is written down in the same place as what is —
 [the product claims](contracts/product-claims.md) carry limitations alongside capabilities, each

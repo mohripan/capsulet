@@ -15,14 +15,16 @@
 //! passage *means* what a proposition says is not decidable over natural
 //! language, so the kernel refuses to pretend: [`Rule::Interpret`] discharges
 //! nothing and records a [`Residual`], which is what makes a verdict
-//! [`Verdict::Conditional`] rather than [`Verdict::Accepted`]. A citation does
-//! not hold to that boundary yet: see [`Rule::Cite`].
+//! [`Verdict::Conditional`] rather than [`Verdict::Accepted`]. A citation holds
+//! to the same boundary: it states a relation only in a phrasing its contract
+//! declares, and otherwise only mentions its terms — see [`Rule::Cite`].
 
 pub mod bundle;
 pub mod certificate;
 pub mod error;
 pub mod family;
 pub mod ir;
+pub mod phrasing;
 pub mod quantity;
 pub mod replay;
 pub mod snapshot;
@@ -37,6 +39,7 @@ pub use certificate::{Certificate, CertificateError, DischargedStep, Residual, V
 pub use error::{CheckError, RepairOwner};
 pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};
 pub use ir::{ArithOp, Judgment, Proposal, Proposition, Rule};
+pub use phrasing::{Phrasebook, Phrasing};
 pub use quantity::{MAX_SCALE, Quantity, QuantityError};
 pub use replay::{EvidenceMap, EvidenceSource, ReplayFinding, ReplayNote, ReplayOutcome, replay};
 pub use snapshot::Snapshot;
@@ -307,14 +310,13 @@ fn derive(
 /// `Cite` is where fabrication is caught.
 ///
 /// It checks that the evidence re-derives from the stored bytes and that the
-/// proposition's subject and object both occur within the cited span. That is
-/// containment of two terms, not entailment — and not even a statement of the
-/// relation between them, because nothing here reads the predicate.
-///
-/// The conclusion is wider than the check: `Says(source, P)` carries the whole
-/// proposition, predicate included, and [`Rule::Trust`] lifts it to `Holds(P)`
-/// with no residual. So a span that negates or reverses the statement grounds
-/// it (`CAP-CORRECTNESS-009`, pinned in `tests/known_gaps.rs`).
+/// proposition's subject and object both occur within the cited span as whole
+/// words. That much makes the terms *mentioned*. Whether the span *states* the
+/// relation between them is a second question, answered by the phrasings the
+/// snapshot declares for the predicate: one found in a sentence of the span,
+/// terms in their roles and no cue against it, concludes `Says(source, P)`, and
+/// otherwise the conclusion is `Mentions(source, P)`, which [`Rule::Trust`] will
+/// not lift. Neither is entailment — a reading is still [`Rule::Interpret`].
 fn derive_cite(
     evidence_id: &str,
     proposition: &Proposition,
@@ -368,9 +370,9 @@ fn derive_cite(
     // Both endpoints of the relation must be present, not just the object.
     // Checking only the object lets a proposer attach any subject it likes to a
     // span that happens to contain a matching string — "Contoso acquired-by X"
-    // grounded on a sentence about anniversary dates. The predicate is exempt:
-    // it is an ontology label, not a quotation — and being exempt from the span,
-    // it is checked by nothing, although the judgment below carries it.
+    // grounded on a sentence about anniversary dates. The predicate is not
+    // matched here: it is an ontology label, not a quotation, and whether the
+    // span states it is what the phrasings below decide.
     for (role, value) in [
         ("subject", &proposition.subject),
         ("object", &proposition.object),
@@ -386,19 +388,36 @@ fn derive_cite(
         }
     }
 
-    let judgment = Judgment::Says {
-        source_id: source_id.clone(),
-        proposition: proposition.clone(),
-    };
-    state.discharge(
-        "cite",
-        &judgment,
-        format!(
-            "excerpt re-derived from {source_id} bytes {}..{} and contains the object",
-            span.start(),
-            span.end()
-        ),
+    let provenance = format!(
+        "excerpt re-derived from {source_id} bytes {}..{}",
+        span.start(),
+        span.end()
     );
+    let (judgment, detail) = match snapshot.phrasebook().statement_in(excerpt, proposition) {
+        Some(statement) => (
+            Judgment::Says {
+                source_id,
+                proposition: proposition.clone(),
+            },
+            format!(
+                "{provenance}; it states `{}` in the declared phrasing {:?}: {:?}",
+                proposition.predicate.trim(),
+                statement.phrasing,
+                statement.sentence
+            ),
+        ),
+        None => (
+            Judgment::Mentions {
+                source_id,
+                proposition: proposition.clone(),
+            },
+            format!(
+                "{provenance} and contains the subject and the object; no declared phrasing of                  `{}` states the relation between them",
+                proposition.predicate.trim()
+            ),
+        ),
+    };
+    state.discharge("cite", &judgment, detail);
     Some(judgment)
 }
 
@@ -443,15 +462,32 @@ fn derive_trust(
     depth: u32,
 ) -> Option<Judgment> {
     let inner = derive(premise, snapshot, state, depth + 1)?;
-    let Judgment::Says {
-        source_id,
-        proposition,
-    } = inner
-    else {
-        state.errors.push(CheckError::TrustPremiseNotAttributed {
-            found: inner.canonical(),
-        });
-        return None;
+    let (source_id, proposition) = match inner {
+        Judgment::Says {
+            source_id,
+            proposition,
+        } => (source_id, proposition),
+        // The terms are there and the relation is not stated, so there is no
+        // statement for the source's authority to vouch for. Lifting this to
+        // `Holds` would be a reading, and a reading is `Interpret`'s, residual
+        // and all.
+        Judgment::Mentions {
+            source_id,
+            proposition,
+        } => {
+            state.errors.push(CheckError::RelationNotStated {
+                source_id,
+                predicate: proposition.predicate.trim().to_string(),
+                proposition: proposition.canonical(),
+            });
+            return None;
+        }
+        Judgment::Holds { .. } => {
+            state.errors.push(CheckError::TrustPremiseNotAttributed {
+                found: inner.canonical(),
+            });
+            return None;
+        }
     };
     let Some(asked) = parse_authority(min_authority) else {
         state.errors.push(CheckError::UnknownAuthority {

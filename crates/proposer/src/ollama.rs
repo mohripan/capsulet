@@ -6,7 +6,8 @@
 
 use std::time::Duration;
 
-use capsulet_kernel::{Proposal, Proposition, Rule};
+use capsulet_kernel::text::contains_term;
+use capsulet_kernel::{Phrasebook, Proposal, Proposition, Rule};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -29,7 +30,12 @@ pub struct RawProposal {
     pub evidence_id: String,
     /// The exact substring of the excerpt the model says supports the claim.
     pub quote: String,
-    /// Whether reaching the proposition required reading rather than quoting.
+    /// Whether the model says reaching the proposition required reading rather
+    /// than quoting.
+    ///
+    /// Recorded, and no longer acted on: which derivation an answer gets is
+    /// decided by the kernel's own phrasing check (see [`build_proposal`]), not
+    /// by the party that check constrains.
     #[serde(default)]
     pub needs_interpretation: bool,
     #[serde(default)]
@@ -96,7 +102,9 @@ impl OllamaProposer {
         &self.model
     }
 
-    /// Asks the model for one derivation answering `question` from `alphabet`.
+    /// Asks the model for one derivation answering `question` from `alphabet`,
+    /// judged by the phrasings in `phrasebook` — the ones the kernel will decide
+    /// it against.
     ///
     /// # Errors
     ///
@@ -106,19 +114,20 @@ impl OllamaProposer {
         &self,
         question: &str,
         alphabet: &EvidenceAlphabet,
+        phrasebook: &Phrasebook,
     ) -> Result<(Proposal, RawProposal), ProposerError> {
         if alphabet.is_empty() {
             return Err(ProposerError::EmptyAlphabet);
         }
         let raw = self.request(question, alphabet).await?;
 
-        if !alphabet.contains(&raw.evidence_id) {
+        let Some(entry) = alphabet.entry(&raw.evidence_id) else {
             return Err(ProposerError::OutsideAlphabet {
                 evidence_id: raw.evidence_id.clone(),
             });
-        }
+        };
 
-        Ok((build_proposal(&raw), raw))
+        Ok((build_proposal(&raw, &entry.excerpt, phrasebook), raw))
     }
 
     async fn request(
@@ -163,32 +172,50 @@ impl OllamaProposer {
     }
 }
 
-/// Assembles the kernel derivation implied by a flat proposal.
+/// Assembles the kernel derivation implied by a flat proposal, cited from
+/// `excerpt`.
 ///
-/// When the model says it only quoted, the claim's object must appear in the
-/// span, so a direct `Cite` is offered and the kernel will reject it if that is
-/// untrue. When the model says it had to read, the `Cite` is narrowed to the
-/// quote itself — a fact the kernel can check — and the step from quote to
-/// proposition becomes an explicit, recorded `Interpret`.
+/// Which derivation an answer gets is decided by the check the kernel will
+/// run, not by the model's word:
+///
+/// - when a phrasing in `phrasebook` states the answer in the excerpt, it is a
+///   trusted citation, which the kernel discharges;
+/// - when none does but both of the answer's terms occur there, it is a reading
+///   of a citation of those terms, which the kernel records as a residual;
+/// - otherwise it is a reading of the quote the model offered, which is the
+///   most the excerpt can be shown to contain.
+///
+/// The last case used to cite the quote under the subject `"quote"`. Once a
+/// citation had to contain its subject, that word had to occur in the excerpt,
+/// so every reading the proposer built was rejected, and no answer on this path
+/// could come back `conditional`.
 #[must_use]
-pub fn build_proposal(raw: &RawProposal) -> Proposal {
+pub fn build_proposal(raw: &RawProposal, excerpt: &str, phrasebook: &Phrasebook) -> Proposal {
     let goal = Proposition::new(&raw.subject, &raw.predicate, &raw.object);
-    let derivation = if raw.needs_interpretation {
-        Rule::Interpret {
-            premise: Box::new(Rule::Cite {
-                evidence_id: raw.evidence_id.clone(),
-                proposition: Proposition::new("quote", "text", &raw.quote),
-            }),
-            proposition: goal.clone(),
-            rationale: raw.rationale.clone(),
+    let cite = |proposition: Proposition| {
+        Box::new(Rule::Cite {
+            evidence_id: raw.evidence_id.clone(),
+            proposition,
+        })
+    };
+
+    let derivation = if phrasebook.statement_in(excerpt, &goal).is_some() {
+        Rule::Trust {
+            premise: cite(goal.clone()),
+            min_authority: "low".to_string(),
         }
     } else {
-        Rule::Trust {
-            premise: Box::new(Rule::Cite {
-                evidence_id: raw.evidence_id.clone(),
-                proposition: goal.clone(),
-            }),
-            min_authority: "low".to_string(),
+        let terms_occur =
+            contains_term(excerpt, &raw.subject) && contains_term(excerpt, &raw.object);
+        let premise = if terms_occur {
+            goal.clone()
+        } else {
+            Proposition::new(&raw.quote, "quotes", &raw.quote)
+        };
+        Rule::Interpret {
+            premise: cite(premise),
+            proposition: goal.clone(),
+            rationale: raw.rationale.clone(),
         }
     };
     Proposal { goal, derivation }
@@ -237,56 +264,157 @@ fn build_prompt(question: &str, alphabet: &EvidenceAlphabet) -> String {
 
 #[cfg(test)]
 mod tests {
-    use capsulet_kernel::Rule;
+    use capsulet_core::{
+        Authority, Evidence, EvidenceId, EvidenceSpan, MemoryScope, Source, SourceContent, SourceId,
+    };
+    use capsulet_kernel::{Phrasebook, Phrasing, Rule, Snapshot, Verdict, check};
 
     use super::{RawProposal, build_proposal};
 
-    fn raw(needs_interpretation: bool) -> RawProposal {
+    const EXCERPT: &str = "Acme renewed the Contoso contract.";
+
+    fn raw(object: &str, quote: &str, needs_interpretation: bool) -> RawProposal {
         RawProposal {
             subject: "Acme".to_string(),
             predicate: "renewed".to_string(),
-            object: "the Contoso contract".to_string(),
+            object: object.to_string(),
             evidence_id: "ev_1".to_string(),
-            quote: "Acme renewed the Contoso contract".to_string(),
+            quote: quote.to_string(),
             needs_interpretation,
             rationale: "the sentence states it".to_string(),
         }
     }
 
-    #[test]
-    fn a_quoted_answer_becomes_a_trusted_citation() {
-        let proposal = build_proposal(&raw(false));
+    fn renewals() -> Phrasebook {
+        Phrasebook::new().with_relation(
+            "renewed",
+            vec![Phrasing::parse("{from} renewed {to}").expect("a phrasing")],
+        )
+    }
 
-        let Rule::Trust { premise, .. } = &proposal.derivation else {
-            panic!("expected trust, got {:?}", proposal.derivation);
-        };
-        let Rule::Cite { proposition, .. } = premise.as_ref() else {
-            panic!("expected cite");
-        };
-        // The claim's own object is what the kernel will look for in the span.
-        assert_eq!(proposition.object, "the Contoso contract");
+    /// The snapshot the kernel would decide against: the excerpt, cited whole.
+    ///
+    /// Every test below runs what the proposer built through the kernel. A test
+    /// of the shape alone is how a reading path that the kernel always rejected
+    /// went unnoticed.
+    fn snapshot(phrasebook: Phrasebook) -> Snapshot {
+        let scope = MemoryScope::new("acme", "prod").expect("scope");
+        let source_id = SourceId::new("src_1").expect("source id");
+        let content = SourceContent::new(source_id.clone(), EXCERPT).expect("content");
+        let evidence = Evidence::new(
+            EvidenceId::new("ev_1").expect("evidence id"),
+            scope.clone(),
+            source_id.clone(),
+            "para-1",
+            EXCERPT,
+            "2026-03-02T00:00:00Z",
+        )
+        .expect("evidence")
+        .with_span(EvidenceSpan::new(0, EXCERPT.len(), content.content_hash()).expect("span"));
+        Snapshot::new()
+            .with_source(
+                Source::new(source_id, scope, "document", None, "Memo", Authority::High)
+                    .expect("source"),
+            )
+            .with_source_content(content)
+            .with_evidence(evidence)
+            .with_phrasebook(phrasebook)
     }
 
     #[test]
-    fn an_inferred_answer_becomes_an_explicit_interpretation() {
-        let proposal = build_proposal(&raw(true));
+    fn a_stated_answer_becomes_a_trusted_citation_and_is_accepted() {
+        let proposal = build_proposal(
+            &raw(
+                "the Contoso contract",
+                "Acme renewed the Contoso contract",
+                true,
+            ),
+            EXCERPT,
+            &renewals(),
+        );
+
+        assert!(matches!(proposal.derivation, Rule::Trust { .. }));
+        assert_eq!(
+            check(&proposal, &snapshot(renewals())).verdict,
+            Verdict::Accepted
+        );
+    }
+
+    #[test]
+    fn the_model_saying_it_quoted_does_not_make_an_answer_a_statement() {
+        // No phrasing states `renewed`, so however sure the model is, the answer
+        // is a reading, and the kernel records it as one rather than rejecting.
+        let proposal = build_proposal(
+            &raw(
+                "the Contoso contract",
+                "Acme renewed the Contoso contract",
+                false,
+            ),
+            EXCERPT,
+            &Phrasebook::new(),
+        );
+
+        assert!(matches!(proposal.derivation, Rule::Interpret { .. }));
+        assert_eq!(
+            check(&proposal, &snapshot(Phrasebook::new())).verdict,
+            Verdict::Conditional
+        );
+    }
+
+    #[test]
+    fn a_reading_of_a_paraphrase_rests_on_the_quote_and_is_decidable() {
+        // The answer's object is not in the excerpt, so the reading cites the
+        // quote. It used to cite it under the subject "quote", which no excerpt
+        // contained, so every such reading was rejected.
+        let proposal = build_proposal(
+            &raw(
+                "a contract with Contoso",
+                "renewed the Contoso contract",
+                true,
+            ),
+            EXCERPT,
+            &renewals(),
+        );
 
         let Rule::Interpret { premise, .. } = &proposal.derivation else {
-            panic!("expected interpret, got {:?}", proposal.derivation);
+            panic!("expected a reading, got {:?}", proposal.derivation);
         };
         let Rule::Cite { proposition, .. } = premise.as_ref() else {
-            panic!("expected cite");
+            panic!("expected a citation");
         };
-        // The citation is narrowed to the quote, which is checkable; the step
-        // from quote to claim is the residual.
-        assert_eq!(proposition.object, "Acme renewed the Contoso contract");
+        assert_eq!(proposition.subject, "renewed the Contoso contract");
+        assert_eq!(
+            check(&proposal, &snapshot(renewals())).verdict,
+            Verdict::Conditional
+        );
+    }
+
+    #[test]
+    fn a_quote_the_excerpt_does_not_contain_is_still_rejected() {
+        let proposal = build_proposal(
+            &raw(
+                "a contract with Contoso",
+                "Acme terminated everything",
+                true,
+            ),
+            EXCERPT,
+            &renewals(),
+        );
+
+        let certificate = check(&proposal, &snapshot(renewals()));
+        assert_eq!(certificate.verdict, Verdict::Rejected);
+        assert_eq!(certificate.errors[0].code, "term_not_in_span");
     }
 
     #[test]
     fn the_goal_always_matches_the_model_stated_fact() {
-        for needs in [true, false] {
-            let raw = raw(needs);
-            let proposal = build_proposal(&raw);
+        for phrasebook in [renewals(), Phrasebook::new()] {
+            let raw = raw(
+                "the Contoso contract",
+                "Acme renewed the Contoso contract",
+                false,
+            );
+            let proposal = build_proposal(&raw, EXCERPT, &phrasebook);
             assert_eq!(proposal.goal.subject, raw.subject);
             assert_eq!(proposal.goal.predicate, raw.predicate);
             assert_eq!(proposal.goal.object, raw.object);

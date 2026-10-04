@@ -13,7 +13,7 @@ use axum::{
 use capsulet_core::{
     Authority, Evidence, EvidenceId, EvidenceSpan, MemoryScope, Source, SourceContent, SourceId,
 };
-use capsulet_kernel::{Certificate, Snapshot, check};
+use capsulet_kernel::{Certificate, Phrasebook, Snapshot, check};
 use capsulet_postgres::CertificateRecord;
 use capsulet_proposer::{EvidenceAlphabet, OllamaProposer, RawProposal, chunk_into_spans};
 use capsulet_storage::ObjectStore;
@@ -143,17 +143,25 @@ where
     }
     let alphabet = EvidenceAlphabet::from_evidence(&evidence);
 
+    // No contract is wired to this endpoint yet, so no relation has a declared
+    // phrasing: nothing an answer cites is a statement, and every answer is a
+    // reading whose verdict is `conditional` at best. That is the truth about an
+    // answer no contract stands behind.
+    let phrasebook = Phrasebook::new();
+
     let proposer = build_proposer(request.model.as_deref())?;
     let (proposal, raw) = proposer
-        .propose(&request.question, &alphabet)
+        .propose(&request.question, &alphabet, &phrasebook)
         .await
         .map_err(|error| ApiError::Proposer(error.to_string()))?;
 
     // The kernel sees only what was pinned: the same source, the same bytes, the
-    // same evidence the proposer was offered — and the floor a trust step is held
-    // to, which is this endpoint's decision and not the proposer's.
+    // same evidence the proposer was offered, the same phrasings — and the floor
+    // a trust step is held to, which is this endpoint's decision and not the
+    // proposer's.
     let mut snapshot = Snapshot::new()
         .with_authority_floor(AUTHORITY_FLOOR)
+        .with_phrasebook(phrasebook)
         .with_source(source)
         .with_source_content(stored_text);
     for item in evidence {

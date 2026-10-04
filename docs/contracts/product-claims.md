@@ -30,7 +30,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when its excerpt re-derives byte for byte from the stored source and contains both the proposition's subject and its object. |
+| `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when its excerpt re-derives byte for byte from the stored source and states the proposition in a phrasing its contract declares. |
 | `CAP-CORRECTNESS-002` | implemented | limitation | Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance. |
 | `CAP-CORRECTNESS-003` | implemented | capability | The kernel decides every proposal it is given: a derivation nested past the depth bound it states is rejected with that reason, rather than exhausting the stack. |
 | `CAP-CORRECTNESS-004` | implemented | limitation | A cited term is compared as text, so the same value written another way — another number or date format, or another name for the entity — is not found. |
@@ -38,9 +38,10 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-CORRECTNESS-006` | implemented | capability | An interpretation must say why: a reading recorded without a rationale is refused, the residual it leaves names the premise, the conclusion and the evidence to re-read, and no level of source authority discharges it. |
 | `CAP-CORRECTNESS-007` | implemented | capability | Kernel arithmetic is exact fixed-point, not floating point: the result does not depend on the order of the operands, neighbouring values are distinguished at any magnitude, and a result that could not be represented exactly is refused rather than rounded. |
 | `CAP-CORRECTNESS-008` | implemented | limitation | A kernel proposal is persisted inside certificate bundles without a schema version of its own, so a bundle written by a build whose proposal shape differed does not re-decide and is reported as having missing inputs rather than an unreadable shape. |
-| `CAP-CORRECTNESS-009` | implemented | limitation | A citation grounds a proposition's subject and object but not its predicate, so a span that negates, reverses, hedges, or states a different relation between the same two terms is accepted as stating the proposition. |
+| `CAP-CORRECTNESS-009` | implemented | capability | A citation states a relation only in a phrasing its contract declares, found within one sentence with each term in its own role and no negation, hedge, condition or question in that sentence; otherwise it records only that the terms are mentioned, which a trust step will not lift. |
 | `CAP-CORRECTNESS-010` | implemented | capability | A derivation reaches its goal only by concluding that the goal holds, compared field by field: a citation without a trust step attributes a statement without asserting it, and two propositions that render alike are told apart. |
 | `CAP-CORRECTNESS-011` | implemented | capability | The authority floor a trust step enforces is the caller's policy, carried in the snapshot a decision is made against and re-decided with it: a proposal may raise the floor and cannot lower it. |
+| `CAP-CORRECTNESS-012` | implemented | limitation | Cue lists are finite and English-first, so a declared phrasing in a sentence that denies or doubts it in words the list does not carry still states the relation. |
 
 ## Crash recovery
 

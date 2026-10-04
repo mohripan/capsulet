@@ -293,7 +293,7 @@
       "tests": [
         {
           "path": "crates/kernel/src/tests.rs",
-          "selector": "accepts_a_citation_that_re_derives_and_contains_its_object"
+          "selector": "accepts_a_citation_that_re_derives_and_states_its_proposition"
         },
         {
           "path": "crates/kernel/tests/depth.rs",
@@ -360,22 +360,6 @@
           "selector": "another_name_for_the_entity_is_not_found"
         },
         {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_negated_statement_is_accepted_as_the_statement"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "reversed_roles_are_accepted_as_the_statement"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_different_relation_between_the_same_terms_is_accepted"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_hedged_statement_is_accepted_as_the_statement"
-        },
-        {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "a_decision_recorded_under_other_rules_says_so"
         },
@@ -422,6 +406,34 @@
         {
           "path": "crates/kernel/tests/grounding.rs",
           "selector": "the_unicode_tables_a_citation_is_judged_by_are_pinned"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_declared_phrasing_states_the_relation"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_negated_statement_is_not_the_statement"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "reversed_roles_are_not_the_statement"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_different_relation_between_the_same_terms_is_not_the_statement"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_hedged_conditional_or_questioned_statement_is_not_the_statement"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_relation_with_no_declared_phrasing_is_only_mentioned"
+        },
+        {
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "selector": "a_doubt_the_cue_list_does_not_know_still_states_the_relation"
         }
       ]
     },
@@ -823,7 +835,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "The deterministic kernel accepts a pinned citation when its excerpt re-derives byte for byte from the stored source and contains both the proposition's subject and its object.",
+      "statement": "The deterministic kernel accepts a pinned citation when its excerpt re-derives byte for byte from the stored source and states the proposition in a phrasing its contract declares.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -834,7 +846,7 @@
         {
           "assertion": "accepted-citation",
           "evidence_selectors": [
-            "accepts_a_citation_that_re_derives_and_contains_its_object"
+            "accepts_a_citation_that_re_derives_and_states_its_proposition"
           ]
         }
       ],
@@ -843,7 +855,7 @@
           "type": "test",
           "path": "crates/kernel/src/tests.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "accepts_a_citation_that_re_derives_and_contains_its_object"
+          "selector": "accepts_a_citation_that_re_derives_and_states_its_proposition"
         }
       ]
     },
@@ -2084,38 +2096,78 @@
     },
     {
       "id": "CAP-CORRECTNESS-009",
-      "kind": "limitation",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "A citation grounds a proposition's subject and object but not its predicate, so a span that negates, reverses, hedges, or states a different relation between the same two terms is accepted as stating the proposition.",
+      "statement": "A citation states a relation only in a phrasing its contract declares, found within one sentence with each term in its own role and no negation, hedge, condition or question in that sentence; otherwise it records only that the terms are mentioned, which a trust step will not lift.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
+      "verification": [
+        {
+          "assertion": "a-declared-phrasing-states-the-relation",
+          "evidence_selectors": [
+            "a_declared_phrasing_states_the_relation"
+          ]
+        },
+        {
+          "assertion": "denial-reversal-and-another-relation-are-not-statements",
+          "evidence_selectors": [
+            "a_negated_statement_is_not_the_statement",
+            "reversed_roles_are_not_the_statement",
+            "a_different_relation_between_the_same_terms_is_not_the_statement"
+          ]
+        },
+        {
+          "assertion": "hedges-conditionals-and-questions-are-not-statements",
+          "evidence_selectors": [
+            "a_hedged_conditional_or_questioned_statement_is_not_the_statement"
+          ]
+        },
+        {
+          "assertion": "a-mention-reaches-the-relation-only-as-a-reading",
+          "evidence_selectors": [
+            "a_relation_with_no_declared_phrasing_is_only_mentioned"
+          ]
+        }
+      ],
       "evidence": [
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/tests/grounding.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_negated_statement_is_accepted_as_the_statement"
+          "selector": "a_declared_phrasing_states_the_relation"
         },
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/tests/grounding.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "reversed_roles_are_accepted_as_the_statement"
+          "selector": "a_negated_statement_is_not_the_statement"
         },
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/tests/grounding.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_different_relation_between_the_same_terms_is_accepted"
+          "selector": "reversed_roles_are_not_the_statement"
         },
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/tests/grounding.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_hedged_statement_is_accepted_as_the_statement"
+          "selector": "a_different_relation_between_the_same_terms_is_not_the_statement"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_hedged_conditional_or_questioned_statement_is_not_the_statement"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_relation_with_no_declared_phrasing_is_only_mentioned"
         }
       ]
     },
@@ -2194,6 +2246,29 @@
           "path": "crates/kernel/src/tests.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "a_snapshot_document_without_a_floor_rebuilds_at_the_lowest"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-012",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "Cue lists are finite and English-first, so a declared phrasing in a sentence that denies or doubts it in words the list does not carry still states the relation.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/known_gaps.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_doubt_the_cue_list_does_not_know_still_states_the_relation"
+        },
+        {
+          "type": "source",
+          "path": "crates/kernel/src/phrasing.rs"
         }
       ]
     },

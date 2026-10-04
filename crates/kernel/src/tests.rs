@@ -5,7 +5,10 @@ use capsulet_core::{
 
 use crate::quantity::Quantity;
 use crate::snapshot_document::SnapshotDocument;
-use crate::{ArithOp, Proposal, Proposition, Rule, Snapshot, Verdict, check, error::RepairOwner};
+use crate::{
+    ArithOp, Phrasebook, Phrasing, Proposal, Proposition, Rule, Snapshot, Verdict, check,
+    error::RepairOwner,
+};
 
 fn q(text: &str) -> Quantity {
     Quantity::parse(text).expect("a fixed-point decimal")
@@ -63,11 +66,21 @@ fn fabricated_evidence(excerpt: &str, start: usize, end: usize) -> Evidence {
     .with_span(EvidenceSpan::new(start, end, content.content_hash()).expect("span"))
 }
 
+/// The contract's phrasings for `renewed`, so a citation of the renewal can
+/// state it rather than only mention its terms.
+fn renewal_phrasebook() -> Phrasebook {
+    Phrasebook::new().with_relation(
+        "renewed",
+        vec![Phrasing::parse("{from} renewed {to}").expect("a phrasing")],
+    )
+}
+
 fn base_snapshot(evidence: Evidence, authority: Authority) -> Snapshot {
     Snapshot::new()
         .with_source(source(authority))
         .with_source_content(content())
         .with_evidence(evidence)
+        .with_phrasebook(renewal_phrasebook())
 }
 
 fn claim_with_status(status: ClaimStatus) -> Claim {
@@ -89,7 +102,7 @@ fn claim_with_status(status: ClaimStatus) -> Claim {
 }
 
 #[test]
-fn accepts_a_citation_that_re_derives_and_contains_its_object() {
+fn accepts_a_citation_that_re_derives_and_states_its_proposition() {
     let evidence = honest_evidence(0, 46);
     let snapshot = base_snapshot(evidence, Authority::High);
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
@@ -421,9 +434,14 @@ fn a_bare_citation_attributes_and_does_not_reach_the_goal() {
 #[test]
 fn a_goal_is_compared_field_by_field_rather_than_by_its_rendering() {
     // Joined with `|`, these two render alike. They are different propositions,
-    // and a derivation of one does not reach the other.
+    // and a derivation of one does not reach the other. The derived one is
+    // given a phrasing, so that it is stated and the goal is what fails.
     let evidence = honest_evidence(0, 46);
-    let snapshot = base_snapshot(evidence, Authority::High);
+    let snapshot =
+        base_snapshot(evidence, Authority::High).with_phrasebook(Phrasebook::new().with_relation(
+            "x|renewed",
+            vec![Phrasing::parse("{from} renewed {to}").expect("a phrasing")],
+        ));
     let derived = Proposition::new("Acme", "x|renewed", "the Contoso contract");
     let goal = Proposition::new("Acme|x", "renewed", "the Contoso contract");
     let proposal = Proposal {

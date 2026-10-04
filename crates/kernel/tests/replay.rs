@@ -22,7 +22,9 @@ use capsulet_kernel::family::{
     CLAIM_REASONING, CLAIM_REASONING_RULES, ClaimReasoning, ObligationFamily,
 };
 use capsulet_kernel::replay::{ReplayFinding, ReplayNote, ReplayOutcome, Unreadable};
-use capsulet_kernel::snapshot_document::{EvidenceDocument, SnapshotDocument, SourceDocument};
+use capsulet_kernel::snapshot_document::{
+    EvidenceDocument, RelationDocument, SnapshotDocument, SourceDocument,
+};
 use capsulet_kernel::workflow::{Assembly, KERNEL_VERSION, certify};
 use capsulet_kernel::{EvidenceMap, Proposal, Proposition, Rule, replay};
 
@@ -493,6 +495,11 @@ fn pinned_snapshot() -> SnapshotDocument {
         }],
         claims: vec![],
         authority_floor: None,
+        relations: vec![RelationDocument {
+            name: "renewed".to_string(),
+            stated_by: vec!["{from} renewed {to}".to_string()],
+        }],
+        cues: vec![],
     }
 }
 

@@ -58,13 +58,21 @@ fn escape_term(term: &str) -> String {
 
 /// What a derivation concludes.
 ///
-/// `Says` is attributed content — a source asserted it. `Holds` is the system
-/// asserting it. Crossing from one to the other is exactly what [`Rule::Trust`]
-/// does, and it is the only rule that can.
+/// `Says` is attributed content — a source states it, in a phrasing its
+/// contract declares. `Mentions` is weaker: the source contains the
+/// proposition's subject and object, and states the relation between them in
+/// no declared phrasing. `Holds` is the system asserting it. [`Rule::Trust`]
+/// crosses from `Says` to `Holds` and is discharged; [`Rule::Interpret`]
+/// crosses from anything and is not. Nothing crosses from `Mentions` to
+/// `Holds` without a reading.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Judgment {
     Says {
+        source_id: String,
+        proposition: Proposition,
+    },
+    Mentions {
         source_id: String,
         proposition: Proposition,
     },
@@ -77,7 +85,9 @@ impl Judgment {
     #[must_use]
     pub const fn proposition(&self) -> &Proposition {
         match self {
-            Self::Says { proposition, .. } | Self::Holds { proposition } => proposition,
+            Self::Says { proposition, .. }
+            | Self::Mentions { proposition, .. }
+            | Self::Holds { proposition } => proposition,
         }
     }
 
@@ -88,6 +98,10 @@ impl Judgment {
                 source_id,
                 proposition,
             } => format!("says({source_id},{})", proposition.canonical()),
+            Self::Mentions {
+                source_id,
+                proposition,
+            } => format!("mentions({source_id},{})", proposition.canonical()),
             Self::Holds { proposition } => format!("holds({})", proposition.canonical()),
         }
     }
@@ -150,11 +164,12 @@ impl ArithOp {
 pub enum Rule {
     /// Introduces attributed content from a cited span.
     ///
-    /// Concludes `Says(source, P)`. The kernel checks that the evidence exists,
-    /// that its span re-derives from the stored source bytes, and that the
-    /// proposition's subject and object both occur within the cited excerpt.
-    /// The predicate is not checked: the conclusion carries it, but nothing in
-    /// the span was found to state it (`CAP-CORRECTNESS-009`).
+    /// The kernel checks that the evidence exists, that its span re-derives
+    /// from the stored source bytes, and that the proposition's subject and
+    /// object both occur within the cited excerpt as whole words. It concludes
+    /// `Says(source, P)` when, in addition, one sentence of the excerpt states
+    /// the predicate in a phrasing the snapshot declares for it — see
+    /// [`crate::phrasing`] — and `Mentions(source, P)` when none does.
     Cite {
         evidence_id: String,
         proposition: Proposition,
@@ -165,7 +180,9 @@ pub enum Rule {
     /// do so *and be discharged*.
     ///
     /// Concludes `Holds(P)` from `Says(s, P)` once the source clears the
-    /// configured authority floor. [`Rule::Interpret`] reaches the same shape of
+    /// configured authority floor. A premise that only `Mentions` the terms is
+    /// refused: authority makes a statement believable, and there is no
+    /// statement to believe. [`Rule::Interpret`] reaches the same shape of
     /// conclusion, but never discharges: it records a residual, and a
     /// certificate carrying one is `conditional`. Authority says a source is
     /// worth believing; it does not say that a particular reading of it is

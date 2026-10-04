@@ -100,6 +100,14 @@ pub enum CheckError {
     UnknownAuthority { value: String },
     #[error("trust requires attributed content, but its premise concludes {found}")]
     TrustPremiseNotAttributed { found: String },
+    #[error(
+        "source {source_id} mentions the terms of {proposition} but states `{predicate}` in no          phrasing its contract declares, so trusting it would assert a reading; propose it as one"
+    )]
+    RelationNotStated {
+        source_id: String,
+        predicate: String,
+        proposition: String,
+    },
     #[error("a reading of {from} as {to} was recorded without saying why")]
     InterpretationWithoutARationale { from: String, to: String },
     #[error("the proposal has no canonical encoding, so it cannot be pinned: {detail}")]
@@ -135,6 +143,7 @@ impl CheckError {
             | Self::ArithNotExact { .. }
             | Self::UnknownAuthority { .. }
             | Self::TrustPremiseNotAttributed { .. }
+            | Self::RelationNotStated { .. }
             | Self::InterpretationWithoutARationale { .. }
             | Self::ProposalNotEncodable { .. }
             | Self::DerivationTooDeep { .. }
@@ -160,6 +169,7 @@ impl CheckError {
             Self::AuthorityBelowFloor { .. } => "authority_below_floor",
             Self::UnknownAuthority { .. } => "unknown_authority",
             Self::TrustPremiseNotAttributed { .. } => "trust_premise_not_attributed",
+            Self::RelationNotStated { .. } => "relation_not_stated",
             Self::InterpretationWithoutARationale { .. } => "interpretation_without_a_rationale",
             Self::ProposalNotEncodable { .. } => "proposal_not_encodable",
             Self::DerivationTooDeep { .. } => "derivation_too_deep",

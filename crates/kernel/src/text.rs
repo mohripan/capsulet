@@ -48,18 +48,20 @@ use unicode_segmentation::UnicodeSegmentation;
 /// An empty term is never found. It would be contained in anything.
 #[must_use]
 pub fn contains_term(text: &str, term: &str) -> bool {
-    let term = fold(term);
+    contains_folded(&fold(text), &fold(term))
+}
+
+/// [`contains_term`] over text both sides have already been [folded](fold).
+pub(crate) fn contains_folded(text: &str, term: &str) -> bool {
     if term.is_empty() {
         return false;
     }
-    let text = fold(text);
-    let boundaries = word_boundaries(&text);
+    let boundaries = word_boundaries(text);
     // Every boundary is tried as a start, rather than walking non-overlapping
     // matches: the first occurrence of a term may sit inside a word while a
     // later, overlapping one is whole.
     boundaries.iter().any(|&start| {
-        text[start..].starts_with(term.as_str())
-            && boundaries.binary_search(&(start + term.len())).is_ok()
+        text[start..].starts_with(term) && boundaries.binary_search(&(start + term.len())).is_ok()
     })
 }
 

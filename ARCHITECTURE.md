@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -82,20 +82,22 @@ Six properties carry the weight:
   withdrawn certificate is refused however well formed it is. Time and revocations are arguments to
   the decision, never read inside it.
 - **The kernel's decisions are total and exact.** `check` returns a verdict for every proposal,
-  including a hostile one: derivations nest, so totality rests on a stated depth bound rather than on
-  whatever stack the process happens to have. Arithmetic is fixed-point over integers, so a result
-  does not depend on the order of the operands and a value that cannot be represented exactly is
-  refused rather than rounded. A citation is judged on text rather than bytes — Unicode composition,
-  case, typographic quotes and dashes, invisible characters and whitespace do not change what a
-  document says — and a term is found only as whole words, by Unicode's own word boundaries, within a
-  span small enough to be worth pointing at. What a citation checks is narrower than what it concludes: that the proposition's
-  subject and object occur in the span, not that the span states the relation between them
-  (`CAP-CORRECTNESS-009`, below). A goal is reached only by concluding that it holds, compared field
-  by field, so a citation without a trust step attributes a statement and does not assert it. The
-  authority floor that trust step enforces is the caller's policy, carried with the snapshot; a
-  proposal can raise it and cannot lower it (`/v1/reasoning/ask` sets it to `low`). And the one rule
-  no kernel can justify, interpretation, has to say why: a reading without a rationale is refused,
-  because a residual nobody can act on is not a smaller problem than an unsound rule.
+  including a hostile one: derivations nest, so totality rests on a stated depth bound rather than
+  on whatever stack the process happens to have. Arithmetic is fixed-point over integers, so a
+  result does not depend on the order of the operands and a value that cannot be represented
+  exactly is refused rather than rounded. A citation is judged on text rather than bytes — Unicode
+  composition, case, typographic quotes and dashes, invisible characters and whitespace do not
+  change what a document says — and a term is found only as whole words, by Unicode's own word
+  boundaries, within a span small enough to be worth pointing at. A citation states a relation
+  only in a phrasing its contract declares, found in one sentence with nothing in it that denies,
+  hedges, conditions or asks it; where there is none, the citation records only that the terms are
+  mentioned, and only a reading gets from there to the relation. A goal is reached only by
+  concluding that it holds, compared field by field, so a citation without a trust step attributes
+  a statement and does not assert it. The authority floor that trust step enforces is the caller's
+  policy, carried with the snapshot; a proposal can raise it and cannot lower it
+  (`/v1/reasoning/ask` sets it to `low`). And the one rule no kernel can justify, interpretation,
+  has to say why: a reading without a rationale is refused, because a residual nobody can act on
+  is not a smaller problem than an unsound rule.
 - **Offline replay, which does not overstate.** A certificate plus the evidence it cites forms a
   bundle, and `capsulet-replay` reaches its own verdict from that bundle alone, on a machine with no
   access to this installation. It re-checks the seal and every evidence digest, re-decides the
@@ -480,9 +482,8 @@ These are extension paths beyond the implemented production baseline.
 The correctness plane has five limitations that are recorded rather than fixed, each with a claim
 and a test or source pointer:
 
-- a citation grounds a proposition's subject and object, never its predicate, so a span that
-  negates, reverses or hedges a statement, or states a different relation between the same two
-  terms, is accepted as stating it (`CAP-CORRECTNESS-009`);
+- cue lists are finite and English-first, so a declared phrasing in a sentence that doubts or denies
+  it in words the list does not carry still states the relation (`CAP-CORRECTNESS-012`);
 - a cited term is compared as text, so the same value written another way — another number or date
   format, or another name for the entity — is not found (`CAP-CORRECTNESS-004`);
 - a kernel proposal is persisted inside bundles without a schema version of its own, so a bundle

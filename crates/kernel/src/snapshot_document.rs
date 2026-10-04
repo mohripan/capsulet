@@ -16,6 +16,7 @@ use capsulet_core::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::phrasing::{Phrasebook, Phrasing};
 use crate::snapshot::Snapshot;
 
 /// Why a snapshot document could not be rebuilt.
@@ -79,6 +80,13 @@ pub struct ClaimDocument {
     pub status: String,
 }
 
+/// A relation's declared phrasings, as pinned in a bundle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelationDocument {
+    pub name: String,
+    pub stated_by: Vec<String>,
+}
+
 /// Everything a claim-reasoning decision was made against.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SnapshotDocument {
@@ -93,6 +101,14 @@ pub struct SnapshotDocument {
     /// so such a document still encodes byte for byte as it did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authority_floor: Option<String>,
+    /// The phrasings that state each relation. Absent from documents written
+    /// before citations were judged by phrasing, which therefore state nothing:
+    /// re-decided, their citations mention their terms and no more.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relations: Vec<RelationDocument>,
+    /// Cues a contract adds to the kernel's own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cues: Vec<String>,
 }
 
 impl SnapshotDocument {
@@ -107,6 +123,7 @@ impl SnapshotDocument {
         if let Some(floor) = &self.authority_floor {
             snapshot = snapshot.with_authority_floor(authority(floor)?);
         }
+        snapshot = snapshot.with_phrasebook(self.phrasebook()?);
 
         for source in &self.sources {
             let id = SourceId::new(&source.id).map_err(RebuildError::from)?;
@@ -179,6 +196,29 @@ impl SnapshotDocument {
         }
 
         Ok(snapshot)
+    }
+}
+
+impl SnapshotDocument {
+    /// The phrasebook the document pins, read through the same parser a
+    /// contract's phrasings go through.
+    fn phrasebook(&self) -> Result<Phrasebook, RebuildError> {
+        let mut phrasebook = Phrasebook::new();
+        for relation in &self.relations {
+            let phrasings = relation
+                .stated_by
+                .iter()
+                .map(|template| Phrasing::parse(template).map_err(RebuildError::from))
+                .collect::<Result<Vec<_>, _>>()?;
+            phrasebook = phrasebook.with_relation(&relation.name, phrasings);
+        }
+        for cue in &self.cues {
+            if cue.trim().is_empty() {
+                return Err(RebuildError::from("a cue is empty"));
+            }
+            phrasebook = phrasebook.with_cue(cue);
+        }
+        Ok(phrasebook)
     }
 }
 

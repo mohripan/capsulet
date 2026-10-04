@@ -254,7 +254,7 @@ new to the lock, because the rest of the ICU closure was already there through `
 `crates/kernel/src/{ir.rs,lib.rs,error.rs,snapshot.rs,snapshot_document.rs,phrasing.rs}`,
 `crates/proposer/src/ollama.rs`, `crates/api/src/reasoning.rs`, tests
 
-- [ ] Failing tests: rows 1–4 stop reaching `accepted`; `"{to} was acquired by {from}"` grounds a
+- [x] Failing tests: rows 1–4 stop reaching `accepted`; `"{to} was acquired by {from}"` grounds a
   passive sentence; a phrasing that spans a sentence boundary does not ground; a cue in the matched
   sentence does not ground; a predicate with no declared phrasings is a mention, never a statement.
 - [ ] Contract syntax, on relations:
@@ -271,27 +271,28 @@ new to the lock, because the rest of the ICU closure was already there through `
 
   The parser refuses a phrasing without exactly one `{from}` and one `{to}`, or without a literal
   word. `"{from} {to}"` would state every relation at once.
-- [ ] `Judgment::Mentions`. `Cite` concludes `Says` when a declared phrasing of the proposition's
+- [x] `Judgment::Mentions`. `Cite` concludes `Says` when a declared phrasing of the proposition's
   predicate matches inside one UAX #29 sentence of the span, slots filled by the subject and object
   under Task 4's text relation, and no cue in that sentence. Otherwise it concludes `Mentions` when
   both terms are present, as today, and is refused when they are not.
-- [ ] A cue list ships with the kernel, versioned with its rules: negation (`not`, `no`, `never`, the
+- [x] A cue list ships with the kernel, versioned with its rules: negation (`not`, `no`, `never`, the
   `n't` contractions, `neither`, `nor`, `without`, `denied`) and hedging (`may`, `might`, `could`,
   `would`, `if`, `whether`, `plans to`, `expected to`, `reportedly`, `allegedly`). A contract may add
   to it, never remove from it.
-- [ ] `Trust` refuses a `Mentions` premise with `RelationNotStated`, routed to the proposer. The
+- [x] `Trust` refuses a `Mentions` premise with `RelationNotStated`, routed to the proposer. The
   repair is to propose a reading, which needs no new retrieval.
-- [ ] The discharged step names the phrasing and the text it matched, not just that terms were found.
-- [ ] Phrasings and cues are pinned in the snapshot document, additively. A document written before
+- [x] The discharged step names the phrasing and the text it matched, not just that terms were found.
+- [x] Phrasings and cues are pinned in the snapshot document, additively. A document written before
   this task has none, so nothing in it is a statement, and replay says it re-decided under other
   rules (Task 1).
+- [x] Proposer: `build_proposal` chooses `Trust` or `Interpret` by running the kernel's phrasing
+  check instead of reading `needs_interpretation`.
 - [ ] Proposer: the prompt offers the contract's relations as a closed set of predicates, the way the
-  evidence alphabet closes the set of citable ids, and `build_proposal` chooses `Trust` or `Interpret`
-  by running the kernel's phrasing check instead of reading `needs_interpretation`.
+  evidence alphabet closes the set of citable ids.
 - [ ] `/v1/reasoning/ask` takes the contract to reason under. Without one nothing is declared, every
   answer is a reading, and the verdict is `conditional` — which is the truth about an answer that no
   contract stands behind.
-- [ ] Close `CAP-CORRECTNESS-009`; restate `CAP-CORRECTNESS-001`.
+- [x] Close `CAP-CORRECTNESS-009`; restate `CAP-CORRECTNESS-001`.
 
 **What this does not do.** It is not comprehension. "Rumours that Fabrikam acquired Contoso were
 false" still contains a declared phrasing, and no cue list will ever be complete. What changes is the
@@ -300,6 +301,34 @@ phrasing the contract declared for this relation, with the right terms in the ri
 narrow and checkable, and it is what the certificate says it established. Contiguous phrasings
 already exclude most interposed negation — "Fabrikam has not acquired Contoso" does not match
 `"{from} acquired {to}"` — and the rest is recorded as a limitation rather than implied away.
+
+**Landing in two steps.** The kernel and the proposer harness landed first, with no contract wired
+to `/v1/reasoning/ask`: until one is, nothing an answer there cites is a statement, and every answer
+is a reading. The contract syntax, the predicate set in the prompt, and the endpoint's contract are
+the second step.
+
+**What the first step found.**
+
+*The proposer's reading path had been dead since grounding checked both endpoints.* `build_proposal`
+cited the quote under the subject `"quote"`, and a citation has had to contain its subject since the
+fix that grounded both endpoints — so every answer the proposer routed through `Interpret` was
+rejected for a missing term, and `/v1/reasoning/ask` could only ever answer `accepted` or
+`rejected`. Its tests checked the shape of the derivation and never what the kernel decided about it.
+A reading now cites the answer's own terms when the excerpt has them and the quote when it does not,
+and every proposer test runs what it built through `check`.
+
+*`may` is not a cue.* The list above included it. It is also a month, so "acquired Contoso in May"
+would have been refused, and contiguous phrasings already exclude the hedge it would catch —
+"Fabrikam may acquire Contoso" does not match `"{from} acquired {to}"`.
+
+*Two refinements the task did not anticipate.* A single line break is read as a space before
+sentences are found, because extracted text is hard-wrapped and Unicode ends a sentence at every
+line break; a blank line still ends one. And a sentence that ends in a question mark asserts nothing,
+however exactly it matches.
+
+*A limitation recorded rather than hidden.* A sentence can doubt a phrasing in a word no cue list
+carries — "Analysts doubted that Fabrikam acquired Contoso" still states the acquisition. That is
+`CAP-CORRECTNESS-012`, with a tripwire.
 
 ### Task 6: A proposal carries a schema version
 

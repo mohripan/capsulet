@@ -8,7 +8,8 @@ use capsulet_core::{
     Authority, Evidence, EvidenceId, EvidenceSpan, MemoryScope, Source, SourceContent, SourceId,
 };
 use capsulet_kernel::{
-    MAX_CITED_EXCERPT_BYTES, Proposal, Proposition, Rule, Snapshot, Verdict, check,
+    Certificate, MAX_CITED_EXCERPT_BYTES, Phrasebook, Phrasing, Proposal, Proposition, Rule,
+    Snapshot, Verdict, check,
 };
 
 fn scope() -> MemoryScope {
@@ -258,4 +259,208 @@ fn the_unicode_tables_a_citation_is_judged_by_are_pinned() {
     // `cargo update`.
     assert_eq!(unicode_segmentation::UNICODE_VERSION, (17, 0, 0));
     assert_eq!(unicode_normalization::UNICODE_VERSION, (17, 0, 0));
+}
+
+// --- A citation states a relation only in a declared phrasing ---------------
+
+/// The contract's phrasings for the two acquisition relations below.
+fn acquisitions() -> Phrasebook {
+    let phrasings = |templates: &[&str]| {
+        templates
+            .iter()
+            .map(|template| Phrasing::parse(template).expect("a phrasing"))
+            .collect()
+    };
+    Phrasebook::new()
+        .with_relation(
+            "acquired",
+            phrasings(&[
+                "{from} acquired {to}",
+                "{to} was acquired by {from}",
+                "{from}'s acquisition of {to}",
+            ]),
+        )
+        .with_relation(
+            "was_acquired_by",
+            phrasings(&["{from} was acquired by {to}", "{to} acquired {from}"]),
+        )
+}
+
+/// Decides `subject predicate object` as a trusted citation of `document` from
+/// a high-authority source, judged by the acquisition phrasings.
+fn trusted(document: &str, subject: &str, predicate: &str, object: &str) -> Certificate {
+    let proposition = Proposition::new(subject, predicate, object);
+    let proposal = Proposal {
+        goal: proposition.clone(),
+        derivation: Rule::Trust {
+            premise: Box::new(Rule::Cite {
+                evidence_id: "ev_1".to_string(),
+                proposition,
+            }),
+            min_authority: "low".to_string(),
+        },
+    };
+    check(
+        &proposal,
+        &snapshot_over(document).with_phrasebook(acquisitions()),
+    )
+}
+
+/// Whether `document` states that Fabrikam acquired Contoso.
+fn states_the_acquisition(document: &str) -> bool {
+    trusted(document, "Fabrikam", "acquired", "Contoso").verdict == Verdict::Accepted
+}
+
+/// The routing a refused statement gets: it is the proposer's to re-propose
+/// as a reading.
+fn refused_as_unstated(certificate: &Certificate) -> bool {
+    certificate.verdict == Verdict::Rejected
+        && certificate.errors[0].code == "relation_not_stated"
+        && certificate.errors[0].repair_owner == "proposer"
+}
+
+#[test]
+fn a_declared_phrasing_states_the_relation() {
+    assert!(states_the_acquisition("Fabrikam acquired Contoso in 2024."));
+    assert!(states_the_acquisition(
+        "Contoso was acquired by Fabrikam in 2024."
+    ));
+    assert!(states_the_acquisition(
+        "Fabrikam\u{2019}s acquisition of Contoso closed in May."
+    ));
+
+    let certificate = trusted(
+        "Fabrikam acquired Contoso in 2024.",
+        "Fabrikam",
+        "acquired",
+        "Contoso",
+    );
+    let cite = certificate
+        .discharged
+        .iter()
+        .find(|step| step.rule == "cite")
+        .expect("the citation discharged");
+    assert!(
+        cite.detail.contains("{from} acquired {to}"),
+        "the certificate should name the phrasing it relied on: {}",
+        cite.detail
+    );
+}
+
+#[test]
+fn a_negated_statement_is_not_the_statement() {
+    let certificate = trusted(
+        "Fabrikam did not acquire Contoso.",
+        "Fabrikam",
+        "acquired",
+        "Contoso",
+    );
+    assert!(refused_as_unstated(&certificate), "{certificate:?}");
+
+    // The phrasing is there word for word; the sentence denies it.
+    assert!(!states_the_acquisition(
+        "It is not true that Fabrikam acquired Contoso."
+    ));
+}
+
+#[test]
+fn reversed_roles_are_not_the_statement() {
+    let certificate = trusted(
+        "Contoso acquired Fabrikam in 2024.",
+        "Fabrikam",
+        "acquired",
+        "Contoso",
+    );
+    assert!(refused_as_unstated(&certificate), "{certificate:?}");
+}
+
+#[test]
+fn a_different_relation_between_the_same_terms_is_not_the_statement() {
+    let certificate = trusted(
+        "Contoso sued Fabrikam over a patent.",
+        "Contoso",
+        "was_acquired_by",
+        "Fabrikam",
+    );
+    assert!(refused_as_unstated(&certificate), "{certificate:?}");
+}
+
+#[test]
+fn a_hedged_conditional_or_questioned_statement_is_not_the_statement() {
+    assert!(!states_the_acquisition(
+        "Fabrikam may acquire Contoso next year."
+    ));
+    assert!(!states_the_acquisition(
+        "If Fabrikam acquired Contoso, prices would rise."
+    ));
+    assert!(!states_the_acquisition(
+        "Reportedly, Fabrikam acquired Contoso."
+    ));
+    assert!(!states_the_acquisition("Fabrikam acquired Contoso?"));
+}
+
+#[test]
+fn a_cue_in_another_sentence_does_not_block_a_statement() {
+    // A cue speaks for its own sentence. The second sentence's denial is about
+    // Northwind and says nothing about the first.
+    assert!(states_the_acquisition(
+        "Fabrikam acquired Contoso. It did not acquire Northwind."
+    ));
+}
+
+#[test]
+fn hard_wrapped_text_is_one_sentence() {
+    // Extracted text breaks lines mid-sentence. A single line break is a space;
+    // a blank line ends a paragraph, and the sentence with it.
+    assert!(states_the_acquisition(
+        "Fabrikam\nacquired Contoso in 2024."
+    ));
+    assert!(!states_the_acquisition(
+        "Fabrikam\n\nacquired Contoso in 2024."
+    ));
+}
+
+#[test]
+fn a_relation_with_no_declared_phrasing_is_only_mentioned() {
+    // Nothing declares how `renewed` is stated, so the citation mentions its
+    // terms and no more: trusting it is refused, and reading it is conditional.
+    let document = "Acme renewed the Contoso contract.";
+    let certificate = trusted(document, "Acme", "renewed", "the Contoso contract");
+    assert!(refused_as_unstated(&certificate), "{certificate:?}");
+
+    let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
+    let reading = Proposal {
+        goal: goal.clone(),
+        derivation: Rule::Interpret {
+            premise: Box::new(Rule::Cite {
+                evidence_id: "ev_1".to_string(),
+                proposition: goal.clone(),
+            }),
+            proposition: goal,
+            rationale: "the sentence says Acme renewed it".to_string(),
+        },
+    };
+    let certificate = check(
+        &reading,
+        &snapshot_over(document).with_phrasebook(acquisitions()),
+    );
+    assert_eq!(certificate.verdict, Verdict::Conditional);
+    assert!(certificate.residuals[0].from.starts_with("mentions("));
+}
+
+#[test]
+fn a_phrasing_needs_both_slots_and_a_word() {
+    assert!(Phrasing::parse("{from} acquired {to}").is_ok());
+    for template in [
+        "{from} {to}",
+        "{from}, {to}",
+        "{from} acquired",
+        "{from} acquired {to} and {to}",
+        "{from} {verb} {to}",
+    ] {
+        assert!(
+            Phrasing::parse(template).is_err(),
+            "{template:?} should not be a phrasing"
+        );
+    }
 }

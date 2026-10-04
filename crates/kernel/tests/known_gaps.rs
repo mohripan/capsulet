@@ -13,7 +13,9 @@
 use capsulet_core::{
     Authority, Evidence, EvidenceId, EvidenceSpan, MemoryScope, Source, SourceContent, SourceId,
 };
-use capsulet_kernel::{Proposal, Proposition, Rule, Snapshot, Verdict, check};
+use capsulet_kernel::{
+    Phrasebook, Phrasing, Proposal, Proposition, Rule, Snapshot, Verdict, check,
+};
 
 fn source_id() -> SourceId {
     SourceId::new("src_1").expect("source id")
@@ -69,66 +71,6 @@ fn decide(document: &str, subject: &str, predicate: &str, object: &str) -> Verdi
     check(&proposal, &snapshot_over(document, Authority::High)).verdict
 }
 
-// --- The predicate is never checked (CAP-CORRECTNESS-009) -------------------
-
-#[test]
-fn a_negated_statement_is_accepted_as_the_statement() {
-    // A reader says the source states the opposite. Both terms occur, and the
-    // relation between them is not looked at.
-    assert_eq!(
-        decide(
-            "Fabrikam did not acquire Contoso.",
-            "Fabrikam",
-            "acquired",
-            "Contoso"
-        ),
-        Verdict::Accepted,
-        "closed by Task 5 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
-#[test]
-fn reversed_roles_are_accepted_as_the_statement() {
-    assert_eq!(
-        decide(
-            "Contoso acquired Fabrikam in 2024.",
-            "Fabrikam",
-            "acquired",
-            "Contoso"
-        ),
-        Verdict::Accepted,
-        "closed by Task 5 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
-#[test]
-fn a_different_relation_between_the_same_terms_is_accepted() {
-    assert_eq!(
-        decide(
-            "Contoso sued Fabrikam over a patent.",
-            "Contoso",
-            "was_acquired_by",
-            "Fabrikam"
-        ),
-        Verdict::Accepted,
-        "closed by Task 5 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
-#[test]
-fn a_hedged_statement_is_accepted_as_the_statement() {
-    assert_eq!(
-        decide(
-            "Fabrikam may acquire Contoso next year.",
-            "Fabrikam",
-            "acquired",
-            "Contoso"
-        ),
-        Verdict::Accepted,
-        "closed by Task 5 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
 // --- A value written another way is not found (CAP-CORRECTNESS-004) ----------
 
 #[test]
@@ -170,5 +112,32 @@ fn another_name_for_the_entity_is_not_found() {
         ),
         Verdict::Rejected,
         "closed by Task 8 of the citation grounding plan; move this to grounding.rs inverted"
+    );
+}
+
+// --- A denial the cue list does not know (CAP-CORRECTNESS-012) --------------
+
+#[test]
+fn a_doubt_the_cue_list_does_not_know_still_states_the_relation() {
+    // The phrasing is there word for word, and the sentence doubts it in a word
+    // no cue list carries. Cue lists are finite; this is what that costs.
+    let proposition = Proposition::new("Fabrikam", "acquired", "Contoso");
+    let phrasebook = Phrasebook::new().with_relation(
+        "acquired",
+        vec![Phrasing::parse("{from} acquired {to}").expect("a phrasing")],
+    );
+    let certificate = check(
+        &quoted(proposition.clone(), proposition, "low"),
+        &snapshot_over(
+            "Analysts doubted that Fabrikam acquired Contoso.",
+            Authority::High,
+        )
+        .with_phrasebook(phrasebook),
+    );
+
+    assert_eq!(
+        certificate.verdict,
+        Verdict::Accepted,
+        "a known cost of finite cue lists; if this changes, restate CAP-CORRECTNESS-012"
     );
 }
