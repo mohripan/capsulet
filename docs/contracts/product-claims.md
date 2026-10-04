@@ -147,7 +147,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-REPLAY-003` | implemented | capability | Replay does not overstate what it established: a divergent replay yields no verdict, inputs that are present and unreadable are reported separately from absent ones and disqualify the result, and a bundle with nothing to check says so. |
+| `CAP-REPLAY-003` | implemented | capability | Replay does not overstate what it established: a divergent replay yields no verdict, inputs that are present and unreadable are reported separately from absent ones and disqualify the result, a bundle with nothing to check says so, and a deterministic decision re-made under rules other than the ones recorded for it says so. |
 
 ## Once-only effects
 

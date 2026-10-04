@@ -22,6 +22,18 @@ use crate::snapshot::Snapshot;
 /// The name of the claim-reasoning family, as it appears in certificates.
 pub const CLAIM_REASONING: &str = "capsulet-kernel/claim-reasoning";
 
+/// The version of the rules the claim-reasoning family applies.
+///
+/// Bump it in the same change as anything that alters what [`crate::check`]
+/// decides — a rule, the text relation a citation is matched under, the data a
+/// snapshot carries for a decision to read. A certificate records it, and replay
+/// compares it, so a decision re-made under different rules says so.
+///
+/// It used to be the crate version, which moves with releases rather than with
+/// rules: it read `0.1.0` through floating point becoming fixed point, NFC, and
+/// the span bound, so nothing a replay could see told one rule set from the next.
+pub const CLAIM_REASONING_RULES: &str = "1";
+
 /// What a family concluded, plus what it needed to conclude it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FamilyDecision {
@@ -71,7 +83,7 @@ impl ObligationFamily for ClaimReasoning {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        CLAIM_REASONING_RULES
     }
 
     fn is_deterministic(&self) -> bool {

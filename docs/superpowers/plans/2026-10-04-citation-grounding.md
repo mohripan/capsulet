@@ -147,11 +147,11 @@ Task 0 restates each of these to what holds today:
 
 **Files:** `crates/kernel/src/{family.rs,replay.rs}`, `crates/kernel/tests/replay.rs`
 
-- [ ] Failing tests: the claim-reasoning family's version is its rule version, not the crate version;
+- [x] Failing tests: the claim-reasoning family's version is its rule version, not the crate version;
   a full replay of a real proposal and snapshot re-decides and reproduces; a record decided under
   other rules is re-decided and says so.
-- [ ] `CLAIM_REASONING_RULES`, bumped by every later task in this plan.
-- [ ] `ReplayNote::FamilyRulesDiffer`. A note rather than a finding: the re-decision still runs, and
+- [x] `CLAIM_REASONING_RULES`, bumped by every later task in this plan.
+- [x] `ReplayNote::FamilyRulesDiffer`. A note rather than a finding: the re-decision still runs, and
   `FamilyDisagrees` stays disqualifying. A certificate that today's rules would not accept should not
   reproduce. The note tells a reader that the disagreement may be the rules rather than the bundle.
 

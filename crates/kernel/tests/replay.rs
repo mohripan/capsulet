@@ -1,6 +1,7 @@
 //! Offline replay: same verdict from the same evidence, and a loud failure
 //! from anything else.
 
+use capsulet_core::{SourceContent, SourceId};
 use capsulet_ir::admission::AdmissionRecord;
 use capsulet_ir::capability::{Capability, Grant};
 use capsulet_ir::correctness::certificate::{
@@ -17,10 +18,13 @@ use capsulet_ir::{
     Identity, InputPort, Node, NodeKind, Obligation, OutputPort, RecordedTime, ResourceBudget,
     ValueSchema, admit,
 };
-use capsulet_kernel::family::CLAIM_REASONING;
+use capsulet_kernel::family::{
+    CLAIM_REASONING, CLAIM_REASONING_RULES, ClaimReasoning, ObligationFamily,
+};
 use capsulet_kernel::replay::{ReplayFinding, ReplayNote, ReplayOutcome, Unreadable};
+use capsulet_kernel::snapshot_document::{EvidenceDocument, SnapshotDocument, SourceDocument};
 use capsulet_kernel::workflow::{Assembly, KERNEL_VERSION, certify};
-use capsulet_kernel::{EvidenceMap, replay};
+use capsulet_kernel::{EvidenceMap, Proposal, Proposition, Rule, replay};
 
 fn id(value: &str) -> Identifier {
     Identifier::parse(value).expect("test identifiers are well formed")
@@ -349,7 +353,7 @@ fn the_claim_reasoning_family_is_registered_and_re_decidable() {
     // Recorded as deterministic but with inputs the bundle does not carry:
     // replay says it could not re-decide rather than taking the word for it.
     let family = VerifierRecord {
-        identity: Identity::new(id(CLAIM_REASONING), env!("CARGO_PKG_VERSION")),
+        identity: Identity::new(id(CLAIM_REASONING), CLAIM_REASONING_RULES),
         environment: Digest::of(b"the kernel"),
         inputs: vec![Digest::of(b"a proposal"), Digest::of(b"a snapshot")],
         outputs: vec![],
@@ -451,4 +455,217 @@ fn inputs_that_are_present_and_unreadable_are_not_reported_as_missing() {
             .any(|finding| matches!(finding, ReplayFinding::FamilyInputsMissing { .. })),
         "the bytes are present; nothing is missing: {findings:?}"
     );
+}
+
+// --- Re-deciding a real claim-reasoning decision -----------------------------
+
+const GROUNDING_DOC: &str = "Acme renewed the Contoso contract.";
+
+/// The snapshot a claim-reasoning decision was made against, as a bundle pins
+/// it: one high-authority source, cited whole.
+fn pinned_snapshot() -> SnapshotDocument {
+    let hash = SourceContent::new(SourceId::new("src_1").expect("source id"), GROUNDING_DOC)
+        .expect("content")
+        .content_hash()
+        .to_string();
+    SnapshotDocument {
+        sources: vec![SourceDocument {
+            id: "src_1".to_string(),
+            tenant_id: "acme".to_string(),
+            project_id: "prod".to_string(),
+            kind: "document".to_string(),
+            uri: None,
+            title: "Renewal memo".to_string(),
+            authority: "high".to_string(),
+            content: GROUNDING_DOC.to_string(),
+        }],
+        evidence: vec![EvidenceDocument {
+            id: "ev_1".to_string(),
+            tenant_id: "acme".to_string(),
+            project_id: "prod".to_string(),
+            source_id: "src_1".to_string(),
+            locator: "para-1".to_string(),
+            excerpt: GROUNDING_DOC.to_string(),
+            observed_at: "2026-03-02T00:00:00Z".to_string(),
+            span_start: Some(0),
+            span_end: Some(GROUNDING_DOC.len()),
+            source_content_hash: Some(hash),
+        }],
+        claims: vec![],
+    }
+}
+
+/// A trusted citation of `object` from the pinned snapshot.
+fn trusted_citation(object: &str) -> Proposal {
+    let goal = Proposition::new("Acme", "renewed", object);
+    Proposal {
+        goal: goal.clone(),
+        derivation: Rule::Trust {
+            premise: Box::new(Rule::Cite {
+                evidence_id: "ev_1".to_string(),
+                proposition: goal,
+            }),
+            min_authority: "low".to_string(),
+        },
+    }
+}
+
+/// What this build decides about `proposal`, as the claim-reasoning family.
+fn decided_here(proposal: &Proposal) -> CheckerVerdict {
+    let snapshot = pinned_snapshot().rebuild().expect("the snapshot rebuilds");
+    ClaimReasoning::decide(proposal, &snapshot).verdict
+}
+
+/// A certificate whose one obligation was discharged by the claim-reasoning
+/// family, recorded as having reached `recorded` under rule version `rules`,
+/// with the proposal and snapshot it was decided from carried as evidence.
+fn claim_reasoning_certificate(
+    proposal: &Proposal,
+    recorded: CheckerVerdict,
+    rules: &str,
+) -> (Certificate, EvidenceMap) {
+    let proposal_bytes = serde_json::to_vec(proposal).expect("the proposal encodes");
+    let snapshot_bytes = serde_json::to_vec(&pinned_snapshot()).expect("the snapshot encodes");
+
+    let mut bundle = EvidenceMap::new();
+    let proposal_digest = bundle.insert(proposal_bytes.clone());
+    let snapshot_digest = bundle.insert(snapshot_bytes.clone());
+
+    let input = |name: &str, bytes: &[u8]| EvidenceRef {
+        id: id(name),
+        content: Digest::of(bytes),
+        media_type: "application/json".to_string(),
+        byte_length: bytes.len() as u64,
+        producer: Producer {
+            kind: ProducerKind::Deterministic,
+            identity: Identity::new(id(CLAIM_REASONING), rules),
+        },
+        captured_at: RecordedTime(1_772_000_000_000),
+    };
+
+    let admission = admission();
+    let certificate = certify(Assembly {
+        id: id("cert-grounding"),
+        subject: Subject {
+            definition: *admission.definition(),
+            definition_version: "1".to_string(),
+            run: Some(id("run-grounding")),
+            inputs: vec![],
+            outputs: vec![],
+        },
+        admission,
+        mode: AssuranceMode::Enforce,
+        policy_version: "release-policy/3".to_string(),
+        contracts: vec![id("grounded")],
+        verifiers: vec![VerifierRecord {
+            identity: Identity::new(id(CLAIM_REASONING), rules),
+            environment: Digest::of(b"the kernel"),
+            inputs: vec![proposal_digest, snapshot_digest],
+            outputs: vec![],
+            trust: VerifierTrust::Deterministic,
+            verdict: recorded,
+        }],
+        obligations: vec![Obligation {
+            statement: ObligationStatement {
+                id: id("cited"),
+                statement: "the answer is grounded in its citation".to_string(),
+                owner: RepairOwner::Verifier,
+            },
+            contract: id("grounded"),
+            state: DischargeState::Discharged {
+                by: id(CLAIM_REASONING),
+                evidence: vec![proposal_digest, snapshot_digest],
+            },
+        }],
+        evidence: vec![
+            input("proposal", &proposal_bytes),
+            input("snapshot", &snapshot_bytes),
+        ],
+        loops: vec![],
+    })
+    .expect("the certificate seals");
+
+    (certificate, bundle)
+}
+
+fn rules_differ(notes: &[ReplayNote]) -> bool {
+    notes.iter().any(|note| {
+        matches!(
+            note,
+            ReplayNote::FamilyRulesDiffer { recorded, replaying, .. }
+                if recorded == "0.1.0" && replaying == CLAIM_REASONING_RULES
+        )
+    })
+}
+
+#[test]
+fn the_claim_reasoning_family_names_its_rules_not_its_crate() {
+    // A version that moves with the crate said nothing: it stayed `0.1.0`
+    // through floating point becoming fixed point, NFC, and the span bound, so
+    // a replay could not tell one rule set from the next.
+    assert_eq!(ClaimReasoning.version(), CLAIM_REASONING_RULES);
+    assert_ne!(ClaimReasoning.version(), env!("CARGO_PKG_VERSION"));
+}
+
+#[test]
+fn a_pinned_decision_re_decides_and_reproduces() {
+    // The path every rule change runs through, end to end: a real proposal and
+    // a real snapshot, read back out of the bundle and decided again.
+    let proposal = trusted_citation("Contoso");
+    let (certificate, bundle) =
+        claim_reasoning_certificate(&proposal, decided_here(&proposal), CLAIM_REASONING_RULES);
+
+    let ReplayOutcome::Reproduced { notes, .. } = replay(&certificate, &bundle) else {
+        panic!("a decision this build would reach again must reproduce");
+    };
+    assert!(
+        notes.iter().any(|note| matches!(
+            note,
+            ReplayNote::FamilyReDecided { identity } if identity == CLAIM_REASONING
+        )),
+        "{notes:?}"
+    );
+    assert!(
+        !notes
+            .iter()
+            .any(|note| matches!(note, ReplayNote::FamilyRulesDiffer { .. })),
+        "the rules are the same, so nothing should say otherwise: {notes:?}"
+    );
+}
+
+#[test]
+fn a_decision_recorded_under_other_rules_says_so() {
+    let proposal = trusted_citation("Contoso");
+    let (certificate, bundle) =
+        claim_reasoning_certificate(&proposal, decided_here(&proposal), "0.1.0");
+
+    let ReplayOutcome::Reproduced { notes, .. } = replay(&certificate, &bundle) else {
+        panic!("the verdicts agree, so a difference in rules is a note, not a divergence");
+    };
+    assert!(rules_differ(&notes), "{notes:?}");
+}
+
+#[test]
+fn a_decision_these_rules_would_not_reach_does_not_reproduce() {
+    // Recorded as accepted under older rules; this build rejects it. The note
+    // explains the disagreement and does not excuse it: a certificate today's
+    // rules would not accept is not reproduced on the strength of older ones.
+    let proposal = trusted_citation("Fabrikam");
+    assert_eq!(decided_here(&proposal), CheckerVerdict::Rejected);
+    let (certificate, bundle) =
+        claim_reasoning_certificate(&proposal, CheckerVerdict::Accepted, "0.1.0");
+
+    let ReplayOutcome::Diverged {
+        findings, notes, ..
+    } = replay(&certificate, &bundle)
+    else {
+        panic!("a recorded verdict this build does not reach must diverge");
+    };
+    assert!(
+        findings
+            .iter()
+            .any(|finding| matches!(finding, ReplayFinding::FamilyDisagrees { .. })),
+        "{findings:?}"
+    );
+    assert!(rules_differ(&notes), "{notes:?}");
 }

@@ -98,7 +98,8 @@ Six properties carry the weight:
   deterministic families, and says plainly which external tools it did not re-run. A replay that
   diverged yields no verdict at all — what the bundle would support is a separate question, asked
   deliberately — inputs that are present and unreadable are reported apart from absent ones, and a
-  bundle with nothing in it says so rather than reproducing quietly.
+  bundle with nothing in it says so rather than reproducing quietly. A deterministic family records
+  the version of the rules it decided under, and a decision re-made under other rules says so.
 
 The crates are `capsulet-ir` (pure: no I/O, no clock, no randomness, asserted over its dependency
 closure), `capsulet-kernel` (certificate assembly, obligation families, replay), `capsulet-replay`

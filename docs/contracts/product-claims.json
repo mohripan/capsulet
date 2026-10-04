@@ -402,6 +402,10 @@
         {
           "path": "crates/kernel/tests/known_gaps.rs",
           "selector": "the_authority_floor_is_whatever_the_proposal_asks_for"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "a_decision_recorded_under_other_rules_says_so"
         }
       ]
     },
@@ -2340,7 +2344,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Offline replay",
-      "statement": "Replay does not overstate what it established: a divergent replay yields no verdict, inputs that are present and unreadable are reported separately from absent ones and disqualify the result, and a bundle with nothing to check says so.",
+      "statement": "Replay does not overstate what it established: a divergent replay yields no verdict, inputs that are present and unreadable are reported separately from absent ones and disqualify the result, a bundle with nothing to check says so, and a deterministic decision re-made under rules other than the ones recorded for it says so.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
@@ -2357,6 +2361,12 @@
           "evidence_selectors": [
             "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
           ]
+        },
+        {
+          "assertion": "the-rules-a-decision-was-made-under-are-named",
+          "evidence_selectors": [
+            "a_decision_recorded_under_other_rules_says_so"
+          ]
         }
       ],
       "evidence": [
@@ -2371,6 +2381,12 @@
           "path": "crates/kernel/tests/replay.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_decision_recorded_under_other_rules_says_so"
         }
       ]
     },

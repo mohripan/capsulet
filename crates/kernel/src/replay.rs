@@ -26,7 +26,7 @@ use capsulet_ir::correctness::obligation::{DischargeState, Obligation};
 use capsulet_ir::digest::Digest;
 use capsulet_ir::version::{CERTIFICATE_SCHEMA_VERSION, SchemaVersionError, read_compatible};
 
-use crate::family::{CLAIM_REASONING, ClaimReasoning, deterministic_families};
+use crate::family::{CLAIM_REASONING, ClaimReasoning, ObligationFamily, deterministic_families};
 use crate::ir::Proposal;
 use crate::snapshot_document::SnapshotDocument;
 use crate::workflow::KERNEL_VERSION;
@@ -142,6 +142,20 @@ pub enum ReplayNote {
     KernelVersionDiffers { recorded: String, replaying: String },
     /// A deterministic family was re-decided and agreed.
     FamilyReDecided { identity: String },
+    /// A deterministic family's record names rules other than the ones this
+    /// build applies, and it was re-decided under this build's.
+    ///
+    /// A note rather than a finding: the re-decision still runs, and a verdict it
+    /// does not reach is still [`ReplayFinding::FamilyDisagrees`], which still
+    /// disqualifies — a certificate today's rules would not accept is not
+    /// reproduced on the strength of older ones. What the note adds is the
+    /// likeliest reason for a disagreement, so a reader looks at the rules before
+    /// suspecting the bundle.
+    FamilyRulesDiffer {
+        identity: String,
+        recorded: String,
+        replaying: String,
+    },
     /// The certificate pinned no evidence and named no verifier, so replay
     /// confirmed its verdict follows from its obligations and checked nothing
     /// else.
@@ -346,6 +360,15 @@ fn check_verifiers(
                     findings.push(ReplayFinding::UnknownDeterministicVerifier { identity });
                     continue;
                 }
+                if let Some(replaying) = rules_applied_by(&identity)
+                    && record.identity.version != replaying
+                {
+                    notes.push(ReplayNote::FamilyRulesDiffer {
+                        identity: identity.clone(),
+                        recorded: record.identity.version.clone(),
+                        replaying: replaying.to_string(),
+                    });
+                }
                 match redecide(&identity, record.inputs.as_slice(), evidence) {
                     Redecision::Missing => {
                         findings.push(ReplayFinding::FamilyInputsMissing { identity });
@@ -367,6 +390,11 @@ fn check_verifiers(
             }
         }
     }
+}
+
+/// The version of the rules this build applies for a deterministic family.
+fn rules_applied_by(identity: &str) -> Option<&'static str> {
+    (identity == CLAIM_REASONING).then(|| ClaimReasoning.version())
 }
 
 /// Whether a finding means the certificate can no longer support any positive

@@ -141,6 +141,14 @@ fn describe_note(note: &ReplayNote) -> String {
         ReplayNote::FamilyReDecided { identity } => {
             format!("`{identity}` was re-decided here and agreed")
         }
+        ReplayNote::FamilyRulesDiffer {
+            identity,
+            recorded,
+            replaying,
+        } => format!(
+            "`{identity}` was decided under rules {recorded} and re-decided here under rules \
+             {replaying}; a disagreement may be the rules rather than the bundle"
+        ),
         ReplayNote::NothingWasReChecked => {
             "this certificate pins no evidence and names no verifier, so nothing was re-checked"
                 .to_string()
