@@ -13,11 +13,14 @@ path = "src/lib.rs"
 [dependencies]
 capsulet-core = { path = "../core" }
 capsulet-ir = { path = "../ir" }
+icu_casemap.workspace = true
+icu_properties.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 unicode-normalization.workspace = true
+unicode-segmentation.workspace = true
 
 [lints]
 workspace = true

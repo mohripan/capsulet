@@ -211,17 +211,17 @@ hold sources to more is a product decision this task deliberately did not make.
 **Files:** `crates/kernel/src/{lib.rs,text.rs}`, `crates/kernel/Cargo.toml`, `Cargo.toml`,
 `crates/kernel/tests/grounding.rs`
 
-- [ ] Failing tests: `Ann` is not found in `announced`, nor `30` in `300`; `苹果`, `แอปเปิ้ล` and
+- [x] Failing tests: `Ann` is not found in `announced`, nor `30` in `300`; `苹果`, `แอปเปิ้ล` and
   `コンピュータ` are still found inside their sentences; `HAUPTSTRASSE` finds `Hauptstraße`, `finance`
   finds `ﬁnance`, and `Acme's` finds `Acme’s`; a soft hyphen or zero-width space inside a word does
   not hide it.
-- [ ] The text relation moves to `text.rs`: NFD, full case folding, NFC; default-ignorable code
+- [x] The text relation moves to `text.rs`: NFD, full case folding, NFC; default-ignorable code
   points dropped; quotes, apostrophes, dashes and minus signs folded through an explicit table;
   whitespace collapsed; a match counts only when it starts and ends on a UAX #29 word boundary of the
   folded text.
-- [ ] `unicode-segmentation` for boundaries — rules only, no dictionary and no model. `icu_casemap`
+- [x] `unicode-segmentation` for boundaries — rules only, no dictionary and no model. `icu_casemap`
   for folding, matching the ICU crates the workspace already locks.
-- [ ] Close `CAP-CORRECTNESS-004`; extend `CAP-CORRECTNESS-005`.
+- [x] Restate `CAP-CORRECTNESS-004` to what remains; extend `CAP-CORRECTNESS-005`.
 
 **Why this is safe for scripts written without spaces.** The robustness plan deferred word boundaries
 because a flanking-letter rule would reject correct citations in Chinese, Japanese and Thai. Measured
@@ -229,6 +229,24 @@ before writing this task: UAX #29's default rules give each Han ideograph, each 
 and each Thai grapheme its own boundary, and keep a Katakana run together. A boundary rule therefore
 refuses `Ann` in `announced` and `30` in `300` while still finding `苹果` in `我喜欢吃苹果` and
 `แอปเปิ้ล` in `ฉันชอบกินแอปเปิ้ล`. Those scripts keep today's behaviour rather than losing it.
+
+**Two corrections to this task as it was written.**
+
+*`CAP-CORRECTNESS-004` could not be closed.* Task 0 widened it to both directions of the text
+relation, and rows 7–9 — a number or date written another way, another name for an entity — are
+not about words at all. They are value and entity equivalence, Tasks 7 and 8. The claim now says
+only that.
+
+*Unicode's word boundaries needed one tailoring.* Measured before choosing: UAX #29 keeps
+`acme's`, `l'accord` and `can't` whole, as single words. Taken as they are, a possessive would have
+hidden the name it is attached to and French elision half its nouns — a broad false rejection, the
+kind that sends users around the kernel. An apostrophe is therefore a boundary on both sides. The
+cost is narrow and named: `can` is found in "can't" and `Brien` in "O'Brien".
+
+The segmentation and normalisation tables are at Unicode 17.0.0, pinned by a test that has to change
+together with `CLAIM_REASONING_RULES`. The case-folding and default-ignorable data come from ICU4X
+and are pinned by `Cargo.lock`; only `icu_casemap`, its data crate and `unicode-segmentation` were
+new to the lock, because the rest of the ICU closure was already there through `idna`.
 
 ### Task 5: A relation is stated only in a phrasing its contract declares
 

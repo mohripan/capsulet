@@ -161,3 +161,101 @@ fn an_excerpt_at_the_bound_is_still_a_citation() {
 
     assert!(cites(&document, "Acme", "Contoso"));
 }
+
+#[test]
+fn a_term_is_not_found_inside_a_longer_word() {
+    // A term is a run of whole words. `Ann` is not in "announced", whatever the
+    // bytes say; `annual` is.
+    let document = "The CEO announced the annual results.";
+    assert!(!cites(document, "CEO", "Ann"));
+    assert!(cites(document, "CEO", "annual"));
+}
+
+#[test]
+fn a_number_is_not_found_inside_a_longer_number() {
+    let document = "The notice period is 300 days.";
+    assert!(!cites(document, "notice period", "30"));
+    assert!(cites(document, "notice period", "300 days"));
+}
+
+#[test]
+fn scripts_written_without_spaces_still_match_inside_a_sentence() {
+    // The reason word boundaries waited: a rule that refuses a match flanked by
+    // letters would refuse every one of these. Unicode's own boundaries give
+    // each Han ideograph, Hiragana character and Thai grapheme a boundary of its
+    // own, and keep a Katakana run whole.
+    assert!(cites("我喜欢吃苹果。", "我", "苹果"));
+    assert!(cites("ฉันชอบกินแอปเปิ้ล", "ฉัน", "แอปเปิ้ล"));
+    assert!(cites(
+        "コンピュータを使います。",
+        "コンピュータ",
+        "使います"
+    ));
+    assert!(
+        !cites("コンピュータを使います。", "コン", "使います"),
+        "a Katakana word is a word, and a piece of it is not"
+    );
+}
+
+#[test]
+fn case_is_folded_rather_than_lowercased() {
+    // Lowercasing is for display: it leaves `ß` alone while `SS` becomes `ss`,
+    // and the ligature `ﬁ` is not `fi`. Case folding is the operation built for
+    // matching, and it brings each pair to the same letters.
+    assert!(cites(
+        "Acme is located at Hauptstra\u{00DF}e 5.",
+        "Acme",
+        "HAUPTSTRASSE 5"
+    ));
+    assert!(cites("Acme leads \u{FB01}nance.", "Acme", "finance"));
+}
+
+#[test]
+fn typographic_quotes_and_dashes_are_their_plain_forms() {
+    assert!(cites(
+        "Acme\u{2019}s renewal was approved.",
+        "Acme's renewal",
+        "approved"
+    ));
+    assert!(cites(
+        "Revenue fell by \u{2212}5 percent.",
+        "Revenue",
+        "-5 percent"
+    ));
+}
+
+#[test]
+fn an_invisible_character_does_not_hide_a_word() {
+    // A soft hyphen or a zero-width space inside a word changes nothing a
+    // reader sees, so it changes nothing a citation is judged on.
+    assert!(cites(
+        "Acme renewed the Con\u{00AD}toso contract.",
+        "Acme",
+        "Contoso"
+    ));
+    assert!(cites(
+        "Acme renewed the Con\u{200B}toso contract.",
+        "Acme",
+        "Contoso"
+    ));
+}
+
+#[test]
+fn a_possessive_or_an_elision_does_not_hide_a_name() {
+    // Unicode keeps "Acme's" and "l'accord" whole, as single words. Treated that
+    // way, a possessive would hide the name it is attached to, and French
+    // elision would hide half its nouns. An apostrophe is a boundary here.
+    assert!(cites("Acme's renewal was approved.", "Acme", "renewal"));
+    assert!(cites("Acme a sign\u{00E9} l'accord.", "Acme", "accord"));
+}
+
+#[test]
+fn the_unicode_tables_a_citation_is_judged_by_are_pinned() {
+    // Word boundaries and normalisation decide what a citation matches. A
+    // dependency bump that moves their Unicode version changes decisions, so it
+    // has to arrive with a bump of `CLAIM_REASONING_RULES` and of this pin. The
+    // test is what makes that a decision rather than a side effect of
+    // `cargo update`.
+    assert_eq!(unicode_segmentation::UNICODE_VERSION, (17, 0, 0));
+    assert_eq!(unicode_normalization::UNICODE_VERSION, (17, 0, 0));
+}

@@ -349,14 +349,6 @@
         },
         {
           "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_term_inside_a_longer_word_is_found"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_number_inside_a_longer_number_is_found"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
           "selector": "a_number_written_another_way_is_not_found"
         },
         {
@@ -366,14 +358,6 @@
         {
           "path": "crates/kernel/tests/known_gaps.rs",
           "selector": "another_name_for_the_entity_is_not_found"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_typographic_apostrophe_is_not_an_apostrophe"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "sharp_s_does_not_match_double_s"
         },
         {
           "path": "crates/kernel/tests/known_gaps.rs",
@@ -410,6 +394,34 @@
         {
           "path": "crates/kernel/src/tests.rs",
           "selector": "a_snapshot_document_without_a_floor_rebuilds_at_the_lowest"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_term_is_not_found_inside_a_longer_word"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_number_is_not_found_inside_a_longer_number"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "scripts_written_without_spaces_still_match_inside_a_sentence"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "case_is_folded_rather_than_lowercased"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "typographic_quotes_and_dashes_are_their_plain_forms"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "an_invisible_character_does_not_hide_a_word"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "the_unicode_tables_a_citation_is_judged_by_are_pinned"
         }
       ]
     },
@@ -1808,24 +1820,12 @@
       "kind": "limitation",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "A cited term is matched by substring containment over lowercased, whitespace-collapsed NFC text, so a term is found inside a longer word or number that contains it, and the same value written another way — another number or date format, another name for the entity, a typographic apostrophe, ß for SS — is not found.",
+      "statement": "A cited term is compared as text, so the same value written another way — another number or date format, or another name for the entity — is not found.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
       "evidence": [
-        {
-          "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_term_inside_a_longer_word_is_found"
-        },
-        {
-          "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_number_inside_a_longer_number_is_found"
-        },
         {
           "type": "test",
           "path": "crates/kernel/tests/known_gaps.rs",
@@ -1845,20 +1845,8 @@
           "selector": "another_name_for_the_entity_is_not_found"
         },
         {
-          "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_typographic_apostrophe_is_not_an_apostrophe"
-        },
-        {
-          "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "sharp_s_does_not_match_double_s"
-        },
-        {
           "type": "source",
-          "path": "crates/kernel/src/lib.rs"
+          "path": "crates/kernel/src/text.rs"
         }
       ]
     },
@@ -1867,7 +1855,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "A citation is judged on text, not bytes: Unicode composition, case and whitespace run-length do not change whether a document says something, and a span too large to point at anything in particular is not a citation.",
+      "statement": "A citation is judged on text, not bytes: Unicode composition, case (by full case folding), typographic quotes and dashes, invisible characters and whitespace run-length do not change whether a document says something; a term is found only as whole words, including in scripts written without spaces; and a span too large to point at anything in particular is not a citation.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
@@ -1884,6 +1872,38 @@
           "evidence_selectors": [
             "an_excerpt_longer_than_the_bound_is_not_a_citation"
           ]
+        },
+        {
+          "assertion": "a-term-is-a-whole-word",
+          "evidence_selectors": [
+            "a_term_is_not_found_inside_a_longer_word",
+            "a_number_is_not_found_inside_a_longer_number"
+          ]
+        },
+        {
+          "assertion": "unspaced-scripts-still-match",
+          "evidence_selectors": [
+            "scripts_written_without_spaces_still_match_inside_a_sentence"
+          ]
+        },
+        {
+          "assertion": "case-is-folded",
+          "evidence_selectors": [
+            "case_is_folded_rather_than_lowercased"
+          ]
+        },
+        {
+          "assertion": "typography-and-invisible-characters-are-forgiven",
+          "evidence_selectors": [
+            "typographic_quotes_and_dashes_are_their_plain_forms",
+            "an_invisible_character_does_not_hide_a_word"
+          ]
+        },
+        {
+          "assertion": "the-unicode-tables-are-pinned",
+          "evidence_selectors": [
+            "the_unicode_tables_a_citation_is_judged_by_are_pinned"
+          ]
         }
       ],
       "evidence": [
@@ -1898,6 +1918,48 @@
           "path": "crates/kernel/tests/grounding.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "an_excerpt_longer_than_the_bound_is_not_a_citation"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_term_is_not_found_inside_a_longer_word"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_number_is_not_found_inside_a_longer_number"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "scripts_written_without_spaces_still_match_inside_a_sentence"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "case_is_folded_rather_than_lowercased"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "typographic_quotes_and_dashes_are_their_plain_forms"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "an_invisible_character_does_not_hide_a_word"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "the_unicode_tables_a_citation_is_judged_by_are_pinned"
         }
       ]
     },

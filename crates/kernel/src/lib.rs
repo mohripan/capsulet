@@ -27,6 +27,7 @@ pub mod quantity;
 pub mod replay;
 pub mod snapshot;
 pub mod snapshot_document;
+pub mod text;
 pub mod workflow;
 
 use capsulet_core::{Authority, ClaimStatus, verify_evidence_span};
@@ -374,7 +375,7 @@ fn derive_cite(
         ("subject", &proposition.subject),
         ("object", &proposition.object),
     ] {
-        if !contains_normalized(evidence.excerpt(), value) {
+        if !text::contains_term(evidence.excerpt(), value) {
             state.errors.push(CheckError::TermNotInSpan {
                 evidence_id: evidence_id.to_string(),
                 role,
@@ -582,46 +583,6 @@ fn collect_evidence_ids(rule: &Rule, out: &mut Vec<String>) {
         }
         Rule::Attest { .. } | Rule::Arith { .. } => {}
     }
-}
-
-/// Whether the excerpt contains the object, ignoring case and run-length of
-/// whitespace.
-///
-/// Models reflow whitespace and change case when quoting; neither changes what
-/// the source says, so neither should reject a citation. Anything beyond that —
-/// paraphrase, synonymy, inference — deliberately does not pass here.
-fn contains_normalized(excerpt: &str, object: &str) -> bool {
-    let needle = normalize(object);
-    if needle.is_empty() {
-        return false;
-    }
-    normalize(excerpt).contains(&needle)
-}
-
-/// The form two pieces of text are compared in.
-///
-/// Three forgivenesses, and no more. Whitespace run-length, because models
-/// reflow quotations. Case, because they change it — `str::to_lowercase` is a
-/// full Unicode mapping, not an ASCII one, so Turkish dotted I and Greek final
-/// sigma fold correctly without help. And Unicode composition, because "é"
-/// written as one codepoint and as "e" plus a combining acute are the same text
-/// by any reading a person would give it, and a citation that turned on which
-/// encoding the quoter happened to use would be rejecting a true statement
-/// about the document.
-///
-/// NFC rather than NFD: it is the form the IR's canonical encoding already
-/// uses, and two layers that normalise differently would disagree about whether
-/// the same document says the same thing.
-fn normalize(value: &str) -> String {
-    use unicode_normalization::UnicodeNormalization;
-
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
-        .nfc()
-        .collect()
 }
 
 fn parse_authority(value: &str) -> Option<Authority> {

@@ -129,35 +129,7 @@ fn a_hedged_statement_is_accepted_as_the_statement() {
     );
 }
 
-// --- Terms are substrings of lowercased text (CAP-CORRECTNESS-004) ----------
-
-#[test]
-fn a_term_inside_a_longer_word_is_found() {
-    assert_eq!(
-        decide(
-            "The CEO announced the annual results.",
-            "CEO",
-            "is_named",
-            "Ann"
-        ),
-        Verdict::Accepted,
-        "closed by Task 4 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
-#[test]
-fn a_number_inside_a_longer_number_is_found() {
-    assert_eq!(
-        decide(
-            "The notice period is 300 days.",
-            "notice period",
-            "in_days",
-            "30"
-        ),
-        Verdict::Accepted,
-        "closed by Task 4 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
+// --- A value written another way is not found (CAP-CORRECTNESS-004) ----------
 
 #[test]
 fn a_number_written_another_way_is_not_found() {
@@ -198,35 +170,5 @@ fn another_name_for_the_entity_is_not_found() {
         ),
         Verdict::Rejected,
         "closed by Task 8 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
-#[test]
-fn a_typographic_apostrophe_is_not_an_apostrophe() {
-    assert_eq!(
-        decide(
-            "Acme\u{2019}s renewal was approved.",
-            "Acme's renewal",
-            "status",
-            "approved"
-        ),
-        Verdict::Rejected,
-        "closed by Task 4 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
-#[test]
-fn sharp_s_does_not_match_double_s() {
-    // Lowercasing leaves `ß` as `ß` and turns `SS` into `ss`. Case folding, the
-    // operation built for matching, turns both into `ss`.
-    assert_eq!(
-        decide(
-            "Acme is located at Hauptstra\u{00DF}e 5.",
-            "Acme",
-            "located_at",
-            "HAUPTSTRASSE 5"
-        ),
-        Verdict::Rejected,
-        "closed by Task 4 of the citation grounding plan; move this to grounding.rs inverted"
     );
 }

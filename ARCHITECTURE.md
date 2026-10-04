@@ -86,8 +86,9 @@ Six properties carry the weight:
   whatever stack the process happens to have. Arithmetic is fixed-point over integers, so a result
   does not depend on the order of the operands and a value that cannot be represented exactly is
   refused rather than rounded. A citation is judged on text rather than bytes — Unicode composition,
-  case and whitespace do not change what a document says — within a span small enough to be worth
-  pointing at. What a citation checks is narrower than what it concludes: that the proposition's
+  case, typographic quotes and dashes, invisible characters and whitespace do not change what a
+  document says — and a term is found only as whole words, by Unicode's own word boundaries, within a
+  span small enough to be worth pointing at. What a citation checks is narrower than what it concludes: that the proposition's
   subject and object occur in the span, not that the span states the relation between them
   (`CAP-CORRECTNESS-009`, below). A goal is reached only by concluding that it holds, compared field
   by field, so a citation without a trust step attributes a statement and does not assert it. The
@@ -482,9 +483,8 @@ and a test or source pointer:
 - a citation grounds a proposition's subject and object, never its predicate, so a span that
   negates, reverses or hedges a statement, or states a different relation between the same two
   terms, is accepted as stating it (`CAP-CORRECTNESS-009`);
-- a cited term is matched by substring containment over lowercased text, so it is found inside a
-  longer word or number, and the same value written another way — another number or date format,
-  another name for the entity, a typographic apostrophe — is not found (`CAP-CORRECTNESS-004`);
+- a cited term is compared as text, so the same value written another way — another number or date
+  format, or another name for the entity — is not found (`CAP-CORRECTNESS-004`);
 - a kernel proposal is persisted inside bundles without a schema version of its own, so a bundle
   written by a build whose proposal shape differed does not re-decide (`CAP-CORRECTNESS-008`);
 - whether a value reached a verification record without crossing an unmodelled boundary is supplied
