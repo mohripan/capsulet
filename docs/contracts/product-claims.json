@@ -393,19 +393,19 @@
         },
         {
           "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "two_propositions_with_one_rendering_satisfy_each_other"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_bare_citation_reaches_the_goal_without_trust"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
           "selector": "the_authority_floor_is_whatever_the_proposal_asks_for"
         },
         {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "a_decision_recorded_under_other_rules_says_so"
+        },
+        {
+          "path": "crates/kernel/src/tests.rs",
+          "selector": "a_bare_citation_attributes_and_does_not_reach_the_goal"
+        },
+        {
+          "path": "crates/kernel/src/tests.rs",
+          "selector": "a_goal_is_compared_field_by_field_rather_than_by_its_rendering"
         }
       ]
     },
@@ -2055,30 +2055,40 @@
     },
     {
       "id": "CAP-CORRECTNESS-010",
-      "kind": "limitation",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "A derivation is checked against its goal by comparing subject|predicate|object renderings, so attribution stands in for assertion — a bare citation with no trust step reaches the goal — and two propositions whose terms contain the separator can satisfy each other.",
+      "statement": "A derivation reaches its goal only by concluding that the goal holds, compared field by field: a citation without a trust step attributes a statement without asserting it, and two propositions that render alike are told apart.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
+      "verification": [
+        {
+          "assertion": "attribution-is-not-assertion",
+          "evidence_selectors": [
+            "a_bare_citation_attributes_and_does_not_reach_the_goal"
+          ]
+        },
+        {
+          "assertion": "a-goal-is-compared-by-field",
+          "evidence_selectors": [
+            "a_goal_is_compared_field_by_field_rather_than_by_its_rendering"
+          ]
+        }
+      ],
       "evidence": [
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/src/tests.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "two_propositions_with_one_rendering_satisfy_each_other"
+          "selector": "a_bare_citation_attributes_and_does_not_reach_the_goal"
         },
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/src/tests.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_bare_citation_reaches_the_goal_without_trust"
-        },
-        {
-          "type": "source",
-          "path": "crates/kernel/src/ir.rs"
+          "selector": "a_goal_is_compared_field_by_field_rather_than_by_its_rendering"
         }
       ]
     },

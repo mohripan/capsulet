@@ -50,10 +50,11 @@ it checked: a replay that diverged reports no verdict, and one that had nothing 
 
 The kernel's citation rule does not meet the first of those yet. A citation checks that a
 proposition's subject and object occur in the cited span, then concludes the whole proposition,
-predicate included; the goal a derivation is checked against is compared as a rendered string; and
-the authority floor a trust step enforces is the one the proposal asks for. Each is recorded as a
-limitation (`CAP-CORRECTNESS-009`, `CAP-CORRECTNESS-010`, `CAP-CORRECTNESS-011`), and the term
-matching beneath them as `CAP-CORRECTNESS-004`.
+predicate included, and the authority floor a trust step enforces is the one the proposal asks for.
+Each is recorded as a limitation (`CAP-CORRECTNESS-009`, `CAP-CORRECTNESS-011`), and the term
+matching beneath them as `CAP-CORRECTNESS-004`. A goal, at least, is reached only by concluding
+that it holds, so a citation that skips the trust step no longer stands in for one that took it
+(`CAP-CORRECTNESS-010`).
 
 What is *not* guaranteed is written down in the same place as what is —
 [the product claims](contracts/product-claims.md) carry limitations alongside capabilities, each

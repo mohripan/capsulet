@@ -89,9 +89,10 @@ Six properties carry the weight:
   case and whitespace do not change what a document says — within a span small enough to be worth
   pointing at. What a citation checks is narrower than what it concludes: that the proposition's
   subject and object occur in the span, not that the span states the relation between them
-  (`CAP-CORRECTNESS-009`, below). And the one rule no kernel can justify, interpretation, has to say
-  why: a reading without a rationale is refused, because a residual nobody can act on is not a
-  smaller problem than an unsound rule.
+  (`CAP-CORRECTNESS-009`, below). A goal is reached only by concluding that it holds, compared field
+  by field, so a citation without a trust step attributes a statement and does not assert it. And the
+  one rule no kernel can justify, interpretation, has to say why: a reading without a rationale is
+  refused, because a residual nobody can act on is not a smaller problem than an unsound rule.
 - **Offline replay, which does not overstate.** A certificate plus the evidence it cites forms a
   bundle, and `capsulet-replay` reaches its own verdict from that bundle alone, on a machine with no
   access to this installation. It re-checks the seal and every evidence digest, re-decides the
@@ -473,7 +474,7 @@ The API requires configured bearer credentials unless authentication is explicit
 
 These are extension paths beyond the implemented production baseline.
 
-The correctness plane has seven limitations that are recorded rather than fixed, each with a claim
+The correctness plane has six limitations that are recorded rather than fixed, each with a claim
 and a test or source pointer:
 
 - a citation grounds a proposition's subject and object, never its predicate, so a span that
@@ -482,9 +483,6 @@ and a test or source pointer:
 - a cited term is matched by substring containment over lowercased text, so it is found inside a
   longer word or number, and the same value written another way — another number or date format,
   another name for the entity, a typographic apostrophe — is not found (`CAP-CORRECTNESS-004`);
-- a derivation is checked against its goal by comparing rendered strings, so a citation that skips
-  the trust step still reaches the goal, and two propositions whose terms contain the separator can
-  satisfy each other (`CAP-CORRECTNESS-010`);
 - the authority floor a trust step enforces comes from the proposal, and the shipped proposer always
   asks for the lowest (`CAP-CORRECTNESS-011`);
 - a kernel proposal is persisted inside bundles without a schema version of its own, so a bundle

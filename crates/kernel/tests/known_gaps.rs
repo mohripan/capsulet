@@ -231,56 +231,6 @@ fn sharp_s_does_not_match_double_s() {
     );
 }
 
-// --- The goal is compared as a rendering (CAP-CORRECTNESS-010) --------------
-
-#[test]
-fn two_propositions_with_one_rendering_satisfy_each_other() {
-    // The goal check compares `subject|predicate|object` strings, and the
-    // separator may occur inside a term, so different propositions can render
-    // alike.
-    let derived = Proposition::new("Acme", "x|renewed", "Contoso");
-    let goal = Proposition::new("Acme|x", "renewed", "Contoso");
-    assert_ne!(
-        derived, goal,
-        "the fixture needs two different propositions"
-    );
-
-    let certificate = check(
-        &quoted(goal, derived, "low"),
-        &snapshot_over("Acme renewed the Contoso contract.", Authority::High),
-    );
-
-    assert_eq!(
-        certificate.verdict,
-        Verdict::Accepted,
-        "closed by Task 2 of the citation grounding plan; move this to tests.rs inverted"
-    );
-}
-
-#[test]
-fn a_bare_citation_reaches_the_goal_without_trust() {
-    // `Cite` concludes `Says(source, P)`; only `Trust` turns that into `Holds(P)`,
-    // and only after an authority check. The goal check compares propositions
-    // and not judgments, so leaving `Trust` out still reaches the goal — here
-    // from a low-authority source.
-    let proposition = Proposition::new("Acme", "renewed", "Contoso");
-    let proposal = Proposal {
-        goal: proposition.clone(),
-        derivation: cite(proposition),
-    };
-
-    let certificate = check(
-        &proposal,
-        &snapshot_over("Acme renewed the Contoso contract.", Authority::Low),
-    );
-
-    assert_eq!(
-        certificate.verdict,
-        Verdict::Accepted,
-        "closed by Task 2 of the citation grounding plan; move this to tests.rs inverted"
-    );
-}
-
 // --- The proposer chooses the floor (CAP-CORRECTNESS-011) -------------------
 
 #[test]

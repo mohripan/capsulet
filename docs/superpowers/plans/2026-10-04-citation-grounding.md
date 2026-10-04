@@ -165,18 +165,25 @@ absent and unreadable cases are covered — so the path every later task changes
 **Files:** `crates/kernel/src/{lib.rs,ir.rs}`, `crates/kernel/src/tests.rs`,
 `crates/kernel/tests/grounding.rs`
 
-- [ ] Failing tests: a bare `Cite` does not satisfy a goal and `Trust(Cite)` still does; a derivation
+- [x] Failing tests: a bare `Cite` does not satisfy a goal and `Trust(Cite)` still does; a derivation
   whose rendering equals the goal's but whose fields differ is refused; `Attest`, `Arith`, `Trust` and
   `Interpret` still reach their goals.
-- [ ] `check` compares the derived judgment with `Holds(goal)` field by field, trimmed as today.
+- [x] `check` compares the derived judgment with `Holds(goal)` field by field, trimmed as today.
   `canonical()` stays as a display form that no decision reads.
-- [ ] The grounding tests stop going through the goal. They pin what a citation discharges, so they
+- [x] The grounding tests stop going through the goal. They pin what a citation discharges, so they
   assert on the `cite` step rather than on a verdict whose meaning this plan is changing.
 
 Every rule that concludes a proposition concludes `Holds` — `Trust` after an authority check, `Attest`
 from an active claim, `Arith` after recomputing, `Interpret` with a residual — except `Cite`, which
 concludes `Says`. Comparing propositions alone let `Says` stand in for `Holds`, so `Trust` was
 optional: a proposer that left it out reached `accepted` from any source (row 13).
+
+**One thing the task found.** Comparing fields fixed the decision, but the rendering was still
+ambiguous, and `GoalNotDerived` shows a reader two renderings side by side: for row 12 it would have
+printed the same string twice and called them different. `canonical()` now escapes `|` and `\`
+inside a term. Text with neither renders exactly as before, so no existing certificate reads
+differently; the escape character needed escaping too, or `("x\\", "y", "z|w")` and
+`("x|y", "z\\", "w")` would still collide.
 
 ### Task 3: The authority floor is policy
 

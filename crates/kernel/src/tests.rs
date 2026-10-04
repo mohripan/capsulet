@@ -375,7 +375,87 @@ fn tolerates_reflowed_whitespace_and_case_when_matching_the_object() {
         },
     };
 
-    assert!(!check(&proposal, &snapshot).is_rejected());
+    // What is under test is the citation, not the goal, so this asserts on the
+    // step: the terms were found, and the citation discharged.
+    let certificate = check(&proposal, &snapshot);
+    assert!(
+        certificate
+            .discharged
+            .iter()
+            .any(|step| step.rule == "cite"),
+        "{certificate:?}"
+    );
+}
+
+#[test]
+fn a_bare_citation_attributes_and_does_not_reach_the_goal() {
+    // `Cite` concludes that a source said something. `Trust` is what turns that
+    // into an assertion, and only after an authority check, so a goal — which is
+    // an assertion — is not reached by a derivation that leaves `Trust` out,
+    // however low the source's authority.
+    let evidence = honest_evidence(0, 46);
+    let snapshot = base_snapshot(evidence, Authority::Low);
+    let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
+    let proposal = Proposal {
+        goal: goal.clone(),
+        derivation: Rule::Cite {
+            evidence_id: "ev_1".to_string(),
+            proposition: goal,
+        },
+    };
+
+    let certificate = check(&proposal, &snapshot);
+
+    assert_eq!(certificate.verdict, Verdict::Rejected);
+    assert_eq!(certificate.errors[0].code, "goal_not_derived");
+    assert!(
+        certificate
+            .discharged
+            .iter()
+            .any(|step| step.rule == "cite"),
+        "the citation itself still holds; what fails is the claim that it reached the goal"
+    );
+}
+
+#[test]
+fn a_goal_is_compared_field_by_field_rather_than_by_its_rendering() {
+    // Joined with `|`, these two render alike. They are different propositions,
+    // and a derivation of one does not reach the other.
+    let evidence = honest_evidence(0, 46);
+    let snapshot = base_snapshot(evidence, Authority::High);
+    let derived = Proposition::new("Acme", "x|renewed", "the Contoso contract");
+    let goal = Proposition::new("Acme|x", "renewed", "the Contoso contract");
+    let proposal = Proposal {
+        goal,
+        derivation: Rule::Trust {
+            premise: Box::new(Rule::Cite {
+                evidence_id: "ev_1".to_string(),
+                proposition: derived,
+            }),
+            min_authority: "low".to_string(),
+        },
+    };
+
+    let certificate = check(&proposal, &snapshot);
+
+    assert_eq!(certificate.verdict, Verdict::Rejected);
+    assert_eq!(certificate.errors[0].code, "goal_not_derived");
+}
+
+#[test]
+fn a_rendering_names_one_proposition() {
+    // The rendering is for people, and a reader comparing two of them in an
+    // error should not be shown the same string for different propositions.
+    assert_ne!(
+        Proposition::new("Acme|x", "renewed", "Contoso").canonical(),
+        Proposition::new("Acme", "x|renewed", "Contoso").canonical()
+    );
+    // Escaping the separator is not enough on its own: without escaping the
+    // escape character too, these two would still collide as `x\|y|z\|w`.
+    assert_ne!(
+        Proposition::new("x\\", "y", "z|w").canonical(),
+        Proposition::new("x|y", "z\\", "w").canonical()
+    );
 }
 
 #[test]

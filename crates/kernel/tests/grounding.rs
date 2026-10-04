@@ -1,7 +1,7 @@
 //! What it takes for a citation to be grounded.
 //!
-//! `Cite` establishes only that a source *said* something, and only when the
-//! proposition's endpoints appear literally in the cited span. Literally is the
+//! `Cite` establishes that the cited bytes are the source's and that the
+//! proposition's endpoints appear in them literally. Literally is the
 //! load-bearing word, and these tests pin what it does and does not forgive.
 
 use capsulet_core::{
@@ -60,12 +60,17 @@ fn cite(subject: &str, object: &str) -> Proposal {
     }
 }
 
-/// `Says(source, P)` is what `Cite` concludes, so the goal has to be stated that
-/// way for the derivation to reach it.
-fn decide(document: &str, subject: &str, object: &str) -> Verdict {
-    let snapshot = snapshot_over(document);
-    let proposal = cite(subject, object);
-    check(&proposal, &snapshot).verdict
+/// Whether citing `document` for a proposition about `subject` and `object`
+/// discharges the citation.
+///
+/// Asked of the step rather than of the verdict. These tests pin what a
+/// citation matches; a verdict also depends on what is wrapped around the
+/// citation and on the goal it is held to, and neither is under test here.
+fn cites(document: &str, subject: &str, object: &str) -> bool {
+    check(&cite(subject, object), &snapshot_over(document))
+        .discharged
+        .iter()
+        .any(|step| step.rule == "cite")
 }
 
 #[test]
@@ -82,9 +87,8 @@ fn composition_does_not_change_what_a_document_says() {
         "the fixture is only meaningful if the two forms differ byte for byte"
     );
 
-    assert_eq!(
-        decide(decomposed_document, "Acme", composed_object),
-        Verdict::Accepted,
+    assert!(
+        cites(decomposed_document, "Acme", composed_object),
         "a citation should survive a difference in Unicode composition"
     );
 }
@@ -122,16 +126,13 @@ fn case_and_whitespace_still_do_not_matter() {
     // Models reflow whitespace and change case when quoting; neither changes
     // what the source says.
     let document = "Acme   renewed\nthe Contoso contract.";
-    assert_eq!(
-        decide(document, "acme", "THE   CONTOSO   CONTRACT"),
-        Verdict::Accepted
-    );
+    assert!(cites(document, "acme", "THE   CONTOSO   CONTRACT"));
 }
 
 #[test]
 fn a_word_the_document_does_not_contain_is_still_refused() {
     let document = "Acme renewed the Contoso contract.";
-    assert_eq!(decide(document, "Acme", "Fabrikam"), Verdict::Rejected);
+    assert!(!cites(document, "Acme", "Fabrikam"));
 }
 
 #[test]
@@ -144,9 +145,8 @@ fn an_excerpt_longer_than_the_bound_is_not_a_citation() {
         document.push_str("Filler sentence that says nothing in particular. ");
     }
 
-    assert_eq!(
-        decide(&document, "Acme", "Contoso"),
-        Verdict::Rejected,
+    assert!(
+        !cites(&document, "Acme", "Contoso"),
         "the phrase is present, and the span is too large to be pointing at it"
     );
 }
@@ -159,5 +159,5 @@ fn an_excerpt_at_the_bound_is_still_a_citation() {
     }
     assert_eq!(document.len(), MAX_CITED_EXCERPT_BYTES);
 
-    assert_eq!(decide(&document, "Acme", "Contoso"), Verdict::Accepted);
+    assert!(cites(&document, "Acme", "Contoso"));
 }

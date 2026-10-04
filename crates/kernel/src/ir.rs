@@ -33,16 +33,27 @@ impl Proposition {
         }
     }
 
-    /// Stable rendering used for goal comparison and the replay digest.
+    /// A rendering for people: certificates, residuals and errors show it.
+    ///
+    /// No decision reads it. The goal check compares fields, and the replay
+    /// digest is taken over canonical bytes. It is still unambiguous — a `|` or
+    /// `\` inside a term is escaped — so a reader shown two renderings in an
+    /// error is never shown the same string for two different propositions.
     #[must_use]
     pub fn canonical(&self) -> String {
         format!(
             "{}|{}|{}",
-            self.subject.trim(),
-            self.predicate.trim(),
-            self.object.trim()
+            escape_term(self.subject.trim()),
+            escape_term(self.predicate.trim()),
+            escape_term(self.object.trim())
         )
     }
+}
+
+/// Escapes the separator and the escape character, so a rendering names one
+/// proposition. Text without either comes back unchanged.
+fn escape_term(term: &str) -> String {
+    term.replace('\\', "\\\\").replace('|', "\\|")
 }
 
 /// What a derivation concludes.

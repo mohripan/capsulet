@@ -111,15 +111,16 @@ pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
     let mut state = CheckState::default();
     let outcome = derive(&proposal.derivation, snapshot, &mut state, 1);
 
-    if let Some(judgment) = &outcome {
-        let derived = judgment.proposition().canonical();
-        let goal = proposal.goal.canonical();
-        if derived != goal {
-            state.errors.push(CheckError::GoalNotDerived {
-                derived: judgment.canonical(),
-                goal,
-            });
-        }
+    if let Some(judgment) = &outcome
+        && !reaches_goal(judgment, &proposal.goal)
+    {
+        state.errors.push(CheckError::GoalNotDerived {
+            derived: judgment.canonical(),
+            goal: Judgment::Holds {
+                proposition: proposal.goal.clone(),
+            }
+            .canonical(),
+        });
     }
 
     let verdict = if outcome.is_none() || !state.errors.is_empty() {
@@ -148,6 +149,28 @@ pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
         replay_digest,
         derivation_depth_limit: Some(MAX_DERIVATION_DEPTH),
     }
+}
+
+/// Whether a derivation concluded that its goal holds.
+///
+/// A goal is an assertion, so only `Holds` reaches it. Every rule that
+/// concludes a proposition concludes `Holds` — `Trust` after an authority check,
+/// `Attest` from an active claim, `Arith` after recomputing, `Interpret` with a
+/// residual — except `Cite`, which concludes only that a source said it. When
+/// this compared propositions and not judgments, attribution stood in for
+/// assertion, and `Trust`'s authority check was a step a proposer could leave
+/// out.
+///
+/// Compared field by field, trimmed as before. It used to compare
+/// `subject|predicate|object` renderings, and a term containing the separator
+/// let two different propositions render alike.
+fn reaches_goal(judgment: &Judgment, goal: &Proposition) -> bool {
+    let Judgment::Holds { proposition } = judgment else {
+        return false;
+    };
+    proposition.subject.trim() == goal.subject.trim()
+        && proposition.predicate.trim() == goal.predicate.trim()
+        && proposition.object.trim() == goal.object.trim()
 }
 
 /// The certificate for a proposal the kernel could not pin.
