@@ -13,6 +13,10 @@ entity Person:
 relation owns:
   from: Person
   to: Project
+  stated_by:
+    - "{from} owns {to}"
+    - "{to} is owned by {from}"
+    - "{from} leads {to}"
 
 event DecisionMade:
   fields:

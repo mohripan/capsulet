@@ -26,8 +26,9 @@
 //! citation states, and has to bump [`crate::family::CLAIM_REASONING_RULES`].
 
 use std::collections::BTreeMap;
-use std::fmt;
 
+use capsulet_core::MemoryContractAst;
+pub use capsulet_core::{Phrasing, PhrasingError};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::ir::Proposition;
@@ -98,76 +99,6 @@ pub const DEFAULT_CUES: &[&str] = &[
     "rumoured",
 ];
 
-/// Why a phrasing could not be read.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PhrasingError {
-    pub template: String,
-    pub reason: &'static str,
-}
-
-impl fmt::Display for PhrasingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "phrasing {:?} {}", self.template, self.reason)
-    }
-}
-
-impl std::error::Error for PhrasingError {}
-
-/// One way a contract says a relation is stated.
-///
-/// A template with exactly one `{from}` slot, exactly one `{to}` slot, and at
-/// least one literal word. The word is what makes it a phrasing of *this*
-/// relation: `"{from} {to}"` would state every relation at once.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Phrasing {
-    template: String,
-}
-
-impl Phrasing {
-    /// Reads a phrasing.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PhrasingError`] when the template does not have exactly one
-    /// `{from}` and one `{to}`, has any other brace, or has no literal word.
-    pub fn parse(template: &str) -> Result<Self, PhrasingError> {
-        let refuse = |reason| PhrasingError {
-            template: template.to_string(),
-            reason,
-        };
-        if template.matches("{from}").count() != 1 {
-            return Err(refuse("needs exactly one {from} slot"));
-        }
-        if template.matches("{to}").count() != 1 {
-            return Err(refuse("needs exactly one {to} slot"));
-        }
-        let literal = template.replace("{from}", " ").replace("{to}", " ");
-        if literal.contains(['{', '}']) {
-            return Err(refuse("has a brace that is not a slot"));
-        }
-        if !literal.chars().any(char::is_alphanumeric) {
-            return Err(refuse(
-                "has no literal word, so it would state any relation between its terms",
-            ));
-        }
-        Ok(Self {
-            template: template.to_string(),
-        })
-    }
-
-    /// The template as the contract wrote it.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.template
-    }
-
-    fn instantiate(&self, from: &str, to: &str) -> String {
-        self.template
-            .replace("{from}", from.trim())
-            .replace("{to}", to.trim())
-    }
-}
-
 /// Where a declared phrasing was found to state a relation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
@@ -189,6 +120,22 @@ impl Phrasebook {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The phrasings and cues a memory contract declares.
+    #[must_use]
+    pub fn from_contract(contract: &MemoryContractAst) -> Self {
+        let mut phrasebook = contract
+            .relation_types()
+            .iter()
+            .filter(|relation| !relation.phrasings().is_empty())
+            .fold(Self::new(), |phrasebook, relation| {
+                phrasebook.with_relation(relation.name(), relation.phrasings().to_vec())
+            });
+        for cue in contract.statement_policy().cues() {
+            phrasebook = phrasebook.with_cue(cue);
+        }
+        phrasebook
     }
 
     /// Declares the phrasings that state `relation`.

@@ -119,7 +119,7 @@ impl OllamaProposer {
         if alphabet.is_empty() {
             return Err(ProposerError::EmptyAlphabet);
         }
-        let raw = self.request(question, alphabet).await?;
+        let raw = self.request(question, alphabet, phrasebook).await?;
 
         let Some(entry) = alphabet.entry(&raw.evidence_id) else {
             return Err(ProposerError::OutsideAlphabet {
@@ -134,15 +134,17 @@ impl OllamaProposer {
         &self,
         question: &str,
         alphabet: &EvidenceAlphabet,
+        phrasebook: &Phrasebook,
     ) -> Result<RawProposal, ProposerError> {
+        let predicates = declared_predicates(phrasebook);
         let response = self
             .client
             .post(format!("{}/api/generate", self.base_url))
             .json(&json!({
                 "model": self.model,
-                "prompt": build_prompt(question, alphabet),
+                "prompt": build_prompt(question, alphabet, &predicates),
                 "stream": false,
-                "format": output_schema(),
+                "format": output_schema(&predicates),
                 "options": { "temperature": 0.0, "num_predict": 512 },
             }))
             .send()
@@ -221,13 +223,28 @@ pub fn build_proposal(raw: &RawProposal, excerpt: &str, phrasebook: &Phrasebook)
     Proposal { goal, derivation }
 }
 
+/// The relations a contract declares phrasings for, in order.
+///
+/// When there are any, they are the only predicates a model may answer with,
+/// the way the evidence alphabet closes the set of citable ids. A predicate
+/// outside the set has no phrasing, so it could never be stated, and offering it
+/// would only invite answers that can at best be readings.
+fn declared_predicates(phrasebook: &Phrasebook) -> Vec<&str> {
+    phrasebook.relations().map(|(name, _)| name).collect()
+}
+
 /// JSON schema handed to Ollama so the output is structurally constrained.
-fn output_schema() -> Value {
+fn output_schema(predicates: &[&str]) -> Value {
+    let predicate = if predicates.is_empty() {
+        json!({ "type": "string" })
+    } else {
+        json!({ "type": "string", "enum": predicates })
+    };
     json!({
         "type": "object",
         "properties": {
             "subject": { "type": "string" },
-            "predicate": { "type": "string" },
+            "predicate": predicate,
             "object": { "type": "string" },
             "evidence_id": { "type": "string" },
             "quote": { "type": "string" },
@@ -241,12 +258,21 @@ fn output_schema() -> Value {
     })
 }
 
-fn build_prompt(question: &str, alphabet: &EvidenceAlphabet) -> String {
+fn build_prompt(question: &str, alphabet: &EvidenceAlphabet, predicates: &[&str]) -> String {
+    let predicate_rule = if predicates.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "PREDICATES (the predicate must be exactly one of these):\n{}\n\n",
+            predicates.join("\n")
+        )
+    };
     format!(
         "You extract a single fact from quoted evidence. Do not use outside knowledge.\n\
          \n\
          EVIDENCE (you may only cite these ids):\n{}\n\
          \n\
+         {predicate_rule}\
          QUESTION: {question}\n\
          \n\
          Answer with one fact as subject, predicate, object.\n\
@@ -404,6 +430,38 @@ mod tests {
         let certificate = check(&proposal, &snapshot(renewals()));
         assert_eq!(certificate.verdict, Verdict::Rejected);
         assert_eq!(certificate.errors[0].code, "term_not_in_span");
+    }
+
+    #[test]
+    fn a_contract_closes_the_set_of_predicates_a_model_may_answer_with() {
+        let phrasebook = renewals();
+        let predicates = super::declared_predicates(&phrasebook);
+        assert_eq!(predicates, ["renewed"]);
+
+        let schema = super::output_schema(&predicates);
+        assert_eq!(
+            schema["properties"]["predicate"]["enum"],
+            serde_json::json!(["renewed"])
+        );
+        let prompt = super::build_prompt(
+            "Who renewed?",
+            &crate::alphabet::EvidenceAlphabet::from_entries(vec![]),
+            &predicates,
+        );
+        assert!(prompt.contains("PREDICATES"), "{prompt}");
+        assert!(prompt.contains("renewed"), "{prompt}");
+    }
+
+    #[test]
+    fn without_a_contract_the_predicate_is_left_open() {
+        let phrasebook = Phrasebook::new();
+        let predicates = super::declared_predicates(&phrasebook);
+        assert!(predicates.is_empty());
+        assert!(
+            super::output_schema(&predicates)["properties"]["predicate"]
+                .get("enum")
+                .is_none()
+        );
     }
 
     #[test]

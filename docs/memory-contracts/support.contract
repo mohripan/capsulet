@@ -12,6 +12,9 @@ entity Issue:
 relation has_issue:
   from: Customer
   to: Issue
+  stated_by:
+    - "{from} reported {to}"
+    - "{to} was reported by {from}"
 
 event IssueResolved:
   fields:

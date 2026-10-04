@@ -363,7 +363,11 @@ independently executed. HTTP trace and run-control endpoints are planned next.
 
 `POST /v1/reasoning/ask` stores the supplied text, creates citable evidence, asks the configured
 proposer for a pinned proposal, and returns the deterministic kernel certificate alongside the raw
-proposal. Kernel verdicts are exactly `accepted`, `conditional`, and `rejected`. `unverified` is a
+proposal. An optional `contract_id` names a memory contract to reason under: the `stated_by`
+phrasings its relations declare are the only way a citation can state something, and its relations
+are the only predicates the proposer may answer with. A contract the caller's project cannot see is
+reported as `memory_not_found` before anything is stored. Without a contract no relation is
+declared, so no answer is a statement and the best verdict is `conditional`. Kernel verdicts are exactly `accepted`, `conditional`, and `rejected`. `unverified` is a
 future platform-assurance verdict and is not returned by the current kernel API. The generated
 `Certificate` schema contains one response example for each current verdict.
 

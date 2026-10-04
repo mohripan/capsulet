@@ -172,3 +172,74 @@ fn bundled_memory_contract_examples_compile() {
         contract.compile().expect("example contract compiles");
     }
 }
+
+const STATED: &str = r#"
+entity Organization:
+  fields:
+    name: string
+
+relation acquired:
+  from: Organization
+  to: Organization
+  stated_by:
+    - "{from} acquired {to}"
+    - "{to} was acquired by {from}"
+    - {from} completed its acquisition of {to}
+
+statement_policy:
+  cues:
+    - doubted
+    - "in talks"
+"#;
+
+fn parse(source: &str) -> Result<MemoryContract, capsulet_core::MemoryContractError> {
+    MemoryContract::parse(
+        MemoryContractId::new("contract_stated").expect("contract id"),
+        "stated",
+        source,
+    )
+}
+
+#[test]
+fn a_relation_declares_the_phrasings_that_state_it() {
+    let contract = parse(STATED).expect("the contract parses");
+    let relation = &contract.ast().relation_types()[0];
+
+    let phrasings: Vec<&str> = relation
+        .phrasings()
+        .iter()
+        .map(capsulet_core::Phrasing::as_str)
+        .collect();
+    assert_eq!(
+        phrasings,
+        [
+            "{from} acquired {to}",
+            "{to} was acquired by {from}",
+            "{from} completed its acquisition of {to}",
+        ],
+        "quotes are optional and are not part of the phrasing"
+    );
+    assert_eq!(
+        contract.ast().statement_policy().cues(),
+        ["doubted", "in talks"]
+    );
+    contract.compile().expect("the contract compiles");
+}
+
+#[test]
+fn a_phrasing_that_would_state_any_relation_is_refused_where_it_is_written() {
+    let source = STATED.replace("\"{from} acquired {to}\"", "\"{from} {to}\"");
+
+    let error = parse(&source).expect_err("a phrasing with no word is not a phrasing");
+
+    let message = error.to_string();
+    assert!(message.starts_with("line 10:"), "{message}");
+    assert!(message.contains("no literal word"), "{message}");
+}
+
+#[test]
+fn a_relation_without_phrasings_states_nothing() {
+    let contract = parse(CONTRACT).expect("the contract parses");
+    assert!(contract.ast().relation_types()[0].phrasings().is_empty());
+    assert!(contract.ast().statement_policy().cues().is_empty());
+}

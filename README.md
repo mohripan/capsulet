@@ -206,22 +206,26 @@ OLLAMA_HOST=0.0.0.0 ollama serve
 ```sh
 curl -X POST -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
   -d '{"text":"Acme renewed the Contoso contract on 2026-03-01. Notice is 30 days.",
-       "question":"When was the contract renewed?"}' \
+       "question":"When was the contract renewed?",
+       "contract_id":"<a memory contract whose relations declare stated_by phrasings>"}' \
   http://127.0.0.1:8080/v1/reasoning/ask
 
 curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/reasoning/certificates
 ```
 
 Verdicts are three-valued. **accepted** means every step was discharged
-mechanically: the cited span re-derived byte-for-byte from the stored source, and
-both endpoints of the claim appear in it. **conditional** means the derivation
-required a reading, which is recorded as a residual obligation pinned to the
-span it came from. **rejected** names the failed premise and the subsystem that
+mechanically: the cited span re-derived byte-for-byte from the stored source and
+states the claim in a phrasing its memory contract declares for the relation, in
+one sentence that does not deny, hedge or question it. **conditional** means the
+derivation required a reading, which is recorded as a residual obligation pinned
+to the span it came from — which is every answer when no `contract_id` is given,
+because then no relation has a declared phrasing to be stated in. **rejected** names the failed premise and the subsystem that
 owns the repair, so a dangling reference re-runs retrieval instead of re-prompting
 the model.
 
-Two limits are deliberate and documented: grounding is literal containment, not
-entailment, and relevance to the question is not checked at all. See
+Two limits are deliberate and documented: a declared phrasing is matched, not
+entailed — a sentence can still doubt it in words no cue list knows — and
+relevance to the question is not checked at all. See
 [the design note](docs/design/correctness-architecture.md).
 
 ## Compatibility workflow recovery API

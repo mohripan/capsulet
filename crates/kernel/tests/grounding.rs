@@ -464,3 +464,40 @@ fn a_phrasing_needs_both_slots_and_a_word() {
         );
     }
 }
+
+#[test]
+fn a_contract_s_phrasings_and_cues_judge_a_citation() {
+    // The phrasebook a decision reads can come straight from a memory contract,
+    // and a cue the contract adds counts like the kernel's own.
+    let contract = capsulet_core::MemoryContract::parse(
+        capsulet_core::MemoryContractId::new("contract_deals").expect("contract id"),
+        "deals",
+        "entity Organization:\n  fields:\n    name: string\n\nrelation acquired:\n  from: Organization\n  to: Organization\n  stated_by:\n    - \"{from} acquired {to}\"\n\nstatement_policy:\n  cues:\n    - doubted\n",
+    )
+    .expect("the contract parses");
+    let phrasebook = Phrasebook::from_contract(contract.ast());
+    let decide = |document: &str| {
+        let proposition = Proposition::new("Fabrikam", "acquired", "Contoso");
+        let proposal = Proposal {
+            goal: proposition.clone(),
+            derivation: Rule::Trust {
+                premise: Box::new(Rule::Cite {
+                    evidence_id: "ev_1".to_string(),
+                    proposition,
+                }),
+                min_authority: "low".to_string(),
+            },
+        };
+        check(
+            &proposal,
+            &snapshot_over(document).with_phrasebook(phrasebook.clone()),
+        )
+        .verdict
+    };
+
+    assert_eq!(decide("Fabrikam acquired Contoso."), Verdict::Accepted);
+    assert_eq!(
+        decide("Analysts doubted that Fabrikam acquired Contoso."),
+        Verdict::Rejected
+    );
+}

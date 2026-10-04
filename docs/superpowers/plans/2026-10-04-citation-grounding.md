@@ -257,7 +257,7 @@ new to the lock, because the rest of the ICU closure was already there through `
 - [x] Failing tests: rows 1–4 stop reaching `accepted`; `"{to} was acquired by {from}"` grounds a
   passive sentence; a phrasing that spans a sentence boundary does not ground; a cue in the matched
   sentence does not ground; a predicate with no declared phrasings is a mention, never a statement.
-- [ ] Contract syntax, on relations:
+- [x] Contract syntax, on relations:
 
   ```text
   relation acquired:
@@ -287,9 +287,9 @@ new to the lock, because the rest of the ICU closure was already there through `
   rules (Task 1).
 - [x] Proposer: `build_proposal` chooses `Trust` or `Interpret` by running the kernel's phrasing
   check instead of reading `needs_interpretation`.
-- [ ] Proposer: the prompt offers the contract's relations as a closed set of predicates, the way the
+- [x] Proposer: the prompt offers the contract's relations as a closed set of predicates, the way the
   evidence alphabet closes the set of citable ids.
-- [ ] `/v1/reasoning/ask` takes the contract to reason under. Without one nothing is declared, every
+- [x] `/v1/reasoning/ask` takes the contract to reason under. Without one nothing is declared, every
   answer is a reading, and the verdict is `conditional` — which is the truth about an answer that no
   contract stands behind.
 - [x] Close `CAP-CORRECTNESS-009`; restate `CAP-CORRECTNESS-001`.
@@ -329,6 +329,13 @@ however exactly it matches.
 *A limitation recorded rather than hidden.* A sentence can doubt a phrasing in a word no cue list
 carries — "Analysts doubted that Fabrikam acquired Contoso" still states the acquisition. That is
 `CAP-CORRECTNESS-012`, with a tripwire.
+
+**What the second step settled.** The phrasing syntax lives in `capsulet-core`, beside the contract
+grammar, and the kernel uses that one definition: a contract and a pinned snapshot document cannot
+disagree about whether a template is a phrasing, because there is one parser. A contract adds cues
+under `statement_policy: cues:`. `/v1/reasoning/ask` resolves its contract before it stores anything,
+and a contract from another project reports as missing, the way the memory routes report one. The
+example contracts declare phrasings, so they show the shape rather than only parse.
 
 ### Task 6: A proposal carries a schema version
 

@@ -11,6 +11,10 @@ entity Organization:
 relation party_to:
   from: Organization
   to: Contract
+  stated_by:
+    - "{from} is a party to {to}"
+    - "{from} signed {to}"
+    - "{from} entered into {to}"
 
 event ObligationCreated:
   fields:
@@ -22,6 +26,11 @@ claim_policy:
   store_confidence: true
   allow_contradictions: true
   min_confidence: 0.85
+
+statement_policy:
+  cues:
+    - disputed
+    - purported
 
 trust_policy:
   source_priority:

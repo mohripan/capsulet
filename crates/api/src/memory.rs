@@ -1703,7 +1703,11 @@ fn in_scope(scope: &MemoryScope, context: &ProjectContext) -> bool {
 
 /// Memory ids share one global namespace, so a record loaded by id may belong to any tenant.
 /// Out-of-scope records report as missing rather than forbidden so the id space stays opaque.
-fn require_scope(scope: &MemoryScope, context: &ProjectContext, id: &str) -> Result<(), ApiError> {
+pub(crate) fn require_scope(
+    scope: &MemoryScope,
+    context: &ProjectContext,
+    id: &str,
+) -> Result<(), ApiError> {
     if in_scope(scope, context) {
         Ok(())
     } else {

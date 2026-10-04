@@ -5409,3 +5409,68 @@ async fn a_run_of_a_definition_nobody_registered_is_refused() {
         "a run has to name bytes somebody stored, or it could not say what it executed"
     );
 }
+
+#[tokio::test]
+async fn reasoning_under_another_project_s_contract_finds_no_contract_and_stores_nothing() {
+    // The contract is resolved before the source is stored, and one in another
+    // project reports as missing, the way every memory route reports it.
+    let store = FakeStore::default();
+    let app = authenticated_app(store.clone());
+    let dsl = "entity Organization:\n  fields:\n    name: string\n\nrelation acquired:\n  from: Organization\n  to: Organization\n  stated_by:\n    - \"{from} acquired {to}\"\n\nclaim_policy:\n  require_source: true\n";
+
+    let created = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/memory/contracts")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("x-capsulet-project-id", "finance")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "id": "contract_deals", "name": "Deals", "source": dsl }).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(created.status(), axum::http::StatusCode::CREATED);
+
+    let asked = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/reasoning/ask")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("x-capsulet-project-id", "default")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "text": "Fabrikam acquired Contoso.",
+                        "question": "Who acquired Contoso?",
+                        "contract_id": "contract_deals"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(asked.status(), axum::http::StatusCode::NOT_FOUND);
+    assert_eq!(response_json(asked).await["code"], "memory_not_found");
+    assert!(
+        store
+            .memory_sources
+            .lock()
+            .expect("memory sources mutex")
+            .is_empty(),
+        "nothing should be stored for a request refused at its contract"
+    );
+}

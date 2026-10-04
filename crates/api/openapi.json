@@ -190,6 +190,13 @@
               "null"
             ]
           },
+          "contract_id": {
+            "description": "A memory contract to reason under. Its relations' declared phrasings are\nthe only way a citation can state something, and its relations are the\nonly predicates the model may answer with. Without one nothing is\ndeclared, and every answer is a reading whose verdict is `conditional`\nat best.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "model": {
             "description": "Overrides the configured model for this request.",
             "type": [

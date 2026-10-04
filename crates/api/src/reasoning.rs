@@ -11,7 +11,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use capsulet_core::{
-    Authority, Evidence, EvidenceId, EvidenceSpan, MemoryScope, Source, SourceContent, SourceId,
+    Authority, Evidence, EvidenceId, EvidenceSpan, MemoryContractId, MemoryScope, Source,
+    SourceContent, SourceId,
 };
 use capsulet_kernel::{Certificate, Phrasebook, Snapshot, check};
 use capsulet_postgres::CertificateRecord;
@@ -23,7 +24,8 @@ use utoipa::ToSchema;
 use crate::{
     auth::Principal,
     error::ApiError,
-    http::internal::{generated_id, project_context, require_project_role},
+    http::internal::{ProjectContext, generated_id, project_context, require_project_role},
+    memory::require_scope,
     state::AppState,
     store::ApiStore,
 };
@@ -48,6 +50,13 @@ pub struct AskRequest {
     /// Overrides the configured model for this request.
     #[serde(default)]
     pub model: Option<String>,
+    /// A memory contract to reason under. Its relations' declared phrasings are
+    /// the only way a citation can state something, and its relations are the
+    /// only predicates the model may answer with. Without one nothing is
+    /// declared, and every answer is a reading whose verdict is `conditional`
+    /// at best.
+    #[serde(default)]
+    pub contract_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -108,6 +117,12 @@ where
     let scope = MemoryScope::new(&context.tenant_id, &context.project_id)
         .map_err(|error| ApiError::validation(error.to_string()))?;
     let authority = parse_authority(request.authority.as_deref())?;
+    // Resolved before anything is written, so a contract the caller cannot see
+    // fails the request rather than leaving a stored source behind it.
+    let phrasebook = match request.contract_id.as_deref() {
+        Some(id) => contract_phrasebook(&state, &context, id).await?,
+        None => Phrasebook::new(),
+    };
 
     // Store the source and its bytes before anything cites them, so every span
     // below resolves against content that is already durable.
@@ -142,12 +157,6 @@ where
         ));
     }
     let alphabet = EvidenceAlphabet::from_evidence(&evidence);
-
-    // No contract is wired to this endpoint yet, so no relation has a declared
-    // phrasing: nothing an answer cites is a statement, and every answer is a
-    // reading whose verdict is `conditional` at best. That is the truth about an
-    // answer no contract stands behind.
-    let phrasebook = Phrasebook::new();
 
     let proposer = build_proposer(request.model.as_deref())?;
     let (proposal, raw) = proposer
@@ -270,6 +279,34 @@ where
         stored.push(evidence);
     }
     Ok(stored)
+}
+
+/// The phrasings and cues a memory contract declares, for a contract the
+/// caller's project can see.
+///
+/// A contract in another project reports as missing, the way every memory
+/// route reports it: ids share one namespace, and existence is not something a
+/// caller outside the project gets to learn.
+async fn contract_phrasebook<S, O>(
+    state: &AppState<S, O>,
+    context: &ProjectContext,
+    id: &str,
+) -> Result<Phrasebook, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let id = MemoryContractId::new(id).map_err(ApiError::validation)?;
+    let Some(contract) = state
+        .store
+        .find_memory_contract(&id)
+        .await
+        .map_err(ApiError::store)?
+    else {
+        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
+    };
+    require_scope(contract.scope(), context, id.as_str())?;
+    Ok(Phrasebook::from_contract(contract.ast()))
 }
 
 fn build_proposer(model: Option<&str>) -> Result<OllamaProposer, ApiError> {

@@ -11,6 +11,10 @@ entity Team:
 relation owns:
   from: Team
   to: Service
+  stated_by:
+    - "{from} owns {to}"
+    - "{to} is owned by {from}"
+    - "{from} is responsible for {to}"
 
 event IncidentOpened:
   fields:

@@ -434,6 +434,10 @@
         {
           "path": "crates/kernel/tests/known_gaps.rs",
           "selector": "a_doubt_the_cue_list_does_not_know_still_states_the_relation"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_contract_s_phrasings_and_cues_judge_a_citation"
         }
       ]
     },
@@ -2130,6 +2134,12 @@
           "evidence_selectors": [
             "a_relation_with_no_declared_phrasing_is_only_mentioned"
           ]
+        },
+        {
+          "assertion": "phrasings-and-cues-come-from-the-memory-contract",
+          "evidence_selectors": [
+            "a_contract_s_phrasings_and_cues_judge_a_citation"
+          ]
         }
       ],
       "evidence": [
@@ -2168,6 +2178,12 @@
           "path": "crates/kernel/tests/grounding.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "a_relation_with_no_declared_phrasing_is_only_mentioned"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_contract_s_phrasings_and_cues_judge_a_citation"
         }
       ]
     },

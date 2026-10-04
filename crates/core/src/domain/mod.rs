@@ -12,6 +12,7 @@ mod memory;
 mod memory_contract;
 mod memory_graph;
 mod parse;
+mod phrasing;
 mod workflow;
 mod workflow_graph;
 
@@ -53,7 +54,7 @@ pub use memory::{
 pub use memory_contract::{
     ClaimPolicySpec, CompiledMemoryPolicy, ContradictionRuleSpec, EntityTypeSpec, EventTypeSpec,
     FieldSpec, FieldType, MemoryContract, MemoryContractAst, MemoryContractError, RelationTypeSpec,
-    RetrievalPolicySpec, ReviewPolicySpec, TrustPolicySpec,
+    RetrievalPolicySpec, ReviewPolicySpec, StatementPolicySpec, TrustPolicySpec,
 };
 pub use memory_graph::{
     CanonicalEntity, ClaimConflict, ClaimConflictStatus, EntityGraphAttachment,
@@ -63,6 +64,7 @@ pub use memory_graph::{
     MemorySubgraphPermissions, MemorySubgraphStatus, SubgraphEdge, SummaryTrace,
 };
 pub use parse::ParseDomainValueError;
+pub use phrasing::{Phrasing, PhrasingError};
 pub use workflow::{
     WorkflowDefinition, WorkflowDependencyPolicy, WorkflowRun, WorkflowRunStatus, WorkflowStatus,
     WorkflowStep, WorkflowStepDependency, WorkflowStepRun,

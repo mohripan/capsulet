@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use thiserror::Error;
 
-use super::{Confidence, MemoryContractId, MemoryScope};
+use super::{Confidence, MemoryContractId, MemoryScope, Phrasing};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemoryContract {
@@ -100,6 +100,7 @@ pub struct MemoryContractAst {
     review_policy: ReviewPolicySpec,
     retrieval_policies: Vec<RetrievalPolicySpec>,
     contradiction_rules: Vec<ContradictionRuleSpec>,
+    statement_policy: StatementPolicySpec,
 }
 
 impl MemoryContractAst {
@@ -141,6 +142,11 @@ impl MemoryContractAst {
     #[must_use]
     pub fn contradiction_rules(&self) -> &[ContradictionRuleSpec] {
         &self.contradiction_rules
+    }
+
+    #[must_use]
+    pub const fn statement_policy(&self) -> &StatementPolicySpec {
+        &self.statement_policy
     }
 }
 
@@ -234,6 +240,7 @@ pub struct RelationTypeSpec {
     name: String,
     from_entity: String,
     to_entity: String,
+    stated_by: Vec<Phrasing>,
 }
 
 impl RelationTypeSpec {
@@ -250,6 +257,31 @@ impl RelationTypeSpec {
     #[must_use]
     pub fn to_entity(&self) -> &str {
         &self.to_entity
+    }
+
+    /// The phrasings in which a citation states this relation.
+    ///
+    /// Empty when the contract declares none, and then no citation states the
+    /// relation: it can only mention the relation's terms.
+    #[must_use]
+    pub fn phrasings(&self) -> &[Phrasing] {
+        &self.stated_by
+    }
+}
+
+/// What a contract adds to how a citation is judged to state something.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StatementPolicySpec {
+    cues: Vec<String>,
+}
+
+impl StatementPolicySpec {
+    /// Words that, anywhere in a sentence, stop it from stating a relation,
+    /// beyond the ones the correctness kernel always applies. A contract can
+    /// add to that list and has no way to remove from it.
+    #[must_use]
+    pub fn cues(&self) -> &[String] {
+        &self.cues
     }
 }
 
@@ -459,6 +491,11 @@ impl CompiledMemoryPolicy {
     pub fn contradiction_rules(&self) -> &[ContradictionRuleSpec] {
         self.ast.contradiction_rules()
     }
+
+    #[must_use]
+    pub const fn statement_policy(&self) -> &StatementPolicySpec {
+        self.ast.statement_policy()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -483,6 +520,7 @@ enum Section {
     ReviewPolicy,
     RetrievalPolicy(usize),
     ContradictionRule(usize),
+    StatementPolicy,
 }
 
 struct MemoryContractParser<'a> {
@@ -542,6 +580,7 @@ impl<'a> MemoryContractParser<'a> {
                 name,
                 from_entity: String::new(),
                 to_entity: String::new(),
+                stated_by: Vec::new(),
             });
             self.section = Some(Section::Relation(self.ast.relation_types.len() - 1));
         } else if let Some(name) = header_name(line, "event ") {
@@ -553,6 +592,8 @@ impl<'a> MemoryContractParser<'a> {
             self.section = Some(Section::TrustPolicy);
         } else if line == "review_policy:" {
             self.section = Some(Section::ReviewPolicy);
+        } else if line == "statement_policy:" {
+            self.section = Some(Section::StatementPolicy);
         } else if let Some(name) = header_name(line, "retrieval_policy ") {
             self.ast
                 .retrieval_policies
@@ -759,6 +800,20 @@ impl<'a> MemoryContractParser<'a> {
                     .push(value.to_string());
                 return Ok(());
             }
+            Some(Section::Relation(index)) if self.subsection.as_deref() == Some("stated_by") => {
+                let phrasing = Phrasing::parse(unquote(value))
+                    .map_err(|error| parse_error(line_number, &error.to_string()))?;
+                self.ast.relation_types[index].stated_by.push(phrasing);
+                return Ok(());
+            }
+            Some(Section::StatementPolicy) if self.subsection.as_deref() == Some("cues") => {
+                let cue = unquote(value).trim();
+                if cue.is_empty() {
+                    return Err(parse_error(line_number, "a cue cannot be empty"));
+                }
+                self.ast.statement_policy.cues.push(cue.to_string());
+                return Ok(());
+            }
             _ => {}
         }
         Err(parse_error(line_number, "list item is not valid here"))
@@ -953,6 +1008,15 @@ fn non_empty(value: String, field: &'static str) -> Result<String, MemoryContrac
         return Err(MemoryContractError::EmptyField { field });
     }
     Ok(value)
+}
+
+/// A list value with one pair of surrounding double quotes taken off, which
+/// is how a phrasing with leading punctuation or braces is best written.
+fn unquote(value: &str) -> &str {
+    value
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+        .unwrap_or(value)
 }
 
 fn parse_error(line: usize, message: &str) -> MemoryContractError {
