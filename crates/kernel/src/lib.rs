@@ -452,12 +452,15 @@ fn derive_trust(
         });
         return None;
     };
-    let Some(required) = parse_authority(min_authority) else {
+    let Some(asked) = parse_authority(min_authority) else {
         state.errors.push(CheckError::UnknownAuthority {
             value: min_authority.to_string(),
         });
         return None;
     };
+    // The policy's floor, or the proposal's if it asks for more. A proposal can
+    // raise the bar and never lower it: it is the party this step constrains.
+    let required = stricter(asked, snapshot.authority_floor());
     let Some(actual) = snapshot.authority_of(&source_id) else {
         state.errors.push(CheckError::DanglingSource { source_id });
         return None;
@@ -627,6 +630,14 @@ fn parse_authority(value: &str) -> Option<Authority> {
         "medium" => Some(Authority::Medium),
         "high" => Some(Authority::High),
         _ => None,
+    }
+}
+
+const fn stricter(first: Authority, second: Authority) -> Authority {
+    if authority_rank(first) >= authority_rank(second) {
+        first
+    } else {
+        second
     }
 }
 

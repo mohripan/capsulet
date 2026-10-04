@@ -4,6 +4,7 @@ use capsulet_core::{
 };
 
 use crate::quantity::Quantity;
+use crate::snapshot_document::SnapshotDocument;
 use crate::{ArithOp, Proposal, Proposition, Rule, Snapshot, Verdict, check, error::RepairOwner};
 
 fn q(text: &str) -> Quantity {
@@ -540,5 +541,88 @@ fn the_replay_digest_is_stable_for_the_same_proposal() {
     assert_eq!(
         check(&proposal, &snapshot).replay_digest,
         check(&proposal, &snapshot).replay_digest
+    );
+}
+
+/// `Trust` over a citation of the renewal, asking for `min_authority`.
+fn trusted_renewal(min_authority: &str) -> Proposal {
+    let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
+    Proposal {
+        goal: goal.clone(),
+        derivation: Rule::Trust {
+            premise: Box::new(Rule::Cite {
+                evidence_id: "ev_1".to_string(),
+                proposition: goal,
+            }),
+            min_authority: min_authority.to_string(),
+        },
+    }
+}
+
+#[test]
+fn a_proposal_cannot_lower_the_policy_floor() {
+    // The floor is policy, carried with the snapshot. A proposal asking for less
+    // is held to it anyway: the party a check constrains does not get to set it.
+    let snapshot = base_snapshot(honest_evidence(0, 46), Authority::Low)
+        .with_authority_floor(Authority::Medium);
+
+    let certificate = check(&trusted_renewal("low"), &snapshot);
+
+    assert_eq!(certificate.verdict, Verdict::Rejected);
+    assert_eq!(certificate.errors[0].code, "authority_below_floor");
+    assert_eq!(certificate.errors[0].repair_owner, "policy");
+}
+
+#[test]
+fn a_proposal_may_ask_for_more_than_the_policy_floor() {
+    let snapshot = base_snapshot(honest_evidence(0, 46), Authority::Medium)
+        .with_authority_floor(Authority::Low);
+
+    let certificate = check(&trusted_renewal("high"), &snapshot);
+
+    assert_eq!(certificate.verdict, Verdict::Rejected);
+    assert_eq!(certificate.errors[0].code, "authority_below_floor");
+}
+
+#[test]
+fn a_source_at_the_policy_floor_clears_it() {
+    let snapshot = base_snapshot(honest_evidence(0, 46), Authority::Medium)
+        .with_authority_floor(Authority::Medium);
+
+    assert_eq!(
+        check(&trusted_renewal("low"), &snapshot).verdict,
+        Verdict::Accepted
+    );
+}
+
+#[test]
+fn a_snapshot_document_without_a_floor_rebuilds_at_the_lowest() {
+    // A bundle written before the floor was carried re-decides as it did, and a
+    // document with no floor to state still encodes as it always has.
+    let rebuilt = |json: &str| {
+        serde_json::from_str::<SnapshotDocument>(json)
+            .expect("the document parses")
+            .rebuild()
+    };
+    let empty = r#"{"sources":[],"evidence":[],"claims":[]}"#;
+
+    assert_eq!(
+        rebuilt(empty).expect("rebuilds").authority_floor(),
+        Authority::Low
+    );
+    assert_eq!(
+        serde_json::to_string(&SnapshotDocument::default()).expect("encodes"),
+        empty
+    );
+    assert_eq!(
+        rebuilt(r#"{"sources":[],"evidence":[],"claims":[],"authority_floor":"medium"}"#)
+            .expect("rebuilds")
+            .authority_floor(),
+        Authority::Medium
+    );
+    assert!(
+        rebuilt(r#"{"sources":[],"evidence":[],"claims":[],"authority_floor":"sky-high"}"#)
+            .is_err(),
+        "a floor nobody can read is not the lowest one"
     );
 }

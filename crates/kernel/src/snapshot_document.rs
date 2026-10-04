@@ -85,6 +85,14 @@ pub struct SnapshotDocument {
     pub sources: Vec<SourceDocument>,
     pub evidence: Vec<EvidenceDocument>,
     pub claims: Vec<ClaimDocument>,
+    /// The policy's authority floor: `low`, `medium`, or `high`.
+    ///
+    /// Absent from documents written before the snapshot carried a floor, and
+    /// those rebuild at `low` — the floor their decisions were effectively made
+    /// under, since only the proposal's own floor applied. Left out when absent,
+    /// so such a document still encodes byte for byte as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_floor: Option<String>,
 }
 
 impl SnapshotDocument {
@@ -96,6 +104,9 @@ impl SnapshotDocument {
     /// the first place, or when a field does not parse.
     pub fn rebuild(&self) -> Result<Snapshot, RebuildError> {
         let mut snapshot = Snapshot::new();
+        if let Some(floor) = &self.authority_floor {
+            snapshot = snapshot.with_authority_floor(authority(floor)?);
+        }
 
         for source in &self.sources {
             let id = SourceId::new(&source.id).map_err(RebuildError::from)?;

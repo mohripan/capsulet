@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use capsulet_core::{Authority, Claim, Evidence, Source, SourceContent};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Snapshot {
     evidence: HashMap<String, Evidence>,
     sources: HashMap<String, Source>,
@@ -16,6 +16,26 @@ pub struct Snapshot {
     /// the exact bytes it named, never merely the newest version.
     contents: HashMap<(String, String), SourceContent>,
     claims: HashMap<String, Claim>,
+    /// The weakest source authority a trust step may accept.
+    ///
+    /// Policy, so it travels with what a decision was made against rather than
+    /// with the proposal: the party a check constrains does not get to set it. A
+    /// proposal may still ask for more, and gets the stricter of the two.
+    authority_floor: Authority,
+}
+
+impl Default for Snapshot {
+    /// An empty snapshot, held to the lowest floor — the floor every decision
+    /// was effectively made under before the snapshot carried one.
+    fn default() -> Self {
+        Self {
+            evidence: HashMap::new(),
+            sources: HashMap::new(),
+            contents: HashMap::new(),
+            claims: HashMap::new(),
+            authority_floor: Authority::Low,
+        }
+    }
 }
 
 impl Snapshot {
@@ -54,6 +74,18 @@ impl Snapshot {
     pub fn with_claim(mut self, claim: Claim) -> Self {
         self.claims.insert(claim.id().as_str().to_string(), claim);
         self
+    }
+
+    /// Holds every trust step decided against this snapshot to `floor`.
+    #[must_use]
+    pub const fn with_authority_floor(mut self, floor: Authority) -> Self {
+        self.authority_floor = floor;
+        self
+    }
+
+    #[must_use]
+    pub const fn authority_floor(&self) -> Authority {
+        self.authority_floor
     }
 
     #[must_use]

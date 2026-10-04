@@ -230,28 +230,3 @@ fn sharp_s_does_not_match_double_s() {
         "closed by Task 4 of the citation grounding plan; move this to grounding.rs inverted"
     );
 }
-
-// --- The proposer chooses the floor (CAP-CORRECTNESS-011) -------------------
-
-#[test]
-fn the_authority_floor_is_whatever_the_proposal_asks_for() {
-    // The same source, the same citation: refused when the proposal asks for a
-    // high floor and accepted when it asks for a low one. The shipped proposer
-    // always asks for `low`.
-    let document = "Acme renewed the Contoso contract.";
-    let proposition = Proposition::new("Acme", "renewed", "Contoso");
-    let decide_at = |floor: &str| {
-        check(
-            &quoted(proposition.clone(), proposition.clone(), floor),
-            &snapshot_over(document, Authority::Low),
-        )
-        .verdict
-    };
-
-    assert_eq!(decide_at("high"), Verdict::Rejected);
-    assert_eq!(
-        decide_at("low"),
-        Verdict::Accepted,
-        "closed by Task 3 of the citation grounding plan; move this to tests.rs inverted"
-    );
-}

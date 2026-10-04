@@ -492,6 +492,7 @@ fn pinned_snapshot() -> SnapshotDocument {
             source_content_hash: Some(hash),
         }],
         claims: vec![],
+        authority_floor: None,
     }
 }
 

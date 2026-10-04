@@ -392,10 +392,6 @@
           "selector": "a_hedged_statement_is_accepted_as_the_statement"
         },
         {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "the_authority_floor_is_whatever_the_proposal_asks_for"
-        },
-        {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "a_decision_recorded_under_other_rules_says_so"
         },
@@ -406,6 +402,14 @@
         {
           "path": "crates/kernel/src/tests.rs",
           "selector": "a_goal_is_compared_field_by_field_rather_than_by_its_rendering"
+        },
+        {
+          "path": "crates/kernel/src/tests.rs",
+          "selector": "a_proposal_cannot_lower_the_policy_floor"
+        },
+        {
+          "path": "crates/kernel/src/tests.rs",
+          "selector": "a_snapshot_document_without_a_floor_rebuilds_at_the_lowest"
         }
       ]
     },
@@ -2094,24 +2098,40 @@
     },
     {
       "id": "CAP-CORRECTNESS-011",
-      "kind": "limitation",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "The authority floor a trust step enforces is supplied by the proposal itself, and the shipped proposer always asks for low, so every source in the snapshot clears it.",
+      "statement": "The authority floor a trust step enforces is the caller's policy, carried in the snapshot a decision is made against and re-decided with it: a proposal may raise the floor and cannot lower it.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
+      "verification": [
+        {
+          "assertion": "a-proposal-cannot-lower-the-floor",
+          "evidence_selectors": [
+            "a_proposal_cannot_lower_the_policy_floor"
+          ]
+        },
+        {
+          "assertion": "the-floor-travels-with-the-snapshot",
+          "evidence_selectors": [
+            "a_snapshot_document_without_a_floor_rebuilds_at_the_lowest"
+          ]
+        }
+      ],
       "evidence": [
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/src/tests.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "the_authority_floor_is_whatever_the_proposal_asks_for"
+          "selector": "a_proposal_cannot_lower_the_policy_floor"
         },
         {
-          "type": "source",
-          "path": "crates/proposer/src/ollama.rs"
+          "type": "test",
+          "path": "crates/kernel/src/tests.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_snapshot_document_without_a_floor_rebuilds_at_the_lowest"
         }
       ]
     },

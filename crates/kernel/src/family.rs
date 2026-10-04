@@ -32,7 +32,7 @@ pub const CLAIM_REASONING: &str = "capsulet-kernel/claim-reasoning";
 /// It used to be the crate version, which moves with releases rather than with
 /// rules: it read `0.1.0` through floating point becoming fixed point, NFC, and
 /// the span bound, so nothing a replay could see told one rule set from the next.
-pub const CLAIM_REASONING_RULES: &str = "2";
+pub const CLAIM_REASONING_RULES: &str = "3";
 
 /// What a family concluded, plus what it needed to conclude it.
 #[derive(Debug, Clone, PartialEq)]

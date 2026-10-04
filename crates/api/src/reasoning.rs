@@ -28,6 +28,14 @@ use crate::{
     store::ApiStore,
 };
 
+/// The weakest source authority a trust step accepts on this endpoint.
+///
+/// `low`, which is what every answer was effectively held to before the floor
+/// was policy: the shipped proposer always asks for `low`, and the floor used to
+/// be whatever the proposal asked for. Raising it is a decision about this
+/// endpoint, made here, rather than a field the model fills in.
+const AUTHORITY_FLOOR: Authority = Authority::Low;
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AskRequest {
     /// Text to reason over. Stored immutably and cut into citable spans.
@@ -142,8 +150,10 @@ where
         .map_err(|error| ApiError::Proposer(error.to_string()))?;
 
     // The kernel sees only what was pinned: the same source, the same bytes, the
-    // same evidence the proposer was offered.
+    // same evidence the proposer was offered — and the floor a trust step is held
+    // to, which is this endpoint's decision and not the proposer's.
     let mut snapshot = Snapshot::new()
+        .with_authority_floor(AUTHORITY_FLOOR)
         .with_source(source)
         .with_source_content(stored_text);
     for item in evidence {

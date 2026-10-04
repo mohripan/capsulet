@@ -40,7 +40,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-CORRECTNESS-008` | implemented | limitation | A kernel proposal is persisted inside certificate bundles without a schema version of its own, so a bundle written by a build whose proposal shape differed does not re-decide and is reported as having missing inputs rather than an unreadable shape. |
 | `CAP-CORRECTNESS-009` | implemented | limitation | A citation grounds a proposition's subject and object but not its predicate, so a span that negates, reverses, hedges, or states a different relation between the same two terms is accepted as stating the proposition. |
 | `CAP-CORRECTNESS-010` | implemented | capability | A derivation reaches its goal only by concluding that the goal holds, compared field by field: a citation without a trust step attributes a statement without asserting it, and two propositions that render alike are told apart. |
-| `CAP-CORRECTNESS-011` | implemented | limitation | The authority floor a trust step enforces is supplied by the proposal itself, and the shipped proposer always asks for low, so every source in the snapshot clears it. |
+| `CAP-CORRECTNESS-011` | implemented | capability | The authority floor a trust step enforces is the caller's policy, carried in the snapshot a decision is made against and re-decided with it: a proposal may raise the floor and cannot lower it. |
 
 ## Crash recovery
 

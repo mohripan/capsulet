@@ -190,14 +190,21 @@ differently; the escape character needed escaping too, or `("x\\", "y", "z|w")` 
 **Files:** `crates/kernel/src/{lib.rs,snapshot.rs,snapshot_document.rs}`,
 `crates/api/src/reasoning.rs`, tests
 
-- [ ] Failing tests: a proposal asking for `low` against a snapshot whose floor is `medium` is held to
+- [x] Failing tests: a proposal asking for `low` against a snapshot whose floor is `medium` is held to
   `medium`; a proposal may ask for more than the floor and is held to that; a snapshot document
   without a floor rebuilds with `low`, so a bundle written before this task re-decides as it did.
-- [ ] The floor travels with the snapshot, because it is part of what a decision was made against.
+- [x] The floor travels with the snapshot, because it is part of what a decision was made against.
   `Trust` enforces the stricter of the floor and the proposal's own `min_authority`. A proposal can
   raise the bar, never lower it, and its shape does not change.
-- [ ] `/v1/reasoning/ask` sets the floor explicitly, at `low` — today's effective behaviour — so
+- [x] `/v1/reasoning/ask` sets the floor explicitly, at `low` — today's effective behaviour — so
   changing it becomes a decision someone makes rather than a field the model fills in.
+
+**Its tripwire did not go red, and was not meant to.** Row 14 was a low-authority source clearing
+`Trust` at the floor the proposal asked for. With the policy floor defaulting to `low`, that case
+still decides the same way, so the tripwire was retired by hand and its claim restated as a
+capability resting on the new tests. What changed is who decides: the floor is now a field the
+proposer cannot lower, and `/v1/reasoning/ask` still sets it to `low`. Whether that endpoint should
+hold sources to more is a product decision this task deliberately did not make.
 
 ### Task 4: A term is a whole word, in any case and any typography
 
