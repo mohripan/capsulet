@@ -17,7 +17,7 @@ The existing product constitution reserves interpretability for M5; research tra
 
 | Issue | Milestone |
 | --- | --- |
-+| [Instrument agent runs with correlated OpenTelemetry GenAI traces](https://github.com/mohripan/capsulet/issues/106) | M5 - Interpretability and agent observability |
+| [Instrument agent runs with correlated OpenTelemetry GenAI traces](https://github.com/mohripan/capsulet/issues/106) | M5 - Interpretability and agent observability |
 | [Evaluate and integrate one reusable agent observability backend](https://github.com/mohripan/capsulet/issues/105) | M5 - Interpretability and agent observability |
 | [Explain model results with inspectable evidence and verification lineage](https://github.com/mohripan/capsulet/issues/107) | M5 - Interpretability and agent observability |
 | [Protect model telemetry with project isolation, redaction and retention](https://github.com/mohripan/capsulet/issues/109) | M5 - Interpretability and agent observability |
