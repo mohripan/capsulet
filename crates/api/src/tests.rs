@@ -19,7 +19,7 @@ use capsulet_core::{
 };
 use capsulet_postgres::{
     AdmissionSnapshot, IrDefinitionVersion, IrRunRecord, NewProjectMembership,
-    ProjectMembershipRecord, ProjectRecord, TriggerEvent,
+    ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, TriggerEvent,
 };
 use capsulet_runtime::{RecordedEvent, RunEvent, event::Epoch};
 use capsulet_storage::ObjectStore;
@@ -36,6 +36,7 @@ mod authorization_http;
 #[derive(Debug, Clone, Default)]
 struct FakeStore {
     omit_ownership: bool,
+    service_accounts: Arc<Mutex<Vec<FakeServiceAccount>>>,
     known_definitions: Arc<Mutex<Vec<String>>>,
     job_definitions: Arc<Mutex<Vec<JobDefinition>>>,
     runs: Arc<Mutex<Vec<JobRun>>>,
@@ -105,6 +106,12 @@ struct FakeOwnership {
     project_id: String,
 }
 
+#[derive(Debug, Clone)]
+struct FakeServiceAccount {
+    token_hash: [u8; 32],
+    record: ServiceAccountRecord,
+}
+
 #[derive(Debug, Clone, Default)]
 struct FakeObjectStore {
     objects: ObjectMap,
@@ -156,6 +163,21 @@ impl ObjectStore for FakeObjectStore {
 #[async_trait::async_trait]
 impl ApiStore for FakeStore {
     type Error = String;
+
+    async fn authenticate_service_account_hash(
+        &self,
+        token_hash: &[u8; 32],
+    ) -> Result<Option<ServiceAccountRecord>, Self::Error> {
+        Ok(self
+            .service_accounts
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .find(|account| {
+                &account.token_hash == token_hash && account.record.revoked_at.is_none()
+            })
+            .map(|account| account.record.clone()))
+    }
 
     async fn ping(&self) -> Result<(), Self::Error> {
         Ok(())

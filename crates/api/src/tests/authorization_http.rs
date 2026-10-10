@@ -89,7 +89,29 @@ async fn authorization_user_does_not_inherit_a_same_named_service_accounts_membe
 }
 
 fn authorization_router() -> axum::Router {
-    let store = FakeStore::default();
+    authorization_router_with_store(FakeStore::default())
+}
+
+fn authorization_router_with_store(store: FakeStore) -> axum::Router {
+    store
+        .service_accounts
+        .lock()
+        .expect("accounts")
+        .push(FakeServiceAccount {
+            token_hash: crate::auth::token_digest("matrix-service-token-0123456789-abcdef"),
+            record: ServiceAccountRecord {
+                id: "matrix-service".to_string(),
+                name: "service-account".to_string(),
+                tenant_id: "default".to_string(),
+                project_id: "default".to_string(),
+                role: "operator".to_string(),
+                scopes: vec!["jobs:read".to_string()],
+                expires_at: None,
+                revoked_at: None,
+                last_used_at: None,
+                created_at: "2026-10-11".to_string(),
+            },
+        });
     store
         .project_memberships
         .lock()
@@ -110,11 +132,76 @@ fn authorization_router() -> axum::Router {
         {"name":"viewer","role":"viewer","token":"matrix-viewer-token-0123456789-abcdef","scopes":["*"]},
         {"name":"operator","role":"operator","token":"matrix-operator-token-0123456789-abcdef","scopes":["*"]},
         {"name":"project-admin","role":"viewer","project_id":"bootstrap","token":"matrix-project-admin-token-0123456789-abcdef","scopes":["*"]},
-        {"name":"service-account","role":"operator","token":"matrix-service-token-0123456789-abcdef","scopes":["jobs:read"]},
         {"name":"wrong-project","role":"operator","project_id":"finance","token":"matrix-wrong-project-token-0123456789-abcdef","scopes":["*"]},
         {"name":"global-admin","role":"admin","token":"matrix-global-admin-token-0123456789-abcdef"}
     ]"#).expect("matrix auth");
     router(AppState::new(store, FakeObjectStore::default(), ["mini".to_string()]).with_auth(auth))
+}
+
+#[tokio::test]
+async fn authorization_service_account_does_not_inherit_a_same_named_users_membership() {
+    let store = FakeStore::default();
+    store
+        .project_memberships
+        .lock()
+        .expect("memberships")
+        .push(ProjectMembershipRecord {
+            id: "user-membership".to_string(),
+            tenant_id: "default".to_string(),
+            project_id: "finance".to_string(),
+            principal_kind: "user".to_string(),
+            principal_name: "service-account".to_string(),
+            role: "project_admin".to_string(),
+            created_by: "system".to_string(),
+            created_at: "2026-10-11".to_string(),
+            updated_at: "2026-10-11".to_string(),
+        });
+    let response = authorization_router_with_store(store)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs/runs")
+                .header(
+                    "authorization",
+                    "Bearer matrix-service-token-0123456789-abcdef",
+                )
+                .header("x-capsulet-project-id", "finance")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response.status(),
+        403,
+        "a user's membership must not expand a same-named service account's projects"
+    );
+}
+
+#[tokio::test]
+async fn authorization_wrong_project_resource_is_not_disclosed() {
+    let store = FakeStore::default().with_workflow("private-existing");
+    store
+        .ownership
+        .lock()
+        .expect("ownership")
+        .push(FakeOwnership {
+            resource: "workflows".to_string(),
+            id: "private-existing".to_string(),
+            tenant_id: "default".to_string(),
+            project_id: "finance".to_string(),
+        });
+    let response = authenticated_app(store)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/workflows/private-existing")
+                .header("authorization", "Bearer viewer-token-0123456789-abcdefgh")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), 404);
+    assert_eq!(response_json(response).await["code"], "resource_not_found");
 }
 macro_rules! authorization_operation {
     ($test:ident, $operation:literal) => {
