@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "exceptions": [
+    {
+      "id": "RUSTSEC-2023-0071",
+      "ecosystem": "rust",
+      "package": "rsa",
+      "versions": [
+        "0.9.10"
+      ],
+      "scope": "uncompiled-optional",
+      "owner": "platform",
+      "rationale": "rsa is present in Cargo.lock through optional sqlx-mysql, which is not compiled by this PostgreSQL-only workspace.",
+      "compensating_control": "Enabling MySQL or rsa requires removing this exception; review cargo tree when features change.",
+      "issue": "https://github.com/mohripan/capsulet/issues/99",
+      "expires": "2027-03-01"
+    },
+    {
+      "id": "RUSTSEC-2024-0436",
+      "ecosystem": "rust",
+      "package": "paste",
+      "versions": [
+        "1.0.15"
+      ],
+      "scope": "unmaintained-macro",
+      "owner": "platform",
+      "rationale": "Unmaintained macro reached through utoipa-axum; the advisory reports no exploitable defect.",
+      "compensating_control": "Monitor upstream replacement; new vulnerability findings are not covered by this maintenance exception.",
+      "issue": "https://github.com/mohripan/capsulet/issues/99",
+      "expires": "2027-03-01"
+    },
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "ecosystem": "npm",
+      "package": "braces",
+      "versions": [
+        "3.0.3"
+      ],
+      "scope": "development-only",
+      "owner": "platform",
+      "rationale": "Registry review on 2026-10-11 found no patched braces release. Current Next.js lint tooling requires it; downgrading the lint configuration to Next.js 14 is not compatible.",
+      "compensating_control": "Only reviewed repository lint patterns reach this dev-only package. Production audit must have no high findings. Preserve raw findings and reject changed versions, production reachability, new advisories or critical escalation.",
+      "issue": "https://github.com/mohripan/capsulet/issues/118",
+      "expires": "2026-10-25"
+    }
+  ]
+}

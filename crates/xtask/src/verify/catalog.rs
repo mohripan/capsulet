@@ -411,7 +411,7 @@ pub(crate) fn gates() -> Vec<Gate> {
         gate(
             "security",
             "dependency, licence, and source security checks",
-            &["cargo-audit", "cargo-deny", "npm"],
+            &["cargo-audit", "cargo-deny", "npm", "python"],
             900,
             &[Full],
             vec![
@@ -421,7 +421,35 @@ pub(crate) fn gates() -> Vec<Gate> {
                 // Licences and bans, which CI used to check and this gate did
                 // not — a divergence that only showed up as a red pipeline.
                 command("cargo", &["deny", "check"]),
-                in_dashboard(command("npm", &["audit", "--audit-level=high"])),
+                command(
+                    "cargo",
+                    &[
+                        "run",
+                        "-p",
+                        "capsulet-xtask",
+                        "--locked",
+                        "--",
+                        "security",
+                        "npm",
+                    ],
+                ),
+                in_dashboard(command(
+                    "npm",
+                    &["audit", "--omit=dev", "--audit-level=high"],
+                )),
+                command(
+                    "python",
+                    &[
+                        "-m",
+                        "unittest",
+                        "discover",
+                        "-s",
+                        "scripts/tests",
+                        "-p",
+                        "test_audit_python.py",
+                    ],
+                ),
+                command("python", &["scripts/audit-python.py"]),
             ],
         ),
         gate(

@@ -161,6 +161,25 @@ fn every_silenced_advisory_is_owned_and_unexpired() {
     let deny = std::fs::read_to_string(root.join("deny.toml")).unwrap_or_default();
     let document = std::fs::read_to_string(root.join("docs/contracts/security-exceptions.md"))
         .expect("the exceptions document is readable");
+    let registry: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("docs/contracts/security-exceptions.json"))
+            .expect("exception registry"),
+    )
+    .expect("registry JSON");
+    let mut registered = registry["exceptions"]
+        .as_array()
+        .expect("exceptions")
+        .iter()
+        .filter(|entry| entry["ecosystem"] == "rust")
+        .map(|entry| entry["id"].as_str().expect("advisory id").to_string())
+        .collect::<Vec<_>>();
+    registered.sort();
+    let mut ignored = silenced(&audit);
+    ignored.sort();
+    assert_eq!(
+        registered, ignored,
+        "Rust tool ignores must exactly match the owned registry"
+    );
 
     let mut advisories = silenced(&audit);
     advisories.extend(silenced(&deny));

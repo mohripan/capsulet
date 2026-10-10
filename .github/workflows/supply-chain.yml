@@ -30,6 +30,16 @@ jobs:
       - name: Install cargo-deny
         uses: taiki-e/install-action@cargo-deny
 
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       # One gate, so CI and a developer machine check the same things against
       # the same exceptions. Those live in .cargo/audit.toml and deny.toml, each
       # with an owner and a review date.

@@ -11,7 +11,8 @@ Capsulet's public-contract layer keeps product language tied to inspectable evid
 - `database-migrations.md` defines forward upgrade, backup, restore, and rollback obligations.
 - `sdk-generation.md` defines generated transports and handwritten ergonomic boundaries.
 - `durable-run-execution.md` defines how an IR run is stored, advanced, and recovered.
-- `security-exceptions.md` lists every advisory a gate is told to ignore, with an owner and an expiry.
+- `security-exceptions.json` and its schema define owned, scoped, expiring dependency exceptions;
+  `security-exceptions.md` explains their review context and remaining scanner findings.
 - `m0-baseline.md`, `m2-completion.md`, and `m3-completion.md` record what each milestone delivered
   and what its gates actually prove.
 

@@ -3,6 +3,27 @@
 Status: experimental. Every advisory the `security` gate is told to ignore is listed here, with why
 it does not apply, who owns it, and the date the reasoning must be re-checked.
 
+`security-exceptions.json` is the structured registry, with exact package versions, scope,
+owner, rationale, compensating control, issue and expiry. The gate validates it at runtime;
+Rust tool ignores must also match the registry. This Markdown view provides review context.
+
+## Temporary npm development-only exception
+
+| Advisory | Package | Owner | Expires | Tracking |
+| --- | --- | --- | --- | --- |
+| `GHSA-vfj7-8cjw-p6xm` | `braces` 3.0.3 | platform | 2026-10-25 | [#118](https://github.com/mohripan/capsulet/issues/118) |
+
+The fresh 2026-10-11 audit reports five high entries inherited from this one advisory through
+the Next.js lint dependency chain. The current registry has no patched `braces` release. This
+exception covers only the exact advisory/version in development dependencies and reviewed
+repository lint patterns; it does not cover production inputs, another package version, new
+advisories or critical severity. Production dependencies must pass an unexcepted audit.
+
+`xtask security npm` preserves raw output in `.capsulet/security/npm-audit.json`, prints the
+exception and checks ownership/expiry/reachability. A policy pass is **not** a zero-advisory
+scanner result. Remove the exception when upstream supplies a compatible fix; it fails on the
+expiry date even if nobody edits this document.
+
 An exception with no owner is nobody's problem, and an exception with no expiry is permanent by
 accident. `crates/xtask/tests/verify_cli.rs` fails the build when `.cargo/audit.toml` ignores an
 advisory this file does not list, and when a listed review date has passed. So an exception cannot
