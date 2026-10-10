@@ -1,5 +1,30 @@
 # Engineering Integrity Implementation Plan
 
+## GitHub execution tracking
+
+Tracking was established on 2026-10-11 in [overview issue #104](https://github.com/mohripan/capsulet/issues/104).
+Use [M0](https://github.com/mohripan/capsulet/milestone/1) for Tasks 1-2 and
+[M1](https://github.com/mohripan/capsulet/milestone/2) for Tasks 3-11.
+The task issues contain the original acceptance checklists and verification evidence:
+
+| Task | Issue | Historical implementation checkpoint |
+| --- | --- | --- |
+| 1 | [#93](https://github.com/mohripan/capsulet/issues/93) | `engineering-integrity/task-01-claim-discovery` |
+| 2 | [#94](https://github.com/mohripan/capsulet/issues/94) | `engineering-integrity/task-02-http-contracts` |
+| 3 | [#95](https://github.com/mohripan/capsulet/issues/95) | `engineering-integrity/task-03-verifier` |
+| 4 | [#96](https://github.com/mohripan/capsulet/issues/96) | `engineering-integrity/task-04-postgres` |
+| 5 | [#97](https://github.com/mohripan/capsulet/issues/97) | In progress |
+| 6 | [#98](https://github.com/mohripan/capsulet/issues/98) | Reconciliation pending |
+| 7 | [#99](https://github.com/mohripan/capsulet/issues/99) | Reconciliation pending |
+| 8 | [#100](https://github.com/mohripan/capsulet/issues/100) | Reconciliation pending |
+| 9 | [#101](https://github.com/mohripan/capsulet/issues/101) | Reconciliation pending |
+| 10 | [#102](https://github.com/mohripan/capsulet/issues/102) | Reconciliation pending |
+| 11 | [#103](https://github.com/mohripan/capsulet/issues/103) | Reconciliation pending |
+
+Checkpoint tags identify historical implementation commits, not product releases or proof that
+the current revision meets every acceptance criterion. Close an issue only after recording its
+executed gates and remaining limitations; close M1 only after the complete clean-checkout rehearsal.
+
 > **For agentic workers:** Implement this plan task-by-task with test-first changes and one focused
 > commit per task. M0 contract remediation is the entry gate for M1, not optional cleanup. Do not
 > begin M2 IR work while any M1 exit criterion is red.
