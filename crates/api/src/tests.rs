@@ -164,6 +164,10 @@ impl ObjectStore for FakeObjectStore {
 impl ApiStore for FakeStore {
     type Error = String;
 
+    fn is_scope_mismatch(error: &Self::Error) -> bool {
+        error == "scope mismatch"
+    }
+
     async fn authenticate_service_account_hash(
         &self,
         token_hash: &[u8; 32],
@@ -525,7 +529,27 @@ impl ApiStore for FakeStore {
         Ok(())
     }
 
-    async fn upsert_job_definition(&self, definition: &JobDefinition) -> Result<(), Self::Error> {
+    async fn upsert_job_definition(
+        &self,
+        definition: &JobDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        let mut ownership = self.ownership.lock().map_err(|error| error.to_string())?;
+        if let Some(owner) = ownership.iter().find(|owner| {
+            owner.resource == "job_definitions" && owner.id == definition.id().as_str()
+        }) {
+            if owner.tenant_id != tenant_id || owner.project_id != project_id {
+                return Err("scope mismatch".to_string());
+            }
+        } else {
+            ownership.push(FakeOwnership {
+                resource: "job_definitions".to_string(),
+                id: definition.id().as_str().to_string(),
+                tenant_id: tenant_id.to_string(),
+                project_id: project_id.to_string(),
+            });
+        }
         let mut records = self
             .job_definitions
             .lock()
@@ -546,13 +570,27 @@ impl ApiStore for FakeStore {
         Ok(())
     }
 
-    async fn list_job_definitions(&self, limit: i64) -> Result<Vec<JobDefinition>, Self::Error> {
+    async fn list_job_definitions(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<JobDefinition>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        let ownership = self.ownership.lock().map_err(|error| error.to_string())?;
         Ok(self
             .known_definitions
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
+            .filter(|id| {
+                ownership
+                    .iter()
+                    .find(|owner| owner.resource == "job_definitions" && &owner.id == *id)
+                    .map_or(tenant_id == "default" && project_id == "default", |owner| {
+                        owner.tenant_id == tenant_id && owner.project_id == project_id
+                    })
+            })
             .take(limit)
             .map(|id| {
                 JobDefinition::new(
@@ -577,7 +615,16 @@ impl ApiStore for FakeStore {
     async fn find_job_definition(
         &self,
         id: &JobDefinitionId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<JobDefinition>, Self::Error> {
+        if self
+            .resource_project("job_definitions", id.as_str())
+            .await?
+            != Some((tenant_id.to_string(), project_id.to_string()))
+        {
+            return Ok(None);
+        }
         if let Some(definition) = self
             .job_definitions
             .lock()
@@ -613,7 +660,23 @@ impl ApiStore for FakeStore {
             }))
     }
 
-    async fn delete_job_definition(&self, id: &JobDefinitionId) -> Result<bool, Self::Error> {
+    async fn delete_job_definition(
+        &self,
+        id: &JobDefinitionId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error> {
+        if self
+            .resource_project("job_definitions", id.as_str())
+            .await?
+            != Some((tenant_id.to_string(), project_id.to_string()))
+        {
+            return Ok(false);
+        }
+        self.job_definitions
+            .lock()
+            .map_err(|error| error.to_string())?
+            .retain(|definition| definition.id() != id);
         let mut definitions = self
             .known_definitions
             .lock()
@@ -4460,6 +4523,43 @@ async fn deletes_existing_automation() {
 }
 
 #[tokio::test]
+async fn updating_job_definition_preserves_the_previous_immutable_bundle_reference() {
+    let app = test_app(FakeStore::default());
+    let request = |method, script: &str| {
+        Request::builder()
+            .uri(if method == Method::POST {
+                "/v1/job-definitions"
+            } else {
+                "/v1/job-definitions/immutable-job"
+            })
+            .method(method)
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({"id":"immutable-job", "name":"Immutable job", "python_script":script})
+                    .to_string(),
+            ))
+            .expect("request")
+    };
+    let first = app
+        .clone()
+        .oneshot(request(Method::POST, "print('original')"))
+        .await
+        .expect("create");
+    assert_eq!(first.status(), axum::http::StatusCode::CREATED);
+    let first_key = response_json(first).await["bundle_object_key"].clone();
+    let second = app
+        .oneshot(request(Method::PUT, "print('updated')"))
+        .await
+        .expect("update");
+    assert_eq!(second.status(), axum::http::StatusCode::OK);
+    let second_key = response_json(second).await["bundle_object_key"].clone();
+    assert_ne!(
+        first_key, second_key,
+        "an update must not overwrite an earlier bundle's object key"
+    );
+}
+
+#[tokio::test]
 async fn creates_and_reads_reusable_python_job_definition() {
     let app = test_app(FakeStore::default());
     let create_response = app
@@ -4491,7 +4591,7 @@ async fn creates_and_reads_reusable_python_job_definition() {
     assert_eq!(body["name"], "Daily report");
     assert_eq!(
         body["bundle_object_key"],
-        "bundles/job-definitions/job_daily_report/main.py"
+        "bundles/job-definitions/job_daily_report/5e6ea3c3b0b598920ae00f33519df6fd69e375318605fa54a723f6139ad2e5bc/main.py"
     );
 
     let list_response = app

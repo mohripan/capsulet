@@ -29,6 +29,7 @@ use capsulet_postgres::{NewProjectMembership, NewServiceAccount};
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde::Serialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tower::limit::ConcurrencyLimitLayer;
 use tower_governor::{
     GovernorLayer, errors::GovernorError, governor::GovernorConfigBuilder,
@@ -1399,8 +1400,8 @@ where
 {
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
-    // The check has to precede `build_python_job_definition`, which writes the script bundle
-    // under a key derived from the requested id.
+    // Reject existing cross-project ids before writing a bundle. The scoped upsert below
+    // also rejects races, and content-addressed bundles preserve the existing script.
     if let Some(requested_id) = request.id.as_deref() {
         let definition_id =
             JobDefinitionId::new(requested_id.to_string()).map_err(ApiError::validation)?;
@@ -1422,16 +1423,9 @@ where
     let definition = build_python_job_definition(&state, request).await?;
     state
         .store
-        .upsert_job_definition(&definition)
+        .upsert_job_definition(&definition, &context.tenant_id, &context.project_id)
         .await
-        .map_err(ApiError::store)?;
-    assign_resource_project(
-        &state.store,
-        "job_definitions",
-        definition.id().as_str(),
-        &context,
-    )
-    .await?;
+        .map_err(ApiError::scoped_store::<S>)?;
 
     Ok((
         StatusCode::CREATED,
@@ -1472,16 +1466,9 @@ where
     let definition = build_python_job_definition(&state, request).await?;
     state
         .store
-        .upsert_job_definition(&definition)
+        .upsert_job_definition(&definition, &context.tenant_id, &context.project_id)
         .await
-        .map_err(ApiError::store)?;
-    assign_resource_project(
-        &state.store,
-        "job_definitions",
-        definition.id().as_str(),
-        &context,
-    )
-    .await?;
+        .map_err(ApiError::scoped_store::<S>)?;
 
     Ok(Json(JobDefinitionResponse::from(&definition)))
 }
@@ -1500,7 +1487,7 @@ where
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let definitions = state
         .store
-        .list_job_definitions(i64::from(limit))
+        .list_job_definitions(&context.tenant_id, &context.project_id, i64::from(limit))
         .await
         .map_err(ApiError::store)?;
     let mut scoped = Vec::new();
@@ -1538,7 +1525,7 @@ where
     require_resource_project(&state.store, "job_definitions", id.as_str(), &context).await?;
     let Some(definition) = state
         .store
-        .find_job_definition(&id)
+        .find_job_definition(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -1563,7 +1550,7 @@ where
     require_resource_project(&state.store, "job_definitions", id.as_str(), &context).await?;
     let Some(definition) = state
         .store
-        .find_job_definition(&id)
+        .find_job_definition(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -1619,7 +1606,7 @@ where
     }
     let deleted = state
         .store
-        .delete_job_definition(&id)
+        .delete_job_definition(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     if !deleted {
@@ -1659,7 +1646,20 @@ where
     let runtime_image = request
         .runtime_image
         .unwrap_or_else(|| "python:3.12-slim".to_string());
-    let object_key = format!("bundles/job-definitions/{}/main.py", id.as_str());
+    let script_digest = Sha256::digest(script.as_bytes())
+        .iter()
+        .flat_map(|byte| {
+            const HEX: &[u8; 16] = b"0123456789abcdef";
+            [
+                char::from(HEX[usize::from(byte >> 4)]),
+                char::from(HEX[usize::from(byte & 15)]),
+            ]
+        })
+        .collect::<String>();
+    let object_key = format!(
+        "bundles/job-definitions/{}/{script_digest}/main.py",
+        id.as_str()
+    );
     state
         .object_store
         .put(&object_key, script.into_bytes())
@@ -1699,7 +1699,7 @@ where
 {
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
-    let workflow = build_workflow(&state, request).await?;
+    let workflow = build_workflow(&state, &context, request).await?;
     // The id may come from the request body, and the upsert conflicts on the id alone.
     if state
         .store
@@ -1746,7 +1746,7 @@ where
         return Err(ApiError::WorkflowLocked(id));
     }
     request.id = Some(id);
-    let workflow = build_workflow(&state, request).await?;
+    let workflow = build_workflow(&state, &context, request).await?;
     require_workflow_step_projects(&state.store, &workflow, &context).await?;
     state
         .store
@@ -2003,6 +2003,7 @@ async fn require_workflow_step_projects<S: ApiStore>(
 #[allow(clippy::too_many_lines)]
 async fn build_workflow<S, O>(
     state: &AppState<S, O>,
+    context: &ProjectContext,
     request: CreateWorkflowRequest,
 ) -> Result<WorkflowDefinition, ApiError>
 where
@@ -2029,7 +2030,7 @@ where
             JobDefinitionId::new(step.job_definition_id).map_err(ApiError::validation)?;
         if state
             .store
-            .find_job_definition(&job_definition_id)
+            .find_job_definition(&job_definition_id, &context.tenant_id, &context.project_id)
             .await
             .map_err(ApiError::store)?
             .is_none()
@@ -2457,7 +2458,9 @@ where
     O: ObjectStore,
 {
     let (definitions, automations, runs, workflow_runs) = tokio::try_join!(
-        state.store.list_job_definitions(500),
+        state
+            .store
+            .list_job_definitions(&context.tenant_id, &context.project_id, 500),
         state.store.list_automations(500),
         state.store.list_runs(200),
         state.store.list_workflow_runs(200),
@@ -2865,7 +2868,7 @@ where
         None => JobRunId::new(generated_run_id()).map_err(ApiError::validation)?,
     };
     let (job_definition_id, bundle_metadata) = if let Some(script) = request.python_script {
-        create_script_definition(&state, &run_id, script).await?
+        create_script_definition(&state, &context, &run_id, script).await?
     } else {
         let job_definition_id =
             JobDefinitionId::new(request.job_definition_id).map_err(ApiError::validation)?;
@@ -2915,13 +2918,6 @@ where
             .save_artifact(&metadata)
             .await
             .map_err(ApiError::store)?;
-        assign_resource_project(
-            &state.store,
-            "job_definitions",
-            run.job_definition_id().as_str(),
-            &context,
-        )
-        .await?;
     }
 
     Ok((StatusCode::CREATED, Json(JobRunResponse::from(&run))))
@@ -3010,6 +3006,7 @@ fn record_admission_decision(kind: &'static str, decision: &'static str) {
 
 async fn create_script_definition<S, O>(
     state: &AppState<S, O>,
+    context: &ProjectContext,
     run_id: &JobRunId,
     script: String,
 ) -> Result<(JobDefinitionId, Option<JobArtifact>), ApiError>
@@ -3049,9 +3046,9 @@ where
     .map_err(ApiError::validation)?;
     state
         .store
-        .upsert_job_definition(&definition)
+        .upsert_job_definition(&definition, &context.tenant_id, &context.project_id)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(ApiError::scoped_store::<S>)?;
     let metadata = JobArtifact::new(
         ArtifactId::new(format!("bundle_{}_main_py", run_id.as_str()))
             .map_err(ApiError::validation)?,

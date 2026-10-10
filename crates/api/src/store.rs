@@ -153,11 +153,23 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     ) -> Result<bool, Self::Error>;
 
     async fn job_definition_exists(&self, id: &JobDefinitionId) -> Result<bool, Self::Error>;
-    async fn upsert_job_definition(&self, definition: &JobDefinition) -> Result<(), Self::Error>;
-    async fn list_job_definitions(&self, limit: i64) -> Result<Vec<JobDefinition>, Self::Error>;
+    async fn upsert_job_definition(
+        &self,
+        definition: &JobDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error>;
+    async fn list_job_definitions(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<JobDefinition>, Self::Error>;
     async fn find_job_definition(
         &self,
         id: &JobDefinitionId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<JobDefinition>, Self::Error>;
     async fn job_definition_has_active_workflow_runs(
         &self,
@@ -167,7 +179,12 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         id: &JobDefinitionId,
     ) -> Result<bool, Self::Error>;
-    async fn delete_job_definition(&self, id: &JobDefinitionId) -> Result<bool, Self::Error>;
+    async fn delete_job_definition(
+        &self,
+        id: &JobDefinitionId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error>;
     async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error>;
     async fn list_workflows(&self, limit: i64) -> Result<Vec<WorkflowDefinition>, Self::Error>;
     async fn find_workflow(
@@ -719,19 +736,34 @@ impl ApiStore for PostgresStore {
         self.save(run).await
     }
 
-    async fn upsert_job_definition(&self, definition: &JobDefinition) -> Result<(), Self::Error> {
-        self.upsert_job_definition(definition).await
+    async fn upsert_job_definition(
+        &self,
+        definition: &JobDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        self.upsert_job_definition_in_project(definition, tenant_id, project_id)
+            .await
     }
 
-    async fn list_job_definitions(&self, limit: i64) -> Result<Vec<JobDefinition>, Self::Error> {
-        self.list_job_definitions(limit).await
+    async fn list_job_definitions(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<JobDefinition>, Self::Error> {
+        self.list_job_definitions_in_project(tenant_id, project_id, limit)
+            .await
     }
 
     async fn find_job_definition(
         &self,
         id: &JobDefinitionId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<JobDefinition>, Self::Error> {
-        self.find_job_definition(id).await
+        self.find_job_definition_in_project(id, tenant_id, project_id)
+            .await
     }
 
     async fn job_definition_has_active_workflow_runs(
@@ -748,8 +780,14 @@ impl ApiStore for PostgresStore {
         self.job_definition_is_used_by_workflows(id).await
     }
 
-    async fn delete_job_definition(&self, id: &JobDefinitionId) -> Result<bool, Self::Error> {
-        self.delete_job_definition(id).await
+    async fn delete_job_definition(
+        &self,
+        id: &JobDefinitionId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error> {
+        self.delete_job_definition_in_project(id, tenant_id, project_id)
+            .await
     }
 
     async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error> {
