@@ -588,9 +588,9 @@ export const DASHBOARD_OPERATIONS = {
   upsertProjectMember: clientOperation("POST", "/v1/projects/{project_id}/memberships", "upsertProjectMembership", "UpsertProjectMembershipRequest", "ProjectMembershipResponse", false),
   deleteProjectMember: clientOperation("DELETE", "/v1/projects/{project_id}/memberships/{principal_kind}/{principal_name}", "deleteProjectMembership", null, null, false),
   listAuditEvents: clientOperation("GET", "/v1/audit-events", "listAuditEvents", null, "ListAuditEventsResponse"),
-  listServiceAccounts: clientOperation("GET", "/v1/service-accounts", "listServiceAccounts", null, "ListServiceAccountsResponse", false),
-  createServiceAccount: clientOperation("POST", "/v1/service-accounts", "createServiceAccount", "CreateServiceAccountRequest", "CreateServiceAccountResponse", false),
-  revokeServiceAccount: clientOperation("POST", "/v1/service-accounts/{id}/revoke", "revokeServiceAccount", null, "ServiceAccountResponse", false),
+  listServiceAccounts: clientOperation("GET", "/v1/service-accounts", "listServiceAccounts", null, "ListServiceAccountsResponse"),
+  createServiceAccount: clientOperation("POST", "/v1/service-accounts", "createServiceAccount", "CreateServiceAccountRequest", "CreateServiceAccountResponse"),
+  revokeServiceAccount: clientOperation("POST", "/v1/service-accounts/{id}/revoke", "revokeServiceAccount", null, null),
   listJobDefinitions: clientOperation("GET", "/v1/job-definitions", "listJobDefinitions", null, "ListJobDefinitionsResponse"),
   createJobDefinition: clientOperation("POST", "/v1/job-definitions", "createJobDefinition", "CreateJobDefinitionRequest", "JobDefinitionResponse"),
   updateJobDefinition: clientOperation("PUT", "/v1/job-definitions/{id}", "updateJobDefinition", "CreateJobDefinitionRequest", "JobDefinitionResponse"),
@@ -674,16 +674,20 @@ function queryString(query: TableQuery) {
   return value ? `?${value}` : "";
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+function projectHeaders(initial?: HeadersInit) {
+  const headers = new Headers(initial);
   const projectId = selectedProjectId();
+  if (projectId) headers.set("x-capsulet-project-id", projectId);
+  return headers;
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = projectHeaders(init?.headers);
+  if (!headers.has("content-type")) headers.set("content-type", "application/json");
   const response = await fetch(`/api/capsulet${path}`, {
     ...init,
     cache: "no-store",
-    headers: {
-      "content-type": "application/json",
-      ...(projectId ? { "x-capsulet-project-id": projectId } : {}),
-      ...(init?.headers ?? {})
-    }
+    headers
   });
 
   if (!response.ok) {
@@ -782,7 +786,7 @@ export async function createServiceAccount(request: {
 }
 
 export async function revokeServiceAccount(id: string) {
-  return apiFetch<ServiceAccount>(`/v1/service-accounts/${encodeURIComponent(id)}/revoke`, {
+  return apiFetch<void>(`/v1/service-accounts/${encodeURIComponent(id)}/revoke`, {
     method: "POST",
     body: "{}"
   });
@@ -1115,7 +1119,7 @@ export async function cancelRun(id: string) {
 export async function downloadArtifact(runId: string, artifact: Artifact) {
   const response = await fetch(
     `/api/capsulet/v1/jobs/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifact.id)}`,
-    { cache: "no-store" }
+    { cache: "no-store", headers: projectHeaders() }
   );
 
   if (!response.ok) {

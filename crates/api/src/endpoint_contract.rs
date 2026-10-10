@@ -59,100 +59,67 @@ impl Stability {
 
 use crate::auth::ProjectRole;
 
-/// Permission required before a handler may execute.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Permission {
-    Public,
-    AuthRead,
-    AuthWrite,
-    AuditRead,
-    SystemRead,
-    SystemWrite,
-    JobsRead,
-    JobsWrite,
-    JobsRun,
-    JobsCancel,
-    WorkflowsRead,
-    WorkflowsWrite,
-    WorkflowsOperate,
-    AutomationsRead,
-    AutomationsWrite,
-    AutomationsOperate,
-    MemoryRead,
-    MemoryWrite,
+macro_rules! permissions {
+    ($($variant:ident => ($scope:literal, $resource:ident, $role:expr)),+ $(,)?) => {
+        /// Permission required before a handler may execute.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        pub enum Permission { $($variant),+ }
+
+        impl Permission {
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            #[must_use]
+            pub const fn as_str(self) -> &'static str {
+                match self { $(Self::$variant => $scope),+ }
+            }
+
+            #[must_use]
+            pub const fn minimum_project_role(self) -> Option<ProjectRole> {
+                match self { $(Self::$variant => $role),+ }
+            }
+
+            #[must_use]
+            pub const fn resource(self) -> ResourceKind {
+                match self { $(Self::$variant => ResourceKind::$resource),+ }
+            }
+        }
+    };
 }
 
-impl Permission {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Public => "public",
-            Self::AuthRead => "auth:read",
-            Self::AuthWrite => "auth:write",
-            Self::AuditRead => "audit:read",
-            Self::SystemRead => "system:read",
-            Self::SystemWrite => "system:write",
-            Self::JobsRead => "jobs:read",
-            Self::JobsWrite => "jobs:write",
-            Self::JobsRun => "jobs:run",
-            Self::JobsCancel => "jobs:cancel",
-            Self::WorkflowsRead => "workflows:read",
-            Self::WorkflowsWrite => "workflows:write",
-            Self::WorkflowsOperate => "workflows:operate",
-            Self::AutomationsRead => "automations:read",
-            Self::AutomationsWrite => "automations:write",
-            Self::AutomationsOperate => "automations:operate",
-            Self::MemoryRead => "memory:read",
-            Self::MemoryWrite => "memory:write",
-        }
-    }
-
-    /// Least project role that may exercise this permission.
-    #[must_use]
-    pub const fn minimum_project_role(self) -> Option<ProjectRole> {
-        match self {
-            Self::Public | Self::AuthRead => None,
-            Self::JobsRun
-            | Self::JobsCancel
-            | Self::WorkflowsOperate
-            | Self::AutomationsOperate => Some(ProjectRole::Operator),
-            Self::AuthWrite
-            | Self::SystemWrite
-            | Self::JobsWrite
-            | Self::WorkflowsWrite
-            | Self::AutomationsWrite
-            // A memory write admits a claim into governed knowledge, which is a
-            // trust transition rather than an operation, so it sits with the
-            // administrative permissions rather than the operator ones.
-            | Self::MemoryWrite => Some(ProjectRole::Admin),
-            Self::AuditRead
-            | Self::SystemRead
-            | Self::JobsRead
-            | Self::WorkflowsRead
-            | Self::AutomationsRead
-            | Self::MemoryRead => Some(ProjectRole::Viewer),
-        }
-    }
-
-    #[must_use]
-    pub const fn resource(self) -> ResourceKind {
-        match self {
-            Self::Public => ResourceKind::Public,
-            Self::AuthRead | Self::AuthWrite => ResourceKind::Identity,
-            Self::AuditRead => ResourceKind::Audit,
-            Self::SystemRead | Self::SystemWrite => ResourceKind::System,
-            Self::JobsRead | Self::JobsWrite | Self::JobsRun | Self::JobsCancel => {
-                ResourceKind::Jobs
-            }
-            Self::WorkflowsRead | Self::WorkflowsWrite | Self::WorkflowsOperate => {
-                ResourceKind::Workflows
-            }
-            Self::AutomationsRead | Self::AutomationsWrite | Self::AutomationsOperate => {
-                ResourceKind::Automations
-            }
-            Self::MemoryRead | Self::MemoryWrite => ResourceKind::Memory,
-        }
-    }
+permissions! {
+    Public => ("public", Public, None),
+    AuthRead => ("auth:read", Identity, None),
+    AuthWrite => ("auth:write", Identity, Some(ProjectRole::Admin)),
+    AuditRead => ("audit:read", Audit, Some(ProjectRole::Viewer)),
+    SystemRead => ("system:read", System, Some(ProjectRole::Viewer)),
+    SystemWrite => ("system:write", System, Some(ProjectRole::Admin)),
+    JobsRead => ("jobs:read", Jobs, Some(ProjectRole::Viewer)),
+    JobsWrite => ("jobs:write", Jobs, Some(ProjectRole::Admin)),
+    WorkflowsRead => ("workflows:read", Workflows, Some(ProjectRole::Viewer)),
+    WorkflowsWrite => ("workflows:write", Workflows, Some(ProjectRole::Admin)),
+    AutomationsRead => ("automations:read", Automations, Some(ProjectRole::Viewer)),
+    AutomationsWrite => ("automations:write", Automations, Some(ProjectRole::Admin)),
+    JobsRun => ("jobs:run", Jobs, Some(ProjectRole::Operator)),
+    JobsCancel => ("jobs:cancel", Jobs, Some(ProjectRole::Operator)),
+    WorkflowsOperate => ("workflows:operate", Workflows, Some(ProjectRole::Operator)),
+    AutomationsOperate => ("automations:operate", Automations, Some(ProjectRole::Operator)),
+    GraphsRead => ("graphs:read", Graphs, Some(ProjectRole::Viewer)),
+    GraphsWrite => ("graphs:write", Graphs, Some(ProjectRole::Admin)),
+    AgentsRead => ("agents:read", Agents, Some(ProjectRole::Viewer)),
+    AgentsWrite => ("agents:write", Agents, Some(ProjectRole::Admin)),
+    MemoryRead => ("memory:read", Memory, Some(ProjectRole::Viewer)),
+    MemoryWrite => ("memory:write", Memory, Some(ProjectRole::Admin)),
+    ConnectorsRead => ("connectors:read", Connectors, Some(ProjectRole::Viewer)),
+    ConnectorsWrite => ("connectors:write", Connectors, Some(ProjectRole::Admin)),
+    ReviewRead => ("review:read", Review, Some(ProjectRole::Viewer)),
+    ReviewWrite => ("review:write", Review, Some(ProjectRole::Admin)),
+    AgentsOperate => ("agents:operate", Agents, Some(ProjectRole::Operator)),
+    ReasoningOperate => ("reasoning:operate", Reasoning, Some(ProjectRole::Operator)),
+    CertificatesRead => ("certificates:read", Certificates, Some(ProjectRole::Viewer)),
+    IngestionRead => ("ingestion:read", Ingestion, Some(ProjectRole::Viewer)),
+    IngestionOperate => ("ingestion:operate", Ingestion, Some(ProjectRole::Operator)),
+    ProjectMembersWrite => ("project-members:write", ProjectMemberships, Some(ProjectRole::Admin)),
+    ServiceAccountsWrite => ("service-accounts:write", ServiceAccounts, Some(ProjectRole::Admin)),
 }
 
 /// Compatibility name retained for downstream users of the original contract API.
@@ -218,12 +185,13 @@ impl ResourceKind {
 pub enum OwnershipRule {
     Unscoped,
     SelectedProject,
+    PathProject,
 }
 
 impl OwnershipRule {
     #[must_use]
     pub const fn is_required(self) -> bool {
-        matches!(self, Self::SelectedProject)
+        !matches!(self, Self::Unscoped)
     }
 
     #[must_use]
@@ -231,6 +199,7 @@ impl OwnershipRule {
         match self {
             Self::Unscoped => "unscoped",
             Self::SelectedProject => "selected_project",
+            Self::PathProject => "path_project",
         }
     }
 }
@@ -396,6 +365,51 @@ macro_rules! http_method {
 }
 
 macro_rules! required_permission {
+    ("graphs:read") => {
+        RequiredPermission::GraphsRead
+    };
+    ("graphs:write") => {
+        RequiredPermission::GraphsWrite
+    };
+    ("agents:read") => {
+        RequiredPermission::AgentsRead
+    };
+    ("agents:write") => {
+        RequiredPermission::AgentsWrite
+    };
+    ("connectors:read") => {
+        RequiredPermission::ConnectorsRead
+    };
+    ("connectors:write") => {
+        RequiredPermission::ConnectorsWrite
+    };
+    ("review:read") => {
+        RequiredPermission::ReviewRead
+    };
+    ("review:write") => {
+        RequiredPermission::ReviewWrite
+    };
+    ("agents:operate") => {
+        RequiredPermission::AgentsOperate
+    };
+    ("reasoning:operate") => {
+        RequiredPermission::ReasoningOperate
+    };
+    ("certificates:read") => {
+        RequiredPermission::CertificatesRead
+    };
+    ("ingestion:read") => {
+        RequiredPermission::IngestionRead
+    };
+    ("ingestion:operate") => {
+        RequiredPermission::IngestionOperate
+    };
+    ("project-members:write") => {
+        RequiredPermission::ProjectMembersWrite
+    };
+    ("service-accounts:write") => {
+        RequiredPermission::ServiceAccountsWrite
+    };
     ("public") => {
         RequiredPermission::Public
     };
@@ -453,6 +467,9 @@ macro_rules! required_permission {
 }
 
 macro_rules! ownership_rule {
+    (path) => {
+        OwnershipRule::PathProject
+    };
     (true) => {
         OwnershipRule::SelectedProject
     };
@@ -462,6 +479,9 @@ macro_rules! ownership_rule {
 }
 
 macro_rules! project_context_rule {
+    (path) => {
+        ProjectContextRule::None
+    };
     (true) => {
         ProjectContextRule::SelectedProject
     };
@@ -646,8 +666,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/projects/{project_id}/memberships",
         "listProjectMemberships",
-        "auth:read",
-        false,
+        "project-members:write",
+        path,
         true,
         None,
         "ListProjectMembershipsResponse",
@@ -657,8 +677,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/projects/{project_id}/memberships",
         "upsertProjectMembership",
-        "auth:read",
-        false,
+        "project-members:write",
+        path,
         true,
         Some("UpsertProjectMembershipRequest"),
         "ProjectMembershipResponse",
@@ -668,8 +688,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "DELETE",
         "/v1/projects/{project_id}/memberships/{principal_kind}/{principal_name}",
         "deleteProjectMembership",
-        "auth:read",
-        false,
+        "project-members:write",
+        path,
         true,
         None,
         "EmptyResponse",
@@ -679,8 +699,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/service-accounts",
         "listServiceAccounts",
-        "auth:write",
-        false,
+        "service-accounts:write",
+        true,
         true,
         None,
         "ListServiceAccountsResponse",
@@ -690,8 +710,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/service-accounts",
         "createServiceAccount",
-        "auth:write",
-        false,
+        "service-accounts:write",
+        true,
         true,
         Some("CreateServiceAccountRequest"),
         "CreateServiceAccountResponse",
@@ -701,12 +721,12 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/service-accounts/{id}/revoke",
         "revokeServiceAccount",
-        "auth:write",
-        false,
+        "service-accounts:write",
+        true,
         true,
         None,
-        "ServiceAccountResponse",
-        "200"
+        "EmptyResponse",
+        "204"
     ),
     endpoint!(
         "GET",
@@ -888,7 +908,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/graphs",
         "listGraphs",
-        "system:read",
+        "graphs:read",
         true,
         true,
         None,
@@ -899,7 +919,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/graphs",
         "createGraph",
-        "system:write",
+        "graphs:write",
         true,
         true,
         Some("CreateGraphRequest"),
@@ -910,7 +930,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/graphs/{id}",
         "getGraph",
-        "system:read",
+        "graphs:read",
         true,
         true,
         None,
@@ -921,7 +941,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/agents",
         "listAgents",
-        "system:read",
+        "agents:read",
         true,
         true,
         None,
@@ -932,7 +952,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/agents",
         "createAgent",
-        "system:write",
+        "agents:write",
         true,
         true,
         Some("CreateAgentRequest"),
@@ -943,7 +963,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/agents/{id}",
         "getAgent",
-        "system:read",
+        "agents:read",
         true,
         true,
         None,
@@ -954,7 +974,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/agents/{id}/runs",
         "startAgentRun",
-        "system:write",
+        "agents:operate",
         true,
         true,
         Some("StartAgentRunRequest"),
@@ -965,7 +985,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/agent-runs",
         "listAgentRuns",
-        "system:read",
+        "agents:read",
         true,
         true,
         None,
@@ -976,7 +996,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/agent-runs/{id}",
         "getAgentRun",
-        "system:read",
+        "agents:read",
         true,
         true,
         None,
@@ -987,7 +1007,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/reasoning/ask",
         "askReasoning",
-        "system:write",
+        "reasoning:operate",
         true,
         true,
         Some("AskRequest"),
@@ -1031,7 +1051,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/ir/runs",
         "startIrRun",
-        "memory:write",
+        "jobs:run",
         true,
         true,
         Some("StartIrRunRequest"),
@@ -1075,7 +1095,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/assurance/certificates",
         "listAssuranceCertificates",
-        "memory:read",
+        "certificates:read",
         true,
         true,
         None,
@@ -1086,7 +1106,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/assurance/certificates/{id}",
         "getAssuranceCertificate",
-        "memory:read",
+        "certificates:read",
         true,
         true,
         None,
@@ -1097,7 +1117,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/assurance/certificates/{id}/bundle",
         "getAssuranceCertificateBundle",
-        "memory:read",
+        "certificates:read",
         true,
         true,
         None,
@@ -1108,7 +1128,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/reasoning/certificates",
         "listCertificates",
-        "system:read",
+        "certificates:read",
         true,
         true,
         None,
@@ -1119,7 +1139,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/sources",
         "listMemorySources",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1130,7 +1150,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/sources",
         "createMemorySource",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemorySourceRequest"),
@@ -1141,7 +1161,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/sources/{id}",
         "getMemorySource",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1152,7 +1172,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/evidence",
         "listMemoryEvidence",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1163,7 +1183,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/evidence",
         "createMemoryEvidence",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemoryEvidenceRequest"),
@@ -1174,7 +1194,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/evidence/{id}",
         "getMemoryEvidence",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1185,7 +1205,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/entities",
         "listMemoryEntities",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1196,7 +1216,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/entities",
         "createMemoryEntity",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemoryEntityRequest"),
@@ -1207,7 +1227,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/entities/{id}",
         "getMemoryEntity",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1218,7 +1238,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/claims",
         "listMemoryClaims",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1229,7 +1249,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/claims",
         "createMemoryClaim",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemoryClaimRequest"),
@@ -1240,7 +1260,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/claims/{id}",
         "getMemoryClaim",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1251,7 +1271,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/events",
         "listMemoryEvents",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1262,7 +1282,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/events",
         "createMemoryEvent",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemoryEventRequest"),
@@ -1273,7 +1293,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/events/{id}",
         "getMemoryEvent",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1284,7 +1304,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/relationships",
         "listMemoryRelationships",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1295,7 +1315,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/relationships",
         "createMemoryRelationship",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemoryRelationshipRequest"),
@@ -1306,7 +1326,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/relationships/{id}",
         "getMemoryRelationship",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1317,7 +1337,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/contracts",
         "listMemoryContracts",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1328,7 +1348,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/contracts",
         "createMemoryContract",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemoryContractRequest"),
@@ -1339,7 +1359,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/contracts/{id}",
         "getMemoryContract",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1350,7 +1370,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/subgraphs",
         "listMemorySubgraphs",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1361,7 +1381,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/subgraphs",
         "createMemorySubgraph",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemorySubgraphRequest"),
@@ -1372,7 +1392,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/subgraphs/{id}",
         "getMemorySubgraph",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1383,7 +1403,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/subgraphs/{id}/activate",
         "activateMemorySubgraph",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("ActivateMemorySubgraphRequest"),
@@ -1394,7 +1414,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/subgraphs/{id}/members",
         "createMemorySubgraphMember",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateMemorySubgraphMemberRequest"),
@@ -1405,7 +1425,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/canonical-entities",
         "listCanonicalEntities",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1416,7 +1436,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/canonical-entities",
         "createCanonicalEntity",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateCanonicalEntityRequest"),
@@ -1427,7 +1447,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/entity-resolutions",
         "listEntityResolutions",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1438,7 +1458,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/entity-resolutions",
         "createEntityResolution",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateEntityResolutionRequest"),
@@ -1449,7 +1469,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/entity-resolutions/{id}/confirm",
         "confirmEntityResolution",
-        "system:write",
+        "memory:write",
         true,
         true,
         None,
@@ -1460,7 +1480,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/entity-resolutions/{id}/reject",
         "rejectEntityResolution",
-        "system:write",
+        "memory:write",
         true,
         true,
         None,
@@ -1471,7 +1491,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/memory/conflicts",
         "listClaimConflicts",
-        "system:read",
+        "memory:read",
         true,
         true,
         None,
@@ -1482,7 +1502,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/conflicts/{id}/resolve",
         "resolveClaimConflict",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("ResolveClaimConflictRequest"),
@@ -1493,7 +1513,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/conflicts/{id}/dismiss",
         "dismissClaimConflict",
-        "system:write",
+        "memory:write",
         true,
         true,
         None,
@@ -1504,7 +1524,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/summary-traces",
         "createSummaryTrace",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateSummaryTraceRequest"),
@@ -1515,7 +1535,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/entity-graph-attachments",
         "createEntityGraphAttachment",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateEntityGraphAttachmentRequest"),
@@ -1526,7 +1546,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/memory/subgraph-edges",
         "createSubgraphEdge",
-        "system:write",
+        "memory:write",
         true,
         true,
         Some("CreateSubgraphEdgeRequest"),
@@ -1537,7 +1557,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/ingestion/connectors",
         "listIngestionConnectors",
-        "system:read",
+        "connectors:read",
         true,
         true,
         None,
@@ -1548,7 +1568,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/ingestion/connectors",
         "createIngestionConnector",
-        "system:write",
+        "connectors:write",
         true,
         true,
         Some("CreateIngestionConnectorRequest"),
@@ -1559,7 +1579,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/ingestion/connectors/{id}",
         "getIngestionConnector",
-        "system:read",
+        "connectors:read",
         true,
         true,
         None,
@@ -1570,7 +1590,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/ingestion/connectors/{id}/runs",
         "runIngestionConnector",
-        "system:write",
+        "ingestion:operate",
         true,
         true,
         None,
@@ -1581,7 +1601,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/ingestion/runs",
         "listIngestionRuns",
-        "system:read",
+        "ingestion:read",
         true,
         true,
         None,
@@ -1592,7 +1612,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/ingestion/runs/{id}",
         "getIngestionRun",
-        "system:read",
+        "ingestion:read",
         true,
         true,
         None,
@@ -1603,7 +1623,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "GET",
         "/v1/ingestion/review/claims",
         "listIngestionReviewClaims",
-        "system:read",
+        "review:read",
         true,
         true,
         None,
@@ -1614,7 +1634,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/ingestion/review/claims/{id}/approve",
         "approveIngestionReviewClaim",
-        "system:write",
+        "review:write",
         true,
         true,
         None,
@@ -1625,7 +1645,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         "POST",
         "/v1/ingestion/review/claims/{id}/reject",
         "rejectIngestionReviewClaim",
-        "system:write",
+        "review:write",
         true,
         true,
         None,
@@ -1984,4 +2004,37 @@ fn path_matches(template: &str, concrete: &str) -> bool {
 #[must_use]
 pub fn distinct_paths() -> BTreeSet<&'static str> {
     ENDPOINTS.iter().map(|endpoint| endpoint.path).collect()
+}
+
+/// Generates the runtime role matrix without a second policy authority.
+#[must_use]
+pub fn authorization_matrix_markdown() -> String {
+    use std::fmt::Write as _;
+    let mut document = String::from(
+        "# Authorization matrix\n\nGenerated from typed endpoint policies. Regenerate with `cargo run -p capsulet-api --bin export-authorization`.\n\nAuthentication, token scope, and the role in the selected project must all permit an operation.\nDatabase service accounts never grant platform-admin rights; explicit scopes are a ceiling.\nAn unknown role grants nothing. Membership endpoints select their project from the path.\nResource reads with missing or mismatched ownership return a generic `404`; selecting a project\nwithout membership or lacking action permission returns `403`. Webhooks require their own signature.\n\n| Operation | Method | Path | Permission | Ownership | Viewer | Operator | Admin |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    );
+    for endpoint in ENDPOINTS {
+        let policy = endpoint.policy;
+        let allowed = |role| {
+            if policy.allows(role, false) {
+                "allow"
+            } else {
+                "deny"
+            }
+        };
+        writeln!(
+            &mut document,
+            "| `{}` | {} | `{}` | `{}` | {} | {} | {} | {} |",
+            endpoint.operation_id,
+            endpoint.method,
+            endpoint.path,
+            policy.permission.as_str(),
+            policy.ownership.as_str(),
+            allowed(ProjectRole::Viewer),
+            allowed(ProjectRole::Operator),
+            allowed(ProjectRole::Admin)
+        )
+        .expect("writing into String cannot fail");
+    }
+    document
 }

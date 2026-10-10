@@ -14,6 +14,8 @@ pub(crate) enum ApiError {
     Unauthorized,
     #[error("insufficient permission; required scope: {0}")]
     Forbidden(&'static str),
+    #[error("resource not found")]
+    ResourceNotFound,
     #[error("public route is missing endpoint contract metadata: {0}")]
     MissingEndpointContract(String),
     #[error("validation error: {0}")]
@@ -92,6 +94,14 @@ impl ApiError {
         Self::Store(error.to_string())
     }
 
+    pub(crate) fn scoped_store<S: crate::ApiStore>(error: S::Error) -> Self {
+        if S::is_scope_mismatch(&error) {
+            Self::ResourceNotFound
+        } else {
+            Self::store(error)
+        }
+    }
+
     pub(crate) fn object_store(error: impl Display) -> Self {
         Self::ObjectStore(error.to_string())
     }
@@ -108,7 +118,8 @@ impl ApiError {
             Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            Self::JobDefinitionSourceNotFound(_)
+            Self::ResourceNotFound
+            | Self::JobDefinitionSourceNotFound(_)
             | Self::WorkflowNotFound(_)
             | Self::WorkflowRunNotFound(_)
             | Self::GraphNotFound(_)
@@ -136,6 +147,7 @@ impl ApiError {
         match self {
             Self::Unauthorized => "authentication_required",
             Self::Forbidden(_) => "permission_denied",
+            Self::ResourceNotFound => "resource_not_found",
             Self::MissingEndpointContract(_) => "missing_endpoint_contract",
             Self::Validation(_) => "validation_error",
             Self::QueueOverloaded(_) => "queue_overloaded",

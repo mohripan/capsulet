@@ -96,6 +96,7 @@ fn lists_the_executable_gate_graph_as_json() {
         "lint",
         "unit",
         "api-contracts",
+        "authorization",
         "sdk",
         "dashboard",
         "postgres",

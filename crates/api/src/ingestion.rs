@@ -166,7 +166,7 @@ where
         .store
         .upsert_ingestion_connector(&connector)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(ApiError::scoped_store::<S>)?;
     Ok((
         StatusCode::CREATED,
         Json(IngestionConnectorResponse::from(&connector)),
@@ -210,7 +210,7 @@ where
     let id = IngestionConnectorId::new(id).map_err(ApiError::validation)?;
     let Some(connector) = state
         .store
-        .find_ingestion_connector(&id)
+        .find_ingestion_connector(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -234,11 +234,12 @@ where
     S: ApiStore,
     O: ObjectStore,
 {
-    let context = write_context(&headers, &principal)?;
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = IngestionConnectorId::new(id).map_err(ApiError::validation)?;
     let Some(connector) = state
         .store
-        .find_ingestion_connector(&id)
+        .find_ingestion_connector(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -294,7 +295,7 @@ where
     let id = IngestionRunId::new(id).map_err(ApiError::validation)?;
     let Some(run) = state
         .store
-        .find_ingestion_run(&id)
+        .find_ingestion_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -799,7 +800,7 @@ fn output_ids(records: &[IngestionRunOutputRecord], kind: &str) -> Vec<String> {
 
 fn write_context(headers: &HeaderMap, principal: &Principal) -> Result<ProjectContext, ApiError> {
     let context = project_context(headers, principal)?;
-    require_project_role(&context, "editor")?;
+    require_project_role(&context, crate::ProjectRole::Admin)?;
     Ok(context)
 }
 

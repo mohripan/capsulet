@@ -105,7 +105,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
 
     if request.text.trim().is_empty() {
         return Err(ApiError::validation("text cannot be empty".to_string()));
@@ -223,7 +223,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
     let records = state
         .store
         .list_certificates(&context.tenant_id, &context.project_id, 100)

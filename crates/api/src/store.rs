@@ -32,6 +32,10 @@ use capsulet_runtime::RecordedEvent;
 pub trait ApiStore: Clone + Send + Sync + 'static {
     type Error: Display + Send + Sync + 'static;
 
+    fn is_scope_mismatch(_error: &Self::Error) -> bool {
+        false
+    }
+
     async fn ping(&self) -> Result<(), Self::Error>;
     async fn prometheus_metrics(&self) -> Result<String, Self::Error> {
         Ok(String::new())
@@ -66,6 +70,7 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         _tenant_id: &str,
         _principal_name: &str,
+        _principal_kind: &str,
     ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
         Ok(Vec::new())
     }
@@ -89,7 +94,7 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         _resource: &str,
         _id: &str,
     ) -> Result<Option<(String, String)>, Self::Error> {
-        Ok(Some(("default".to_string(), "default".to_string())))
+        Ok(None)
     }
     async fn set_resource_project(
         &self,
@@ -114,11 +119,18 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     }
     async fn list_service_accounts(
         &self,
+        _tenant_id: &str,
+        _project_id: &str,
         _limit: i64,
     ) -> Result<Vec<ServiceAccountRecord>, Self::Error> {
         Ok(Vec::new())
     }
-    async fn revoke_service_account(&self, _id: &str) -> Result<bool, Self::Error> {
+    async fn revoke_service_account(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _id: &str,
+    ) -> Result<bool, Self::Error> {
         Ok(false)
     }
     #[allow(clippy::too_many_arguments)]
@@ -436,6 +448,8 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn find_ingestion_connector(
         &self,
         id: &IngestionConnectorId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<IngestionConnector>, Self::Error>;
     async fn upsert_ingestion_run(&self, run: &IngestionRun) -> Result<(), Self::Error>;
     async fn list_ingestion_runs(
@@ -447,6 +461,8 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn find_ingestion_run(
         &self,
         id: &IngestionRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<IngestionRun>, Self::Error>;
     async fn upsert_ingestion_run_output(
         &self,
@@ -531,6 +547,9 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
 
 #[async_trait]
 impl ApiStore for PostgresStore {
+    fn is_scope_mismatch(error: &Self::Error) -> bool {
+        matches!(error, PostgresStoreError::ScopeMismatch)
+    }
     type Error = PostgresStoreError;
 
     async fn ping(&self) -> Result<(), Self::Error> {
@@ -576,8 +595,15 @@ impl ApiStore for PostgresStore {
         &self,
         tenant_id: &str,
         principal_name: &str,
+        principal_kind: &str,
     ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
-        PostgresStore::list_principal_project_memberships(self, tenant_id, principal_name).await
+        PostgresStore::list_principal_project_memberships(
+            self,
+            tenant_id,
+            principal_name,
+            principal_kind,
+        )
+        .await
     }
 
     async fn upsert_project_membership(
@@ -638,13 +664,20 @@ impl ApiStore for PostgresStore {
 
     async fn list_service_accounts(
         &self,
+        tenant_id: &str,
+        project_id: &str,
         limit: i64,
     ) -> Result<Vec<ServiceAccountRecord>, Self::Error> {
-        PostgresStore::list_service_accounts(self, limit).await
+        PostgresStore::list_service_accounts(self, tenant_id, project_id, limit).await
     }
 
-    async fn revoke_service_account(&self, id: &str) -> Result<bool, Self::Error> {
-        PostgresStore::revoke_service_account(self, id).await
+    async fn revoke_service_account(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        id: &str,
+    ) -> Result<bool, Self::Error> {
+        PostgresStore::revoke_service_account(self, tenant_id, project_id, id).await
     }
 
     async fn record_audit_event(
@@ -1183,8 +1216,11 @@ impl ApiStore for PostgresStore {
     async fn find_ingestion_connector(
         &self,
         id: &IngestionConnectorId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<IngestionConnector>, Self::Error> {
-        self.find_ingestion_connector(id).await
+        self.find_ingestion_connector(id, tenant_id, project_id)
+            .await
     }
 
     async fn upsert_ingestion_run(&self, run: &IngestionRun) -> Result<(), Self::Error> {
@@ -1203,8 +1239,10 @@ impl ApiStore for PostgresStore {
     async fn find_ingestion_run(
         &self,
         id: &IngestionRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<IngestionRun>, Self::Error> {
-        self.find_ingestion_run(id).await
+        self.find_ingestion_run(id, tenant_id, project_id).await
     }
 
     async fn upsert_ingestion_run_output(

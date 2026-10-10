@@ -139,6 +139,7 @@ impl PostgresStore {
         &self,
         tenant_id: &str,
         principal_name: &str,
+        principal_kind: &str,
     ) -> Result<Vec<ProjectMembershipRecord>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
@@ -147,12 +148,13 @@ impl PostgresStore {
             FROM project_memberships
             WHERE tenant_id = $1
               AND principal_name = $2
-              AND principal_kind IN ('user', 'service_account')
+              AND principal_kind = $3
             ORDER BY project_id ASC, principal_kind ASC
             ",
         )
         .bind(tenant_id)
         .bind(principal_name)
+        .bind(principal_kind)
         .fetch_all(&self.pool)
         .await?;
 

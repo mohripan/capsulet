@@ -119,7 +119,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_admin")?;
+    require_project_role(&context, crate::ProjectRole::Admin)?;
 
     // Admission first. Nothing unadmitted is stored, so a stored definition is
     // one somebody could actually run.
@@ -171,7 +171,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
 
     let versions = state
         .store
@@ -211,7 +211,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
 
     let version = state
         .store
@@ -245,7 +245,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
 
     let certificates = state
         .store
@@ -275,7 +275,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
 
     let stored = state
         .store
@@ -309,7 +309,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
 
     let stored = state
         .store
@@ -456,7 +456,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_editor")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
 
     let version = state
         .store
@@ -521,7 +521,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
 
     let runs = state
         .store
@@ -551,7 +551,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
 
     let record = state
         .store
@@ -584,7 +584,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_viewer")?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
 
     if state
         .store

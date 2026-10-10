@@ -188,8 +188,13 @@ fn operation_document(endpoint: &crate::EndpointContract) -> Value {
         },
         "security": security,
         "x-capsulet-stability": endpoint.stability.as_str(),
-        "x-capsulet-required-scope": endpoint.required_permission.as_str(),
-        "x-capsulet-project-context": endpoint.project_context.is_required()
+        "x-capsulet-required-scope": endpoint.policy.permission.as_str(),
+        "x-capsulet-project-context": endpoint.project_context.is_required(),
+        "x-capsulet-resource": endpoint.policy.resource.as_str(),
+        "x-capsulet-ownership": endpoint.policy.ownership.as_str(),
+        "x-capsulet-project-roles": ([crate::ProjectRole::Viewer, crate::ProjectRole::Operator, crate::ProjectRole::Admin]
+            .into_iter().filter(|role| endpoint.policy.allows(*role, false))
+            .map(crate::ProjectRole::as_str).collect::<Vec<_>>())
     });
     if let Some(body) = request_body {
         operation["requestBody"] = body;

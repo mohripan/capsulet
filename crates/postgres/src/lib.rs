@@ -228,6 +228,8 @@ impl PostgresStore {
 /// `PostgreSQL` adapter error.
 #[derive(Debug, Error)]
 pub enum PostgresStoreError {
+    #[error("resource not found in selected tenant/project")]
+    ScopeMismatch,
     #[error("postgres error: {0}")]
     Sqlx(#[from] sqlx::Error),
     #[error("migration error: {0}")]

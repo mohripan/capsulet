@@ -4630,8 +4630,15 @@
         },
         "security": [],
         "summary": "get health",
+        "x-capsulet-ownership": "unscoped",
         "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "public",
+        "x-capsulet-resource": "public",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -4673,8 +4680,15 @@
         },
         "security": [],
         "summary": "get liveness",
+        "x-capsulet-ownership": "unscoped",
         "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "public",
+        "x-capsulet-resource": "public",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -4716,8 +4730,15 @@
         },
         "security": [],
         "summary": "get metrics",
+        "x-capsulet-ownership": "unscoped",
         "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "public",
+        "x-capsulet-resource": "public",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -4759,8 +4780,15 @@
         },
         "security": [],
         "summary": "get open api",
+        "x-capsulet-ownership": "unscoped",
         "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "public",
+        "x-capsulet-resource": "public",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -4802,8 +4830,15 @@
         },
         "security": [],
         "summary": "get readiness",
+        "x-capsulet-ownership": "unscoped",
         "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "public",
+        "x-capsulet-resource": "public",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -4858,8 +4893,15 @@
           }
         ],
         "summary": "list agent runs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:read",
+        "x-capsulet-resource": "agents",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -4922,8 +4964,15 @@
           }
         ],
         "summary": "get agent run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:read",
+        "x-capsulet-resource": "agents",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -4978,8 +5027,15 @@
           }
         ],
         "summary": "list agents",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:read",
+        "x-capsulet-resource": "agents",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -5042,8 +5098,13 @@
           }
         ],
         "summary": "create agent",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:write",
+        "x-capsulet-resource": "agents",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5106,8 +5167,15 @@
           }
         ],
         "summary": "get agent",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:read",
+        "x-capsulet-resource": "agents",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5181,8 +5249,14 @@
           }
         ],
         "summary": "start agent run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:operate",
+        "x-capsulet-resource": "agents",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5237,8 +5311,15 @@
           }
         ],
         "summary": "list assurance certificates",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "certificates:read",
+        "x-capsulet-resource": "certificates",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5301,8 +5382,15 @@
           }
         ],
         "summary": "get assurance certificate",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "certificates:read",
+        "x-capsulet-resource": "certificates",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5365,8 +5453,15 @@
           }
         ],
         "summary": "get assurance certificate bundle",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "certificates:read",
+        "x-capsulet-resource": "certificates",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5421,8 +5516,15 @@
           }
         ],
         "summary": "list audit events",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "audit:read",
+        "x-capsulet-resource": "audit",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5468,8 +5570,15 @@
           }
         ],
         "summary": "get current principal",
+        "x-capsulet-ownership": "unscoped",
         "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "auth:read",
+        "x-capsulet-resource": "identity",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5524,8 +5633,15 @@
           }
         ],
         "summary": "list automations",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:read",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -5588,8 +5704,13 @@
           }
         ],
         "summary": "create automation",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:write",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5645,8 +5766,13 @@
           }
         ],
         "summary": "delete automation",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:write",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       },
       "get": {
@@ -5707,8 +5833,15 @@
           }
         ],
         "summary": "get automation",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:read",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       },
       "put": {
@@ -5779,8 +5912,13 @@
           }
         ],
         "summary": "update automation",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:write",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5843,8 +5981,14 @@
           }
         ],
         "summary": "disable automation",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:operate",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5907,8 +6051,14 @@
           }
         ],
         "summary": "enable automation",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:operate",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -5971,8 +6121,14 @@
           }
         ],
         "summary": "trigger automation",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:operate",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6035,8 +6191,15 @@
           }
         ],
         "summary": "list automation triggers",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:read",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6091,8 +6254,15 @@
           }
         ],
         "summary": "stream activity events",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "system:read",
+        "x-capsulet-resource": "system",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6147,8 +6317,15 @@
           }
         ],
         "summary": "list execution pools",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "system:read",
+        "x-capsulet-resource": "system",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6203,8 +6380,15 @@
           }
         ],
         "summary": "list graphs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "graphs:read",
+        "x-capsulet-resource": "graphs",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -6267,8 +6451,13 @@
           }
         ],
         "summary": "create graph",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "graphs:write",
+        "x-capsulet-resource": "graphs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6331,8 +6520,15 @@
           }
         ],
         "summary": "get graph",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "graphs:read",
+        "x-capsulet-resource": "graphs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6387,8 +6583,15 @@
           }
         ],
         "summary": "list host groups",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "system:read",
+        "x-capsulet-resource": "system",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6443,8 +6646,15 @@
           }
         ],
         "summary": "list ingestion connectors",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "connectors:read",
+        "x-capsulet-resource": "connectors",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -6507,8 +6717,13 @@
           }
         ],
         "summary": "create ingestion connector",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "connectors:write",
+        "x-capsulet-resource": "connectors",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6571,8 +6786,15 @@
           }
         ],
         "summary": "get ingestion connector",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "connectors:read",
+        "x-capsulet-resource": "connectors",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6635,8 +6857,14 @@
           }
         ],
         "summary": "run ingestion connector",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "ingestion:operate",
+        "x-capsulet-resource": "ingestion",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6699,8 +6927,15 @@
           }
         ],
         "summary": "list ingestion review claims",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "review:read",
+        "x-capsulet-resource": "review",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6763,8 +6998,13 @@
           }
         ],
         "summary": "approve ingestion review claim",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "review:write",
+        "x-capsulet-resource": "review",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6827,8 +7067,13 @@
           }
         ],
         "summary": "reject ingestion review claim",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "review:write",
+        "x-capsulet-resource": "review",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6883,8 +7128,15 @@
           }
         ],
         "summary": "list ingestion runs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "ingestion:read",
+        "x-capsulet-resource": "ingestion",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -6947,8 +7199,15 @@
           }
         ],
         "summary": "get ingestion run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "ingestion:read",
+        "x-capsulet-resource": "ingestion",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7003,8 +7262,15 @@
           }
         ],
         "summary": "list ir definitions",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -7067,8 +7333,13 @@
           }
         ],
         "summary": "register ir definition",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7131,8 +7402,15 @@
           }
         ],
         "summary": "get ir definition version",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7187,8 +7465,15 @@
           }
         ],
         "summary": "list ir runs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -7251,8 +7536,14 @@
           }
         ],
         "summary": "start ir run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "jobs:run",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7315,8 +7606,15 @@
           }
         ],
         "summary": "get ir run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7379,8 +7677,15 @@
           }
         ],
         "summary": "get ir run events",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7445,8 +7750,15 @@
           }
         ],
         "summary": "list job definitions",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "system:read",
+        "x-capsulet-resource": "system",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -7509,8 +7821,13 @@
           }
         ],
         "summary": "create job definition",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:write",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7566,8 +7883,13 @@
           }
         ],
         "summary": "delete job definition",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:write",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       },
       "get": {
@@ -7628,8 +7950,15 @@
           }
         ],
         "summary": "get job definition",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "system:read",
+        "x-capsulet-resource": "system",
         "x-capsulet-stability": "experimental"
       },
       "put": {
@@ -7700,8 +8029,13 @@
           }
         ],
         "summary": "update job definition",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:write",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7764,8 +8098,15 @@
           }
         ],
         "summary": "get job definition source",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "system:read",
+        "x-capsulet-resource": "system",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -7878,8 +8219,15 @@
           }
         ],
         "summary": "list job runs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:read",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -7942,8 +8290,14 @@
           }
         ],
         "summary": "create job run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:run",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8006,8 +8360,15 @@
           }
         ],
         "summary": "get job run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:read",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8070,8 +8431,15 @@
           }
         ],
         "summary": "list job artifacts",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:read",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8142,8 +8510,15 @@
           }
         ],
         "summary": "download job artifact",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:read",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8206,8 +8581,14 @@
           }
         ],
         "summary": "cancel job run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:cancel",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8270,8 +8651,15 @@
           }
         ],
         "summary": "get job run logs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:read",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8334,8 +8722,15 @@
           }
         ],
         "summary": "stream job run logs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "jobs:read",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8390,8 +8785,15 @@
           }
         ],
         "summary": "list canonical entities",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -8454,8 +8856,13 @@
           }
         ],
         "summary": "create canonical entity",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8510,8 +8917,15 @@
           }
         ],
         "summary": "list memory claims",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -8574,8 +8988,13 @@
           }
         ],
         "summary": "create memory claim",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8638,8 +9057,15 @@
           }
         ],
         "summary": "get memory claim",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8702,8 +9128,15 @@
           }
         ],
         "summary": "list claim conflicts",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8766,8 +9199,13 @@
           }
         ],
         "summary": "dismiss claim conflict",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8840,8 +9278,13 @@
           }
         ],
         "summary": "resolve claim conflict",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -8896,8 +9339,15 @@
           }
         ],
         "summary": "list memory contracts",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -8960,8 +9410,13 @@
           }
         ],
         "summary": "create memory contract",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9024,8 +9479,15 @@
           }
         ],
         "summary": "get memory contract",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9080,8 +9542,15 @@
           }
         ],
         "summary": "list memory entities",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -9144,8 +9613,13 @@
           }
         ],
         "summary": "create memory entity",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9208,8 +9682,15 @@
           }
         ],
         "summary": "get memory entity",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9274,8 +9755,13 @@
           }
         ],
         "summary": "create entity graph attachment",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9338,8 +9824,15 @@
           }
         ],
         "summary": "list entity resolutions",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -9402,8 +9895,13 @@
           }
         ],
         "summary": "create entity resolution",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9466,8 +9964,13 @@
           }
         ],
         "summary": "confirm entity resolution",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9530,8 +10033,13 @@
           }
         ],
         "summary": "reject entity resolution",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9586,8 +10094,15 @@
           }
         ],
         "summary": "list memory events",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -9650,8 +10165,13 @@
           }
         ],
         "summary": "create memory event",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9714,8 +10234,15 @@
           }
         ],
         "summary": "get memory event",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9770,8 +10297,15 @@
           }
         ],
         "summary": "list memory evidence",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -9834,8 +10368,13 @@
           }
         ],
         "summary": "create memory evidence",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9898,8 +10437,15 @@
           }
         ],
         "summary": "get memory evidence",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -9954,8 +10500,15 @@
           }
         ],
         "summary": "list memory relationships",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -10018,8 +10571,13 @@
           }
         ],
         "summary": "create memory relationship",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10082,8 +10640,15 @@
           }
         ],
         "summary": "get memory relationship",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10138,8 +10703,15 @@
           }
         ],
         "summary": "list memory sources",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -10202,8 +10774,13 @@
           }
         ],
         "summary": "create memory source",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10266,8 +10843,15 @@
           }
         ],
         "summary": "get memory source",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10332,8 +10916,13 @@
           }
         ],
         "summary": "create subgraph edge",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10388,8 +10977,15 @@
           }
         ],
         "summary": "list memory subgraphs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -10452,8 +11048,13 @@
           }
         ],
         "summary": "create memory subgraph",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10516,8 +11117,15 @@
           }
         ],
         "summary": "get memory subgraph",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10590,8 +11198,13 @@
           }
         ],
         "summary": "activate memory subgraph",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10664,8 +11277,13 @@
           }
         ],
         "summary": "create memory subgraph member",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10730,8 +11348,13 @@
           }
         ],
         "summary": "create summary trace",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10777,8 +11400,15 @@
           }
         ],
         "summary": "list projects",
+        "x-capsulet-ownership": "unscoped",
         "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "auth:read",
+        "x-capsulet-resource": "identity",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10832,8 +11462,13 @@
           }
         ],
         "summary": "list project memberships",
+        "x-capsulet-ownership": "path_project",
         "x-capsulet-project-context": false,
-        "x-capsulet-required-scope": "auth:read",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "project-members:write",
+        "x-capsulet-resource": "project_memberships",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -10895,8 +11530,13 @@
           }
         ],
         "summary": "upsert project membership",
+        "x-capsulet-ownership": "path_project",
         "x-capsulet-project-context": false,
-        "x-capsulet-required-scope": "auth:read",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "project-members:write",
+        "x-capsulet-resource": "project_memberships",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -10959,8 +11599,13 @@
           }
         ],
         "summary": "delete project membership",
+        "x-capsulet-ownership": "path_project",
         "x-capsulet-project-context": false,
-        "x-capsulet-required-scope": "auth:read",
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "project-members:write",
+        "x-capsulet-resource": "project_memberships",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11025,8 +11670,14 @@
           }
         ],
         "summary": "ask reasoning",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:write",
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "reasoning:operate",
+        "x-capsulet-resource": "reasoning",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11081,8 +11732,15 @@
           }
         ],
         "summary": "list certificates",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
-        "x-capsulet-required-scope": "system:read",
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "certificates:read",
+        "x-capsulet-resource": "certificates",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11090,6 +11748,15 @@
       "get": {
         "operationId": "listServiceAccounts",
         "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "description": "Optional caller-supplied request correlation identifier.",
             "in": "header",
@@ -11128,13 +11795,27 @@
           }
         ],
         "summary": "list service accounts",
-        "x-capsulet-project-context": false,
-        "x-capsulet-required-scope": "auth:write",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "service-accounts:write",
+        "x-capsulet-resource": "service_accounts",
         "x-capsulet-stability": "experimental"
       },
       "post": {
         "operationId": "createServiceAccount",
         "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "description": "Optional caller-supplied request correlation identifier.",
             "in": "header",
@@ -11183,8 +11864,13 @@
           }
         ],
         "summary": "create service account",
-        "x-capsulet-project-context": false,
-        "x-capsulet-required-scope": "auth:write",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "service-accounts:write",
+        "x-capsulet-resource": "service_accounts",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11201,6 +11887,15 @@
             }
           },
           {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "Optional caller-supplied request correlation identifier.",
             "in": "header",
             "name": "x-request-id",
@@ -11211,15 +11906,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ServiceAccountResponse"
-                }
-              }
-            },
-            "description": "Successful response"
+          "204": {
+            "description": "No content"
           },
           "default": {
             "content": {
@@ -11238,8 +11926,13 @@
           }
         ],
         "summary": "revoke service account",
-        "x-capsulet-project-context": false,
-        "x-capsulet-required-scope": "auth:write",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "service-accounts:write",
+        "x-capsulet-resource": "service_accounts",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11294,8 +11987,15 @@
           }
         ],
         "summary": "get topology",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "system:read",
+        "x-capsulet-resource": "system",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11350,8 +12050,15 @@
           }
         ],
         "summary": "list trigger plugins",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:read",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -11414,8 +12121,13 @@
           }
         ],
         "summary": "create trigger plugin",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:write",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11478,8 +12190,15 @@
           }
         ],
         "summary": "get trigger plugin",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "automations:read",
+        "x-capsulet-resource": "automations",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11589,8 +12308,15 @@
         },
         "security": [],
         "summary": "ingest webhook",
+        "x-capsulet-ownership": "unscoped",
         "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "public",
+        "x-capsulet-resource": "public",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11703,8 +12429,15 @@
           }
         ],
         "summary": "list workflow runs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:read",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11767,8 +12500,15 @@
           }
         ],
         "summary": "get workflow run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:read",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11831,8 +12571,14 @@
           }
         ],
         "summary": "cancel workflow run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:operate",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11895,8 +12641,15 @@
           }
         ],
         "summary": "get workflow run logs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:read",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -11959,8 +12712,15 @@
           }
         ],
         "summary": "stream workflow run logs",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:read",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -12023,8 +12783,14 @@
           }
         ],
         "summary": "remove workflow run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:operate",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -12087,8 +12853,14 @@
           }
         ],
         "summary": "resume workflow run",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:operate",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -12143,8 +12915,15 @@
           }
         ],
         "summary": "list workflows",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:read",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       },
       "post": {
@@ -12207,8 +12986,13 @@
           }
         ],
         "summary": "create workflow",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:write",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -12264,8 +13048,13 @@
           }
         ],
         "summary": "delete workflow",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:write",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       },
       "get": {
@@ -12326,8 +13115,15 @@
           }
         ],
         "summary": "get workflow",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:read",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       },
       "put": {
@@ -12398,8 +13194,13 @@
           }
         ],
         "summary": "update workflow",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:write",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     },
@@ -12462,8 +13263,15 @@
           }
         ],
         "summary": "get workflow editability",
+        "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
         "x-capsulet-required-scope": "workflows:read",
+        "x-capsulet-resource": "workflows",
         "x-capsulet-stability": "experimental"
       }
     }

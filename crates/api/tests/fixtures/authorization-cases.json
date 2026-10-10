@@ -1,0 +1,632 @@
+[
+  {
+    "operation_id": "getHealth",
+    "minimum_role": "anonymous",
+    "ownership": "unscoped"
+  },
+  {
+    "operation_id": "getLiveness",
+    "minimum_role": "anonymous",
+    "ownership": "unscoped"
+  },
+  {
+    "operation_id": "getReadiness",
+    "minimum_role": "anonymous",
+    "ownership": "unscoped"
+  },
+  {
+    "operation_id": "getMetrics",
+    "minimum_role": "anonymous",
+    "ownership": "unscoped"
+  },
+  {
+    "operation_id": "getOpenApi",
+    "minimum_role": "anonymous",
+    "ownership": "unscoped"
+  },
+  {
+    "operation_id": "ingestWebhook",
+    "minimum_role": "anonymous",
+    "ownership": "unscoped"
+  },
+  {
+    "operation_id": "getCurrentPrincipal",
+    "minimum_role": "authenticated",
+    "ownership": "unscoped"
+  },
+  {
+    "operation_id": "listProjects",
+    "minimum_role": "authenticated",
+    "ownership": "unscoped"
+  },
+  {
+    "operation_id": "listProjectMemberships",
+    "minimum_role": "admin",
+    "ownership": "path_project"
+  },
+  {
+    "operation_id": "upsertProjectMembership",
+    "minimum_role": "admin",
+    "ownership": "path_project"
+  },
+  {
+    "operation_id": "deleteProjectMembership",
+    "minimum_role": "admin",
+    "ownership": "path_project"
+  },
+  {
+    "operation_id": "listServiceAccounts",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createServiceAccount",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "revokeServiceAccount",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listJobDefinitions",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createJobDefinition",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getJobDefinition",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "updateJobDefinition",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "deleteJobDefinition",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getJobDefinitionSource",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listExecutionPools",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listAuditEvents",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listHostGroups",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getTopology",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listWorkflows",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createWorkflow",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getWorkflow",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "updateWorkflow",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "deleteWorkflow",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getWorkflowEditability",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listGraphs",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createGraph",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getGraph",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listAgents",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createAgent",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getAgent",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "startAgentRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listAgentRuns",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getAgentRun",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "askReasoning",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "registerIrDefinition",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listIrDefinitions",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getIrDefinitionVersion",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "startIrRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listIrRuns",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getIrRun",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getIrRunEvents",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listAssuranceCertificates",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getAssuranceCertificate",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getAssuranceCertificateBundle",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listCertificates",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listMemorySources",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemorySource",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getMemorySource",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listMemoryEvidence",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemoryEvidence",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getMemoryEvidence",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listMemoryEntities",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemoryEntity",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getMemoryEntity",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listMemoryClaims",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemoryClaim",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getMemoryClaim",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listMemoryEvents",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemoryEvent",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getMemoryEvent",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listMemoryRelationships",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemoryRelationship",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getMemoryRelationship",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listMemoryContracts",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemoryContract",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getMemoryContract",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listMemorySubgraphs",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemorySubgraph",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getMemorySubgraph",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "activateMemorySubgraph",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createMemorySubgraphMember",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listCanonicalEntities",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createCanonicalEntity",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listEntityResolutions",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createEntityResolution",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "confirmEntityResolution",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "rejectEntityResolution",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listClaimConflicts",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "resolveClaimConflict",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "dismissClaimConflict",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createSummaryTrace",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createEntityGraphAttachment",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createSubgraphEdge",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listIngestionConnectors",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createIngestionConnector",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getIngestionConnector",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "runIngestionConnector",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listIngestionRuns",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getIngestionRun",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listIngestionReviewClaims",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "approveIngestionReviewClaim",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "rejectIngestionReviewClaim",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listAutomations",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createAutomation",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getAutomation",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "updateAutomation",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "deleteAutomation",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "enableAutomation",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "disableAutomation",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listAutomationTriggers",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "triggerAutomation",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listTriggerPlugins",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createTriggerPlugin",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getTriggerPlugin",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listWorkflowRuns",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "streamActivityEvents",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getWorkflowRun",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getWorkflowRunLogs",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "streamWorkflowRunLogs",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "removeWorkflowRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "cancelWorkflowRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "resumeWorkflowRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listJobRuns",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "createJobRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getJobRun",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "cancelJobRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getJobRunLogs",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "streamJobRunLogs",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listJobArtifacts",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "downloadJobArtifact",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  }
+]

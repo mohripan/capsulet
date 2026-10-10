@@ -38,7 +38,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let build = build_automation(&state, request).await?;
     let automation = build.automation;
     // The id may come from the request body, and the upsert conflicts on the id alone.
@@ -105,7 +105,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
     require_resource_project(
         &state.store,
@@ -165,7 +165,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_admin")?;
+    require_project_role(&context, crate::ProjectRole::Admin)?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
     require_resource_project(
         &state.store,
@@ -353,7 +353,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
     require_resource_project(
         &state.store,
@@ -723,7 +723,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let plugin = build_trigger_plugin(request)?;
     if state
         .store

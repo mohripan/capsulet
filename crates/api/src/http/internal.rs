@@ -111,7 +111,7 @@ struct RequestId(String);
 pub(crate) struct ProjectContext {
     pub(crate) tenant_id: String,
     pub(crate) project_id: String,
-    pub(crate) role: String,
+    pub(crate) role: ProjectRole,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -756,7 +756,7 @@ pub(crate) fn project_context(
         return Ok(ProjectContext {
             tenant_id,
             project_id: requested_project.to_string(),
-            role: "project_admin".to_string(),
+            role: ProjectRole::Admin,
         });
     }
     let Some(membership) = principal.project_memberships.iter().find(|membership| {
@@ -768,15 +768,15 @@ pub(crate) fn project_context(
     Ok(ProjectContext {
         tenant_id,
         project_id: requested_project.to_string(),
-        role: membership.role.as_str().to_string(),
+        role: membership.role,
     })
 }
 
 pub(crate) fn require_project_role(
     context: &ProjectContext,
-    required: &str,
+    required: ProjectRole,
 ) -> Result<(), ApiError> {
-    if project_role_rank(&context.role) >= project_role_rank(required) {
+    if context.role >= required {
         Ok(())
     } else {
         Err(ApiError::Forbidden("project:role"))
@@ -803,15 +803,6 @@ fn require_project_admin(
     }
 }
 
-fn project_role_rank(role: &str) -> u8 {
-    match role {
-        "project_admin" => 3,
-        "project_operator" => 2,
-        "project_viewer" => 1,
-        _ => 0,
-    }
-}
-
 pub(crate) async fn require_resource_project<S: ApiStore>(
     store: &S,
     resource: &str,
@@ -823,12 +814,12 @@ pub(crate) async fn require_resource_project<S: ApiStore>(
         .await
         .map_err(ApiError::store)?
     else {
-        return Ok(());
+        return Err(ApiError::ResourceNotFound);
     };
     if tenant_id == context.tenant_id && project_id == context.project_id {
         Ok(())
     } else {
-        Err(ApiError::Forbidden("project:access"))
+        Err(ApiError::ResourceNotFound)
     }
 }
 
@@ -913,9 +904,11 @@ where
         .await;
         return Err(ApiError::Unauthorized);
     };
-    let required_scope = required_scope(request.method(), request.uri().path())
+    let endpoint = crate::find_endpoint(request.method().as_str(), request.uri().path())
         .ok_or_else(|| ApiError::MissingEndpointContract(path.clone()))?;
-    if !principal.has_scope(required_scope) {
+    let required_scope = endpoint.policy.permission.as_str();
+    let project_allowed = endpoint_project_allowed(endpoint, &request, &principal)?;
+    if !project_allowed || !principal.has_scope(required_scope) {
         audit_auth_failure(
             &state,
             &principal.name,
@@ -956,6 +949,34 @@ where
         );
     }
     Ok(response)
+}
+
+fn endpoint_project_allowed(
+    endpoint: &crate::EndpointContract,
+    request: &Request,
+    principal: &Principal,
+) -> Result<bool, ApiError> {
+    if !endpoint.policy.ownership.is_required() {
+        return Ok(true);
+    }
+    let mut headers = request.headers().clone();
+    if endpoint.policy.ownership == crate::OwnershipRule::PathProject {
+        let project = endpoint
+            .path
+            .split('/')
+            .zip(request.uri().path().split('/'))
+            .find_map(|(template, value)| (template == "{project_id}").then_some(value))
+            .ok_or_else(|| ApiError::MissingEndpointContract(request.uri().path().to_string()))?;
+        headers.insert(
+            "x-capsulet-project-id",
+            HeaderValue::from_str(project)
+                .map_err(|_| ApiError::Validation("invalid project id".to_string()))?,
+        );
+    }
+    let context = project_context(&headers, principal)?;
+    Ok(endpoint
+        .policy
+        .allows(context.role, principal.platform_admin))
 }
 
 async fn authenticate_request_token<S, O>(
@@ -1007,7 +1028,11 @@ where
         principal.project_memberships.iter().cloned().collect();
     for membership in state
         .store
-        .list_principal_project_memberships(&principal.tenant_id, &principal.name)
+        .list_principal_project_memberships(
+            &principal.tenant_id,
+            &principal.name,
+            principal.principal_kind(),
+        )
         .await
         .map_err(ApiError::store)?
     {
@@ -1067,6 +1092,7 @@ async fn audit_auth_failure<S, O>(
     }
 }
 
+#[cfg(test)]
 fn required_scope(method: &Method, path: &str) -> Option<&'static str> {
     crate::find_endpoint(method.as_str(), path)
         .map(|endpoint| endpoint.required_permission.as_str())
@@ -1137,14 +1163,17 @@ where
 
 async fn list_service_accounts<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListServiceAccountsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let accounts = state
         .store
-        .list_service_accounts(100)
+        .list_service_accounts(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
     Ok(Json(ListServiceAccountsResponse {
@@ -1154,12 +1183,15 @@ where
 
 async fn create_service_account<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<CreateServiceAccountRequest>,
 ) -> Result<(StatusCode, Json<CreateServiceAccountResponse>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let name = non_empty_trimmed(&request.name, "service account name")?;
     let role = Role::parse(request.role.trim())
         .ok_or_else(|| ApiError::Validation("unknown service account role".to_string()))?;
@@ -1172,10 +1204,17 @@ where
         .id
         .unwrap_or_else(|| generated_id("service_account"));
     let id = non_empty_trimmed(&id, "service account id")?;
-    let tenant_id = request.tenant_id.unwrap_or_else(|| "default".to_string());
-    let project_id = request.project_id.unwrap_or_else(|| "default".to_string());
+    let tenant_id = request
+        .tenant_id
+        .unwrap_or_else(|| context.tenant_id.clone());
+    let project_id = request
+        .project_id
+        .unwrap_or_else(|| context.project_id.clone());
     let tenant_id = non_empty_trimmed(&tenant_id, "tenant id")?;
     let project_id = non_empty_trimmed(&project_id, "project id")?;
+    if tenant_id != context.tenant_id || project_id != context.project_id {
+        return Err(ApiError::Forbidden("project:access"));
+    }
     let token = generate_service_account_token();
     let account = NewServiceAccount {
         id,
@@ -1200,23 +1239,24 @@ where
 
 async fn revoke_service_account<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     if state
         .store
-        .revoke_service_account(&id)
+        .revoke_service_account(&context.tenant_id, &context.project_id, &id)
         .await
         .map_err(ApiError::store)?
     {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(ApiError::Validation(format!(
-            "unknown service account: {id}"
-        )))
+        Err(ApiError::ResourceNotFound)
     }
 }
 
@@ -1249,33 +1289,7 @@ fn validate_scope_strings(scopes: Vec<String>) -> Result<Vec<String>, ApiError> 
 }
 
 fn default_scope_strings(role: Role) -> Vec<String> {
-    match role {
-        Role::Viewer => [
-            "auth:read",
-            "jobs:read",
-            "workflows:read",
-            "automations:read",
-            "system:read",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect(),
-        Role::Operator => [
-            "auth:read",
-            "jobs:read",
-            "jobs:run",
-            "jobs:cancel",
-            "workflows:read",
-            "workflows:operate",
-            "automations:read",
-            "automations:operate",
-            "system:read",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect(),
-        Role::Admin => vec!["*".to_string()],
-    }
+    crate::auth::scope_strings_for_role(role)
 }
 
 fn generate_service_account_token() -> String {
@@ -1384,7 +1398,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     // The check has to precede `build_python_job_definition`, which writes the script bundle
     // under a key derived from the requested id.
     if let Some(requested_id) = request.id.as_deref() {
@@ -1437,7 +1451,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let definition_id = JobDefinitionId::new(id.clone()).map_err(ApiError::validation)?;
     require_resource_project(
         &state.store,
@@ -1592,7 +1606,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_admin")?;
+    require_project_role(&context, crate::ProjectRole::Admin)?;
     let id = JobDefinitionId::new(id).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "job_definitions", id.as_str(), &context).await?;
     if state
@@ -1684,7 +1698,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let workflow = build_workflow(&state, request).await?;
     // The id may come from the request body, and the upsert conflicts on the id alone.
     if state
@@ -1720,7 +1734,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let workflow_id = WorkflowId::new(id.clone()).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "workflows", workflow_id.as_str(), &context).await?;
     if state
@@ -1808,7 +1822,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_admin")?;
+    require_project_role(&context, crate::ProjectRole::Admin)?;
     let workflow_id = WorkflowId::new(id.clone()).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "workflows", workflow_id.as_str(), &context).await?;
     if state
@@ -2318,7 +2332,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let automation_id = AutomationId::new(id).map_err(ApiError::validation)?;
     require_resource_project(
         &state.store,
@@ -2710,7 +2724,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
@@ -2746,7 +2760,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
@@ -2782,7 +2796,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
@@ -2818,7 +2832,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let execution_pool =
         ExecutionPoolName::new(request.execution_pool).map_err(ApiError::validation)?;
 
@@ -3238,7 +3252,7 @@ where
     O: ObjectStore,
 {
     let context = project_context(&headers, &principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     let Some(run) = state.store.cancel_run(&id).await.map_err(ApiError::store)? else {

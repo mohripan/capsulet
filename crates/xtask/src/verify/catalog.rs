@@ -206,6 +206,50 @@ pub(crate) fn gates() -> Vec<Gate> {
             ],
         ),
         gate(
+            "authorization",
+            "executed HTTP authorization matrix and generated policy documentation",
+            &["cargo"],
+            600,
+            &[Fast, Full],
+            vec![
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-api",
+                        "--lib",
+                        "authorization_",
+                        "--locked",
+                    ],
+                ),
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-api",
+                        "--test",
+                        "authorization_matrix",
+                        "--locked",
+                    ],
+                ),
+                command(
+                    "cargo",
+                    &[
+                        "run",
+                        "-p",
+                        "capsulet-api",
+                        "--bin",
+                        "export-authorization",
+                        "--locked",
+                        "--",
+                        "--check",
+                    ],
+                ),
+            ],
+        ),
+        gate(
             "claims",
             "public claims and lifecycle contracts",
             &[powershell],

@@ -74,6 +74,8 @@ impl PostgresStore {
     /// Returns [`PostgresStoreError`] when the query fails.
     pub async fn list_service_accounts(
         &self,
+        tenant_id: &str,
+        project_id: &str,
         limit: i64,
     ) -> Result<Vec<ServiceAccountRecord>, PostgresStoreError> {
         let rows = sqlx::query(
@@ -84,10 +86,13 @@ impl PostgresStore {
                    last_used_at::text AS last_used_at,
                    created_at::text AS created_at
             FROM service_accounts
+            WHERE tenant_id = $1 AND project_id = $2
             ORDER BY created_at DESC, id ASC
-            LIMIT $1
+            LIMIT $3
             ",
         )
+        .bind(tenant_id)
+        .bind(project_id)
         .bind(limit.clamp(1, 500))
         .fetch_all(&self.pool)
         .await?;
@@ -143,11 +148,18 @@ impl PostgresStore {
     /// # Errors
     ///
     /// Returns [`PostgresStoreError`] when the update fails.
-    pub async fn revoke_service_account(&self, id: &str) -> Result<bool, PostgresStoreError> {
+    pub async fn revoke_service_account(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        id: &str,
+    ) -> Result<bool, PostgresStoreError> {
         let result = sqlx::query(
-            "UPDATE service_accounts SET revoked_at = COALESCE(revoked_at, now()), updated_at = now() WHERE id = $1",
+            "UPDATE service_accounts SET revoked_at = COALESCE(revoked_at, now()), updated_at = now() WHERE id = $1 AND tenant_id = $2 AND project_id = $3",
         )
         .bind(id)
+        .bind(tenant_id)
+        .bind(project_id)
         .execute(&self.pool)
         .await?;
 

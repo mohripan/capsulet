@@ -30,8 +30,12 @@ use tower::ServiceExt;
 use super::{ApiStore, AppState, AuthConfig, router};
 use crate::state::AdmissionConfig;
 
+#[path = "tests/authorization_http.rs"]
+mod authorization_http;
+
 #[derive(Debug, Clone, Default)]
 struct FakeStore {
+    omit_ownership: bool,
     known_definitions: Arc<Mutex<Vec<String>>>,
     job_definitions: Arc<Mutex<Vec<JobDefinition>>>,
     runs: Arc<Mutex<Vec<JobRun>>>,
@@ -372,6 +376,7 @@ impl ApiStore for FakeStore {
         &self,
         tenant_id: &str,
         principal_name: &str,
+        principal_kind: &str,
     ) -> Result<Vec<ProjectMembershipRecord>, Self::Error> {
         Ok(self
             .project_memberships
@@ -379,7 +384,9 @@ impl ApiStore for FakeStore {
             .map_err(|error| error.to_string())?
             .iter()
             .filter(|membership| {
-                membership.tenant_id == tenant_id && membership.principal_name == principal_name
+                membership.tenant_id == tenant_id
+                    && membership.principal_name == principal_name
+                    && membership.principal_kind == principal_kind
             })
             .cloned()
             .collect())
@@ -440,6 +447,9 @@ impl ApiStore for FakeStore {
         resource: &str,
         id: &str,
     ) -> Result<Option<(String, String)>, Self::Error> {
+        if self.omit_ownership {
+            return Ok(None);
+        }
         Ok(self
             .ownership
             .lock()
@@ -1312,13 +1322,19 @@ impl ApiStore for FakeStore {
     async fn find_ingestion_connector(
         &self,
         id: &IngestionConnectorId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<IngestionConnector>, Self::Error> {
         Ok(self
             .ingestion_connectors
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .find(|connector| connector.id() == id)
+            .find(|connector| {
+                connector.id() == id
+                    && connector.scope().tenant_id() == tenant_id
+                    && connector.scope().project_id() == project_id
+            })
             .cloned())
     }
 
@@ -1355,13 +1371,19 @@ impl ApiStore for FakeStore {
     async fn find_ingestion_run(
         &self,
         id: &IngestionRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<IngestionRun>, Self::Error> {
         Ok(self
             .ingestion_runs
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
-            .find(|run| run.id() == id)
+            .find(|run| {
+                run.id() == id
+                    && run.scope().tenant_id() == tenant_id
+                    && run.scope().project_id() == project_id
+            })
             .cloned())
     }
 

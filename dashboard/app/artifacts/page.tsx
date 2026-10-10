@@ -1,9 +1,9 @@
 "use client";
 
-import { Archive, Database, FileCode2, HardDrive, RefreshCw } from "lucide-react";
+import { Archive, Database, Download, FileCode2, HardDrive, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardShell, PageHeader, PanelTitle } from "../components";
-import { Artifact, JobRun, formatBytes, getErrorMessage, listArtifacts, listRuns } from "../lib/api";
+import { Artifact, JobRun, downloadArtifact, formatBytes, getErrorMessage, listArtifacts, listRuns } from "../lib/api";
 
 type ArtifactRow = {
   artifact: Artifact;
@@ -19,17 +19,14 @@ export default function ArtifactsPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setRows([]);
     try {
       const runResponse = await listRuns({ limit: 100, sort: "created_at", direction: "desc" });
       setRuns(runResponse.runs);
       const artifactResults = await Promise.all(
         runResponse.runs.map(async (run) => {
-          try {
-            const response = await listArtifacts(run.id);
-            return response.artifacts.map((artifact) => ({ artifact, run }));
-          } catch {
-            return [];
-          }
+          const response = await listArtifacts(run.id);
+          return response.artifacts.map((artifact) => ({ artifact, run }));
         })
       );
       setRows(artifactResults.flat());
@@ -73,6 +70,16 @@ export default function ArtifactsPage() {
                 </div>
                 <span>{formatBytes(artifact.size_bytes)}</span>
                 <span>{artifact.kind}</span>
+                <button className="secondaryButton" type="button" aria-label={`Download ${artifact.name}`} onClick={async () => {
+                  try {
+                    await downloadArtifact(run.id, artifact);
+                  } catch (err) {
+                    setError(getErrorMessage(err));
+                  }
+                }}>
+                  <Download size={16} aria-hidden="true" />
+                  Download
+                </button>
               </article>
             ))}
           </div>

@@ -15,6 +15,7 @@ import {
   getErrorMessage,
   isTerminalStatus,
   dismissClaimConflict,
+  downloadArtifact,
   listIngestionConnectors,
   listIngestionRuns,
   listReviewClaims,
@@ -29,6 +30,30 @@ import {
 } from "../app/lib/api";
 
 describe("dashboard API helpers", () => {
+  it("forwards the selected project on artifact downloads", async () => {
+    const originalFetch = globalThis.fetch;
+    const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+    let captured: RequestInit | undefined;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { localStorage: { getItem: () => "finance" } }
+    });
+    globalThis.fetch = async (_input, init) => {
+      captured = init;
+      return jsonResponse({ message: "permission denied" }, 403);
+    };
+    try {
+      await assert.rejects(downloadArtifact("finance-run", {
+        id: "report", name: "report.txt", content_type: "text/plain", size_bytes: 7,
+        kind: "artifact", run_id: "finance-run"
+      }), /permission denied/);
+      assert.equal(new Headers(captured?.headers).get("x-capsulet-project-id"), "finance");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (windowDescriptor) Object.defineProperty(globalThis, "window", windowDescriptor);
+      else Reflect.deleteProperty(globalThis, "window");
+    }
+  });
   it("formats artifact sizes", () => {
     assert.equal(formatBytes(20), "20 B");
     assert.equal(formatBytes(1536), "1.5 KiB");

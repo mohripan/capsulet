@@ -1688,7 +1688,7 @@ where
 
 fn write_context(headers: &HeaderMap, principal: &Principal) -> Result<ProjectContext, ApiError> {
     let context = project_context(headers, principal)?;
-    require_project_role(&context, "project_operator")?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
     Ok(context)
 }
 

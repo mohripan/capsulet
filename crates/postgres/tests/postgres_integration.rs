@@ -338,6 +338,144 @@ async fn saves_ingestion_connector_run_and_outputs_when_database_is_available() 
 }
 
 #[tokio::test]
+async fn connector_upsert_cannot_take_over_another_projects_identifier() {
+    let store = PostgresStore::connect(&database_url())
+        .await
+        .expect("connect");
+    store.migrate().await.expect("migrate");
+    let id = IngestionConnectorId::new(unique_id("isolated_connector")).expect("id");
+    let original_scope =
+        MemoryScope::new("tenant_isolation", unique_id("project_a")).expect("scope");
+    let other_scope = MemoryScope::new("tenant_isolation", unique_id("project_b")).expect("scope");
+    let connector = |scope, name| {
+        IngestionConnector::new(
+            id.clone(),
+            scope,
+            name,
+            IngestionConnectorKind::LocalText,
+            IngestionConnectorConfig::local_text(
+                "Notes",
+                "Public notes",
+                "text/plain",
+                None,
+                Authority::High,
+            ),
+            true,
+        )
+        .expect("connector")
+    };
+    let original = connector(original_scope.clone(), "Original");
+    store
+        .upsert_ingestion_connector(&original)
+        .await
+        .expect("create");
+    let attempted = store
+        .upsert_ingestion_connector(&connector(other_scope.clone(), "Taken over"))
+        .await;
+    assert!(
+        attempted.is_err(),
+        "a cross-project upsert must be rejected"
+    );
+    assert_eq!(
+        store
+            .list_ingestion_connectors(original_scope.tenant_id(), original_scope.project_id(), 10)
+            .await
+            .expect("list"),
+        vec![original]
+    );
+    assert!(
+        store
+            .list_ingestion_connectors(other_scope.tenant_id(), other_scope.project_id(), 10)
+            .await
+            .expect("list")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn service_accounts_are_listed_and_revoked_only_in_their_own_project() {
+    let store = PostgresStore::connect(&database_url())
+        .await
+        .expect("connect");
+    store.migrate().await.expect("migrate");
+    let project_id = unique_id("finance");
+    sqlx::query(
+        "INSERT INTO projects (id, tenant_id, name) VALUES ($1, 'default', 'Finance fixture')",
+    )
+    .bind(&project_id)
+    .execute(store.pool())
+    .await
+    .expect("create project fixture");
+    let account = capsulet_postgres::NewServiceAccount {
+        id: unique_id("isolated_account"),
+        name: "project-ci".to_string(),
+        tenant_id: "default".to_string(),
+        project_id,
+        role: "admin".to_string(),
+        scopes: vec!["jobs:read".to_string()],
+        token_hash: [42; 32],
+        expires_at_unix: None,
+    };
+    let saved = store
+        .create_service_account(&account)
+        .await
+        .expect("create");
+    assert_eq!(
+        store
+            .list_service_accounts(&account.tenant_id, &account.project_id, 10)
+            .await
+            .expect("list"),
+        vec![saved]
+    );
+    assert!(
+        store
+            .list_service_accounts("other-tenant", &account.project_id, 10)
+            .await
+            .expect("list")
+            .is_empty()
+    );
+    assert!(
+        store
+            .list_service_accounts(&account.tenant_id, "other-project", 10)
+            .await
+            .expect("list")
+            .is_empty()
+    );
+    assert!(
+        !store
+            .revoke_service_account(&account.tenant_id, "other-project", &account.id)
+            .await
+            .expect("revoke")
+    );
+    assert!(
+        !store
+            .revoke_service_account("other-tenant", &account.project_id, &account.id)
+            .await
+            .expect("revoke")
+    );
+    assert!(
+        store
+            .authenticate_service_account_hash(&account.token_hash)
+            .await
+            .expect("authenticate")
+            .is_some()
+    );
+    assert!(
+        store
+            .revoke_service_account(&account.tenant_id, &account.project_id, &account.id)
+            .await
+            .expect("revoke")
+    );
+    assert!(
+        store
+            .authenticate_service_account_hash(&account.token_hash)
+            .await
+            .expect("authenticate")
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn saves_and_finds_memory_contract_when_database_is_available() {
     let database_url = database_url();
     let store = PostgresStore::connect(&database_url)

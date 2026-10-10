@@ -8,6 +8,13 @@ use sqlx::Row;
 
 use crate::{PostgresStore, PostgresStoreError};
 
+fn check_scope_write(result: &sqlx::postgres::PgQueryResult) -> Result<(), PostgresStoreError> {
+    if result.rows_affected() == 0 {
+        return Err(PostgresStoreError::ScopeMismatch);
+    }
+    Ok(())
+}
+
 impl PostgresStore {
     /// Inserts or updates an ingestion connector.
     ///
@@ -18,19 +25,19 @@ impl PostgresStore {
         &self,
         connector: &IngestionConnector,
     ) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO ingestion_connectors
                 (id, tenant_id, project_id, name, kind, config, enabled, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, now())
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 name = EXCLUDED.name,
                 kind = EXCLUDED.kind,
                 config = EXCLUDED.config,
                 enabled = EXCLUDED.enabled,
                 updated_at = now()
+            WHERE ingestion_connectors.tenant_id = EXCLUDED.tenant_id
+              AND ingestion_connectors.project_id = EXCLUDED.project_id
             ",
         )
         .bind(connector.id().as_str())
@@ -42,7 +49,7 @@ impl PostgresStore {
         .bind(connector.enabled())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        check_scope_write(&result)
     }
 
     /// Lists ingestion connectors for a tenant/project scope.
@@ -83,15 +90,19 @@ impl PostgresStore {
     pub async fn find_ingestion_connector(
         &self,
         id: &IngestionConnectorId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<IngestionConnector>, PostgresStoreError> {
         let row = sqlx::query(
             r"
             SELECT id, tenant_id, project_id, name, kind, config, enabled
             FROM ingestion_connectors
-            WHERE id = $1
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
             ",
         )
         .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_optional(&self.pool)
         .await?;
         row.as_ref().map(row_to_ingestion_connector).transpose()
@@ -104,7 +115,7 @@ impl PostgresStore {
     /// Returns an error when counters cannot be converted for storage or `PostgreSQL` rejects or
     /// cannot execute the query.
     pub async fn upsert_ingestion_run(&self, run: &IngestionRun) -> Result<(), PostgresStoreError> {
-        sqlx::query(
+        let result = sqlx::query(
             r"
             INSERT INTO ingestion_runs
                 (
@@ -117,8 +128,6 @@ impl PostgresStore {
                 now()
             )
             ON CONFLICT (id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                project_id = EXCLUDED.project_id,
                 connector_id = EXCLUDED.connector_id,
                 status = EXCLUDED.status,
                 error = EXCLUDED.error,
@@ -130,6 +139,8 @@ impl PostgresStore {
                 relationship_count = EXCLUDED.relationship_count,
                 finished_at = EXCLUDED.finished_at,
                 updated_at = now()
+            WHERE ingestion_runs.tenant_id = EXCLUDED.tenant_id
+              AND ingestion_runs.project_id = EXCLUDED.project_id
             ",
         )
         .bind(run.id().as_str())
@@ -164,7 +175,7 @@ impl PostgresStore {
         )
         .execute(&self.pool)
         .await?;
-        Ok(())
+        check_scope_write(&result)
     }
 
     /// Lists ingestion runs for a tenant/project scope.
@@ -208,6 +219,8 @@ impl PostgresStore {
     pub async fn find_ingestion_run(
         &self,
         id: &IngestionRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<IngestionRun>, PostgresStoreError> {
         let row = sqlx::query(
             r"
@@ -216,10 +229,12 @@ impl PostgresStore {
                 source_count, evidence_count, entity_count, claim_count,
                 event_count, relationship_count
             FROM ingestion_runs
-            WHERE id = $1
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
             ",
         )
         .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_optional(&self.pool)
         .await?;
         row.as_ref().map(row_to_ingestion_run).transpose()

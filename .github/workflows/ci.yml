@@ -78,7 +78,7 @@ jobs:
       - name: Verify
         run: >
           cargo run -p capsulet-xtask --locked --
-          verify --gate claims --gate api-contracts --gate sdk
+          verify --gate claims --gate api-contracts --gate authorization --gate sdk
 
   postgres:
     name: PostgreSQL

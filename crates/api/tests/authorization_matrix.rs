@@ -1,68 +1,77 @@
 use std::collections::BTreeSet;
 
-use capsulet_api::{
-    AuthenticationMode, OwnershipRule, Permission, ProjectRole, ResourceKind, endpoint_contracts,
-};
+use capsulet_api::{Permission, Principal, ProjectRole, Role, endpoint_contracts};
 
-#[derive(Clone, Copy)]
-enum Actor {
-    Anonymous,
-    TenantMember,
-    ProjectViewer,
-    ProjectOperator,
-    ProjectAdmin,
-    ServiceAccount,
-    WrongProject,
-    GlobalAdmin,
+#[derive(serde::Deserialize)]
+struct Case {
+    operation_id: String,
+    minimum_role: String,
+    ownership: String,
 }
 
 #[test]
-fn every_public_operation_has_an_executable_authorization_case_for_every_actor() {
-    let actors = [
-        Actor::Anonymous,
-        Actor::TenantMember,
-        Actor::ProjectViewer,
-        Actor::ProjectOperator,
-        Actor::ProjectAdmin,
-        Actor::ServiceAccount,
-        Actor::WrongProject,
-        Actor::GlobalAdmin,
-    ];
-    let mut covered = BTreeSet::new();
+fn authorization_matrix_covers_every_public_operation_and_role_boundary() {
+    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/authorization-cases.json"))
+        .expect("reviewed authorization cases");
+    let expected = cases
+        .iter()
+        .map(|case| case.operation_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let registered = endpoint_contracts()
+        .iter()
+        .map(|endpoint| endpoint.operation_id)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        expected, registered,
+        "a new route needs an independently reviewed authorization case"
+    );
+    assert_eq!(
+        cases.len(),
+        expected.len(),
+        "duplicate cases cannot substitute for missing routes"
+    );
 
-    for endpoint in endpoint_contracts() {
-        assert_ne!(endpoint.policy.resource, ResourceKind::Unknown);
-        for actor in actors {
-            let allowed = match actor {
-                Actor::Anonymous => endpoint.authentication == AuthenticationMode::Anonymous,
-                Actor::TenantMember => {
-                    endpoint.policy.ownership == OwnershipRule::Unscoped
-                        && endpoint.policy.permission != Permission::Public
-                        && endpoint.policy.permission.minimum_project_role().is_none()
-                }
-                Actor::ProjectViewer => endpoint.policy.allows(ProjectRole::Viewer, false),
-                Actor::ProjectOperator | Actor::ServiceAccount => {
-                    endpoint.policy.allows(ProjectRole::Operator, false)
-                }
-                Actor::ProjectAdmin => endpoint.policy.allows(ProjectRole::Admin, false),
-                Actor::WrongProject => endpoint.policy.ownership == OwnershipRule::Unscoped,
-                Actor::GlobalAdmin => true,
-            };
-            if matches!(actor, Actor::Anonymous) {
-                assert_eq!(
-                    allowed,
-                    endpoint.authentication == AuthenticationMode::Anonymous
-                );
-            }
-            covered.insert((endpoint.operation_id, actor as u8));
-        }
+    for case in &cases {
+        let policy = capsulet_api::find_operation(&case.operation_id)
+            .expect("operation")
+            .policy;
+        let expected_role = match case.minimum_role.as_str() {
+            "anonymous" | "authenticated" => None,
+            "viewer" => Some(ProjectRole::Viewer),
+            "operator" => Some(ProjectRole::Operator),
+            "admin" => Some(ProjectRole::Admin),
+            other => panic!("unknown expected role: {other}"),
+        };
+        assert_eq!(
+            policy.permission.minimum_project_role(),
+            expected_role,
+            "{}",
+            case.operation_id
+        );
+        assert_eq!(
+            policy.ownership.as_str(),
+            case.ownership,
+            "{}",
+            case.operation_id
+        );
     }
-
-    assert_eq!(covered.len(), endpoint_contracts().len() * actors.len());
 }
 
 #[test]
-fn every_declared_project_role_has_a_distinct_permission_boundary() {
+fn authorization_service_account_admin_has_no_platform_privileges() {
+    let principal = Principal::service_account(
+        "project-ci",
+        Role::Admin,
+        "tenant",
+        "finance",
+        ["jobs:run".to_string()],
+    );
+    assert!(!principal.platform_admin);
+    assert!(!principal.has_scope("system:write"));
+}
+
+#[test]
+fn authorization_role_boundaries_follow_the_documented_job_and_memory_model() {
     assert!(!ProjectRole::Viewer.allows(Permission::JobsRun));
     assert!(ProjectRole::Operator.allows(Permission::JobsRun));
     assert!(!ProjectRole::Operator.allows(Permission::MemoryWrite));

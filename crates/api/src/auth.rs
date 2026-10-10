@@ -106,6 +106,8 @@ pub struct Principal {
     pub project_id: Arc<str>,
     pub project_memberships: Arc<[ProjectMembership]>,
     scopes: Arc<[Arc<str>]>,
+    restrict_scopes: bool,
+    kind: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,6 +118,10 @@ pub struct ProjectMembership {
 }
 
 impl Principal {
+    pub(crate) const fn principal_kind(&self) -> &'static str {
+        self.kind
+    }
+
     #[must_use]
     pub fn scopes(&self) -> &[Arc<str>] {
         &self.scopes
@@ -123,7 +129,7 @@ impl Principal {
 
     #[must_use]
     pub fn has_scope(&self, required: &str) -> bool {
-        self.role == Role::Admin
+        self.platform_admin
             || self.scopes.iter().any(|scope| {
                 scope.as_ref() == "*"
                     || scope.as_ref() == required
@@ -149,7 +155,7 @@ impl Principal {
         Self {
             name: name.into(),
             role,
-            platform_admin: role == Role::Admin,
+            platform_admin: false,
             tenant_id: Arc::clone(&tenant_id),
             project_id: Arc::clone(&project_id),
             project_memberships: Arc::from([ProjectMembership {
@@ -158,6 +164,8 @@ impl Principal {
                 role: ProjectRole::from(role),
             }]),
             scopes: scopes.into_iter().map(Arc::from).collect::<Vec<_>>().into(),
+            restrict_scopes: true,
+            kind: "service_account",
         }
     }
 
@@ -172,10 +180,10 @@ impl Principal {
             .iter()
             .map(|scope| scope.as_ref().to_string())
             .collect::<BTreeSet<_>>();
-        if !scopes.contains("*") {
+        if !self.restrict_scopes && !scopes.contains("*") {
             for membership in &memberships {
                 for scope in project_scopes_for_role(membership.role) {
-                    scopes.insert((*scope).to_string());
+                    scopes.insert(scope.to_string());
                 }
             }
         }
@@ -210,6 +218,7 @@ struct Credential {
     tenant_id: Arc<str>,
     project_id: Arc<str>,
     scopes: Arc<[Arc<str>]>,
+    restrict_scopes: bool,
     expires_at_unix: Option<u64>,
     digest: [u8; 32],
 }
@@ -282,6 +291,7 @@ impl AuthConfig {
             }
             let role = Role::parse(input.role.as_str())
                 .ok_or_else(|| format!("unknown API role {} for credential {name}", input.role))?;
+            let restrict_scopes = !input.scopes.is_empty();
             let scopes = parse_scopes(name, role, input.scopes)?;
             credentials.push(Credential {
                 name: Arc::from(name),
@@ -289,6 +299,7 @@ impl AuthConfig {
                 tenant_id: Arc::from(input.tenant_id.trim().to_string()),
                 project_id: Arc::from(input.project_id.trim().to_string()),
                 scopes,
+                restrict_scopes,
                 expires_at_unix: input.expires_at_unix,
                 digest: token_digest(&input.token),
             });
@@ -350,6 +361,8 @@ impl AuthConfig {
                     role: ProjectRole::Admin,
                 }]),
                 scopes: Arc::from([Arc::from("*")]),
+                restrict_scopes: false,
+                kind: "user",
             });
         }
 
@@ -377,6 +390,8 @@ impl AuthConfig {
                     project_id: Arc::clone(&credential.project_id),
                     project_memberships,
                     scopes: Arc::clone(&credential.scopes),
+                    restrict_scopes: credential.restrict_scopes,
+                    kind: "user",
                 }
             })
         })
@@ -440,6 +455,8 @@ fn principal_from_claims(claims: &OidcClaims, audience: &str) -> Principal {
         project_id: Arc::from("default"),
         project_memberships: Arc::from([]),
         scopes: default_scopes_for_role(role),
+        restrict_scopes: false,
+        kind: "user",
     }
 }
 
@@ -478,71 +495,31 @@ fn parse_scopes(name: &str, role: Role, scopes: Vec<String>) -> Result<Arc<[Arc<
     Ok(unique.into_iter().map(Arc::from).collect::<Vec<_>>().into())
 }
 
+pub(crate) fn scope_strings_for_role(role: Role) -> Vec<String> {
+    if role == Role::Admin {
+        return vec!["*".to_string()];
+    }
+    project_scopes_for_role(ProjectRole::from(role))
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
 fn default_scopes_for_role(role: Role) -> Arc<[Arc<str>]> {
-    let scopes: &[&str] = match role {
-        Role::Viewer => &[
-            "auth:read",
-            "jobs:read",
-            "workflows:read",
-            "automations:read",
-            "system:read",
-        ],
-        Role::Operator => &[
-            "auth:read",
-            "jobs:read",
-            "jobs:run",
-            "jobs:cancel",
-            "workflows:read",
-            "workflows:operate",
-            "automations:read",
-            "automations:operate",
-            "system:read",
-        ],
-        Role::Admin => &["*"],
-    };
-    scopes
-        .iter()
-        .copied()
+    scope_strings_for_role(role)
+        .into_iter()
         .map(Arc::from)
         .collect::<Vec<_>>()
         .into()
 }
 
-fn project_scopes_for_role(role: ProjectRole) -> &'static [&'static str] {
-    match role {
-        ProjectRole::Viewer => &[
-            "auth:read",
-            "jobs:read",
-            "workflows:read",
-            "automations:read",
-            "system:read",
-        ],
-        ProjectRole::Operator => &[
-            "auth:read",
-            "jobs:read",
-            "jobs:run",
-            "jobs:cancel",
-            "workflows:read",
-            "workflows:operate",
-            "automations:read",
-            "automations:operate",
-            "system:read",
-        ],
-        ProjectRole::Admin => &[
-            "auth:read",
-            "jobs:read",
-            "jobs:run",
-            "jobs:cancel",
-            "jobs:write",
-            "workflows:read",
-            "workflows:operate",
-            "workflows:write",
-            "automations:read",
-            "automations:operate",
-            "automations:write",
-            "system:read",
-        ],
-    }
+fn project_scopes_for_role(role: ProjectRole) -> Vec<&'static str> {
+    Permission::ALL
+        .iter()
+        .copied()
+        .filter(|permission| *permission != Permission::Public && role.allows(*permission))
+        .map(Permission::as_str)
+        .collect()
 }
 
 fn now_unix_seconds() -> u64 {
