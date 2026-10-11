@@ -734,20 +734,57 @@ impl ApiStore for FakeStore {
             }))
     }
 
-    async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error> {
+    async fn upsert_workflow(
+        &self,
+        workflow: &WorkflowDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        let mut ownership = self.ownership.lock().map_err(|error| error.to_string())?;
+        if let Some(owner) = ownership
+            .iter()
+            .find(|owner| owner.resource == "workflows" && owner.id == workflow.id().as_str())
+        {
+            if owner.tenant_id != tenant_id || owner.project_id != project_id {
+                return Err("scope mismatch".to_string());
+            }
+        } else {
+            ownership.push(FakeOwnership {
+                resource: "workflows".to_string(),
+                id: workflow.id().as_str().to_string(),
+                tenant_id: tenant_id.to_string(),
+                project_id: project_id.to_string(),
+            });
+        }
         let mut workflows = self.workflows.lock().map_err(|error| error.to_string())?;
         workflows.retain(|existing| existing.id() != workflow.id());
         workflows.push(workflow.clone());
         Ok(())
     }
 
-    async fn list_workflows(&self, limit: i64) -> Result<Vec<WorkflowDefinition>, Self::Error> {
+    async fn list_workflows(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<WorkflowDefinition>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
+        let ownership = self.ownership.lock().map_err(|error| error.to_string())?;
         Ok(self
             .workflows
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
+            .filter(|workflow| {
+                ownership
+                    .iter()
+                    .find(|owner| {
+                        owner.resource == "workflows" && owner.id == workflow.id().as_str()
+                    })
+                    .map_or(tenant_id == "default" && project_id == "default", |owner| {
+                        owner.tenant_id == tenant_id && owner.project_id == project_id
+                    })
+            })
             .take(limit)
             .cloned()
             .collect())
@@ -756,7 +793,14 @@ impl ApiStore for FakeStore {
     async fn find_workflow(
         &self,
         id: &WorkflowId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowDefinition>, Self::Error> {
+        if self.resource_project("workflows", id.as_str()).await?
+            != Some((tenant_id.to_string(), project_id.to_string()))
+        {
+            return Ok(None);
+        }
         Ok(self
             .workflows
             .lock()
@@ -1499,7 +1543,17 @@ impl ApiStore for FakeStore {
             .collect())
     }
 
-    async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
+    async fn delete_workflow(
+        &self,
+        id: &WorkflowId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error> {
+        if self.resource_project("workflows", id.as_str()).await?
+            != Some((tenant_id.to_string(), project_id.to_string()))
+        {
+            return Ok(false);
+        }
         let mut workflows = self.workflows.lock().map_err(|error| error.to_string())?;
         let before = workflows.len();
         workflows.retain(|workflow| workflow.id() != id);

@@ -39,7 +39,7 @@ where
 {
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
-    let build = build_automation(&state, request).await?;
+    let build = build_automation(&state, &context, request).await?;
     let automation = build.automation;
     // The id may come from the request body, and the upsert conflicts on the id alone.
     if state
@@ -126,7 +126,7 @@ where
         ));
     }
     request.id = Some(automation_id.as_str().to_string());
-    let build = build_automation(&state, request).await?;
+    let build = build_automation(&state, &context, request).await?;
     let automation = build.automation;
     require_resource_project(
         &state.store,
@@ -285,6 +285,7 @@ where
 
 async fn build_automation<S, O>(
     state: &AppState<S, O>,
+    context: &crate::http::ProjectContext,
     request: CreateAutomationRequest,
 ) -> Result<AutomationBuild, ApiError>
 where
@@ -294,7 +295,7 @@ where
     let workflow_id = WorkflowId::new(request.workflow_id.clone()).map_err(ApiError::validation)?;
     if state
         .store
-        .find_workflow(&workflow_id)
+        .find_workflow(&workflow_id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()

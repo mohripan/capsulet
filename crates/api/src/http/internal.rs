@@ -1700,10 +1700,10 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
     let workflow = build_workflow(&state, &context, request).await?;
-    // The id may come from the request body, and the upsert conflicts on the id alone.
+    // Reject existing foreign ids early; the scoped upsert also rejects collisions atomically.
     if state
         .store
-        .find_workflow(workflow.id())
+        .find_workflow(workflow.id(), &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_some()
@@ -1714,10 +1714,9 @@ where
     require_workflow_step_projects(&state.store, &workflow, &context).await?;
     state
         .store
-        .upsert_workflow(&workflow)
+        .upsert_workflow(&workflow, &context.tenant_id, &context.project_id)
         .await
-        .map_err(ApiError::store)?;
-    assign_resource_project(&state.store, "workflows", workflow.id().as_str(), &context).await?;
+        .map_err(ApiError::scoped_store::<S>)?;
 
     Ok((StatusCode::CREATED, Json(WorkflowResponse::from(&workflow))))
 }
@@ -1750,10 +1749,9 @@ where
     require_workflow_step_projects(&state.store, &workflow, &context).await?;
     state
         .store
-        .upsert_workflow(&workflow)
+        .upsert_workflow(&workflow, &context.tenant_id, &context.project_id)
         .await
-        .map_err(ApiError::store)?;
-    assign_resource_project(&state.store, "workflows", workflow.id().as_str(), &context).await?;
+        .map_err(ApiError::scoped_store::<S>)?;
     Ok(Json(WorkflowResponse::from(&workflow)))
 }
 
@@ -1769,7 +1767,7 @@ where
     let context = project_context(&headers, &principal)?;
     let workflows = state
         .store
-        .list_workflows(100)
+        .list_workflows(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
     let mut scoped = Vec::new();
@@ -1801,7 +1799,7 @@ where
     require_resource_project(&state.store, "workflows", id.as_str(), &context).await?;
     let Some(workflow) = state
         .store
-        .find_workflow(&id)
+        .find_workflow(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -1827,7 +1825,7 @@ where
     require_resource_project(&state.store, "workflows", workflow_id.as_str(), &context).await?;
     if state
         .store
-        .find_workflow(&workflow_id)
+        .find_workflow(&workflow_id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()
@@ -1854,7 +1852,7 @@ where
     }
     let deleted = state
         .store
-        .delete_workflow(&workflow_id)
+        .delete_workflow(&workflow_id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     if !deleted {
@@ -1878,7 +1876,7 @@ where
     require_resource_project(&state.store, "workflows", id.as_str(), &context).await?;
     if state
         .store
-        .find_workflow(&id)
+        .find_workflow(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()
@@ -1908,7 +1906,7 @@ where
     let context = project_context(&headers, &principal)?;
     let workflows = state
         .store
-        .list_workflows(100)
+        .list_workflows(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
     let mut scoped_workflows = Vec::new();

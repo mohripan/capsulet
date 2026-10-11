@@ -185,14 +185,31 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         tenant_id: &str,
         project_id: &str,
     ) -> Result<bool, Self::Error>;
-    async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error>;
-    async fn list_workflows(&self, limit: i64) -> Result<Vec<WorkflowDefinition>, Self::Error>;
+    async fn upsert_workflow(
+        &self,
+        workflow: &WorkflowDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error>;
+    async fn list_workflows(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<WorkflowDefinition>, Self::Error>;
     async fn find_workflow(
         &self,
         id: &WorkflowId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowDefinition>, Self::Error>;
     async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error>;
-    async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error>;
+    async fn delete_workflow(
+        &self,
+        id: &WorkflowId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error>;
     async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error>;
     async fn list_graphs(&self, limit: i64) -> Result<Vec<GraphDefinition>, Self::Error>;
     async fn find_graph(&self, id: &GraphId) -> Result<Option<GraphDefinition>, Self::Error>;
@@ -790,27 +807,48 @@ impl ApiStore for PostgresStore {
             .await
     }
 
-    async fn upsert_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), Self::Error> {
-        self.upsert_workflow(workflow).await
+    async fn upsert_workflow(
+        &self,
+        workflow: &WorkflowDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        self.upsert_workflow_in_project(workflow, tenant_id, project_id)
+            .await
     }
 
-    async fn list_workflows(&self, limit: i64) -> Result<Vec<WorkflowDefinition>, Self::Error> {
-        self.list_workflows(limit).await
+    async fn list_workflows(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<WorkflowDefinition>, Self::Error> {
+        self.list_workflows_in_project(tenant_id, project_id, limit)
+            .await
     }
 
     async fn find_workflow(
         &self,
         id: &WorkflowId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowDefinition>, Self::Error> {
-        self.find_workflow(id).await
+        self.find_workflow_in_project(id, tenant_id, project_id)
+            .await
     }
 
     async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
         self.workflow_has_active_runs(id).await
     }
 
-    async fn delete_workflow(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
-        self.delete_workflow(id).await
+    async fn delete_workflow(
+        &self,
+        id: &WorkflowId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error> {
+        self.delete_workflow_in_project(id, tenant_id, project_id)
+            .await
     }
 
     async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error> {
