@@ -344,6 +344,26 @@
           "selector": "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
         },
         {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "a_proposal_from_an_unknown_major_is_unreadable_not_malformed"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "a_proposal_always_serializes_its_schema_version"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "a_versionless_proposal_reads_as_v1_and_replays"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "a_proposals_schema_is_checked_before_its_shape"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "a_malformed_v1_proposal_is_not_an_unknown_schema"
+        },
+        {
           "path": "crates/kernel/tests/totality.rs",
           "selector": "every_derivation_shape_reaches_a_verdict"
         },
@@ -2083,18 +2103,71 @@
     },
     {
       "id": "CAP-CORRECTNESS-008",
-      "kind": "limitation",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "A kernel proposal is persisted inside certificate bundles without a schema version of its own, so a bundle written by a build whose proposal shape differed does not re-decide and is reported as having missing inputs rather than an unreadable shape.",
+      "statement": "Persisted kernel proposals always serialize their schema version; versionless proposals read as v1 and replay, unsupported proposal majors are unreadable before their shape is interpreted, and malformed v1 inputs remain separately diagnosed as malformed.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
+      "verification": [
+        {
+          "assertion": "proposal-version-is-always-written",
+          "evidence_selectors": [
+            "a_proposal_always_serializes_its_schema_version"
+          ]
+        },
+        {
+          "assertion": "legacy-v1-proposals-remain-readable-and-replayable",
+          "evidence_selectors": [
+            "a_versionless_proposal_reads_as_v1_and_replays"
+          ]
+        },
+        {
+          "assertion": "unknown-majors-fail-closed-before-interpreting-the-shape",
+          "evidence_selectors": [
+            "a_proposal_from_an_unknown_major_is_unreadable_not_malformed",
+            "a_proposals_schema_is_checked_before_its_shape"
+          ]
+        },
+        {
+          "assertion": "malformed-v1-is-not-an-unknown-schema",
+          "evidence_selectors": [
+            "a_malformed_v1_proposal_is_not_an_unknown_schema"
+          ]
+        }
+      ],
       "evidence": [
         {
-          "type": "source",
-          "path": "crates/kernel/src/ir.rs"
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_proposal_always_serializes_its_schema_version"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_versionless_proposal_reads_as_v1_and_replays"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_proposal_from_an_unknown_major_is_unreadable_not_malformed"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_proposals_schema_is_checked_before_its_shape"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_malformed_v1_proposal_is_not_an_unknown_schema"
         }
       ]
     },

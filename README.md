@@ -223,6 +223,10 @@ because then no relation has a declared phrasing to be stated in. **rejected** n
 owns the repair, so a dangling reference re-runs retrieval instead of re-prompting
 the model.
 
+Persisted kernel proposals always identify their schema. Offline replay reads a
+versionless legacy proposal as v1, refuses unsupported proposal versions as unreadable,
+and keeps malformed v1 input distinct; it does not claim a verdict for unreadable input.
+
 Two limits are deliberate and documented: a declared phrasing is matched, not
 entailed — a sentence can still doubt it in words no cue list knows — and
 relevance to the question is not checked at all. See

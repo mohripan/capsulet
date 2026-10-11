@@ -106,6 +106,8 @@ Six properties carry the weight:
   deliberately — inputs that are present and unreadable are reported apart from absent ones, and a
   bundle with nothing in it says so rather than reproducing quietly. A deterministic family records
   the version of the rules it decided under, and a decision re-made under other rules says so.
+  Kernel proposals always carry `capsulet.kernel.proposal/v1`; versionless legacy proposals read
+  as v1, while unsupported schemas are unreadable rather than treated as malformed v1 input.
 
 The crates are `capsulet-ir` (pure: no I/O, no clock, no randomness, asserted over its dependency
 closure), `capsulet-kernel` (certificate assembly, obligation families, replay), `capsulet-replay`
@@ -479,15 +481,13 @@ The API requires configured bearer credentials unless authentication is explicit
 
 These are extension paths beyond the implemented production baseline.
 
-The correctness plane has five limitations that are recorded rather than fixed, each with a claim
+The correctness plane has four limitations that are recorded rather than fixed, each with a claim
 and a test or source pointer:
 
 - cue lists are finite and English-first, so a declared phrasing in a sentence that doubts or denies
   it in words the list does not carry still states the relation (`CAP-CORRECTNESS-012`);
 - a cited term is compared as text, so the same value written another way — another number or date
   format, or another name for the entity — is not found (`CAP-CORRECTNESS-004`);
-- a kernel proposal is persisted inside bundles without a schema version of its own, so a bundle
-  written by a build whose proposal shape differed does not re-decide (`CAP-CORRECTNESS-008`);
 - whether a value reached a verification record without crossing an unmodelled boundary is supplied
   by the caller, not derived: no certificate records provenance loss (`CAP-IR-006`);
 - a certificate does not record which verdict rule decided it, and the gate does not compare the

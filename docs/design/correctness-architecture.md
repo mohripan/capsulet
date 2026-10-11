@@ -206,6 +206,13 @@ The proposer no longer decides which: it runs the same phrasing check the kernel
 does. A phrasing match is still not entailment — a sentence can doubt a phrasing
 in words no cue list knows — and that cost is recorded as `CAP-CORRECTNESS-012`.
 
+**Proposals identify their persisted shape.** Kernel proposals always serialize
+`schema_version: "capsulet.kernel.proposal/v1"`. A versionless legacy proposal
+reads as v1; replay reports an unsupported schema as unreadable before interpreting
+its shape, and separately reports malformed v1 input. Always writing the version
+changes newly computed proposal replay digests, not old evidence bytes or certificate
+seals. Legacy pinned inputs remain replayable (`CAP-CORRECTNESS-008`).
+
 **Relevance is not checked at all.** Asked the same unanswerable question after
 the fix, the model returned `Dana Whitfield | is the named account owner |
 Dana Whitfield` — a correctly grounded, accurately cited fact that does not

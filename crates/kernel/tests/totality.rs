@@ -110,6 +110,7 @@ fn every_derivation_shape_reaches_a_verdict() {
                 // is a pass; ending the process is the failure.
                 let certificate = check(
                     &Proposal {
+                        schema_version: Proposal::current_schema_version(),
                         goal: Proposition::new("s", "p", "o"),
                         derivation,
                     },
@@ -136,6 +137,7 @@ fn an_empty_snapshot_never_accepts_anything() {
     for leaf in leaves() {
         let certificate = check(
             &Proposal {
+                schema_version: Proposal::current_schema_version(),
                 goal: Proposition::new("s", "p", "o"),
                 derivation: leaf,
             },

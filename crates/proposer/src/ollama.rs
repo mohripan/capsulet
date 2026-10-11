@@ -220,7 +220,11 @@ pub fn build_proposal(raw: &RawProposal, excerpt: &str, phrasebook: &Phrasebook)
             rationale: raw.rationale.clone(),
         }
     };
-    Proposal { goal, derivation }
+    Proposal {
+        schema_version: Proposal::current_schema_version(),
+        goal,
+        derivation,
+    }
 }
 
 /// The relations a contract declares phrasings for, in order.

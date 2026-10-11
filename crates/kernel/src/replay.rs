@@ -27,7 +27,7 @@ use capsulet_ir::digest::Digest;
 use capsulet_ir::version::{CERTIFICATE_SCHEMA_VERSION, SchemaVersionError, read_compatible};
 
 use crate::family::{CLAIM_REASONING, ClaimReasoning, ObligationFamily, deterministic_families};
-use crate::ir::Proposal;
+use crate::ir::{Proposal, ProposalReadError};
 use crate::snapshot_document::SnapshotDocument;
 use crate::workflow::KERNEL_VERSION;
 
@@ -166,7 +166,7 @@ pub enum ReplayNote {
     NothingWasReChecked,
 }
 
-/// Why replay could not read the certificate at all.
+/// Why replay could not interpret a certificate or its pinned proposal schema.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Unreadable {
     /// A schema version this build does not understand. Fails closed rather
@@ -267,7 +267,11 @@ pub fn replay(certificate: &Certificate, evidence: &impl EvidenceSource) -> Repl
     }
 
     let unusable = check_evidence(body, evidence, &mut findings);
-    check_verifiers(body, evidence, &mut findings, &mut notes);
+    if let Err(source) = check_verifiers(body, evidence, &mut findings, &mut notes) {
+        return ReplayOutcome::Unreadable {
+            reason: Unreadable::SchemaVersion { source },
+        };
+    }
 
     if body.evidence.is_empty() && body.verifiers.is_empty() {
         notes.push(ReplayNote::NothingWasReChecked);
@@ -345,7 +349,7 @@ fn check_verifiers(
     evidence: &impl EvidenceSource,
     findings: &mut Vec<ReplayFinding>,
     notes: &mut Vec<ReplayNote>,
-) {
+) -> Result<(), SchemaVersionError> {
     for record in &body.verifiers {
         let identity = record.identity.name.to_string();
         match &record.trust {
@@ -370,6 +374,7 @@ fn check_verifiers(
                     });
                 }
                 match redecide(&identity, record.inputs.as_slice(), evidence) {
+                    Redecision::Unreadable(source) => return Err(source),
                     Redecision::Missing => {
                         findings.push(ReplayFinding::FamilyInputsMissing { identity });
                     }
@@ -390,6 +395,7 @@ fn check_verifiers(
             }
         }
     }
+    Ok(())
 }
 
 /// The version of the rules this build applies for a deterministic family.
@@ -433,6 +439,8 @@ enum Redecision {
     Missing,
     /// They are, and they could not be read.
     Malformed(String),
+    /// The input declares a schema this build cannot interpret.
+    Unreadable(SchemaVersionError),
     Verdict(CheckerVerdict),
 }
 
@@ -461,8 +469,9 @@ fn redecide(identity: &str, inputs: &[Digest], evidence: &impl EvidenceSource) -
     // Past here the bytes are present, so anything that goes wrong is a
     // statement about the bytes rather than about the bundle. Reporting it as
     // "missing" would send a reader looking for a file that is in front of them.
-    let proposal = match serde_json::from_slice::<Proposal>(proposal) {
+    let proposal = match Proposal::read(proposal) {
         Ok(proposal) => proposal,
+        Err(ProposalReadError::SchemaVersion { source }) => return Redecision::Unreadable(source),
         Err(error) => return Redecision::Malformed(format!("the pinned proposal: {error}")),
     };
     let document = match serde_json::from_slice::<SnapshotDocument>(snapshot) {

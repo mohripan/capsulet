@@ -4,7 +4,7 @@
 > task. Task 0 comes first and is not optional: it makes the documentation and the claim registry say
 > what the kernel does today, so that a half-executed plan still leaves the project telling the truth.
 >
-> **Status (2026-10-11):** Tasks 0–5 are done. Tasks 6–9 are handed over; read
+> **Status (2026-10-11):** Tasks 0–6 are done. Tasks 7–9 await the next go-ahead; read
 > [the handover](../handoffs/2026-10-11-citation-grounding-handoff.md) before starting. It records the
 > conventions this plan depends on, the traps found so far, and the decisions that belong to the owner.
 
@@ -345,10 +345,23 @@ example contracts declare phrasings, so they show the shape rather than only par
 
 **Files:** `crates/kernel/src/{ir.rs,replay.rs}`, tests
 
-- [ ] Failing tests: a proposal from an unknown major is reported unreadable rather than malformed;
+- [x] Failing tests: a proposal from an unknown major is reported unreadable rather than malformed;
   a proposal with no version reads as v1.
-- [ ] `Proposal.schema_version`, read with `read_compatible` like every other persisted root.
-- [ ] Close `CAP-CORRECTNESS-008`.
+- [x] `Proposal.schema_version`, read with `read_compatible` like every other persisted root.
+- [x] Close `CAP-CORRECTNESS-008`.
+
+**What the task found (2026-10-11).** An unknown version on an otherwise valid proposal was
+silently ignored by Serde, so replay could reproduce `Accepted`, not merely report a future shape
+as malformed. The regression first demonstrated that result. The compatibility reader now checks
+the declared version before parsing the v1 shape; incompatible inputs make replay `Unreadable`,
+whereas malformed v1 inputs still diverge with `FamilyInputsMalformed`. A missing version defaults
+to v1 and old pinned bytes replay unchanged. The approved always-written version changes newly
+computed proposal digests, not existing certificate seals; the family rules version is now `6`.
+No term or phrasing rule changed, so none of the Tasks 7–8 tripwires was moved. This versions the
+kernel's claim proposal, not the separate `capsulet-ir` candidate-value `Proposal` type or the
+API's raw model proposal. Tracking is [Task 6 #119](https://github.com/mohripan/capsulet/issues/119)
+and [the remaining-task overview #123](https://github.com/mohripan/capsulet/issues/123), in
+[the citation grounding milestone](https://github.com/mohripan/capsulet/milestone/6).
 
 **Revised 2026-10-11: independent of Tasks 7 and 8.** This task was first written as their
 prerequisite, on the assumption that a term would become an entity reference or a typed value inside

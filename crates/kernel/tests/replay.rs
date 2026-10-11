@@ -507,6 +507,7 @@ fn pinned_snapshot() -> SnapshotDocument {
 fn trusted_citation(object: &str) -> Proposal {
     let goal = Proposition::new("Acme", "renewed", object);
     Proposal {
+        schema_version: Proposal::current_schema_version(),
         goal: goal.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {
@@ -533,10 +534,18 @@ fn claim_reasoning_certificate(
     rules: &str,
 ) -> (Certificate, EvidenceMap) {
     let proposal_bytes = serde_json::to_vec(proposal).expect("the proposal encodes");
+    claim_reasoning_certificate_from_bytes(&proposal_bytes, recorded, rules)
+}
+
+fn claim_reasoning_certificate_from_bytes(
+    proposal_bytes: &[u8],
+    recorded: CheckerVerdict,
+    rules: &str,
+) -> (Certificate, EvidenceMap) {
     let snapshot_bytes = serde_json::to_vec(&pinned_snapshot()).expect("the snapshot encodes");
 
     let mut bundle = EvidenceMap::new();
-    let proposal_digest = bundle.insert(proposal_bytes.clone());
+    let proposal_digest = bundle.insert(proposal_bytes.to_vec());
     let snapshot_digest = bundle.insert(snapshot_bytes.clone());
 
     let input = |name: &str, bytes: &[u8]| EvidenceRef {
@@ -586,7 +595,7 @@ fn claim_reasoning_certificate(
             },
         }],
         evidence: vec![
-            input("proposal", &proposal_bytes),
+            input("proposal", proposal_bytes),
             input("snapshot", &snapshot_bytes),
         ],
         loops: vec![],
@@ -604,6 +613,108 @@ fn rules_differ(notes: &[ReplayNote]) -> bool {
                 if recorded == "0.1.0" && replaying == CLAIM_REASONING_RULES
         )
     })
+}
+
+#[test]
+fn a_proposal_from_an_unknown_major_is_unreadable_not_malformed() {
+    let proposal = trusted_citation("Contoso");
+    let mut document = serde_json::to_value(&proposal).expect("proposal document");
+    document["schema_version"] = "capsulet.kernel.proposal/v99".into();
+    let (certificate, bundle) = claim_reasoning_certificate_from_bytes(
+        &serde_json::to_vec(&document).expect("proposal bytes"),
+        decided_here(&proposal),
+        CLAIM_REASONING_RULES,
+    );
+    let outcome = replay(&certificate, &bundle);
+    assert!(
+        matches!(
+            outcome,
+            ReplayOutcome::Unreadable {
+                reason: Unreadable::SchemaVersion {
+                    source: capsulet_ir::version::SchemaVersionError::UnsupportedMajor {
+                        found: 99,
+                        supported: 1,
+                    },
+                },
+            }
+        ),
+        "unknown input schemas are not malformed inputs: {outcome:?}"
+    );
+    assert_eq!(outcome.verdict(), None);
+}
+
+#[test]
+fn a_proposal_always_serializes_its_schema_version() {
+    let document = serde_json::to_value(trusted_citation("Contoso")).expect("proposal document");
+    assert_eq!(document["schema_version"], "capsulet.kernel.proposal/v1");
+}
+
+#[test]
+fn a_versionless_proposal_reads_as_v1_and_replays() {
+    let proposal = trusted_citation("Contoso");
+    let mut document = serde_json::to_value(&proposal).expect("proposal document");
+    document
+        .as_object_mut()
+        .expect("object")
+        .remove("schema_version");
+    let bytes = serde_json::to_vec(&document).expect("legacy proposal bytes");
+    let read = Proposal::read(&bytes).expect("legacy v1 proposal");
+    assert_eq!(read, proposal);
+    assert_eq!(
+        serde_json::to_value(&read).expect("upgraded document")["schema_version"],
+        "capsulet.kernel.proposal/v1"
+    );
+    let (certificate, bundle) = claim_reasoning_certificate_from_bytes(
+        &bytes,
+        decided_here(&proposal),
+        CLAIM_REASONING_RULES,
+    );
+    assert_eq!(
+        replay(&certificate, &bundle).verdict(),
+        Some(AssuranceVerdict::Accepted)
+    );
+}
+
+#[test]
+fn a_proposals_schema_is_checked_before_its_shape() {
+    use capsulet_ir::version::SchemaVersionError;
+    use capsulet_kernel::ir::ProposalReadError;
+    let bytes = br#"{"schema_version":"capsulet.kernel.proposal/v99","goal":17}"#;
+    assert!(matches!(
+        Proposal::read(bytes),
+        Err(ProposalReadError::SchemaVersion {
+            source: SchemaVersionError::UnsupportedMajor {
+                found: 99,
+                supported: 1
+            },
+        })
+    ));
+    let (certificate, bundle) = claim_reasoning_certificate_from_bytes(
+        bytes,
+        CheckerVerdict::Accepted,
+        CLAIM_REASONING_RULES,
+    );
+    assert!(matches!(
+        replay(&certificate, &bundle),
+        ReplayOutcome::Unreadable { .. }
+    ));
+}
+
+#[test]
+fn a_malformed_v1_proposal_is_not_an_unknown_schema() {
+    let (certificate, bundle) = claim_reasoning_certificate_from_bytes(
+        br#"{"schema_version":"capsulet.kernel.proposal/v1","goal":17}"#,
+        CheckerVerdict::Accepted,
+        CLAIM_REASONING_RULES,
+    );
+    let outcome = replay(&certificate, &bundle);
+    assert_eq!(outcome.verdict(), None);
+    let ReplayOutcome::Diverged { findings, .. } = outcome else {
+        panic!("a malformed v1 shape must diverge");
+    };
+    assert!(findings.iter().any(|finding| matches!(finding,
+        ReplayFinding::FamilyInputsMalformed { identity, .. } if identity == CLAIM_REASONING
+    )));
 }
 
 #[test]

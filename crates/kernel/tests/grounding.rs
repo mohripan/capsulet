@@ -53,6 +53,7 @@ fn snapshot_over(document: &str) -> Snapshot {
 
 fn cite(subject: &str, object: &str) -> Proposal {
     Proposal {
+        schema_version: Proposal::current_schema_version(),
         goal: Proposition::new(subject, "says", object),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -291,6 +292,7 @@ fn acquisitions() -> Phrasebook {
 fn trusted(document: &str, subject: &str, predicate: &str, object: &str) -> Certificate {
     let proposition = Proposition::new(subject, predicate, object);
     let proposal = Proposal {
+        schema_version: Proposal::current_schema_version(),
         goal: proposition.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {
@@ -430,6 +432,7 @@ fn a_relation_with_no_declared_phrasing_is_only_mentioned() {
 
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     let reading = Proposal {
+        schema_version: Proposal::current_schema_version(),
         goal: goal.clone(),
         derivation: Rule::Interpret {
             premise: Box::new(Rule::Cite {
@@ -479,6 +482,7 @@ fn a_contract_s_phrasings_and_cues_judge_a_citation() {
     let decide = |document: &str| {
         let proposition = Proposition::new("Fabrikam", "acquired", "Contoso");
         let proposal = Proposal {
+            schema_version: Proposal::current_schema_version(),
             goal: proposition.clone(),
             derivation: Rule::Trust {
                 premise: Box::new(Rule::Cite {

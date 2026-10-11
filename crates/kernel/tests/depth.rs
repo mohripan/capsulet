@@ -31,6 +31,7 @@ fn nested(depth: u32) -> Rule {
 fn decide(derivation: Rule) -> capsulet_kernel::Certificate {
     check(
         &Proposal {
+            schema_version: Proposal::current_schema_version(),
             goal: Proposition::new("s", "p", "o"),
             derivation,
         },
@@ -94,6 +95,7 @@ fn a_refused_derivation_is_not_digested_as_if_it_had_been_read() {
     let goal = Proposition::new("s", "p", "o");
     let one = check(
         &Proposal {
+            schema_version: Proposal::current_schema_version(),
             goal: goal.clone(),
             derivation: nested(MAX_DERIVATION_DEPTH + 1),
         },
@@ -101,6 +103,7 @@ fn a_refused_derivation_is_not_digested_as_if_it_had_been_read() {
     );
     let other = check(
         &Proposal {
+            schema_version: Proposal::current_schema_version(),
             goal,
             derivation: nested(MAX_DERIVATION_DEPTH + 9),
         },

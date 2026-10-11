@@ -64,6 +64,7 @@ fn citation() -> Rule {
 fn reading(rationale: &str) -> Proposal {
     let conclusion = Proposition::new("Acme", "has-an-active-contract-with", "Contoso");
     Proposal {
+        schema_version: Proposal::current_schema_version(),
         goal: conclusion.clone(),
         derivation: Rule::Interpret {
             premise: Box::new(citation()),
@@ -168,6 +169,7 @@ fn a_chain_of_readings_is_bounded() {
 
     let certificate = decide(
         &Proposal {
+            schema_version: Proposal::current_schema_version(),
             goal: conclusion,
             derivation,
         },

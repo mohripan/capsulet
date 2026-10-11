@@ -376,6 +376,12 @@ repair ownership, and a replay digest. Memory evidence responses currently expos
 string `locator`, `excerpt`, and `observed_at`; they do not yet expose structured byte offsets or a
 source-content hash. Those stronger provenance fields must not be inferred from the current API.
 
+The persisted kernel proposal (not the API's raw model proposal) always serializes
+`schema_version: "capsulet.kernel.proposal/v1"`. Offline replay accepts versionless legacy v1
+inputs, reports an unsupported proposal schema as unreadable before interpreting its shape, and
+keeps malformed v1 input separately diagnosed. Newly computed replay digests change with the
+always-written field; existing pinned evidence bytes and certificate seals are not rewritten.
+
 ## Compatibility workflow APIs
 
 Create a fan-out/fan-in workflow DAG:

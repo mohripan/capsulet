@@ -4,7 +4,9 @@
 //! either a reference the kernel resolves against a snapshot or a literal it
 //! can check; a derivation is a tree of rule applications with fixed arity.
 
+use capsulet_ir::version::{SchemaVersion, SchemaVersionError, read_compatible};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::quantity::Quantity;
 
@@ -228,6 +230,57 @@ impl Rule {
 /// A proposal: the goal a proposer claims, and the derivation offered for it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Proposal {
+    /// Always written; a versionless legacy document is read as v1.
+    #[serde(default = "Proposal::current_schema_version")]
+    pub schema_version: SchemaVersion,
     pub goal: Proposition,
     pub derivation: Rule,
+}
+
+/// The schema identity of a persisted claim-reasoning proposal.
+pub const PROPOSAL_SCHEMA_VERSION: SchemaVersion =
+    SchemaVersion::new("capsulet.kernel.proposal", 1);
+
+/// Why a persisted proposal cannot be read.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ProposalReadError {
+    #[error("the proposal schema is unreadable: {source}")]
+    SchemaVersion {
+        #[source]
+        source: SchemaVersionError,
+    },
+    #[error("the proposal is malformed: {detail}")]
+    Malformed { detail: String },
+}
+
+impl Proposal {
+    /// The schema version this build writes.
+    #[must_use]
+    pub fn current_schema_version() -> SchemaVersion {
+        PROPOSAL_SCHEMA_VERSION
+    }
+
+    /// Reads the declared schema before interpreting the proposal's shape.
+    /// Versionless documents are legacy v1, not an unknown schema.
+    ///
+    /// # Errors
+    /// Returns [`ProposalReadError::SchemaVersion`] for incompatible schemas,
+    /// or [`ProposalReadError::Malformed`] for invalid JSON or a malformed v1 shape.
+    pub fn read(bytes: &[u8]) -> Result<Self, ProposalReadError> {
+        #[derive(Deserialize)]
+        struct Header {
+            #[serde(default = "legacy_version")]
+            schema_version: String,
+        }
+        fn legacy_version() -> String {
+            PROPOSAL_SCHEMA_VERSION.to_string()
+        }
+        let malformed = |error: serde_json::Error| ProposalReadError::Malformed {
+            detail: error.to_string(),
+        };
+        let header: Header = serde_json::from_slice(bytes).map_err(malformed)?;
+        read_compatible(&header.schema_version, &PROPOSAL_SCHEMA_VERSION)
+            .map_err(|source| ProposalReadError::SchemaVersion { source })?;
+        serde_json::from_slice(bytes).map_err(malformed)
+    }
 }

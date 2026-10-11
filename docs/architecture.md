@@ -53,7 +53,9 @@ and concluded the whole statement. It now states a relation only in a phrasing i
 declares, and otherwise records that the terms are mentioned, which a trust step will not lift
 (`CAP-CORRECTNESS-009`). A goal is reached only by concluding that it holds
 (`CAP-CORRECTNESS-010`), and the authority floor is the caller's policy, which a proposal can raise
-and cannot lower (`CAP-CORRECTNESS-011`). What remains is recorded: a value written another way than
+and cannot lower (`CAP-CORRECTNESS-011`). Persisted kernel proposals always serialize a schema
+version: versionless legacy proposals read as v1, unsupported schemas are unreadable before their
+shape is interpreted, and malformed v1 input stays distinct (`CAP-CORRECTNESS-008`). What remains is recorded: a value written another way than
 the document writes it (`CAP-CORRECTNESS-004`), and a denial in words no cue list carries
 (`CAP-CORRECTNESS-012`).
 

@@ -55,6 +55,7 @@ fn cite(proposition: Proposition) -> Rule {
 /// The derivation the proposer builds for an answer the model calls a quote.
 fn quoted(goal: Proposition, cited: Proposition, min_authority: &str) -> Proposal {
     Proposal {
+        schema_version: Proposal::current_schema_version(),
         goal,
         derivation: Rule::Trust {
             premise: Box::new(cite(cited)),
