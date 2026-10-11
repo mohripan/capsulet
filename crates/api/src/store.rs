@@ -22,8 +22,9 @@ use capsulet_ir::definition::{AssuranceMode, Definition};
 use capsulet_ir::digest::Digest;
 use capsulet_postgres::{
     AdmissionSnapshot, AuditEvent, CertificateRecord, EvidenceLocation, IrDefinitionVersion,
-    IrRunRecord, NewProjectMembership, NewServiceAccount, PostgresStore, PostgresStoreError,
-    ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, StoredCertificate, TriggerEvent,
+    IrRunRecord, NewAuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore,
+    PostgresStoreError, ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord,
+    StoredCertificate, TriggerEvent,
 };
 use capsulet_runtime::RecordedEvent;
 
@@ -46,7 +47,12 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     ) -> Result<AdmissionSnapshot, Self::Error> {
         Ok(AdmissionSnapshot::default())
     }
-    async fn list_audit_events(&self, _limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
+    async fn list_audit_events(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _limit: i64,
+    ) -> Result<Vec<AuditEvent>, Self::Error> {
         Ok(Vec::new())
     }
     async fn list_projects(
@@ -133,17 +139,7 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     ) -> Result<bool, Self::Error> {
         Ok(false)
     }
-    #[allow(clippy::too_many_arguments)]
-    async fn record_audit_event(
-        &self,
-        _principal: &str,
-        _role: &str,
-        _method: &str,
-        _path: &str,
-        _status_code: u16,
-        _request_id: Option<&str>,
-        _user_agent: Option<&str>,
-    ) -> Result<(), Self::Error> {
+    async fn record_audit_event(&self, _event: &NewAuditEvent<'_>) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn enqueue_trigger_event(
@@ -601,8 +597,14 @@ impl ApiStore for PostgresStore {
         PostgresStore::admission_snapshot(self, execution_pool).await
     }
 
-    async fn list_audit_events(&self, limit: i64) -> Result<Vec<AuditEvent>, Self::Error> {
-        PostgresStore::list_audit_events(self, limit).await
+    async fn list_audit_events(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AuditEvent>, Self::Error> {
+        self.list_audit_events_in_project(tenant_id, project_id, limit)
+            .await
     }
 
     async fn list_projects(
@@ -714,27 +716,8 @@ impl ApiStore for PostgresStore {
         PostgresStore::revoke_service_account(self, tenant_id, project_id, id).await
     }
 
-    async fn record_audit_event(
-        &self,
-        principal: &str,
-        role: &str,
-        method: &str,
-        path: &str,
-        status_code: u16,
-        request_id: Option<&str>,
-        user_agent: Option<&str>,
-    ) -> Result<(), Self::Error> {
-        PostgresStore::record_audit_event(
-            self,
-            principal,
-            role,
-            method,
-            path,
-            status_code,
-            request_id,
-            user_agent,
-        )
-        .await
+    async fn record_audit_event(&self, event: &NewAuditEvent<'_>) -> Result<(), Self::Error> {
+        self.record_scoped_audit_event(event).await
     }
 
     async fn enqueue_trigger_event(

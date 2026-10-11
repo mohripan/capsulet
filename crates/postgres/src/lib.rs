@@ -33,7 +33,7 @@ mod workflows;
 
 pub use artifacts::UpstreamArtifact;
 pub use assurance::{EvidenceLocation, StoredCertificate};
-pub use audit::AuditEvent;
+pub use audit::{AuditEvent, AuditScope, NewAuditEvent};
 pub use certificates::CertificateRecord;
 pub use ir_definitions::IrDefinitionVersion;
 pub use ir_effects::IrEffectClaim;

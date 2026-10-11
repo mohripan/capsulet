@@ -1,5 +1,97 @@
 use super::*;
 
+#[tokio::test]
+async fn authorization_audit_events_follow_the_project_in_the_url() {
+    let app = authenticated_app(FakeStore::default());
+    let write = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/projects/finance/memberships")
+                .header("authorization", "Bearer admin-token-0123456789-abcdefghijkl")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"principal_kind":"user", "principal_name":"audit-fixture", "role":"project_operator"}).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("write");
+    assert_eq!(write.status(), 200);
+    let read = |project| {
+        Request::builder()
+            .uri("/v1/audit-events")
+            .header(
+                "authorization",
+                "Bearer admin-token-0123456789-abcdefghijkl",
+            )
+            .header("x-capsulet-project-id", project)
+            .body(Body::empty())
+            .expect("request")
+    };
+    let own = app
+        .clone()
+        .oneshot(read("finance"))
+        .await
+        .expect("finance audit");
+    assert_eq!(own.status(), 200);
+    let own = response_json(own).await;
+    assert_eq!(own["audit_events"].as_array().expect("events").len(), 1);
+    assert_eq!(
+        own["audit_events"][0]["path"],
+        "/v1/projects/finance/memberships"
+    );
+    let other = app.oneshot(read("default")).await.expect("default audit");
+    assert_eq!(other.status(), 200);
+    assert!(
+        response_json(other).await["audit_events"]
+            .as_array()
+            .expect("events")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn authorization_audit_events_follow_the_writes_selected_project() {
+    let app = authenticated_app(FakeStore::default());
+    let write = app.clone().oneshot(Request::builder().method(Method::POST)
+        .uri("/v1/job-definitions")
+        .header("authorization", "Bearer admin-token-0123456789-abcdefghijkl")
+        .header("x-capsulet-project-id", "finance").header("content-type", "application/json")
+        .body(Body::from(json!({"id":"finance-audit-job", "name":"Finance fixture", "python_script":"print('finance')"}).to_string()))
+        .expect("request")).await.expect("write");
+    assert_eq!(write.status(), 201);
+    let read = |project| {
+        Request::builder()
+            .uri("/v1/audit-events")
+            .header(
+                "authorization",
+                "Bearer admin-token-0123456789-abcdefghijkl",
+            )
+            .header("x-capsulet-project-id", project)
+            .body(Body::empty())
+            .expect("request")
+    };
+    let own = app
+        .clone()
+        .oneshot(read("finance"))
+        .await
+        .expect("finance audit");
+    assert_eq!(own.status(), 200);
+    let own = response_json(own).await;
+    assert_eq!(own["audit_events"].as_array().expect("events").len(), 1);
+    assert_eq!(own["audit_events"][0]["path"], "/v1/job-definitions");
+    let other = app.oneshot(read("default")).await.expect("default audit");
+    assert_eq!(other.status(), 200);
+    assert!(
+        response_json(other).await["audit_events"]
+            .as_array()
+            .expect("events")
+            .is_empty()
+    );
+}
+
 const ACTORS: [(&str, Option<&str>, u8); 8] = [
     ("anonymous", None, 0),
     (

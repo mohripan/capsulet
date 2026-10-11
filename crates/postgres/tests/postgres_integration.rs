@@ -27,6 +27,96 @@ use capsulet_postgres::PostgresStore;
 mod support;
 use support::{fixture_id as unique_id, required_database_url as database_url};
 
+#[tokio::test]
+async fn audit_events_with_unverified_scope_are_retained_but_not_assigned_to_default_project() {
+    let store = PostgresStore::connect(&database_url())
+        .await
+        .expect("connect");
+    store.migrate().await.expect("migrate");
+    let request_id = unique_id("unverified_audit");
+    store
+        .record_audit_event(
+            "legacy-fixture",
+            "admin",
+            "POST",
+            "/v1/legacy-operation",
+            201,
+            Some(&request_id),
+            None,
+        )
+        .await
+        .expect("legacy event");
+    let scoped = store
+        .list_audit_events_in_project("default", "default", 500)
+        .await
+        .expect("project list");
+    assert!(
+        !scoped
+            .iter()
+            .any(|event| event.request_id.as_deref() == Some(&request_id))
+    );
+    let retained = store
+        .list_audit_events(500)
+        .await
+        .expect("trusted raw list");
+    assert!(
+        retained
+            .iter()
+            .any(|event| event.request_id.as_deref() == Some(&request_id))
+    );
+}
+
+#[tokio::test]
+async fn audit_listing_excludes_foreign_projects_and_tenants_before_limit() {
+    use capsulet_postgres::{AuditScope, NewAuditEvent};
+    let store = PostgresStore::connect(&database_url())
+        .await
+        .expect("connect");
+    store.migrate().await.expect("migrate");
+    let project = unique_id("audit_project");
+    let own = NewAuditEvent {
+        principal: "audit-fixture",
+        role: "operator",
+        method: "POST",
+        path: "/v1/owned-operation",
+        status_code: 201,
+        request_id: None,
+        user_agent: None,
+        scope: Some(AuditScope {
+            tenant_id: "default",
+            project_id: &project,
+        }),
+    };
+    store
+        .record_scoped_audit_event(&own)
+        .await
+        .expect("owned event");
+    store
+        .record_scoped_audit_event(&NewAuditEvent {
+            path: "/v1/foreign-operation",
+            scope: Some(AuditScope {
+                tenant_id: "default",
+                project_id: "foreign-audit-project",
+            }),
+            ..own
+        })
+        .await
+        .expect("newer foreign event");
+    let visible = store
+        .list_audit_events_in_project("default", &project, 1)
+        .await
+        .expect("list");
+    assert_eq!(visible.len(), 1);
+    assert_eq!(visible[0].path, "/v1/owned-operation");
+    assert!(
+        store
+            .list_audit_events_in_project("foreign-tenant", &project, 10)
+            .await
+            .expect("list")
+            .is_empty()
+    );
+}
+
 async fn project_workflow_fixture(store: &PostgresStore, project: &str) -> WorkflowDefinition {
     let job = JobDefinition::new(
         capsulet_core::JobDefinitionId::new(unique_id("workflow_fixture_job")).expect("job id"),

@@ -36,6 +36,7 @@ mod authorization_http;
 #[derive(Debug, Clone, Default)]
 struct FakeStore {
     omit_ownership: bool,
+    audit_events: Arc<Mutex<Vec<FakeAuditEvent>>>,
     service_accounts: Arc<Mutex<Vec<FakeServiceAccount>>>,
     known_definitions: Arc<Mutex<Vec<String>>>,
     job_definitions: Arc<Mutex<Vec<JobDefinition>>>,
@@ -112,6 +113,12 @@ struct FakeServiceAccount {
     record: ServiceAccountRecord,
 }
 
+#[derive(Debug, Clone)]
+struct FakeAuditEvent {
+    event: capsulet_postgres::AuditEvent,
+    scope: Option<(String, String)>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct FakeObjectStore {
     objects: ObjectMap,
@@ -166,6 +173,57 @@ impl ApiStore for FakeStore {
 
     fn is_scope_mismatch(error: &Self::Error) -> bool {
         error == "scope mismatch"
+    }
+
+    async fn record_audit_event(
+        &self,
+        event: &capsulet_postgres::NewAuditEvent<'_>,
+    ) -> Result<(), Self::Error> {
+        let mut events = self
+            .audit_events
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let id = i64::try_from(events.len() + 1).map_err(|error| error.to_string())?;
+        events.push(FakeAuditEvent {
+            event: capsulet_postgres::AuditEvent {
+                id,
+                principal: event.principal.to_string(),
+                role: event.role.to_string(),
+                method: event.method.to_string(),
+                path: event.path.to_string(),
+                status_code: i32::from(event.status_code),
+                request_id: event.request_id.map(str::to_owned),
+                created_at: "2026-10-11T00:00:00Z".to_string(),
+            },
+            scope: event
+                .scope
+                .map(|scope| (scope.tenant_id.to_string(), scope.project_id.to_string())),
+        });
+        Ok(())
+    }
+
+    async fn list_audit_events(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<capsulet_postgres::AuditEvent>, Self::Error> {
+        let limit = usize::try_from(limit.clamp(1, 500)).map_err(|error| error.to_string())?;
+        Ok(self
+            .audit_events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .rev()
+            .filter(|record| {
+                record
+                    .scope
+                    .as_ref()
+                    .is_some_and(|(tenant, project)| tenant == tenant_id && project == project_id)
+            })
+            .take(limit)
+            .map(|record| record.event.clone())
+            .collect())
     }
 
     async fn authenticate_service_account_hash(

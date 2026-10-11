@@ -25,7 +25,7 @@ use capsulet_core::{
     WorkflowStep, WorkflowStepDependency, WorkflowStepId,
 };
 use capsulet_observability::{self as observability, tracing::Instrument};
-use capsulet_postgres::{NewProjectMembership, NewServiceAccount};
+use capsulet_postgres::{AuditScope, NewAuditEvent, NewProjectMembership, NewServiceAccount};
 use capsulet_storage::{ObjectStore, run_object_key};
 use serde::Serialize;
 use serde_json::Value;
@@ -877,48 +877,50 @@ where
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
+    let unauthenticated_event = NewAuditEvent {
+        principal: "anonymous",
+        role: "unauthenticated",
+        method: method.as_str(),
+        path: &path,
+        status_code: StatusCode::UNAUTHORIZED.as_u16(),
+        request_id: request_id.as_deref(),
+        user_agent: user_agent.as_deref(),
+        scope: None,
+    };
     if state.auth.enabled() && token.is_empty() {
-        audit_auth_failure(
-            &state,
-            "anonymous",
-            "unauthenticated",
-            &method,
-            &path,
-            StatusCode::UNAUTHORIZED,
-            request_id.as_deref(),
-            user_agent.as_deref(),
-        )
-        .await;
+        audit_auth_failure(&state, &unauthenticated_event).await;
         return Err(ApiError::Unauthorized);
     }
     let Some(principal) = authenticate_request_token(&state, token).await? else {
-        audit_auth_failure(
-            &state,
-            "anonymous",
-            "unauthenticated",
-            &method,
-            &path,
-            StatusCode::UNAUTHORIZED,
-            request_id.as_deref(),
-            user_agent.as_deref(),
-        )
-        .await;
+        audit_auth_failure(&state, &unauthenticated_event).await;
         return Err(ApiError::Unauthorized);
     };
     let endpoint = crate::find_endpoint(request.method().as_str(), request.uri().path())
         .ok_or_else(|| ApiError::MissingEndpointContract(path.clone()))?;
     let required_scope = endpoint.policy.permission.as_str();
-    let project_allowed = endpoint_project_allowed(endpoint, &request, &principal)?;
+    let context = endpoint_project_context(endpoint, &request, &principal)?;
+    let project_allowed = context.as_ref().is_none_or(|context| {
+        endpoint
+            .policy
+            .allows(context.role, principal.platform_admin)
+    });
+    let audit_scope = context.as_ref().map(|context| AuditScope {
+        tenant_id: &context.tenant_id,
+        project_id: &context.project_id,
+    });
     if !project_allowed || !principal.has_scope(required_scope) {
         audit_auth_failure(
             &state,
-            &principal.name,
-            principal.role.as_str(),
-            &method,
-            &path,
-            StatusCode::FORBIDDEN,
-            request_id.as_deref(),
-            user_agent.as_deref(),
+            &NewAuditEvent {
+                principal: &principal.name,
+                role: principal.role.as_str(),
+                method: method.as_str(),
+                path: &path,
+                status_code: StatusCode::FORBIDDEN.as_u16(),
+                request_id: request_id.as_deref(),
+                user_agent: user_agent.as_deref(),
+                scope: audit_scope,
+            },
         )
         .await;
         return Err(ApiError::Forbidden(required_scope));
@@ -930,15 +932,16 @@ where
         && method != Method::OPTIONS
         && let Err(error) = state
             .store
-            .record_audit_event(
-                &principal.name,
-                principal.role.as_str(),
-                method.as_str(),
-                &path,
-                response.status().as_u16(),
-                request_id.as_deref(),
-                user_agent.as_deref(),
-            )
+            .record_audit_event(&NewAuditEvent {
+                principal: &principal.name,
+                role: principal.role.as_str(),
+                method: method.as_str(),
+                path: &path,
+                status_code: response.status().as_u16(),
+                request_id: request_id.as_deref(),
+                user_agent: user_agent.as_deref(),
+                scope: audit_scope,
+            })
             .await
     {
         observability::tracing::warn!(
@@ -952,13 +955,13 @@ where
     Ok(response)
 }
 
-fn endpoint_project_allowed(
+fn endpoint_project_context(
     endpoint: &crate::EndpointContract,
     request: &Request,
     principal: &Principal,
-) -> Result<bool, ApiError> {
+) -> Result<Option<ProjectContext>, ApiError> {
     if !endpoint.policy.ownership.is_required() {
-        return Ok(true);
+        return Ok(None);
     }
     let mut headers = request.headers().clone();
     if endpoint.policy.ownership == crate::OwnershipRule::PathProject {
@@ -974,10 +977,7 @@ fn endpoint_project_allowed(
                 .map_err(|_| ApiError::Validation("invalid project id".to_string()))?,
         );
     }
-    let context = project_context(&headers, principal)?;
-    Ok(endpoint
-        .policy
-        .allows(context.role, principal.platform_admin))
+    project_context(&headers, principal).map(Some)
 }
 
 async fn authenticate_request_token<S, O>(
@@ -1057,36 +1057,15 @@ where
     Ok(principal.with_project_memberships(memberships))
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn audit_auth_failure<S, O>(
-    state: &AppState<S, O>,
-    principal: &str,
-    role: &str,
-    method: &Method,
-    path: &str,
-    status: StatusCode,
-    request_id: Option<&str>,
-    user_agent: Option<&str>,
-) where
+async fn audit_auth_failure<S, O>(state: &AppState<S, O>, event: &NewAuditEvent<'_>)
+where
     S: ApiStore,
     O: ObjectStore,
 {
-    if let Err(error) = state
-        .store
-        .record_audit_event(
-            principal,
-            role,
-            method.as_str(),
-            path,
-            status.as_u16(),
-            request_id,
-            user_agent,
-        )
-        .await
-    {
+    if let Err(error) = state.store.record_audit_event(event).await {
         observability::tracing::warn!(
-            %method,
-            %path,
+            method = %event.method,
+            path = %event.path,
             %error,
             "failed to persist auth failure audit event"
         );
@@ -1135,14 +1114,17 @@ fn env_usize(name: &str, default: usize) -> usize {
 
 async fn list_audit_events<S, O>(
     State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<ListAuditEventsResponse>, ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
 {
+    let context = project_context(&headers, &principal)?;
     let events = state
         .store
-        .list_audit_events(100)
+        .list_audit_events(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
     Ok(Json(ListAuditEventsResponse {
