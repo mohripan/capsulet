@@ -344,12 +344,19 @@ fn log_directory(root: &Path) -> Result<PathBuf, String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
-        .as_secs();
+        .as_millis();
     let directory = root
         .join(".capsulet")
         .join("verify")
-        .join(timestamp.to_string());
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        .join(format!("{timestamp}-{}", std::process::id()));
+    fs::create_dir_all(root.join(".capsulet").join("verify")).map_err(|error| error.to_string())?;
+    // Never append a new run's evidence to an existing run, even on a naming collision.
+    fs::create_dir(&directory).map_err(|error| {
+        format!(
+            "could not create isolated verification logs at {}: {error}",
+            directory.display()
+        )
+    })?;
     Ok(directory)
 }
 

@@ -87,6 +87,24 @@ pub(crate) fn gates() -> Vec<Gate> {
     let powershell = if cfg!(windows) { "powershell" } else { "pwsh" };
     vec![
         gate(
+            "verifier",
+            "verifier and dependency-policy regression tests",
+            &["cargo"],
+            600,
+            &[Fast, Full],
+            vec![command(
+                "cargo",
+                &[
+                    "test",
+                    "-p",
+                    "capsulet-xtask",
+                    "--locked",
+                    "--target-dir",
+                    ".capsulet/verify/xtask-tests",
+                ],
+            )],
+        ),
+        gate(
             "format",
             "Rust formatting",
             &["cargo"],
@@ -410,7 +428,7 @@ pub(crate) fn gates() -> Vec<Gate> {
         ),
         gate(
             "security",
-            "dependency, licence, and source security checks",
+            "Rust/npm/Python dependency and license policy",
             &["cargo-audit", "cargo-deny", "npm", "python"],
             900,
             &[Full],
@@ -454,7 +472,7 @@ pub(crate) fn gates() -> Vec<Gate> {
         ),
         gate(
             "compose",
-            "Compose configuration and smoke test",
+            "Compose configuration validation (smoke pending #98)",
             &["docker"],
             1_200,
             &[Full],
@@ -496,7 +514,7 @@ pub(crate) fn gates() -> Vec<Gate> {
         ),
         gate(
             "kind",
-            "Kind deployment smoke test",
+            "Kind cluster discovery (install/smoke pending #102)",
             &["kind", "kubectl", "helm", "docker"],
             1_800,
             &[Full],

@@ -31,6 +31,40 @@ fn reports_absent_prerequisites() {
 }
 
 #[test]
+fn simultaneous_verification_runs_do_not_share_artifact_logs() {
+    let workers = (0..8)
+        .map(|_| {
+            std::thread::spawn(|| {
+                let result = xtask()
+                    .args(["verify", "--gate", "format"])
+                    .env("CAPSULET_VERIFY_TEST_COMMAND", "fail")
+                    .output()
+                    .expect("verifier");
+                assert!(!result.status.success());
+                let diagnostic = stderr(&result);
+                diagnostic
+                    .split_once("(log: ")
+                    .expect("log location")
+                    .1
+                    .split_once(')')
+                    .expect("log suffix")
+                    .0
+                    .to_string()
+            })
+        })
+        .collect::<Vec<_>>();
+    let paths = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("worker"))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        paths.len(),
+        8,
+        "each verifier execution must retain its own evidence"
+    );
+}
+
+#[test]
 fn propagates_failed_children() {
     let result = xtask()
         .args(["verify", "--gate", "format"])
@@ -84,6 +118,33 @@ fn cannot_skip_a_required_gate() {
     let result = output(&["verify", "--profile", "full", "--skip", "format"]);
     assert!(!result.status.success());
     assert!(stderr(&result).contains("cannot skip required gate: format"));
+}
+
+#[test]
+fn required_verifier_self_tests_use_an_independent_build_directory() {
+    let result = output(&["verify", "--list", "--format", "json"]);
+    assert!(result.status.success());
+    let graph: serde_json::Value = serde_json::from_slice(&result.stdout).expect("gate graph");
+    let gate = graph
+        .as_array()
+        .expect("gates")
+        .iter()
+        .find(|gate| gate["name"] == "verifier")
+        .expect("both profiles must execute the verifier's own regression tests");
+    assert_eq!(gate["profiles"], serde_json::json!(["fast", "full"]));
+    let command = &gate["commands"][0];
+    assert_eq!(command["program"], "cargo");
+    assert_eq!(
+        command["arguments"],
+        serde_json::json!([
+            "test",
+            "-p",
+            "capsulet-xtask",
+            "--locked",
+            "--target-dir",
+            ".capsulet/verify/xtask-tests"
+        ])
+    );
 }
 
 #[test]
