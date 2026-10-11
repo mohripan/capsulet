@@ -63,54 +63,59 @@ fn quoted(goal: Proposition, cited: Proposition, min_authority: &str) -> Proposa
     }
 }
 
-/// Decides `subject predicate object` as a quotation of `document`, from a
-/// high-authority source.
-fn decide(document: &str, subject: &str, predicate: &str, object: &str) -> Verdict {
+/// Whether citing `document` for `subject predicate object` fails because a
+/// term was not found in it.
+///
+/// Asked of the term step rather than of the verdict. With no phrasing declared
+/// the verdict would stay `rejected` for another reason — the relation is not
+/// stated — after the term starts being found, and a tripwire on the verdict
+/// would then never go red.
+fn term_not_found(document: &str, subject: &str, predicate: &str, object: &str) -> bool {
     let proposition = Proposition::new(subject, predicate, object);
     let proposal = quoted(proposition.clone(), proposition, "low");
-    check(&proposal, &snapshot_over(document, Authority::High)).verdict
+    check(&proposal, &snapshot_over(document, Authority::High))
+        .errors
+        .iter()
+        .any(|error| error.code == "term_not_in_span")
 }
 
 // --- A value written another way is not found (CAP-CORRECTNESS-004) ----------
 
 #[test]
 fn a_number_written_another_way_is_not_found() {
-    assert_eq!(
-        decide(
+    assert!(
+        term_not_found(
             "Revenue rose to $1.2 million in 2025.",
             "Revenue",
             "rose_to",
             "$1,200,000"
         ),
-        Verdict::Rejected,
         "closed by Task 7 of the citation grounding plan; move this to grounding.rs inverted"
     );
 }
 
 #[test]
 fn a_date_written_another_way_is_not_found() {
-    assert_eq!(
-        decide(
+    assert!(
+        term_not_found(
             "The contract was signed on March 1, 2026.",
             "contract",
             "signed_on",
             "2026-03-01"
         ),
-        Verdict::Rejected,
         "closed by Task 7 of the citation grounding plan; move this to grounding.rs inverted"
     );
 }
 
 #[test]
 fn another_name_for_the_entity_is_not_found() {
-    assert_eq!(
-        decide(
+    assert!(
+        term_not_found(
             "IBM acquired Red Hat in 2019.",
             "International Business Machines",
             "acquired",
             "Red Hat"
         ),
-        Verdict::Rejected,
         "closed by Task 8 of the citation grounding plan; move this to grounding.rs inverted"
     );
 }
