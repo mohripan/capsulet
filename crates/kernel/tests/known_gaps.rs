@@ -80,34 +80,6 @@ fn term_not_found(document: &str, subject: &str, predicate: &str, object: &str) 
         .any(|error| error.code == "term_not_in_span")
 }
 
-// --- A value written another way is not found (CAP-CORRECTNESS-004) ----------
-
-#[test]
-fn a_number_written_another_way_is_not_found() {
-    assert!(
-        term_not_found(
-            "Revenue rose to $1.2 million in 2025.",
-            "Revenue",
-            "rose_to",
-            "$1,200,000"
-        ),
-        "closed by Task 7 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
-#[test]
-fn a_date_written_another_way_is_not_found() {
-    assert!(
-        term_not_found(
-            "The contract was signed on March 1, 2026.",
-            "contract",
-            "signed_on",
-            "2026-03-01"
-        ),
-        "closed by Task 7 of the citation grounding plan; move this to grounding.rs inverted"
-    );
-}
-
 #[test]
 fn another_name_for_the_entity_is_not_found() {
     assert!(

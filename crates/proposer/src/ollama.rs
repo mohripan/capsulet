@@ -208,7 +208,7 @@ pub fn build_proposal(raw: &RawProposal, excerpt: &str, phrasebook: &Phrasebook)
         }
     } else {
         let terms_occur =
-            contains_term(excerpt, &raw.subject) && contains_term(excerpt, &raw.object);
+            contains_term(excerpt, &raw.subject) && phrasebook.object_in(excerpt, &goal).is_some();
         let premise = if terms_occur {
             goal.clone()
         } else {
@@ -328,19 +328,23 @@ mod tests {
     /// of the shape alone is how a reading path that the kernel always rejected
     /// went unnoticed.
     fn snapshot(phrasebook: Phrasebook) -> Snapshot {
+        snapshot_over(phrasebook, EXCERPT)
+    }
+
+    fn snapshot_over(phrasebook: Phrasebook, excerpt: &str) -> Snapshot {
         let scope = MemoryScope::new("acme", "prod").expect("scope");
         let source_id = SourceId::new("src_1").expect("source id");
-        let content = SourceContent::new(source_id.clone(), EXCERPT).expect("content");
+        let content = SourceContent::new(source_id.clone(), excerpt).expect("content");
         let evidence = Evidence::new(
             EvidenceId::new("ev_1").expect("evidence id"),
             scope.clone(),
             source_id.clone(),
             "para-1",
-            EXCERPT,
+            excerpt,
             "2026-03-02T00:00:00Z",
         )
         .expect("evidence")
-        .with_span(EvidenceSpan::new(0, EXCERPT.len(), content.content_hash()).expect("span"));
+        .with_span(EvidenceSpan::new(0, excerpt.len(), content.content_hash()).expect("span"));
         Snapshot::new()
             .with_source(
                 Source::new(source_id, scope, "document", None, "Memo", Authority::High)
@@ -367,6 +371,53 @@ mod tests {
         assert_eq!(
             check(&proposal, &snapshot(renewals())).verdict,
             Verdict::Accepted
+        );
+    }
+
+    #[test]
+    fn a_typed_answer_runs_through_the_kernel_without_a_literal_object_match() {
+        let excerpt = "Acme is $1.2 million.";
+        let mut answer = raw("USD 1200000", excerpt, false);
+        answer.predicate = "value".into();
+        let book = Phrasebook::new()
+            .with_object_type("value", capsulet_kernel::value::ValueType::Money)
+            .with_relation(
+                "value",
+                vec![Phrasing::parse("{from} is {to}").expect("phrasing")],
+            );
+        for (currency, verdict) in [
+            (None, Verdict::Conditional),
+            (Some("USD"), Verdict::Accepted),
+        ] {
+            let book = book
+                .clone()
+                .with_value_policy(currency, None)
+                .expect("policy");
+            let proposal = build_proposal(&answer, excerpt, &book);
+            assert!(matches!(proposal.derivation, Rule::Trust { .. }));
+            assert_eq!(
+                check(&proposal, &snapshot_over(book, excerpt)).verdict,
+                verdict
+            );
+        }
+    }
+
+    #[test]
+    fn an_unphrased_typed_reading_keeps_the_kernels_value_residual() {
+        let excerpt = "Acme mentioned 05/01/2026.";
+        let mut answer = raw("2026-01-05", excerpt, false);
+        answer.predicate = "value".into();
+        let book =
+            Phrasebook::new().with_object_type("value", capsulet_kernel::value::ValueType::Date);
+        let proposal = build_proposal(&answer, excerpt, &book);
+        let certificate = check(&proposal, &snapshot_over(book, excerpt));
+        assert_eq!(certificate.verdict, Verdict::Conditional);
+        assert!(
+            certificate
+                .residuals
+                .iter()
+                .any(|r| r.rationale.contains("2026-01-05") && r.rationale.contains("2026-05-01")),
+            "{certificate:?}"
         );
     }
 

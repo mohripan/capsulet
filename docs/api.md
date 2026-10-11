@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -371,7 +371,24 @@ declared, so no answer is a statement and the best verdict is `conditional`. Ker
 future platform-assurance verdict and is not returned by the current kernel API. The generated
 `Certificate` schema contains one response example for each current verdict.
 
-Certificates expose the goal, mechanically discharged steps, interpretation residuals, errors and
+Contracts may declare relation `to: number`, `to: money`, or `to: date`. The object remains a string;
+term and declared-slot checks compare its exact value. Explicit disambiguation is written as:
+
+```text
+statement_policy:
+  default_currency: USD
+  date_order: day_first
+```
+
+`date_order` also accepts `month_first`. Without these policies, shared symbols (including `$`)
+and numeric day/month dates produce residuals naming possible values and the cited evidence,
+so a stated answer is `conditional`, not `accepted` (`CAP-CORRECTNESS-013`). Codes must come from
+the kernel's pinned currency table; neither policy consults the machine locale. Unsupported
+formats and inexact/overflowing quantities fail closed. Entity names retain their existing text
+matching. A stored contract that does not compile is refused before source storage. The endpoint's
+authority floor remains `low`; no API request/response shape changed.
+
+Certificates expose the goal, mechanically discharged steps, interpretation and value residuals, errors and
 repair ownership, and a replay digest. Memory evidence responses currently expose `source_id`, a
 string `locator`, `excerpt`, and `observed_at`; they do not yet expose structured byte offsets or a
 source-content hash. Those stronger provenance fields must not be inferred from the current API.

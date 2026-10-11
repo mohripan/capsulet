@@ -36,5 +36,5 @@ pub use domain::{
     WorkflowDefinition, WorkflowDependencyPolicy, WorkflowGraph, WorkflowGraphError, WorkflowId,
     WorkflowRun, WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep,
     WorkflowStepDependency, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId, content_digest,
-    run_local_text_ingestion, verify_evidence_span,
+    is_currency_code, run_local_text_ingestion, verify_evidence_span,
 };

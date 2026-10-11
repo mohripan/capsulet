@@ -243,3 +243,57 @@ fn a_relation_without_phrasings_states_nothing() {
     assert!(contract.ast().relation_types()[0].phrasings().is_empty());
     assert!(contract.ast().statement_policy().cues().is_empty());
 }
+
+#[test]
+fn relations_can_target_exact_value_types() {
+    for endpoint in ["number", "money", "date"] {
+        let source = STATED.replace("to: Organization", &format!("to: {endpoint}"));
+        parse(&source)
+            .expect("value contract parses")
+            .compile()
+            .expect("a value endpoint is not an undeclared entity");
+    }
+}
+
+#[test]
+fn value_ambiguity_policies_are_explicit_and_validated() {
+    let source = STATED.replace(
+        "statement_policy:",
+        "statement_policy:\n  default_currency: USD\n  date_order: day_first",
+    );
+    let contract = parse(&source).expect("explicit policy parses");
+    assert_eq!(
+        contract.ast().statement_policy().default_currency(),
+        Some("USD")
+    );
+    assert_eq!(
+        contract.ast().statement_policy().date_order(),
+        Some("day_first")
+    );
+    for property in [
+        "default_currency: USDish",
+        "default_currency: XXX",
+        "default_currency:",
+        "date_order: auto",
+        "locale: en-US",
+    ] {
+        assert!(
+            parse(&STATED.replace(
+                "statement_policy:",
+                &format!("statement_policy:\n  {property}")
+            ))
+            .is_err(),
+            "{property}"
+        );
+    }
+}
+
+#[test]
+fn built_in_value_types_do_not_weaken_entity_endpoint_validation() {
+    for source in [
+        STATED.replace("from: Organization", "from: money"),
+        STATED.replace("to: Organization", "to: missing"),
+    ] {
+        assert!(parse(&source).expect("contract parses").compile().is_err());
+    }
+}

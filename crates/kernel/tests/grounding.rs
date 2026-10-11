@@ -75,6 +75,261 @@ fn cites(document: &str, subject: &str, object: &str) -> bool {
         .any(|step| step.rule == "cite")
 }
 
+fn typed_decision(document: &str, kind: &str, object: &str, policy: &str) -> Certificate {
+    typed_relation_decision(
+        document,
+        kind,
+        Proposition::new("Acme", "value", object),
+        "{from} is {to}",
+        policy,
+    )
+}
+
+fn typed_relation_decision(
+    document: &str,
+    kind: &str,
+    goal: Proposition,
+    phrasing: &str,
+    policy: &str,
+) -> Certificate {
+    let contract = capsulet_core::MemoryContract::parse(
+        capsulet_core::MemoryContractId::new("typed").expect("id"),
+        "typed",
+        format!("entity Thing:\n  fields:\n    name: string\nrelation {}:\n  from: Thing\n  to: {kind}\n  stated_by:\n    - \"{phrasing}\"\n{policy}", goal.predicate),
+    )
+    .expect("typed contract parses");
+    contract.compile().expect("typed contract compiles");
+    check(
+        &Proposal {
+            schema_version: Proposal::current_schema_version(),
+            goal: goal.clone(),
+            derivation: Rule::Trust {
+                premise: Box::new(Rule::Cite {
+                    evidence_id: "ev_1".into(),
+                    proposition: goal,
+                }),
+                min_authority: "low".into(),
+            },
+        },
+        &snapshot_over(document).with_phrasebook(Phrasebook::from_contract(contract.ast())),
+    )
+}
+
+#[test]
+fn a_date_written_another_way_is_grounded_as_a_value() {
+    let certificate = typed_relation_decision(
+        "The contract was signed on March 1, 2026.",
+        "date",
+        Proposition::new("contract", "signed_on", "2026-03-01"),
+        "{from} was signed on {to}",
+        "",
+    );
+    assert_eq!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+}
+
+#[test]
+fn grouped_scaled_numbers_are_compared_exactly() {
+    let certificate = typed_decision("Acme is +1.2 million.", "number", "1,200,000.00", "");
+    assert_eq!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+}
+
+#[test]
+fn money_codes_are_part_of_the_value() {
+    let certificate = typed_decision("Acme is USD 1.2 million.", "money", "1,200,000 USD", "");
+    assert_eq!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+}
+
+#[test]
+fn an_ambiguous_numeric_date_names_both_readings() {
+    let certificate = typed_decision("Acme is 05/01/2026.", "date", "2026-01-05", "");
+    assert_eq!(certificate.verdict, Verdict::Conditional, "{certificate:?}");
+    assert!(
+        certificate.residuals.iter().any(|residual| {
+            residual.rationale.contains("2026-01-05")
+                && residual.rationale.contains("2026-05-01")
+                && residual.evidence_ids == ["ev_1"]
+                && residual.to == certificate.goal
+        }),
+        "{certificate:?}"
+    );
+}
+
+#[test]
+fn a_number_written_another_way_is_grounded_as_money_with_a_default() {
+    let certificate = typed_relation_decision(
+        "Revenue rose to $1.2 million in 2025.",
+        "money",
+        Proposition::new("Revenue", "rose_to", "$1,200,000"),
+        "{from} rose to {to}",
+        "statement_policy:\n  default_currency: USD\n",
+    );
+    assert_eq!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+}
+
+#[test]
+fn a_shared_currency_symbol_is_never_assumed_to_be_us_dollars() {
+    let certificate = typed_decision("Acme is $1.2 million.", "money", "USD 1,200,000", "");
+    assert_eq!(certificate.verdict, Verdict::Conditional, "{certificate:?}");
+    assert!(certificate.residuals.iter().any(
+        |residual| residual.rationale.contains("USD 1200000")
+            && residual.rationale.contains("CAD 1200000")
+            && residual.evidence_ids == ["ev_1"]
+    ));
+}
+
+#[test]
+fn numeric_dates_follow_only_an_explicit_contract_order() {
+    for (order, expected, other) in [
+        ("day_first", "2026-01-05", "2026-05-01"),
+        ("month_first", "2026-05-01", "2026-01-05"),
+    ] {
+        let policy = format!("statement_policy:\n  date_order: {order}\n");
+        assert_eq!(
+            typed_decision("Acme is 05/01/2026.", "date", expected, &policy).verdict,
+            Verdict::Accepted
+        );
+        assert_eq!(
+            typed_decision("Acme is 05/01/2026.", "date", other, &policy).verdict,
+            Verdict::Rejected
+        );
+    }
+}
+
+#[test]
+fn typed_values_do_not_ground_prefixes_or_invalid_lexemes() {
+    for (kind, document, wanted) in [
+        ("number", "Acme is 300 days.", "30"),
+        ("number", "Acme is 30 million.", "30"),
+        ("number", "Acme is -30.", "30"),
+        ("number", "Acme is 3,00.", "300"),
+        (
+            "number",
+            "Acme is 0.1234567890123456789.",
+            "0.123456789012345679",
+        ),
+        (
+            "number",
+            "Acme is 170141183460469231731687303715884105728.",
+            "170141183460469231731687303715884105727",
+        ),
+        ("money", "Acme is CAD 30.", "USD 30"),
+        ("money", "Acme is $30 CAD.", "USD 30"),
+        ("date", "Acme is February 29, 2026.", "2026-02-28"),
+        ("date", "Acme is March 1,,, 2026.", "2026-03-01"),
+    ] {
+        let certificate = typed_decision(
+            document,
+            kind,
+            wanted,
+            "statement_policy:\n  default_currency: USD\n",
+        );
+        assert_eq!(
+            certificate.verdict,
+            Verdict::Rejected,
+            "{document:?}: {certificate:?}"
+        );
+    }
+}
+
+#[test]
+fn typed_slots_still_enforce_roles_sentence_boundaries_and_cues() {
+    for document in [
+        "Acme is not USD 30.",
+        "Acme is USD 30?",
+        "USD 30 is Acme.",
+        "Acme is elsewhere. USD 30 is mentioned.",
+        "Acme is CAD 40. USD 30 exists elsewhere.",
+    ] {
+        let certificate = typed_decision(document, "money", "USD 30", "");
+        assert_eq!(
+            certificate.verdict,
+            Verdict::Rejected,
+            "{document:?}: {certificate:?}"
+        );
+    }
+}
+
+#[test]
+fn an_unphrased_citation_does_not_lose_its_value_ambiguity() {
+    let goal = Proposition::new("Acme", "value", "2026-01-05");
+    let proposal = Proposal {
+        schema_version: Proposal::current_schema_version(),
+        goal: goal.clone(),
+        derivation: Rule::Interpret {
+            premise: Box::new(Rule::Cite {
+                evidence_id: "ev_1".into(),
+                proposition: goal.clone(),
+            }),
+            proposition: goal,
+            rationale: "read the date as Acme's value".into(),
+        },
+    };
+    let snapshot = snapshot_over("Acme mentioned 05/01/2026.").with_phrasebook(
+        Phrasebook::new().with_object_type("value", capsulet_kernel::value::ValueType::Date),
+    );
+    let certificate = check(&proposal, &snapshot);
+    assert_eq!(certificate.verdict, Verdict::Conditional);
+    assert!(
+        certificate
+            .residuals
+            .iter()
+            .any(|r| r.rationale.contains("2026-01-05") && r.rationale.contains("2026-05-01")),
+        "{certificate:?}"
+    );
+}
+
+#[test]
+fn the_closed_grammars_cover_signed_scales_valid_calendar_forms_and_symbols() {
+    for (kind, text, object) in [
+        ("number", "Acme is -1.25 thousand.", "-1250"),
+        ("number", "Acme is 1 billion.", "1000000000"),
+        ("number", "Acme is 1 trillion.", "1000000000000"),
+        ("date", "Acme is 1 March 2026.", "2026-03-01"),
+        ("date", "Acme is February 29, 2024.", "2024-02-29"),
+        ("money", "Acme is €30.", "EUR 30"),
+        ("money", "Acme is 30 ₹.", "INR 30"),
+    ] {
+        let certificate = typed_decision(text, kind, object, "");
+        assert_eq!(
+            certificate.verdict,
+            Verdict::Accepted,
+            "{text:?}: {certificate:?}"
+        );
+    }
+}
+
+#[test]
+fn typed_matching_does_not_change_an_untyped_relations_text_semantics() {
+    assert!(!cites("Acme is March 1, 2026.", "Acme", "2026-03-01"));
+    assert!(!cites("Acme is $1.2 million.", "Acme", "$1,200,000"));
+}
+
+#[test]
+fn typed_search_at_the_span_bound_still_refuses_a_missing_value() {
+    let text = format!("{}Acme is 300.", "1 ".repeat(2040));
+    assert!(text.len() <= MAX_CITED_EXCERPT_BYTES);
+    let certificate = typed_decision(&text, "number", "30", "");
+    assert_eq!(certificate.verdict, Verdict::Rejected);
+}
+
+#[test]
+fn typed_slots_can_precede_the_subject_and_keep_invisible_literals_ignorable() {
+    for phrasing in ["{to} is {from}", "\u{200b}{to} is {from}"] {
+        let certificate = typed_relation_decision(
+            "USD 30 is Acme.",
+            "money",
+            Proposition::new("Acme", "value", "USD 30"),
+            phrasing,
+            "",
+        );
+        assert_eq!(
+            certificate.verdict,
+            Verdict::Accepted,
+            "{phrasing:?}: {certificate:?}"
+        );
+    }
+}
+
 #[test]
 fn composition_does_not_change_what_a_document_says() {
     // The stored document is whatever was ingested, and a source that writes "é"

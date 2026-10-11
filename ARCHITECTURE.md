@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008, CAP-CORRECTNESS-013 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -88,7 +88,12 @@ Six properties carry the weight:
   exactly is refused rather than rounded. A citation is judged on text rather than bytes — Unicode
   composition, case, typographic quotes and dashes, invisible characters and whitespace do not
   change what a document says — and a term is found only as whole words, by Unicode's own word
-  boundaries, within a span small enough to be worth pointing at. A citation states a relation
+  boundaries, within a span small enough to be worth pointing at. Contract-declared `number`,
+  `money`, and `date` objects compare by exact value in both term and phrasing-slot checks;
+  unsupported or overflowing forms are refused. A shared currency symbol or numeric day/month
+  date leaves an evidence-linked residual unless `statement_policy.default_currency` or
+  `statement_policy.date_order` resolves it (`CAP-CORRECTNESS-013`). Types and policies are pinned
+  additively for replay, with legacy document bytes unchanged. A citation states a relation
   only in a phrasing its contract declares, found in one sentence with nothing in it that denies,
   hedges, conditions or asks it; where there is none, the citation records only that the terms are
   mentioned, and only a reading gets from there to the relation. A goal is reached only by
@@ -486,8 +491,8 @@ and a test or source pointer:
 
 - cue lists are finite and English-first, so a declared phrasing in a sentence that doubts or denies
   it in words the list does not carry still states the relation (`CAP-CORRECTNESS-012`);
-- a cited term is compared as text, so the same value written another way — another number or date
-  format, or another name for the entity — is not found (`CAP-CORRECTNESS-004`);
+- an entity endpoint is still compared by its textual name; another name for the entity is not
+  found merely because it is an alias (`CAP-CORRECTNESS-004`);
 - whether a value reached a verification record without crossing an unmodelled boundary is supplied
   by the caller, not derived: no certificate records provenance loss (`CAP-IR-006`);
 - a certificate does not record which verdict rule decided it, and the gate does not compare the

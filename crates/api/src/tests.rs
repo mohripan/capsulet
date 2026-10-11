@@ -5730,3 +5730,52 @@ async fn reasoning_under_another_project_s_contract_finds_no_contract_and_stores
         "nothing should be stored for a request refused at its contract"
     );
 }
+
+#[tokio::test]
+async fn reasoning_loads_typed_endpoints_and_policies_from_its_scoped_contract() {
+    let store = FakeStore::default();
+    let dsl = "entity Organization:\n  fields:\n    name: string\nrelation revenue:\n  from: Organization\n  to: money\n  stated_by:\n    - \"{from} is {to}\"\nstatement_policy:\n  default_currency: CAD\n  date_order: day_first\n";
+    let contract = MemoryContract::parse(MemoryContractId::new("typed").expect("id"), "typed", dsl)
+        .expect("contract");
+    store
+        .upsert_memory_contract(&contract)
+        .await
+        .expect("store");
+    let state = AppState::new(store, FakeObjectStore::default(), ["mini".into()]);
+    let context = crate::http::internal::ProjectContext {
+        tenant_id: "default".into(),
+        project_id: "default".into(),
+        role: crate::auth::ProjectRole::Admin,
+    };
+    let book = crate::reasoning::contract_phrasebook(&state, &context, "typed")
+        .await
+        .expect("scoped contract");
+    let cad = capsulet_kernel::Proposition::new("Acme", "revenue", "CAD 1200000");
+    assert!(
+        book.statement_in("Acme is $1.2 million.", &cad)
+            .is_some_and(|s| s.residuals.is_empty())
+    );
+    let usd = capsulet_kernel::Proposition::new("Acme", "revenue", "USD 1200000");
+    assert!(book.statement_in("Acme is $1.2 million.", &usd).is_none());
+}
+
+#[tokio::test]
+async fn reasoning_refuses_a_stored_contract_that_does_not_compile() {
+    let store = FakeStore::default();
+    let contract = MemoryContract::parse(MemoryContractId::new("invalid").expect("id"), "invalid", "entity Thing:\n  fields:\n    name: string\nrelation value:\n  from: Thing\n  to: missing\n").expect("legacy stored contract parses");
+    store
+        .upsert_memory_contract(&contract)
+        .await
+        .expect("store");
+    let state = AppState::new(store, FakeObjectStore::default(), ["mini".into()]);
+    let context = crate::http::internal::ProjectContext {
+        tenant_id: "default".into(),
+        project_id: "default".into(),
+        role: crate::auth::ProjectRole::Admin,
+    };
+    assert!(
+        crate::reasoning::contract_phrasebook(&state, &context, "invalid")
+            .await
+            .is_err()
+    );
+}

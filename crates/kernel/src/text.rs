@@ -83,7 +83,7 @@ pub fn fold(text: &str) -> String {
 }
 
 /// Every offset in `text` a whole-word match may begin or end at, sorted.
-fn word_boundaries(text: &str) -> Vec<usize> {
+pub(crate) fn word_boundaries(text: &str) -> Vec<usize> {
     let mut boundaries: Vec<usize> = text.split_word_bound_indices().map(|(at, _)| at).collect();
     boundaries.push(text.len());
     for (at, _) in text.match_indices('\'') {

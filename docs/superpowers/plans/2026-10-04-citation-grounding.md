@@ -4,7 +4,7 @@
 > task. Task 0 comes first and is not optional: it makes the documentation and the claim registry say
 > what the kernel does today, so that a half-executed plan still leaves the project telling the truth.
 >
-> **Status (2026-10-11):** Tasks 0–6 are done. Tasks 7–9 await the next go-ahead; read
+> **Status (2026-10-11):** Tasks 0–7 are done. Tasks 8–9 await the next go-ahead; read
 > [the handover](../handoffs/2026-10-11-citation-grounding-handoff.md) before starting. It records the
 > conventions this plan depends on, the traps found so far, and the decisions that belong to the owner.
 
@@ -378,31 +378,71 @@ owner's call (see the handover).
 **Files:** `crates/core/src/domain/memory_contract.rs`, `crates/kernel/src/{value.rs,phrasing.rs,
 lib.rs,snapshot_document.rs}`, `crates/kernel/tests/{grounding.rs,known_gaps.rs}`
 
-- [ ] Failing tests: for a relation whose `to:` is `money`, "Revenue rose to $1.2 million" grounds an
+- [x] Failing tests: for a relation whose `to:` is `money`, "Revenue rose to $1.2 million" grounds an
   object of `$1,200,000`; for `date`, "signed on March 1, 2026" grounds `2026-03-01`; `30` is still
   not found in "300 days"; `05/01/2026` from a source with no declared locale grounds neither reading
   by itself and leaves a residual naming both.
-- [ ] A relation's `to:` may be a value type — `number`, `money`, `date` — as well as an entity type.
+- [x] A relation's `to:` may be a value type — `number`, `money`, `date` — as well as an entity type.
   `compile()` accepts the value types. The type travels in the phrasebook, and in its snapshot
   document form additively, so the proposal's shape does not change: the object stays a string, and
   the contract says how to read it.
-- [ ] Typed slots. For a typed `{to}`, both the term check and the phrasing match compare by value.
+- [x] Typed slots. For a typed `{to}`, both the term check and the phrasing match compare by value.
   Instantiate-and-search cannot work once the slot's text may differ from the term, so phrasing
   matching becomes slot-aware: the phrasing's literal pieces are found word-aligned within one
   sentence, and the region that fills a typed slot must parse, whole, to a value equal to the term's.
   Regions are bounded by the sentence and the 4 KiB span bound, so enumerating candidate regions
   between word boundaries stays bounded. Entity slots keep today's text relation.
-- [ ] One closed grammar per type, versioned with `CLAIM_REASONING_RULES`. Numbers: digit grouping, a
+- [x] One closed grammar per type, versioned with `CLAIM_REASONING_RULES`. Numbers: digit grouping, a
   decimal point, an optional sign, and the scale words thousand, million, billion and trillion,
   parsed into the kernel's exact `Quantity` and refused rather than rounded when they are not exact.
   Money: a number plus a currency from an ISO 4217 code or an explicit symbol table. Dates: ISO 8601
   and English month-name forms. No locale-dependent heuristics anywhere.
-- [ ] A form the grammar reads more than one way is not decided by the kernel. Numeric day/month
+- [x] A form the grammar reads more than one way is not decided by the kernel. Numeric day/month
   dates without a locale, and a currency symbol shared by several currencies without a contract
   default, become a residual the kernel writes itself, naming each reading and the evidence. That is
   new — `Cite` has never written a residual — so `Rule::Cite`'s documentation says so.
-- [ ] Inverted, the two Task 7 tripwires move to `grounding.rs`; `CAP-CORRECTNESS-004` is restated to
+- [x] Inverted, the two Task 7 tripwires move to `grounding.rs`; `CAP-CORRECTNESS-004` is restated to
   what remains; the rules version is bumped.
+
+**What the task found (2026-10-11).** The approved currency/date policies live on the contract,
+not the source or the machine locale. Shared symbols remain residuals unless a default is one of
+that symbol's explicitly listed currencies. Numeric dates use slash-separated day/month/year;
+without an order, all valid calendar readings are recorded, including both readings of
+`05/01/2026`. The closed date grammar also includes calendar `YYYY-MM-DD` and full English
+month names, not every possible ISO 8601 or human date notation. Money codes are pinned from
+SIX List One dated 2026-09-17 (excluding XTS/XXX); the supported symbol table is `$`, `€`, `£`,
+`¥`, and `₹`. Unsupported forms, malformed grouping, invalid dates, excess decimal scale and
+overflow cannot discharge a typed citation. Built-in endpoint spellings are reserved for values
+at `to:`; `from:` and other endpoint names still require declared entities.
+
+The old tripwires had no type metadata, so they would correctly keep rejecting after this task:
+undeclared/untyped relations still match text, not inferred values. They were given typed contract
+context (and the approved USD default for the money case), went red at the term check, and moved
+inverted to grounding regressions. Slot matching must also exclude prefixes of longer lexemes:
+a regression caught `$30 CAD` being shortened to `$30` and incorrectly accepted as USD. It now
+fails closed. Entity matching and the finite cue limitation have not been widened.
+
+`Cite` records its value residual even without a phrasing; otherwise the proposer could lose it
+when taking its interpretation path. The proposer now uses typed term presence on that path,
+and actual kernel checks cover both paths. The API loads compiled, scoped contracts before writes;
+a legacy stored contract with unknown endpoints is refused. Its authority floor remains `low`
+and no request/response shape changed. Additive snapshot fields pin types and both policies;
+unknown pinned metadata is refused and legacy documents still encode byte for byte.
+
+Replay testing found an older fixture marking every obligation discharged regardless of its
+family verdict. Consequently its platform `accepted` did not demonstrate a kernel-accepted
+citation: `Contoso` did not fill the declared `{from} renewed {to}` slot in “Acme renewed the
+Contoso contract.” The fixture now records discharged/residual/failed states consistently, and
+the versionless-proposal test explicitly checks a genuinely accepted citation. The platform code
+is unchanged: its overall verdict folds obligation states, not verifier-record verdicts alone.
+
+The local 37-test grounding suite initially took 8.05 seconds on a 4 KiB hostile-value search.
+Reading the target once, searching already-folded candidates, avoiding full boundary rescans, and
+rejecting non-three-letter currency lookups early reduced that same debug regression run to
+0.14 seconds; this is a local observation, not a production benchmark. The rules version is now
+`7`. `CAP-CORRECTNESS-004` now names only entity-name limitations, and new capability
+`CAP-CORRECTNESS-013` records exact typed grounding and ambiguity. Tracking is
+[Task 7 #120](https://github.com/mohripan/capsulet/issues/120) in the citation grounding milestone.
 
 ### Task 8: An entity is found by any name a reviewer approved
 

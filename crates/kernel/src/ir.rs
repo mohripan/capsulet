@@ -168,10 +168,14 @@ pub enum Rule {
     ///
     /// The kernel checks that the evidence exists, that its span re-derives
     /// from the stored source bytes, and that the proposition's subject and
-    /// object both occur within the cited excerpt as whole words. It concludes
+    /// object both occur within the cited excerpt as whole words. A contract's
+    /// typed object is compared by exact value instead of text. It concludes
     /// `Says(source, P)` when, in addition, one sentence of the excerpt states
     /// the predicate in a phrasing the snapshot declares for it — see
-    /// [`crate::phrasing`] — and `Mentions(source, P)` when none does.
+    /// [`crate::phrasing`] — and `Mentions(source, P)` when none does. An
+    /// unresolved currency symbol or numeric date writes its own residual,
+    /// naming the possible values and cited evidence; even `Trust` cannot turn
+    /// that unresolved reading into an accepted certificate.
     Cite {
         evidence_id: String,
         proposition: Proposition,

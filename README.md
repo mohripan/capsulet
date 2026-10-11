@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001, CAP-CORRECTNESS-013 -->
 # Capsulet
 
 Capsulet is a correctness-first AI-agent workflow platform for building and operating workflows
@@ -105,7 +105,10 @@ So the boundary becomes the product. A node returns a proposal rather than a val
 deterministic kernel with no learned component decides it and emits a certificate; and the
 verdict is three-valued. **Accepted** means every step was discharged mechanically. **Conditional**
 means the result is sound given a set of named readings, each pinned to a span. **Rejected** names
-the failed premise and the subsystem that owns the repair. Capsulet does not verify meaning today
+the failed premise and the subsystem that owns the repair. For contract-declared number, money,
+and date objects, citations compare exact values rather than their spelling. An unresolved shared
+currency symbol or numeric day/month date is an evidence-linked residual, never a guessed value
+(`CAP-CORRECTNESS-013`). Capsulet does not verify meaning today
 either — the difference is that it would stop implying otherwise, and report per answer exactly
 what was mechanically discharged and what was assumed.
 

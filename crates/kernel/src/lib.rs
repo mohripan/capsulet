@@ -30,6 +30,7 @@ pub mod replay;
 pub mod snapshot;
 pub mod snapshot_document;
 pub mod text;
+pub mod value;
 pub mod workflow;
 
 use capsulet_core::{Authority, ClaimStatus, verify_evidence_span};
@@ -373,11 +374,17 @@ fn derive_cite(
     // grounded on a sentence about anniversary dates. The predicate is not
     // matched here: it is an ontology label, not a quotation, and whether the
     // span states it is what the phrasings below decide.
+    let object_presence = snapshot.phrasebook().object_in(excerpt, proposition);
     for (role, value) in [
         ("subject", &proposition.subject),
         ("object", &proposition.object),
     ] {
-        if !text::contains_term(evidence.excerpt(), value) {
+        let present = if role == "object" {
+            object_presence.is_some()
+        } else {
+            text::contains_term(evidence.excerpt(), value)
+        };
+        if !present {
             state.errors.push(CheckError::TermNotInSpan {
                 evidence_id: evidence_id.to_string(),
                 role,
@@ -393,10 +400,13 @@ fn derive_cite(
         span.start(),
         span.end()
     );
-    let (judgment, detail) = match snapshot.phrasebook().statement_in(excerpt, proposition) {
+    let (judgment, detail, residuals) = match snapshot
+        .phrasebook()
+        .statement_in(excerpt, proposition)
+    {
         Some(statement) => (
             Judgment::Says {
-                source_id,
+                source_id: source_id.clone(),
                 proposition: proposition.clone(),
             },
             format!(
@@ -405,20 +415,44 @@ fn derive_cite(
                 statement.phrasing,
                 statement.sentence
             ),
+            statement.residuals,
         ),
         None => (
             Judgment::Mentions {
-                source_id,
+                source_id: source_id.clone(),
                 proposition: proposition.clone(),
             },
             format!(
                 "{provenance} and contains the subject and the object; no declared phrasing of                  `{}` states the relation between them",
                 proposition.predicate.trim()
             ),
+            object_presence.unwrap_or_default(),
         ),
     };
+    record_value_residuals(residuals, &source_id, proposition, evidence_id, state);
     state.discharge("cite", &judgment, detail);
     Some(judgment)
+}
+
+fn record_value_residuals(
+    rationales: Vec<String>,
+    source_id: &str,
+    proposition: &Proposition,
+    evidence_id: &str,
+    state: &mut CheckState,
+) {
+    for rationale in rationales {
+        state.residuals.push(Residual {
+            from: Judgment::Mentions {
+                source_id: source_id.to_string(),
+                proposition: proposition.clone(),
+            }
+            .canonical(),
+            to: proposition.clone(),
+            rationale,
+            evidence_ids: vec![evidence_id.to_string()],
+        });
+    }
 }
 
 fn derive_attest(claim_id: &str, snapshot: &Snapshot, state: &mut CheckState) -> Option<Judgment> {

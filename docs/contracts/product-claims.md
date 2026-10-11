@@ -30,10 +30,10 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a pinned citation when its excerpt re-derives byte for byte from the stored source and states the proposition in a phrasing its contract declares. |
+| `CAP-CORRECTNESS-001` | implemented | capability | The deterministic kernel accepts a trusted pinned citation when its excerpt re-derives byte for byte from the stored source, states the proposition in a phrasing its contract declares, meets the authority floor, and leaves no unresolved interpretation or typed-value reading. |
 | `CAP-CORRECTNESS-002` | implemented | limitation | Current kernel certificates are an isolated slice; the runtime does not yet admission-control all protected effects or represent platform-level unverified assurance. |
 | `CAP-CORRECTNESS-003` | implemented | capability | The kernel decides every proposal it is given: a derivation nested past the depth bound it states is rejected with that reason, rather than exhausting the stack. |
-| `CAP-CORRECTNESS-004` | implemented | limitation | A cited term is compared as text, so the same value written another way — another number or date format, or another name for the entity — is not found. |
+| `CAP-CORRECTNESS-004` | implemented | limitation | Entity endpoints still compare names as text: another name for an entity is not found unless it matches under the citation text relation; typed value endpoints do not enable entity aliases. |
 | `CAP-CORRECTNESS-005` | implemented | capability | A citation is judged on text, not bytes: Unicode composition, case (by full case folding), typographic quotes and dashes, invisible characters and whitespace run-length do not change whether a document says something; a term is found only as whole words, including in scripts written without spaces; and a span too large to point at anything in particular is not a citation. |
 | `CAP-CORRECTNESS-006` | implemented | capability | An interpretation must say why: a reading recorded without a rationale is refused, the residual it leaves names the premise, the conclusion and the evidence to re-read, and no level of source authority discharges it. |
 | `CAP-CORRECTNESS-007` | implemented | capability | Kernel arithmetic is exact fixed-point, not floating point: the result does not depend on the order of the operands, neighbouring values are distinguished at any magnitude, and a result that could not be represented exactly is refused rather than rounded. |
@@ -42,6 +42,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-CORRECTNESS-010` | implemented | capability | A derivation reaches its goal only by concluding that the goal holds, compared field by field: a citation without a trust step attributes a statement without asserting it, and two propositions that render alike are told apart. |
 | `CAP-CORRECTNESS-011` | implemented | capability | The authority floor a trust step enforces is the caller's policy, carried in the snapshot a decision is made against and re-decided with it: a proposal may raise the floor and cannot lower it. |
 | `CAP-CORRECTNESS-012` | implemented | limitation | Cue lists are finite and English-first, so a declared phrasing in a sentence that denies or doubts it in words the list does not carry still states the relation. |
+| `CAP-CORRECTNESS-013` | implemented | capability | For contract-declared number, money and date object endpoints, citation terms and declared phrasing slots compare exact values under closed grammars. Shared currency symbols and numeric day/month dates leave evidence-linked residuals unless explicit contract policies resolve them. Types and policies are pinned for offline replay; legacy snapshot bytes are unchanged. |
 
 ## Crash recovery
 

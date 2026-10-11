@@ -85,6 +85,9 @@ pub struct ClaimDocument {
 pub struct RelationDocument {
     pub name: String,
     pub stated_by: Vec<String>,
+    /// Absent for legacy entity endpoints; otherwise `number`, `money`, or `date`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
 }
 
 /// Everything a claim-reasoning decision was made against.
@@ -109,6 +112,11 @@ pub struct SnapshotDocument {
     /// Cues a contract adds to the kernel's own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cues: Vec<String>,
+    /// Explicit disambiguation policies; omitted on legacy documents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_currency: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date_order: Option<String>,
 }
 
 impl SnapshotDocument {
@@ -211,6 +219,11 @@ impl SnapshotDocument {
                 .map(|template| Phrasing::parse(template).map_err(RebuildError::from))
                 .collect::<Result<Vec<_>, _>>()?;
             phrasebook = phrasebook.with_relation(&relation.name, phrasings);
+            if let Some(kind) = &relation.object_type {
+                let kind = crate::value::ValueType::parse(kind)
+                    .ok_or_else(|| RebuildError::from("unknown relation object_type"))?;
+                phrasebook = phrasebook.with_object_type(&relation.name, kind);
+            }
         }
         for cue in &self.cues {
             if cue.trim().is_empty() {
@@ -218,7 +231,9 @@ impl SnapshotDocument {
             }
             phrasebook = phrasebook.with_cue(cue);
         }
-        Ok(phrasebook)
+        phrasebook
+            .with_value_policy(self.default_currency.as_deref(), self.date_order.as_deref())
+            .map_err(RebuildError::from)
     }
 }
 

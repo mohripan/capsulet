@@ -33,6 +33,14 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::ir::Proposition;
 use crate::text;
+use crate::value::{self, ValueType};
+
+/// A pinned value policy cannot introduce an unknown currency or date order.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{detail}")]
+pub struct ValuePolicyError {
+    pub detail: String,
+}
 
 /// Words that, anywhere in a sentence, stop it from stating a relation.
 ///
@@ -106,6 +114,8 @@ pub struct Statement {
     pub phrasing: String,
     /// The sentence it was found in.
     pub sentence: String,
+    /// Unresolved value readings; a matching phrasing does not discharge these.
+    pub residuals: Vec<String>,
 }
 
 /// The phrasings a decision reads, by relation, and the cues a contract adds.
@@ -113,6 +123,9 @@ pub struct Statement {
 pub struct Phrasebook {
     relations: BTreeMap<String, Vec<Phrasing>>,
     cues: Vec<String>,
+    object_types: BTreeMap<String, ValueType>,
+    default_currency: Option<String>,
+    date_order: Option<String>,
 }
 
 impl Phrasebook {
@@ -135,6 +148,18 @@ impl Phrasebook {
         for cue in contract.statement_policy().cues() {
             phrasebook = phrasebook.with_cue(cue);
         }
+        for relation in contract.relation_types() {
+            if let Some(kind) = ValueType::parse(relation.to_entity()) {
+                phrasebook
+                    .object_types
+                    .insert(relation.name().to_string(), kind);
+            }
+        }
+        phrasebook.default_currency = contract
+            .statement_policy()
+            .default_currency()
+            .map(str::to_string);
+        phrasebook.date_order = contract.statement_policy().date_order().map(str::to_string);
         phrasebook
     }
 
@@ -153,6 +178,38 @@ impl Phrasebook {
     pub fn with_cue(mut self, cue: &str) -> Self {
         self.cues.push(cue.to_string());
         self
+    }
+
+    /// Declares how this relation's object is read, independently of phrasings.
+    #[must_use]
+    pub fn with_object_type(mut self, relation: &str, kind: ValueType) -> Self {
+        self.object_types.insert(relation.trim().to_string(), kind);
+        self
+    }
+
+    /// Pins the explicit policies that disambiguate values.
+    ///
+    /// # Errors
+    /// Returns [`ValuePolicyError`] for a currency outside the pinned registry
+    /// or an order other than `day_first` / `month_first`.
+    pub fn with_value_policy(
+        mut self,
+        currency: Option<&str>,
+        order: Option<&str>,
+    ) -> Result<Self, ValuePolicyError> {
+        if currency.is_some_and(|code| !capsulet_core::is_currency_code(code)) {
+            return Err(ValuePolicyError {
+                detail: "unknown default_currency".into(),
+            });
+        }
+        if order.is_some_and(|order| !matches!(order, "day_first" | "month_first")) {
+            return Err(ValuePolicyError {
+                detail: "unknown date_order".into(),
+            });
+        }
+        self.default_currency = currency.map(str::to_string);
+        self.date_order = order.map(str::to_string);
+        Ok(self)
     }
 
     /// The phrasings declared for `relation`, if any.
@@ -174,6 +231,21 @@ impl Phrasebook {
     #[must_use]
     pub fn added_cues(&self) -> &[String] {
         &self.cues
+    }
+
+    /// Whether the object occurs, by the endpoint's declared text or value relation.
+    #[must_use]
+    pub fn object_in(&self, excerpt: &str, proposition: &Proposition) -> Option<Vec<String>> {
+        match self.object_types.get(proposition.predicate.trim()) {
+            Some(&kind) => value::find(
+                kind,
+                excerpt,
+                &proposition.object,
+                self.default_currency.as_deref(),
+                self.date_order.as_deref(),
+            ),
+            None => text::contains_term(excerpt, &proposition.object).then(Vec::new),
+        }
     }
 
     /// The sentence of `excerpt` that states `proposition` in a declared
@@ -207,18 +279,80 @@ impl Phrasebook {
             if cues.iter().any(|cue| text::contains_folded(&folded, cue)) {
                 continue;
             }
-            if let Some((phrasing, _)) = wanted
-                .iter()
-                .find(|(_, instance)| text::contains_folded(&folded, instance))
-            {
-                return Some(Statement {
-                    phrasing: phrasing.as_str().to_string(),
-                    sentence: sentence.trim().to_string(),
-                });
+            for (phrasing, instance) in &wanted {
+                let found = match self.object_types.get(proposition.predicate.trim()) {
+                    Some(&kind) => typed_statement(
+                        &folded,
+                        phrasing,
+                        proposition,
+                        kind,
+                        self.default_currency.as_deref(),
+                        self.date_order.as_deref(),
+                    ),
+                    None => text::contains_folded(&folded, instance).then(Vec::new),
+                };
+                if let Some(residuals) = found {
+                    return Some(Statement {
+                        phrasing: phrasing.as_str().to_string(),
+                        sentence: sentence.trim().to_string(),
+                        residuals,
+                    });
+                }
             }
         }
         None
     }
+}
+
+fn typed_statement(
+    sentence: &str,
+    phrasing: &Phrasing,
+    proposition: &Proposition,
+    kind: ValueType,
+    currency: Option<&str>,
+    order: Option<&str>,
+) -> Option<Vec<String>> {
+    let matcher = value::Matcher::new(kind, &proposition.object, currency, order)?;
+    // Split the validated template, not instantiated subject text: a subject
+    // containing braces must not become another slot.
+    let (prefix, suffix) = phrasing.as_str().split_once("{to}")?;
+    let prefix = literal(&prefix.replace("{from}", proposition.subject.trim()));
+    let suffix = literal(&suffix.replace("{from}", proposition.subject.trim()));
+    let boundaries = text::word_boundaries(sentence);
+    for &at in &boundaries {
+        if !sentence[at..].starts_with(&prefix) {
+            continue;
+        }
+        let start = at + prefix.len();
+        if boundaries.binary_search(&start).is_err() {
+            continue;
+        }
+        for &end in boundaries[boundaries.partition_point(|&at| at <= start)..]
+            .iter()
+            .take_while(|&&end| end - start <= 128)
+        {
+            if !sentence[end..].starts_with(&suffix)
+                || boundaries.binary_search(&(end + suffix.len())).is_err()
+                || !value::closed_region(sentence, start, end)
+            {
+                continue;
+            }
+            if let Some(found) = matcher.compare_folded(&sentence[start..end]) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+fn literal(input: &str) -> String {
+    // Sentinels keep edge whitespace through folding without mistaking an
+    // ignored character for a space; remove only the added outer characters.
+    text::fold(&format!("#{input}#"))
+        .strip_prefix('#')
+        .and_then(|text| text.strip_suffix('#'))
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// The sentences of `excerpt`, by Unicode's sentence boundaries (UAX #29).

@@ -273,6 +273,8 @@ impl RelationTypeSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StatementPolicySpec {
     cues: Vec<String>,
+    default_currency: Option<String>,
+    date_order: Option<String>,
 }
 
 impl StatementPolicySpec {
@@ -283,6 +285,31 @@ impl StatementPolicySpec {
     pub fn cues(&self) -> &[String] {
         &self.cues
     }
+
+    /// The explicit ISO currency used to resolve a shared symbol, never a locale guess.
+    #[must_use]
+    pub fn default_currency(&self) -> Option<&str> {
+        self.default_currency.as_deref()
+    }
+
+    /// `day_first` or `month_first`, when numeric dates have an explicit reading.
+    #[must_use]
+    pub fn date_order(&self) -> Option<&str> {
+        self.date_order.as_deref()
+    }
+}
+
+/// The pinned ISO 4217 currency/fund codes (SIX List One, 2026-09-17), excluding
+/// XTS (testing) and XXX (no currency). Updating this table changes the kernel's
+/// grammar and requires a claim-reasoning rules bump.
+#[must_use]
+pub fn is_currency_code(code: &str) -> bool {
+    // Source: https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml
+    const CODES: &str = "AED AFN ALL AMD AOA ARS AUD AWG AZN BAM BBD BDT BHD BIF BMD BND BOB BOV BRL BSD BTN BWP BYN BZD CAD CDF CHE CHF CHW CLF CLP CNY COP COU CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MXV MYR MZN NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS UAH UGX USD USN UYI UYU UYW UZS VED VES VND VUV WST XAD XAF XAG XAU XBA XBB XBC XBD XCD XCG XDR XOF XPD XPF XPT XSU XUA YER ZAR ZMW ZWG";
+    if code.len() != 3 || !code.bytes().all(|byte| byte.is_ascii_uppercase()) {
+        return false;
+    }
+    CODES.split_ascii_whitespace().any(|known| code == known)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -447,7 +474,9 @@ impl CompiledMemoryPolicy {
         }
         for relation in &ast.relation_types {
             validate_entity_ref(&entity_names, &relation.from_entity)?;
-            validate_entity_ref(&entity_names, &relation.to_entity)?;
+            if !matches!(relation.to_entity.as_str(), "number" | "money" | "date") {
+                validate_entity_ref(&entity_names, &relation.to_entity)?;
+            }
         }
         for entity in &ast.entity_types {
             for field in &entity.fields {
@@ -620,6 +649,12 @@ impl<'a> MemoryContractParser<'a> {
         line: &str,
     ) -> Result<(), MemoryContractError> {
         if line.ends_with(':') {
+            if matches!(self.section, Some(Section::StatementPolicy)) && line != "cues:" {
+                return Err(parse_error(
+                    line_number,
+                    "unknown or empty statement policy property",
+                ));
+            }
             self.subsection = Some(line.trim_end_matches(':').to_string());
             self.pending_key = None;
             return Ok(());
@@ -653,6 +688,20 @@ impl<'a> MemoryContractParser<'a> {
                 self.ast.event_types[index].fields.push(field);
             }
             Some(Section::ClaimPolicy) => self.parse_claim_policy(line_number, key, value)?,
+            Some(Section::StatementPolicy) => match key {
+                "default_currency" if is_currency_code(value) => {
+                    self.ast.statement_policy.default_currency = Some(value.to_string());
+                }
+                "date_order" if matches!(value, "day_first" | "month_first") => {
+                    self.ast.statement_policy.date_order = Some(value.to_string());
+                }
+                _ => {
+                    return Err(parse_error(
+                        line_number,
+                        "unknown or invalid statement policy property",
+                    ));
+                }
+            },
             Some(Section::RetrievalPolicy(index)) => {
                 self.parse_retrieval_property(line_number, index, key, value)?;
             }

@@ -213,6 +213,30 @@ its shape, and separately reports malformed v1 input. Always writing the version
 changes newly computed proposal replay digests, not old evidence bytes or certificate
 seals. Legacy pinned inputs remain replayable (`CAP-CORRECTNESS-008`).
 
+**Typed objects compare values, not spelling.** A contract relation's `to:` can be `number`,
+`money`, or `date`; the proposition remains three strings. Both term presence and a declared
+phrasing's `{to}` slot use the same exact grammar. Literal pieces stay word-aligned in one
+sentence, with roles and cues unchanged. Candidate lexemes are limited to 128 folded bytes
+inside the existing 4 KiB citation bound; unsupported forms and overflow are refused, not rounded.
+Numbers accept an optional sign, comma groups of three, a decimal point, and thousand/million/
+billion/trillion, using `Quantity` rather than floats. Money accepts a number with a code from the
+[SIX ISO 4217 List One](https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml)
+pinned at 2026-09-17 (excluding testing/no-currency codes), or a prefix/suffix `$`, `€`, `£`, `¥`,
+or `₹` under the explicit table in `value.rs`. This is a closed symbol table, not a universal
+currency recognizer. Dates accept valid `YYYY-MM-DD`, full English month names in
+`March 1, 2026` / `1 March 2026` forms, and day/month/year slash forms.
+
+A shared symbol is unresolved unless `statement_policy: default_currency: USD` (or another
+listed code for that symbol) resolves it. Numeric day/month dates require
+`statement_policy: date_order: day_first | month_first`; without it `05/01/2026` records
+`2026-01-05` and `2026-05-01`. Invalid calendar readings are not offered. `Cite` itself writes
+these residuals, with attribution, target proposition, rationale, and evidence ids, even when
+no phrasing states the relation. A later `Trust` cannot erase them. The proposer preserves them
+on its interpretation path too. Relation object types and both policies are additive snapshot
+fields; omitted legacy fields keep the prior encoding and semantics (`CAP-CORRECTNESS-013`).
+Entity aliases remain outside this grammar (`CAP-CORRECTNESS-004`), and the finite cue limitation
+(`CAP-CORRECTNESS-012`) remains.
+
 **Relevance is not checked at all.** Asked the same unanswerable question after
 the fix, the model returned `Dana Whitfield | is the named account owner |
 Dana Whitfield` — a correctly grounded, accurately cited fact that does not

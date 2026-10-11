@@ -287,7 +287,7 @@ where
 /// A contract in another project reports as missing, the way every memory
 /// route reports it: ids share one namespace, and existence is not something a
 /// caller outside the project gets to learn.
-async fn contract_phrasebook<S, O>(
+pub(crate) async fn contract_phrasebook<S, O>(
     state: &AppState<S, O>,
     context: &ProjectContext,
     id: &str,
@@ -306,6 +306,9 @@ where
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
     require_scope(contract.scope(), context, id.as_str())?;
+    contract
+        .compile()
+        .map_err(|error| ApiError::validation(error.to_string()))?;
     Ok(Phrasebook::from_contract(contract.ast()))
 }
 

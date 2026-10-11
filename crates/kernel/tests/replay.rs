@@ -498,8 +498,11 @@ fn pinned_snapshot() -> SnapshotDocument {
         relations: vec![RelationDocument {
             name: "renewed".to_string(),
             stated_by: vec!["{from} renewed {to}".to_string()],
+            object_type: None,
         }],
         cues: vec![],
+        default_currency: None,
+        date_order: None,
     }
 }
 
@@ -542,7 +545,16 @@ fn claim_reasoning_certificate_from_bytes(
     recorded: CheckerVerdict,
     rules: &str,
 ) -> (Certificate, EvidenceMap) {
-    let snapshot_bytes = serde_json::to_vec(&pinned_snapshot()).expect("the snapshot encodes");
+    claim_reasoning_certificate_with_snapshot(proposal_bytes, &pinned_snapshot(), recorded, rules)
+}
+
+fn claim_reasoning_certificate_with_snapshot(
+    proposal_bytes: &[u8],
+    snapshot: &SnapshotDocument,
+    recorded: CheckerVerdict,
+    rules: &str,
+) -> (Certificate, EvidenceMap) {
+    let snapshot_bytes = serde_json::to_vec(snapshot).expect("the snapshot encodes");
 
     let mut bundle = EvidenceMap::new();
     let proposal_digest = bundle.insert(proposal_bytes.to_vec());
@@ -589,9 +601,19 @@ fn claim_reasoning_certificate_from_bytes(
                 owner: RepairOwner::Verifier,
             },
             contract: id("grounded"),
-            state: DischargeState::Discharged {
-                by: id(CLAIM_REASONING),
-                evidence: vec![proposal_digest, snapshot_digest],
+            state: match recorded {
+                CheckerVerdict::Accepted => DischargeState::Discharged {
+                    by: id(CLAIM_REASONING),
+                    evidence: vec![proposal_digest, snapshot_digest],
+                },
+                CheckerVerdict::Conditional => DischargeState::Residual {
+                    rationale: "claim reasoning left a value reading unresolved".into(),
+                    evidence: vec![proposal_digest, snapshot_digest],
+                },
+                CheckerVerdict::Rejected => DischargeState::Failed {
+                    reason: "claim reasoning rejected the proposal".into(),
+                    owner: RepairOwner::Proposer,
+                },
             },
         }],
         evidence: vec![
@@ -613,6 +635,120 @@ fn rules_differ(notes: &[ReplayNote]) -> bool {
                 if recorded == "0.1.0" && replaying == CLAIM_REASONING_RULES
         )
     })
+}
+
+#[test]
+fn typed_value_policies_are_pinned_and_replayed_offline() {
+    let text = "Acme is 05/01/2026.";
+    for order in [None, Some("day_first"), Some("month_first")] {
+        let mut document = pinned_snapshot();
+        document.sources[0].content = text.into();
+        document.evidence[0].excerpt = text.into();
+        document.evidence[0].span_end = Some(text.len());
+        document.evidence[0].source_content_hash = Some(
+            SourceContent::new(SourceId::new("src_1").expect("id"), text)
+                .expect("content")
+                .content_hash()
+                .into(),
+        );
+        document.relations = vec![RelationDocument {
+            name: "value".into(),
+            stated_by: vec!["{from} is {to}".into()],
+            object_type: Some("date".into()),
+        }];
+        document.date_order = order.map(str::to_string);
+        let goal = Proposition::new("Acme", "value", "2026-01-05");
+        let proposal = Proposal {
+            schema_version: Proposal::current_schema_version(),
+            goal: goal.clone(),
+            derivation: Rule::Trust {
+                premise: Box::new(Rule::Cite {
+                    evidence_id: "ev_1".into(),
+                    proposition: goal,
+                }),
+                min_authority: "low".into(),
+            },
+        };
+        let decision = ClaimReasoning::decide(&proposal, &document.rebuild().expect("snapshot"));
+        let expected = match order {
+            None => CheckerVerdict::Conditional,
+            Some("day_first") => CheckerVerdict::Accepted,
+            _ => CheckerVerdict::Rejected,
+        };
+        assert_eq!(decision.verdict, expected);
+        let (certificate, evidence) = claim_reasoning_certificate_with_snapshot(
+            &serde_json::to_vec(&proposal).expect("proposal"),
+            &document,
+            decision.verdict,
+            CLAIM_REASONING_RULES,
+        );
+        let outcome = replay(&certificate, &evidence);
+        assert!(outcome.reproduced(), "{outcome:?}");
+        assert_eq!(
+            outcome
+                .verdict()
+                .and_then(AssuranceVerdict::checker_verdict),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
+fn legacy_phrasebook_documents_still_encode_byte_for_byte() {
+    let bytes = br#"{"sources":[],"evidence":[],"claims":[],"relations":[{"name":"value","stated_by":["{from} is {to}"]}],"cues":["doubted"]}"#;
+    let document: SnapshotDocument = serde_json::from_slice(bytes).expect("legacy document");
+    document.rebuild().expect("legacy snapshot rebuilds");
+    assert_eq!(serde_json::to_vec(&document).expect("encodes"), bytes);
+}
+
+#[test]
+fn pinned_currency_defaults_preserve_the_same_grounding_and_ambiguity() {
+    for default in [None, Some("USD"), Some("CAD")] {
+        let json = serde_json::json!({
+            "sources": [], "evidence": [], "claims": [],
+            "relations": [{ "name": "value", "stated_by": ["{from} is {to}"], "object_type": "money" }],
+            "default_currency": default,
+        });
+        let document: SnapshotDocument = serde_json::from_value(json).expect("snapshot document");
+        let snapshot = document.rebuild().expect("pinned policy rebuilds");
+        let object = if default == Some("CAD") {
+            "CAD 1200000"
+        } else {
+            "USD 1200000"
+        };
+        let statement = snapshot
+            .phrasebook()
+            .statement_in(
+                "Acme is $1.2 million.",
+                &Proposition::new("Acme", "value", object),
+            )
+            .expect("statement");
+        assert_eq!(statement.residuals.is_empty(), default.is_some());
+        assert_eq!(
+            serde_json::from_slice::<SnapshotDocument>(
+                &serde_json::to_vec(&document).expect("encoding")
+            )
+            .expect("decoding"),
+            document
+        );
+    }
+}
+
+#[test]
+fn unknown_pinned_value_types_and_policies_are_refused() {
+    for json in [
+        r#"{"sources":[],"evidence":[],"claims":[],"relations":[{"name":"value","stated_by":[],"object_type":"approximate"}]}"#,
+        r#"{"sources":[],"evidence":[],"claims":[],"default_currency":"USDish"}"#,
+        r#"{"sources":[],"evidence":[],"claims":[],"date_order":"auto"}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<SnapshotDocument>(json)
+                .expect("wire document")
+                .rebuild()
+                .is_err(),
+            "{json}"
+        );
+    }
 }
 
 #[test]
@@ -651,7 +787,8 @@ fn a_proposal_always_serializes_its_schema_version() {
 
 #[test]
 fn a_versionless_proposal_reads_as_v1_and_replays() {
-    let proposal = trusted_citation("Contoso");
+    let proposal = trusted_citation("the Contoso contract");
+    assert_eq!(decided_here(&proposal), CheckerVerdict::Accepted);
     let mut document = serde_json::to_value(&proposal).expect("proposal document");
     document
         .as_object_mut()

@@ -369,14 +369,6 @@
         },
         {
           "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_number_written_another_way_is_not_found"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "a_date_written_another_way_is_not_found"
-        },
-        {
-          "path": "crates/kernel/tests/known_gaps.rs",
           "selector": "another_name_for_the_entity_is_not_found"
         },
         {
@@ -458,6 +450,38 @@
         {
           "path": "crates/kernel/tests/grounding.rs",
           "selector": "a_contract_s_phrasings_and_cues_judge_a_citation"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_number_written_another_way_is_grounded_as_money_with_a_default"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_date_written_another_way_is_grounded_as_a_value"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "grouped_scaled_numbers_are_compared_exactly"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "an_ambiguous_numeric_date_names_both_readings"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_shared_currency_symbol_is_never_assumed_to_be_us_dollars"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "typed_values_do_not_ground_prefixes_or_invalid_lexemes"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "typed_value_policies_are_pinned_and_replayed_offline"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
+          "selector": "legacy_phrasebook_documents_still_encode_byte_for_byte"
         }
       ]
     },
@@ -859,7 +883,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "The deterministic kernel accepts a pinned citation when its excerpt re-derives byte for byte from the stored source and states the proposition in a phrasing its contract declares.",
+      "statement": "The deterministic kernel accepts a trusted pinned citation when its excerpt re-derives byte for byte from the stored source, states the proposition in a phrasing its contract declares, meets the authority floor, and leaves no unresolved interpretation or typed-value reading.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -1856,24 +1880,12 @@
       "kind": "limitation",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "A cited term is compared as text, so the same value written another way — another number or date format, or another name for the entity — is not found.",
+      "statement": "Entity endpoints still compare names as text: another name for an entity is not found unless it matches under the citation text relation; typed value endpoints do not enable entity aliases.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
       ],
       "evidence": [
-        {
-          "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_number_written_another_way_is_not_found"
-        },
-        {
-          "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "a_date_written_another_way_is_not_found"
-        },
         {
           "type": "test",
           "path": "crates/kernel/tests/known_gaps.rs",
@@ -2358,6 +2370,99 @@
         {
           "type": "source",
           "path": "crates/kernel/src/phrasing.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-013",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "For contract-declared number, money and date object endpoints, citation terms and declared phrasing slots compare exact values under closed grammars. Shared currency symbols and numeric day/month dates leave evidence-linked residuals unless explicit contract policies resolve them. Types and policies are pinned for offline replay; legacy snapshot bytes are unchanged.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/architecture.md",
+        "docs/api.md"
+      ],
+      "verification": [
+        {
+          "assertion": "typed-endpoints-ground-equivalent-values",
+          "evidence_selectors": [
+            "a_number_written_another_way_is_grounded_as_money_with_a_default",
+            "a_date_written_another_way_is_grounded_as_a_value",
+            "grouped_scaled_numbers_are_compared_exactly"
+          ]
+        },
+        {
+          "assertion": "ambiguity-is-a-residual-not-a-guess",
+          "evidence_selectors": [
+            "an_ambiguous_numeric_date_names_both_readings",
+            "a_shared_currency_symbol_is_never_assumed_to_be_us_dollars"
+          ]
+        },
+        {
+          "assertion": "typed-prefixes-and-invalid-values-fail-closed",
+          "evidence_selectors": [
+            "typed_values_do_not_ground_prefixes_or_invalid_lexemes"
+          ]
+        },
+        {
+          "assertion": "typed-policies-replay-and-legacy-bytes-stay-exact",
+          "evidence_selectors": [
+            "typed_value_policies_are_pinned_and_replayed_offline",
+            "legacy_phrasebook_documents_still_encode_byte_for_byte"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_number_written_another_way_is_grounded_as_money_with_a_default"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_date_written_another_way_is_grounded_as_a_value"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "grouped_scaled_numbers_are_compared_exactly"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "an_ambiguous_numeric_date_names_both_readings"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_shared_currency_symbol_is_never_assumed_to_be_us_dollars"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "typed_values_do_not_ground_prefixes_or_invalid_lexemes"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "typed_value_policies_are_pinned_and_replayed_offline"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "legacy_phrasebook_documents_still_encode_byte_for_byte"
         }
       ]
     },
