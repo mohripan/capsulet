@@ -3,6 +3,10 @@
 > **For agentic workers:** Implement this plan task by task, test first, with one focused commit per
 > task. Task 0 comes first and is not optional: it makes the documentation and the claim registry say
 > what the kernel does today, so that a half-executed plan still leaves the project telling the truth.
+>
+> **Status (2026-10-11):** Tasks 0–5 are done. Tasks 6–9 are handed over; read
+> [the handover](../handoffs/2026-10-11-citation-grounding-handoff.md) before starting. It records the
+> conventions this plan depends on, the traps found so far, and the decisions that belong to the owner.
 
 **Goal:** Make `accepted` mean what the documentation says it means. Today a citation is accepted
 when the proposition's subject and object both occur somewhere in the cited span. Nothing checks the
@@ -346,44 +350,77 @@ example contracts declare phrasings, so they show the shape rather than only par
 - [ ] `Proposal.schema_version`, read with `read_compatible` like every other persisted root.
 - [ ] Close `CAP-CORRECTNESS-008`.
 
-Tasks 7 and 8 change what a term is, which changes the proposal's shape. Without this they would
-strand every bundle written before them as malformed input.
+**Revised 2026-10-11: independent of Tasks 7 and 8.** This task was first written as their
+prerequisite, on the assumption that a term would become an entity reference or a typed value inside
+the proposal. Reading the code for the handover showed a smaller design: the contract already says
+what type a relation's endpoints have, and the snapshot can carry approved names, so the proposition
+can stay three strings and the *contract* says how to read them. Task 6 still matters — a bundle
+from a build whose proposal shape differed is reported as malformed rather than unreadable — but
+nothing else waits on it. Adding the field changes the replay digest of every proposal; that digest
+identifies a proposal on a certificate and no decision reads it, so the change is safe, but it is the
+owner's call (see the handover).
 
 ### Task 7: Values are compared as values
 
-**Files:** `crates/kernel/src/{value.rs,lib.rs,ir.rs}`, `crates/core/src/domain/memory_contract.rs`,
-tests
+**Files:** `crates/core/src/domain/memory_contract.rs`, `crates/kernel/src/{value.rs,phrasing.rs,
+lib.rs,snapshot_document.rs}`, `crates/kernel/tests/{grounding.rs,known_gaps.rs}`
 
-- [ ] Failing tests: `$1.2 million` grounds `1200000 USD`; `March 1, 2026` grounds `2026-03-01`;
-  `05/01/2026` from a source with no declared locale grounds neither reading on its own and is recorded
-  as a residual naming both.
-- [ ] A relation's `to:` may be a value type — `number`, `money`, `date` — as well as an entity.
-- [ ] A closed grammar per type, versioned with the rules: digit grouping, a decimal point, scale
-  words, and currency symbols and codes for numbers and money; ISO 8601 and month-name forms for
-  dates. Numbers parse into the kernel's exact `Quantity` and are compared by value.
-- [ ] A form the grammar reads more than one way is not decided by the kernel. It becomes a residual
-  the kernel writes itself, naming each reading and the span, which is exactly what `conditional` is
-  for.
+- [ ] Failing tests: for a relation whose `to:` is `money`, "Revenue rose to $1.2 million" grounds an
+  object of `$1,200,000`; for `date`, "signed on March 1, 2026" grounds `2026-03-01`; `30` is still
+  not found in "300 days"; `05/01/2026` from a source with no declared locale grounds neither reading
+  by itself and leaves a residual naming both.
+- [ ] A relation's `to:` may be a value type — `number`, `money`, `date` — as well as an entity type.
+  `compile()` accepts the value types. The type travels in the phrasebook, and in its snapshot
+  document form additively, so the proposal's shape does not change: the object stays a string, and
+  the contract says how to read it.
+- [ ] Typed slots. For a typed `{to}`, both the term check and the phrasing match compare by value.
+  Instantiate-and-search cannot work once the slot's text may differ from the term, so phrasing
+  matching becomes slot-aware: the phrasing's literal pieces are found word-aligned within one
+  sentence, and the region that fills a typed slot must parse, whole, to a value equal to the term's.
+  Regions are bounded by the sentence and the 4 KiB span bound, so enumerating candidate regions
+  between word boundaries stays bounded. Entity slots keep today's text relation.
+- [ ] One closed grammar per type, versioned with `CLAIM_REASONING_RULES`. Numbers: digit grouping, a
+  decimal point, an optional sign, and the scale words thousand, million, billion and trillion,
+  parsed into the kernel's exact `Quantity` and refused rather than rounded when they are not exact.
+  Money: a number plus a currency from an ISO 4217 code or an explicit symbol table. Dates: ISO 8601
+  and English month-name forms. No locale-dependent heuristics anywhere.
+- [ ] A form the grammar reads more than one way is not decided by the kernel. Numeric day/month
+  dates without a locale, and a currency symbol shared by several currencies without a contract
+  default, become a residual the kernel writes itself, naming each reading and the evidence. That is
+  new — `Cite` has never written a residual — so `Rule::Cite`'s documentation says so.
+- [ ] Inverted, the two Task 7 tripwires move to `grounding.rs`; `CAP-CORRECTNESS-004` is restated to
+  what remains; the rules version is bumped.
 
 ### Task 8: An entity is found by any name a reviewer approved
 
-**Files:** `crates/kernel/src/{ir.rs,lib.rs,snapshot.rs,snapshot_document.rs}`,
+**Files:** `crates/kernel/src/{phrasing.rs,lib.rs,snapshot.rs,snapshot_document.rs}`,
 `crates/api/src/reasoning.rs`, tests
 
-- [ ] Failing tests: `International Business Machines` grounds against `IBM` when an approved
-  entity-resolution decision made them one entity; a name from a pending or rejected proposal does
-  not; the discharged step names the decision it relied on.
-- [ ] A term may be an entity reference. The snapshot carries each referenced entity's approved names
-  and the review records that approved them, pinned like everything else a decision reads.
-- [ ] No similarity score anywhere in the path. The design document's rule stands: an embedding may
-  propose a candidate alias for review, and only the review makes it a name.
+- [ ] Failing tests: `International Business Machines` grounds against "IBM acquired Red Hat" when a
+  confirmed entity resolution joins the two names under one canonical entity; a name joined only by a
+  candidate or rejected resolution does not; the discharged step names the resolution it relied on.
+- [ ] Reviewed names, and only those. A resolution with status `Confirmed` is a review; the
+  `aliases` fields on `Entity` and `CanonicalEntity` are written straight from API requests, with no
+  review, and must not widen what a citation matches. Two entities joined by confirmed resolutions to
+  one canonical entity form a name group of their `name`s.
+- [ ] The snapshot carries name groups — names plus the resolution ids that joined them — pinned in
+  the snapshot document additively. A term is found when it, or any name in a group containing it,
+  occurs as whole words. Entity slots in phrasings match the same way. The proposal's shape does not
+  change.
+- [ ] `/v1/reasoning/ask` loads the confirmed groups for the caller's project, bounded, and pins them.
+- [ ] No similarity score anywhere in the path. An embedding may propose a candidate resolution for
+  review; only the review makes it a name.
+- [ ] Inverted, the Task 8 tripwire moves to `grounding.rs`; `CAP-CORRECTNESS-004` is closed or
+  restated; the rules version is bumped.
 
 ### Task 9: Measure it
 
 **Files:** `crates/kernel/tests/statement_corpus.rs`, `docs/design/correctness-architecture.md`
 
 - [ ] The tripwires become a labelled corpus whose invariant is asserted, not counted: no case a
-  reader marks *not stated* reaches `accepted`. That is the guarantee.
+  reader marks *not stated* reaches `accepted`. That is the guarantee. The one known exception — a
+  sentence that doubts a phrasing in words no cue list carries (`CAP-CORRECTNESS-012`) — is listed in
+  the corpus as a recorded limitation the invariant names, never dropped to make it pass.
 - [ ] The share of *stated* cases that reach `accepted` is reported, and recorded here as each task
   lands. The architecture document names that ratio as the number that decides whether the approach
   works.
@@ -413,7 +450,8 @@ The plan is complete when:
   loose. That is the trust already placed in whoever writes a contract.
 - **Cue lists fail open.** A negation the list does not know still matches. The list is versioned and
   extensible, and the gap is recorded as a limitation rather than closed by pretending.
-- **Tasks 7 and 8 change the proposal's shape.** They need Task 6 first.
+- **Tasks 7 and 8 no longer change the proposal's shape** (revised 2026-10-11): typing and names come
+  from the contract and the snapshot. Each still bumps the rules version and adds snapshot fields.
 - **Every task changes what replay re-decides.** Task 1 lands first so each change is named, and the
   archive of claim-reasoning records is empty today — nothing in production writes one yet — which
   makes this the cheapest moment the change will ever have.
