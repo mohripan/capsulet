@@ -144,7 +144,10 @@ fn validate_registry(value: &Value, today: &str) -> Result<Registry, String> {
             || !matches!(exception.ecosystem.as_str(), "npm" | "rust")
             || !matches!(
                 exception.scope.as_str(),
-                "development-only" | "uncompiled-optional" | "unmaintained-macro"
+                "development-only"
+                    | "uncompiled-optional"
+                    | "unmaintained-macro"
+                    | "unmaintained-parser"
             )
         {
             return Err(format!("invalid or unowned exception {}", exception.id));

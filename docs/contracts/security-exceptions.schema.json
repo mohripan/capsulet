@@ -54,7 +54,7 @@
             "enum": [
               "development-only",
               "uncompiled-optional",
-              "unmaintained-macro"
+              "unmaintained-macro", "unmaintained-parser"
             ]
           },
           "owner": {

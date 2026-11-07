@@ -7,22 +7,9 @@ it does not apply, who owns it, and the date the reasoning must be re-checked.
 owner, rationale, compensating control, issue and expiry. The gate validates it at runtime;
 Rust tool ignores must also match the registry. This Markdown view provides review context.
 
-## Temporary npm development-only exception
-
-| Advisory | Package | Owner | Expires | Tracking |
-| --- | --- | --- | --- | --- |
-| `GHSA-vfj7-8cjw-p6xm` | `braces` 3.0.3 | platform | 2026-10-25 | [#118](https://github.com/mohripan/capsulet/issues/118) |
-
-The fresh 2026-10-11 audit reports five high entries inherited from this one advisory through
-the Next.js lint dependency chain. The current registry has no patched `braces` release. This
-exception covers only the exact advisory/version in development dependencies and reviewed
-repository lint patterns; it does not cover production inputs, another package version, new
-advisories or critical severity. Production dependencies must pass an unexcepted audit.
-
-`xtask security npm` preserves raw output in `.capsulet/security/npm-audit.json`, prints the
-exception and checks ownership/expiry/reachability. A policy pass is **not** a zero-advisory
-scanner result. Remove the exception when upstream supplies a compatible fix; it fails on the
-expiry date even if nobody edits this document.
+`xtask security npm` preserves raw output in `.capsulet/security/npm-audit.json`, prints any exception
+and checks its ownership, expiry and reachability. A policy pass is **not** a zero-advisory scanner
+result. Production dependencies must pass an unexcepted audit.
 
 An exception with no owner is nobody's problem, and an exception with no expiry is permanent by
 accident. `crates/xtask/tests/verify_cli.rs` fails the build when `.cargo/audit.toml` ignores an
@@ -37,6 +24,7 @@ Anything genuinely reachable gets fixed or the gate stays red.
 | Advisory | Crate | Owner | Review by | Why it does not apply |
 | --- | --- | --- | --- | --- |
 | `RUSTSEC-2024-0436` | `paste` 1.0.15 | platform | 2027-03-01 | An unmaintained-crate warning, not a vulnerability: the advisory records that the author stopped maintaining `paste`, and reports no defect. It arrives through `utoipa-axum` 0.2.0, which is the newest release there is, so there is nothing to upgrade to. Revisit when `utoipa-axum` drops it or a real defect is published, at which point this stops being a maintenance note and becomes a fix. |
+| `RUSTSEC-2024-0449` | `unsafe-libyaml` 0.2.11 | platform | 2027-03-01 | An unmaintained-crate warning, not a vulnerability. It is reached through `serde_yaml`, which reads only the execution pool configuration an operator writes, never a request or a run. `serde_yaml` is itself deprecated and should be replaced before this expires. |
 | `RUSTSEC-2023-0071` | `rsa` 0.9.10 | platform | 2027-03-01 | The Marvin timing side-channel needs the code to run. `rsa` reaches `Cargo.lock` only through `sqlx-mysql`, and the workspace pins `sqlx` with `default-features = false` and a postgres-only feature set, so `sqlx-mysql` is never compiled. `cargo tree -i rsa` reports nothing, and a workspace-wide `cargo tree -e normal` contains no `rsa` or `sqlx-mysql` node. `cargo audit` reads the lockfile rather than the build graph, so it cannot see that. The advisory has no fixed release, so the alternative to this exception is not a fix — it is either a red gate or dropping sqlx. Revisit when sqlx stops declaring the optional MySQL backend or a patched `rsa` ships. |
 
 ## What is not an exception
