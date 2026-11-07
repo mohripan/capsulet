@@ -11,10 +11,10 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use capsulet_core::{
-    Authority, Evidence, EvidenceId, EvidenceSpan, MemoryContractId, MemoryScope, Source,
-    SourceContent, SourceId,
+    Authority, EntityResolutionStatus, Evidence, EvidenceId, EvidenceSpan, MemoryContractId,
+    MemoryScope, Source, SourceContent, SourceId,
 };
-use capsulet_kernel::{Certificate, Phrasebook, Snapshot, check};
+use capsulet_kernel::{Certificate, NameGroup, Phrasebook, Snapshot, check, confirmed_name_groups};
 use capsulet_postgres::CertificateRecord;
 use capsulet_proposer::{EvidenceAlphabet, OllamaProposer, RawProposal, chunk_into_spans};
 use capsulet_storage::ObjectStore;
@@ -123,6 +123,7 @@ where
         Some(id) => contract_phrasebook(&state, &context, id).await?,
         None => Phrasebook::new(),
     };
+    let phrasebook = phrasebook.with_name_groups(project_name_groups(&state, &context).await?);
 
     // Store the source and its bytes before anything cites them, so every span
     // below resolves against content that is already durable.
@@ -279,6 +280,45 @@ where
         stored.push(evidence);
     }
     Ok(stored)
+}
+
+/// The most resolutions a decision reads names from. Past this it finds fewer other
+/// names, which can only make a citation match less.
+const MAX_NAME_RESOLUTIONS: i64 = 1_000;
+
+/// The names this project's reviewers have confirmed as one entity.
+pub(crate) async fn project_name_groups<S, O>(
+    state: &AppState<S, O>,
+    context: &ProjectContext,
+) -> Result<Vec<NameGroup>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let resolutions = state
+        .store
+        .list_memory_entity_resolutions(
+            &context.tenant_id,
+            &context.project_id,
+            MAX_NAME_RESOLUTIONS,
+        )
+        .await
+        .map_err(ApiError::store)?;
+    let mut entities = Vec::new();
+    for resolution in &resolutions {
+        if resolution.status() != EntityResolutionStatus::Confirmed {
+            continue;
+        }
+        if let Some(entity) = state
+            .store
+            .find_memory_entity(resolution.entity_id())
+            .await
+            .map_err(ApiError::store)?
+        {
+            entities.push(entity);
+        }
+    }
+    Ok(confirmed_name_groups(&resolutions, &entities))
 }
 
 /// The phrasings and cues a memory contract declares, for a contract the

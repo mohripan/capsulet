@@ -505,6 +505,7 @@ fn pinned_snapshot() -> SnapshotDocument {
         cues: vec![],
         default_currency: None,
         date_order: None,
+        name_groups: vec![],
     }
 }
 
@@ -926,4 +927,47 @@ fn a_decision_these_rules_would_not_reach_does_not_reproduce() {
         "{findings:?}"
     );
     assert!(rules_differ(&notes), "{notes:?}");
+}
+
+#[test]
+fn a_snapshot_pins_the_names_it_was_decided_with() {
+    let document = capsulet_kernel::SnapshotDocument {
+        name_groups: vec![capsulet_kernel::NameGroupDocument {
+            names: vec![
+                "IBM".to_string(),
+                "International Business Machines".to_string(),
+            ],
+            resolutions: vec!["res_ibm".to_string()],
+        }],
+        ..capsulet_kernel::SnapshotDocument::default()
+    };
+    let encoded = serde_json::to_string(&document).expect("encodes");
+    let read: capsulet_kernel::SnapshotDocument = serde_json::from_str(&encoded).expect("reads");
+    assert_eq!(read, document);
+
+    let snapshot = read.rebuild().expect("rebuilds");
+    assert_eq!(snapshot.phrasebook().name_groups().len(), 1);
+    assert!(snapshot.phrasebook().name_groups()[0].contains("ibm"));
+}
+
+#[test]
+fn a_document_with_no_names_encodes_as_it_always_did() {
+    let encoded =
+        serde_json::to_string(&capsulet_kernel::SnapshotDocument::default()).expect("encodes");
+    assert!(
+        !encoded.contains("name_groups"),
+        "a field nothing set must not change the bytes of an old document: {encoded}"
+    );
+}
+
+#[test]
+fn a_pinned_name_group_with_no_review_behind_it_does_not_rebuild() {
+    let document = capsulet_kernel::SnapshotDocument {
+        name_groups: vec![capsulet_kernel::NameGroupDocument {
+            names: vec!["IBM".to_string(), "Big Blue".to_string()],
+            resolutions: Vec::new(),
+        }],
+        ..capsulet_kernel::SnapshotDocument::default()
+    };
+    assert!(document.rebuild().is_err());
 }

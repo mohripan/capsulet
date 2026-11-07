@@ -234,8 +234,14 @@ these residuals, with attribution, target proposition, rationale, and evidence i
 no phrasing states the relation. A later `Trust` cannot erase them. The proposer preserves them
 on its interpretation path too. Relation object types and both policies are additive snapshot
 fields; omitted legacy fields keep the prior encoding and semantics (`CAP-CORRECTNESS-013`).
-Entity aliases remain outside this grammar (`CAP-CORRECTNESS-004`), and the finite cue limitation
-(`CAP-CORRECTNESS-012`) remains.
+Values have no other names, and the finite cue limitation (`CAP-CORRECTNESS-012`) remains.
+
+**An entity has the names a reviewer approved, and no others.** A citation finds a term under another
+name only when confirmed entity resolutions join the two under one canonical entity. The groups are
+pinned in the snapshot, and a step that relied on one names the resolutions. A term found as written
+never claims a review. The `aliases` fields on an entity and a canonical entity are written straight
+from API requests, so they do not widen anything, and neither does a candidate resolution or a score:
+an embedding may propose a resolution, and only the review makes it a name (`CAP-CORRECTNESS-004`).
 
 **Relevance is not checked at all.** Asked the same unanswerable question after
 the fix, the model returned `Dana Whitfield | is the named account owner |
@@ -305,6 +311,13 @@ Ordered so that each stage is independently valuable and each can kill the next.
 ## What would falsify this
 
 The ratio of accepted to conditional verdicts on real questions decides whether the thesis holds.
+
+`crates/kernel/tests/statement_corpus.rs` holds what can be held without a model. It labels sentences
+by whether a reader says they state a fact, and asserts that none marked not stated reaches `accepted`,
+apart from the one limitation it names (`CAP-CORRECTNESS-012`). Of its 15 stated cases, 13 reach
+`accepted`, and the other two state the fact in words no phrasing declares. That number is pinned so a
+change to it gets looked at. It says what the kernel does on sentences the project wrote, so it bounds
+the mechanism and says nothing about real questions. The experiment below has not been run.
 If most answers return conditional with a long tail of unexamined readings, the result is an
 elaborate provenance tracker rather than a correctness system.
 

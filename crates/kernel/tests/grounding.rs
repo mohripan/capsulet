@@ -760,3 +760,190 @@ fn a_contract_s_phrasings_and_cues_judge_a_citation() {
         Verdict::Rejected
     );
 }
+
+// --- Other names, as a reviewer approved them --------------------------------
+
+fn ibm_names() -> capsulet_kernel::NameGroup {
+    capsulet_kernel::NameGroup::new(
+        [
+            "International Business Machines".to_string(),
+            "IBM".to_string(),
+        ],
+        ["res_ibm".to_string()],
+    )
+    .expect("two names and a review")
+}
+
+fn acquired(object_type: Option<&str>) -> Phrasebook {
+    let phrasebook = Phrasebook::new().with_relation(
+        "acquired",
+        vec![Phrasing::parse("{from} acquired {to}").expect("a phrasing")],
+    );
+    match object_type {
+        Some(kind) => phrasebook.with_object_type(
+            "acquired",
+            capsulet_kernel::ValueType::parse(kind).expect("a known type"),
+        ),
+        None => phrasebook,
+    }
+}
+
+fn stated(subject: &str, predicate: &str, object: &str) -> Proposal {
+    let goal = Proposition::new(subject, predicate, object);
+    Proposal {
+        schema_version: Proposal::current_schema_version(),
+        goal: goal.clone(),
+        derivation: Rule::Trust {
+            premise: Box::new(Rule::Cite {
+                evidence_id: "ev_1".to_string(),
+                proposition: goal,
+            }),
+            min_authority: "low".to_string(),
+        },
+    }
+}
+
+#[test]
+fn another_name_for_the_entity_is_found_when_a_reviewer_confirmed_it() {
+    let certificate = check(
+        &stated("International Business Machines", "acquired", "Red Hat"),
+        &snapshot_over("IBM acquired Red Hat in 2019.")
+            .with_phrasebook(acquired(None).with_name_groups(vec![ibm_names()])),
+    );
+    assert_eq!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+}
+
+#[test]
+fn the_step_names_the_review_it_relied_on() {
+    let certificate = check(
+        &stated("International Business Machines", "acquired", "Red Hat"),
+        &snapshot_over("IBM acquired Red Hat in 2019.")
+            .with_phrasebook(acquired(None).with_name_groups(vec![ibm_names()])),
+    );
+    let cite = certificate
+        .discharged
+        .iter()
+        .find(|step| step.rule == "cite")
+        .expect("the citation was discharged");
+    assert!(cite.detail.contains("res_ibm"), "{}", cite.detail);
+}
+
+#[test]
+fn a_term_found_as_written_does_not_claim_a_review() {
+    let certificate = check(
+        &stated("IBM", "acquired", "Red Hat"),
+        &snapshot_over("IBM acquired Red Hat in 2019.")
+            .with_phrasebook(acquired(None).with_name_groups(vec![ibm_names()])),
+    );
+    let cite = certificate
+        .discharged
+        .iter()
+        .find(|step| step.rule == "cite")
+        .expect("the citation was discharged");
+    assert!(!cite.detail.contains("res_ibm"), "{}", cite.detail);
+}
+
+#[test]
+fn without_a_confirmed_name_the_other_name_is_not_found() {
+    let certificate = check(
+        &stated("International Business Machines", "acquired", "Red Hat"),
+        &snapshot_over("IBM acquired Red Hat in 2019.").with_phrasebook(acquired(None)),
+    );
+    assert!(
+        certificate
+            .errors
+            .iter()
+            .any(|error| error.code == "term_not_in_span"),
+        "{certificate:?}"
+    );
+    assert_eq!(certificate.verdict, Verdict::Rejected);
+}
+
+#[test]
+fn a_name_outside_the_group_is_not_found_because_a_group_exists() {
+    let certificate = check(
+        &stated("Big Blue", "acquired", "Red Hat"),
+        &snapshot_over("IBM acquired Red Hat in 2019.")
+            .with_phrasebook(acquired(None).with_name_groups(vec![ibm_names()])),
+    );
+    assert_eq!(certificate.verdict, Verdict::Rejected, "{certificate:?}");
+}
+
+#[test]
+fn another_name_works_for_the_object_too_and_in_its_role() {
+    let names = capsulet_kernel::NameGroup::new(
+        ["Red Hat".to_string(), "RHT".to_string()],
+        ["res_rht".to_string()],
+    )
+    .expect("a group");
+    let phrasebook = acquired(None).with_name_groups(vec![names]);
+
+    let found = check(
+        &stated("IBM", "acquired", "Red Hat"),
+        &snapshot_over("IBM acquired RHT in 2019.").with_phrasebook(phrasebook.clone()),
+    );
+    assert_eq!(found.verdict, Verdict::Accepted, "{found:?}");
+
+    // Another name does not change who did what.
+    let reversed = check(
+        &stated("IBM", "acquired", "Red Hat"),
+        &snapshot_over("RHT acquired IBM in 2019.").with_phrasebook(phrasebook),
+    );
+    assert_ne!(reversed.verdict, Verdict::Accepted, "{reversed:?}");
+}
+
+#[test]
+fn another_name_is_still_only_mentioned_where_no_phrasing_states_it() {
+    let certificate = check(
+        &stated("International Business Machines", "acquired", "Red Hat"),
+        &snapshot_over("IBM and Red Hat met in 2019.")
+            .with_phrasebook(acquired(None).with_name_groups(vec![ibm_names()])),
+    );
+    assert_ne!(
+        certificate.verdict,
+        Verdict::Accepted,
+        "a name changes who a sentence is about, not what it says: {certificate:?}"
+    );
+    let cite = certificate
+        .discharged
+        .iter()
+        .find(|step| step.rule == "cite")
+        .expect("the terms were found");
+    assert!(cite.detail.contains("res_ibm"), "{}", cite.detail);
+}
+
+#[test]
+fn a_negated_statement_under_another_name_is_still_not_the_statement() {
+    let certificate = check(
+        &stated("International Business Machines", "acquired", "Red Hat"),
+        &snapshot_over("IBM never acquired Red Hat.")
+            .with_phrasebook(acquired(None).with_name_groups(vec![ibm_names()])),
+    );
+    assert_ne!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+}
+
+#[test]
+fn a_typed_object_has_no_other_names() {
+    // A group naming a value does nothing: a value is compared exactly.
+    let names = capsulet_kernel::NameGroup::new(
+        ["42".to_string(), "forty-two".to_string()],
+        ["res_value".to_string()],
+    )
+    .expect("a group");
+    let certificate = check(
+        &stated("IBM", "acquired", "42"),
+        &snapshot_over("IBM acquired forty-two in 2019.")
+            .with_phrasebook(acquired(Some("number")).with_name_groups(vec![names])),
+    );
+    assert_ne!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+}
+
+#[test]
+fn a_typed_statement_still_finds_its_subject_under_another_name() {
+    let certificate = check(
+        &stated("International Business Machines", "acquired", "42"),
+        &snapshot_over("IBM acquired 42 in 2019.")
+            .with_phrasebook(acquired(Some("number")).with_name_groups(vec![ibm_names()])),
+    );
+    assert_eq!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+}

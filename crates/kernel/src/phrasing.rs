@@ -32,6 +32,7 @@ pub use capsulet_core::{Phrasing, PhrasingError};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::ir::Proposition;
+use crate::names::NameGroup;
 use crate::text;
 use crate::value::{self, ValueType};
 
@@ -116,6 +117,9 @@ pub struct Statement {
     pub sentence: String,
     /// Unresolved value readings; a matching phrasing does not discharge these.
     pub residuals: Vec<String>,
+    /// The confirmed resolutions this relied on, when a term was found under another
+    /// name. Empty when every term was found as written.
+    pub resolutions: Vec<String>,
 }
 
 /// The phrasings a decision reads, by relation, and the cues a contract adds.
@@ -126,6 +130,14 @@ pub struct Phrasebook {
     object_types: BTreeMap<String, ValueType>,
     default_currency: Option<String>,
     date_order: Option<String>,
+    names: Vec<NameGroup>,
+}
+
+/// One way a term may be written, and what makes that a way of writing it.
+struct Variant<'a> {
+    name: &'a str,
+    /// Empty for the term as written. Otherwise the review that made it a name.
+    resolutions: &'a [String],
 }
 
 impl Phrasebook {
@@ -178,6 +190,73 @@ impl Phrasebook {
     pub fn with_cue(mut self, cue: &str) -> Self {
         self.cues.push(cue.to_string());
         self
+    }
+
+    /// Pins the names reviewers joined, for every decision this phrasebook reads.
+    #[must_use]
+    pub fn with_name_groups(mut self, groups: Vec<NameGroup>) -> Self {
+        self.names = groups;
+        self
+    }
+
+    /// The names this phrasebook pins.
+    #[must_use]
+    pub fn name_groups(&self) -> &[NameGroup] {
+        &self.names
+    }
+
+    /// `term` as written, then every name a reviewer joined it to.
+    ///
+    /// As written comes first, so a citation that never needed another name does not
+    /// claim to have relied on one.
+    fn variants<'a>(&'a self, term: &'a str) -> Vec<Variant<'a>> {
+        let mut variants = vec![Variant {
+            name: term,
+            resolutions: &[],
+        }];
+        for group in self.names.iter().filter(|group| group.contains(term)) {
+            for name in group.names() {
+                variants.push(Variant {
+                    name,
+                    resolutions: group.resolutions(),
+                });
+            }
+        }
+        variants
+    }
+
+    /// Whether the subject occurs, as written or under a name a reviewer joined it to.
+    #[must_use]
+    pub fn subject_in(&self, excerpt: &str, proposition: &Proposition) -> bool {
+        self.variants(&proposition.subject)
+            .iter()
+            .any(|variant| text::contains_term(excerpt, variant.name))
+    }
+
+    /// The resolutions finding these terms relied on, when a citation only mentions
+    /// them. Empty when each was found as written.
+    #[must_use]
+    pub fn resolutions_for_terms(&self, excerpt: &str, proposition: &Proposition) -> Vec<String> {
+        let mut terms = vec![proposition.subject.as_str()];
+        if !self.object_types.contains_key(proposition.predicate.trim()) {
+            terms.push(proposition.object.as_str());
+        }
+        let mut resolutions = Vec::new();
+        for term in terms {
+            let variants = self.variants(term);
+            if text::contains_term(excerpt, term) {
+                continue;
+            }
+            if let Some(found) = variants
+                .iter()
+                .find(|variant| text::contains_term(excerpt, variant.name))
+            {
+                resolutions.extend_from_slice(found.resolutions);
+            }
+        }
+        resolutions.sort();
+        resolutions.dedup();
+        resolutions
     }
 
     /// Declares how this relation's object is read, independently of phrasings.
@@ -244,7 +323,11 @@ impl Phrasebook {
                 self.default_currency.as_deref(),
                 self.date_order.as_deref(),
             ),
-            None => text::contains_term(excerpt, &proposition.object).then(Vec::new),
+            None => self
+                .variants(&proposition.object)
+                .iter()
+                .any(|variant| text::contains_term(excerpt, variant.name))
+                .then(Vec::new),
         }
     }
 
@@ -256,13 +339,16 @@ impl Phrasebook {
         if phrasings.is_empty() {
             return None;
         }
-        let wanted: Vec<(&Phrasing, String)> = phrasings
-            .iter()
-            .map(|phrasing| {
-                let instance = phrasing.instantiate(&proposition.subject, &proposition.object);
-                (phrasing, text::fold(&instance))
-            })
-            .collect();
+        let typed = self.object_types.get(proposition.predicate.trim()).copied();
+        let subjects = self.variants(&proposition.subject);
+        // A typed object is a value, compared exactly, and a value has no other names.
+        let objects = match typed {
+            Some(_) => vec![Variant {
+                name: &proposition.object,
+                resolutions: &[],
+            }],
+            None => self.variants(&proposition.object),
+        };
         let cues: Vec<String> = DEFAULT_CUES
             .iter()
             .copied()
@@ -279,28 +365,61 @@ impl Phrasebook {
             if cues.iter().any(|cue| text::contains_folded(&folded, cue)) {
                 continue;
             }
-            for (phrasing, instance) in &wanted {
-                let found = match self.object_types.get(proposition.predicate.trim()) {
-                    Some(&kind) => typed_statement(
+            for phrasing in phrasings {
+                for (subject, object) in subjects
+                    .iter()
+                    .flat_map(|subject| objects.iter().map(move |object| (subject, object)))
+                {
+                    let found = self.phrasing_found(
                         &folded,
                         phrasing,
+                        (subject.name, object.name),
                         proposition,
-                        kind,
-                        self.default_currency.as_deref(),
-                        self.date_order.as_deref(),
-                    ),
-                    None => text::contains_folded(&folded, instance).then(Vec::new),
-                };
-                if let Some(residuals) = found {
-                    return Some(Statement {
-                        phrasing: phrasing.as_str().to_string(),
-                        sentence: sentence.trim().to_string(),
-                        residuals,
-                    });
+                        typed,
+                    );
+                    if let Some(residuals) = found {
+                        let mut resolutions: Vec<String> = subject
+                            .resolutions
+                            .iter()
+                            .chain(object.resolutions)
+                            .cloned()
+                            .collect();
+                        resolutions.sort();
+                        resolutions.dedup();
+                        return Some(Statement {
+                            phrasing: phrasing.as_str().to_string(),
+                            sentence: sentence.trim().to_string(),
+                            residuals,
+                            resolutions,
+                        });
+                    }
                 }
             }
         }
         None
+    }
+
+    /// Whether one phrasing, with these names in its slots, occurs in a sentence.
+    fn phrasing_found(
+        &self,
+        folded: &str,
+        phrasing: &Phrasing,
+        (subject, object): (&str, &str),
+        proposition: &Proposition,
+        typed: Option<ValueType>,
+    ) -> Option<Vec<String>> {
+        if let Some(kind) = typed {
+            return typed_statement(
+                folded,
+                phrasing,
+                &Proposition::new(subject, &proposition.predicate, &proposition.object),
+                kind,
+                self.default_currency.as_deref(),
+                self.date_order.as_deref(),
+            );
+        }
+        let instance = phrasing.instantiate(subject, object);
+        text::contains_folded(folded, &text::fold(&instance)).then(Vec::new)
     }
 }
 

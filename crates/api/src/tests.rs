@@ -5959,3 +5959,74 @@ async fn reasoning_refuses_a_stored_contract_that_does_not_compile() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn the_names_a_decision_reads_are_only_those_a_reviewer_confirmed() {
+    use capsulet_core::{
+        CanonicalEntityId, Confidence, Entity, EntityId, EntityResolution, EntityResolutionId,
+        EntityResolutionStatus, EvidenceId, MemoryScope, MemorySubgraphId,
+    };
+
+    let store = FakeStore::default();
+    let scope = MemoryScope::new("default", "default").expect("scope");
+    for (id, name) in [
+        ("e_ibm", "IBM"),
+        ("e_long", "International Business Machines"),
+        ("e_guess", "Big Blue"),
+    ] {
+        store
+            .upsert_memory_entity(
+                &Entity::new(
+                    EntityId::new(id).expect("id"),
+                    scope.clone(),
+                    "organization",
+                    name,
+                    Vec::new(),
+                )
+                .expect("entity"),
+            )
+            .await
+            .expect("stored");
+    }
+    for (id, entity, status) in [
+        ("r1", "e_ibm", EntityResolutionStatus::Confirmed),
+        ("r2", "e_long", EntityResolutionStatus::Confirmed),
+        ("r3", "e_guess", EntityResolutionStatus::Candidate),
+    ] {
+        store
+            .upsert_memory_entity_resolution(
+                &EntityResolution::new(
+                    EntityResolutionId::new(id).expect("id"),
+                    scope.clone(),
+                    MemorySubgraphId::new("subgraph").expect("id"),
+                    EntityId::new(entity).expect("id"),
+                    CanonicalEntityId::new("c_ibm").expect("id"),
+                    Confidence::new(1.0).expect("confidence"),
+                    status,
+                    vec![EvidenceId::new("ev").expect("id")],
+                )
+                .expect("resolution"),
+            )
+            .await
+            .expect("stored");
+    }
+
+    let state = AppState::new(store, FakeObjectStore::default(), ["mini".to_string()]);
+    let context = crate::http::ProjectContext {
+        tenant_id: "default".to_string(),
+        project_id: "default".to_string(),
+        role: crate::ProjectRole::Viewer,
+    };
+    let groups = crate::reasoning::project_name_groups(&state, &context)
+        .await
+        .expect("the groups load");
+
+    assert_eq!(groups.len(), 1);
+    assert!(groups[0].contains("IBM"));
+    assert!(groups[0].contains("International Business Machines"));
+    assert!(
+        !groups[0].contains("Big Blue"),
+        "a candidate resolution is not a review"
+    );
+    assert_eq!(groups[0].resolutions(), ["r1", "r2"]);
+}

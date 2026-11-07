@@ -6,7 +6,6 @@
 
 use std::time::Duration;
 
-use capsulet_kernel::text::contains_term;
 use capsulet_kernel::{Phrasebook, Proposal, Proposition, Rule};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -208,7 +207,7 @@ pub fn build_proposal(raw: &RawProposal, excerpt: &str, phrasebook: &Phrasebook)
         }
     } else {
         let terms_occur =
-            contains_term(excerpt, &raw.subject) && phrasebook.object_in(excerpt, &goal).is_some();
+            phrasebook.subject_in(excerpt, &goal) && phrasebook.object_in(excerpt, &goal).is_some();
         let premise = if terms_occur {
             goal.clone()
         } else {

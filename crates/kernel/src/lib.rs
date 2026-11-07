@@ -24,6 +24,7 @@ pub mod certificate;
 pub mod error;
 pub mod family;
 pub mod ir;
+pub mod names;
 pub mod phrasing;
 pub mod quantity;
 pub mod replay;
@@ -40,11 +41,13 @@ pub use certificate::{Certificate, CertificateError, DischargedStep, Residual, V
 pub use error::{CheckError, RepairOwner};
 pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};
 pub use ir::{ArithOp, Judgment, Proposal, Proposition, Rule};
+pub use names::{MAX_NAMES_PER_GROUP, NameGroup, confirmed_name_groups};
 pub use phrasing::{Phrasebook, Phrasing};
 pub use quantity::{MAX_SCALE, Quantity, QuantityError};
 pub use replay::{EvidenceMap, EvidenceSource, ReplayFinding, ReplayNote, ReplayOutcome, replay};
 pub use snapshot::Snapshot;
-pub use snapshot_document::SnapshotDocument;
+pub use snapshot_document::{NameGroupDocument, SnapshotDocument};
+pub use value::ValueType;
 pub use workflow::{Assembly, KERNEL_VERSION, certify};
 
 /// The deepest chain of nested rules the kernel will walk.
@@ -374,7 +377,8 @@ fn derive_cite(
     // grounded on a sentence about anniversary dates. The predicate is not
     // matched here: it is an ontology label, not a quotation, and whether the
     // span states it is what the phrasings below decide.
-    let object_presence = snapshot.phrasebook().object_in(excerpt, proposition);
+    let phrasebook = snapshot.phrasebook();
+    let object_presence = phrasebook.object_in(excerpt, proposition);
     for (role, value) in [
         ("subject", &proposition.subject),
         ("object", &proposition.object),
@@ -382,7 +386,7 @@ fn derive_cite(
         let present = if role == "object" {
             object_presence.is_some()
         } else {
-            text::contains_term(evidence.excerpt(), value)
+            phrasebook.subject_in(excerpt, proposition)
         };
         if !present {
             state.errors.push(CheckError::TermNotInSpan {
@@ -400,20 +404,18 @@ fn derive_cite(
         span.start(),
         span.end()
     );
-    let (judgment, detail, residuals) = match snapshot
-        .phrasebook()
-        .statement_in(excerpt, proposition)
-    {
+    let (judgment, detail, residuals) = match phrasebook.statement_in(excerpt, proposition) {
         Some(statement) => (
             Judgment::Says {
                 source_id: source_id.clone(),
                 proposition: proposition.clone(),
             },
             format!(
-                "{provenance}; it states `{}` in the declared phrasing {:?}: {:?}",
+                "{provenance}; it states `{}` in the declared phrasing {:?}: {:?}{}",
                 proposition.predicate.trim(),
                 statement.phrasing,
-                statement.sentence
+                statement.sentence,
+                relied_on(&statement.resolutions)
             ),
             statement.residuals,
         ),
@@ -423,8 +425,10 @@ fn derive_cite(
                 proposition: proposition.clone(),
             },
             format!(
-                "{provenance} and contains the subject and the object; no declared phrasing of                  `{}` states the relation between them",
-                proposition.predicate.trim()
+                "{provenance} and contains the subject and the object; no declared phrasing of \
+                 `{}` states the relation between them{}",
+                proposition.predicate.trim(),
+                relied_on(&phrasebook.resolutions_for_terms(excerpt, proposition))
             ),
             object_presence.unwrap_or_default(),
         ),
@@ -432,6 +436,18 @@ fn derive_cite(
     record_value_residuals(residuals, &source_id, proposition, evidence_id, state);
     state.discharge("cite", &judgment, detail);
     Some(judgment)
+}
+
+/// What a discharged step says it relied on, when it was another name.
+fn relied_on(resolutions: &[String]) -> String {
+    if resolutions.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "; found under another name, by confirmed resolution {}",
+            resolutions.join(", ")
+        )
+    }
 }
 
 fn record_value_residuals(

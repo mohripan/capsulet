@@ -388,10 +388,6 @@
           "selector": "every_derivation_shape_reaches_a_verdict"
         },
         {
-          "path": "crates/kernel/tests/known_gaps.rs",
-          "selector": "another_name_for_the_entity_is_not_found"
-        },
-        {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "a_decision_recorded_under_other_rules_says_so"
         },
@@ -464,7 +460,7 @@
           "selector": "a_relation_with_no_declared_phrasing_is_only_mentioned"
         },
         {
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/tests/statement_corpus.rs",
           "selector": "a_doubt_the_cue_list_does_not_know_still_states_the_relation"
         },
         {
@@ -502,6 +498,30 @@
         {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "legacy_phrasebook_documents_still_encode_byte_for_byte"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "another_name_for_the_entity_is_found_when_a_reviewer_confirmed_it"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "the_step_names_the_review_it_relied_on"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "without_a_confirmed_name_the_other_name_is_not_found"
+        },
+        {
+          "path": "crates/kernel/tests/grounding.rs",
+          "selector": "a_typed_object_has_no_other_names"
+        },
+        {
+          "path": "crates/kernel/tests/statement_corpus.rs",
+          "selector": "no_case_a_reader_marks_not_stated_reaches_accepted"
+        },
+        {
+          "path": "crates/kernel/tests/statement_corpus.rs",
+          "selector": "the_share_of_stated_cases_that_reach_accepted_is_what_was_recorded"
         }
       ]
     },
@@ -2285,10 +2305,10 @@
     },
     {
       "id": "CAP-CORRECTNESS-004",
-      "kind": "limitation",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "Entity endpoints still compare names as text: another name for an entity is not found unless it matches under the citation text relation; typed value endpoints do not enable entity aliases.",
+      "statement": "A citation finds an entity under another name only when confirmed entity resolutions join the two names under one canonical entity, and the discharged step names the resolutions it relied on. Unreviewed aliases and candidate or rejected resolutions join nothing, and a typed value has no other names.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/architecture.md"
@@ -2296,13 +2316,53 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/tests/grounding.rs",
           "command": "cargo test -p capsulet-kernel --locked",
-          "selector": "another_name_for_the_entity_is_not_found"
+          "selector": "another_name_for_the_entity_is_found_when_a_reviewer_confirmed_it"
         },
         {
-          "type": "source",
-          "path": "crates/kernel/src/text.rs"
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "the_step_names_the_review_it_relied_on"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "without_a_confirmed_name_the_other_name_is_not_found"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/grounding.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "a_typed_object_has_no_other_names"
+        }
+      ],
+      "verification": [
+        {
+          "assertion": "a-confirmed-name-is-found",
+          "evidence_selectors": [
+            "another_name_for_the_entity_is_found_when_a_reviewer_confirmed_it"
+          ]
+        },
+        {
+          "assertion": "the-step-names-the-review",
+          "evidence_selectors": [
+            "the_step_names_the_review_it_relied_on"
+          ]
+        },
+        {
+          "assertion": "an-unconfirmed-name-is-not-found",
+          "evidence_selectors": [
+            "without_a_confirmed_name_the_other_name_is_not_found"
+          ]
+        },
+        {
+          "assertion": "a-value-has-no-other-names",
+          "evidence_selectors": [
+            "a_typed_object_has_no_other_names"
+          ]
         }
       ]
     },
@@ -2771,7 +2831,7 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/kernel/tests/known_gaps.rs",
+          "path": "crates/kernel/tests/statement_corpus.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "a_doubt_the_cue_list_does_not_know_still_states_the_relation"
         },
@@ -2871,6 +2931,45 @@
           "path": "crates/kernel/tests/replay.rs",
           "command": "cargo test -p capsulet-kernel --locked",
           "selector": "legacy_phrasebook_documents_still_encode_byte_for_byte"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-014",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "Across a labelled corpus written by the project, no sentence a reader marks as not stating a fact reaches accepted, apart from the one recorded limitation it names. This is a fixture, not a measurement on real questions.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "nothing-not-stated-is-accepted",
+          "evidence_selectors": [
+            "no_case_a_reader_marks_not_stated_reaches_accepted"
+          ]
+        },
+        {
+          "assertion": "the-stated-share-is-pinned",
+          "evidence_selectors": [
+            "the_share_of_stated_cases_that_reach_accepted_is_what_was_recorded"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/statement_corpus.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "no_case_a_reader_marks_not_stated_reaches_accepted"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/statement_corpus.rs",
+          "command": "cargo test -p capsulet-kernel --locked",
+          "selector": "the_share_of_stated_cases_that_reach_accepted_is_what_was_recorded"
         }
       ]
     },

@@ -16,6 +16,7 @@ use capsulet_core::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::names::NameGroup;
 use crate::phrasing::{Phrasebook, Phrasing};
 use crate::snapshot::Snapshot;
 
@@ -90,6 +91,14 @@ pub struct RelationDocument {
     pub object_type: Option<String>,
 }
 
+/// Names a reviewer joined, as pinned in a bundle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NameGroupDocument {
+    pub names: Vec<String>,
+    /// The confirmed resolutions that joined them.
+    pub resolutions: Vec<String>,
+}
+
 /// Everything a claim-reasoning decision was made against.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SnapshotDocument {
@@ -117,6 +126,10 @@ pub struct SnapshotDocument {
     pub default_currency: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub date_order: Option<String>,
+    /// Names reviewers joined. Absent from documents written before citations could
+    /// find a term under another name, which therefore find every term as written.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub name_groups: Vec<NameGroupDocument>,
 }
 
 impl SnapshotDocument {
@@ -231,7 +244,22 @@ impl SnapshotDocument {
             }
             phrasebook = phrasebook.with_cue(cue);
         }
+        let mut groups = Vec::with_capacity(self.name_groups.len());
+        for group in &self.name_groups {
+            groups.push(
+                NameGroup::new(
+                    group.names.iter().cloned(),
+                    group.resolutions.iter().cloned(),
+                )
+                .ok_or_else(|| {
+                    RebuildError::from(
+                        "a name group needs two names and a resolution that joined them",
+                    )
+                })?,
+            );
+        }
         phrasebook
+            .with_name_groups(groups)
             .with_value_policy(self.default_currency.as_deref(), self.date_order.as_deref())
             .map_err(RebuildError::from)
     }

@@ -449,37 +449,52 @@ rejecting non-three-letter currency lookups early reduced that same debug regres
 **Files:** `crates/kernel/src/{phrasing.rs,lib.rs,snapshot.rs,snapshot_document.rs}`,
 `crates/api/src/reasoning.rs`, tests
 
-- [ ] Failing tests: `International Business Machines` grounds against "IBM acquired Red Hat" when a
+- [x] Failing tests: `International Business Machines` grounds against "IBM acquired Red Hat" when a
   confirmed entity resolution joins the two names under one canonical entity; a name joined only by a
   candidate or rejected resolution does not; the discharged step names the resolution it relied on.
-- [ ] Reviewed names, and only those. A resolution with status `Confirmed` is a review; the
+- [x] Reviewed names, and only those. A resolution with status `Confirmed` is a review; the
   `aliases` fields on `Entity` and `CanonicalEntity` are written straight from API requests, with no
   review, and must not widen what a citation matches. Two entities joined by confirmed resolutions to
   one canonical entity form a name group of their `name`s.
-- [ ] The snapshot carries name groups — names plus the resolution ids that joined them — pinned in
+- [x] The snapshot carries name groups — names plus the resolution ids that joined them — pinned in
   the snapshot document additively. A term is found when it, or any name in a group containing it,
   occurs as whole words. Entity slots in phrasings match the same way. The proposal's shape does not
   change.
-- [ ] `/v1/reasoning/ask` loads the confirmed groups for the caller's project, bounded, and pins them.
-- [ ] No similarity score anywhere in the path. An embedding may propose a candidate resolution for
+- [x] `/v1/reasoning/ask` loads the confirmed groups for the caller's project, bounded, and pins them.
+- [x] No similarity score anywhere in the path. An embedding may propose a candidate resolution for
   review; only the review makes it a name.
-- [ ] Inverted, the Task 8 tripwire moves to `grounding.rs`; `CAP-CORRECTNESS-004` is closed or
+- [x] Inverted, the Task 8 tripwire moves to `grounding.rs`; `CAP-CORRECTNESS-004` is closed or
   restated; the rules version is bumped.
+
+**What the task found (2026-11-08).** Names live in the phrasebook rather than beside it. The phrasebook
+is already what the proposer and the kernel share, so the proposer routes on the same check the kernel
+runs without either signature changing, and a group a proposer can see is exactly a group the kernel
+decides with. A term found as written never claims a review, because written form is tried first: a
+certificate naming a resolution it did not need would overstate what it relied on. The group names the
+resolutions as a whole, not the one that happened to supply the matching name, because what makes two
+names one is the set of reviews joining them.
 
 ### Task 9: Measure it
 
 **Files:** `crates/kernel/tests/statement_corpus.rs`, `docs/design/correctness-architecture.md`
 
-- [ ] The tripwires become a labelled corpus whose invariant is asserted, not counted: no case a
+- [x] The tripwires become a labelled corpus whose invariant is asserted, not counted: no case a
   reader marks *not stated* reaches `accepted`. That is the guarantee. The one known exception — a
   sentence that doubts a phrasing in words no cue list carries (`CAP-CORRECTNESS-012`) — is listed in
   the corpus as a recorded limitation the invariant names, never dropped to make it pass.
-- [ ] The share of *stated* cases that reach `accepted` is reported, and recorded here as each task
+- [x] The share of *stated* cases that reach `accepted` is reported, and recorded here as each task
   lands. The architecture document names that ratio as the number that decides whether the approach
   works.
 - [ ] Not a gate: the same numbers on real questions, from the ask loop with a real model over a fixed
   corpus. It needs a model, so it is an experiment someone runs and records, not something CI can
   hold.
+
+**What the task found (2026-11-08).** Of 15 stated cases, 13 reach `accepted`. The two that do not, "Fabrikam's
+acquisition of Contoso closed in May" and "Contoso now belongs to Fabrikam", state the fact in words no
+phrasing declares, and a contract that declared them would change that. Of 23 not-stated cases, none is
+accepted, and one more recorded limitation is named beside the corpus. These are fixture numbers on sentences
+the project wrote. The real-model experiment is still not run, so nothing here says how the approach does on
+real questions.
 
 ---
 
