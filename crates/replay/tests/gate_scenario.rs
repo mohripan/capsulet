@@ -67,6 +67,7 @@ fn definition() -> Definition {
         budget: ResourceBudget::deterministic(1_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     });
     parts.nodes.push(Node {
         id: id("propose-patch"),
@@ -87,6 +88,7 @@ fn definition() -> Definition {
             selection: "qwen3:4b".to_string(),
         }),
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     });
     parts.nodes.push(Node {
         id: id("check-patch"),
@@ -102,6 +104,7 @@ fn definition() -> Definition {
         budget: ResourceBudget::deterministic(600_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     });
     parts.nodes.push(Node {
         id: id("leave"),
@@ -114,6 +117,7 @@ fn definition() -> Definition {
         budget: ResourceBudget::deterministic(1_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     });
     parts.nodes.push(Node {
         id: id("publish"),
@@ -142,6 +146,7 @@ fn definition() -> Definition {
         },
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     });
 
     let forward = |name: &str, from: (&str, &str), to: (&str, &str)| Hyperedge {

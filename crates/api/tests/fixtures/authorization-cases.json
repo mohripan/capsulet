@@ -195,6 +195,21 @@
     "ownership": "selected_project"
   },
   {
+    "operation_id": "getAgentRunEvents",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "cancelAgentRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "decideAgentRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
     "operation_id": "askReasoning",
     "minimum_role": "operator",
     "ownership": "selected_project"

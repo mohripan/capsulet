@@ -82,16 +82,19 @@
       "name": "agent_run", "category": "execution", "source_path": "crates/core/src/domain/agent.rs", "source_enum": "AgentRunStatus",
       "statuses": [
         { "name": "queued", "target": "queued", "terminal": false, "retryable": false, "cancellable": true, "owner": "API" },
-        { "name": "running", "target": "running", "terminal": false, "retryable": false, "cancellable": true, "owner": "application agent runtime" },
-        { "name": "succeeded", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "application agent runtime" },
-        { "name": "failed", "target": "failed", "terminal": true, "retryable": false, "cancellable": false, "owner": "application agent runtime" },
-        { "name": "cancelled", "target": "cancelled", "terminal": true, "retryable": false, "cancellable": false, "owner": "API" },
-        { "name": "stopped", "target": "failed", "terminal": true, "retryable": false, "cancellable": false, "owner": "application agent runtime", "debt": "Stopped conflates budget, termination policy, and human escalation reasons." }
+        { "name": "running", "target": "running", "terminal": false, "retryable": false, "cancellable": true, "owner": "graph worker" },
+        { "name": "waiting", "target": "waiting", "terminal": false, "retryable": false, "cancellable": true, "owner": "graph worker" },
+        { "name": "succeeded", "target": "completed", "terminal": true, "retryable": false, "cancellable": false, "owner": "graph worker" },
+        { "name": "failed", "target": "failed", "terminal": true, "retryable": false, "cancellable": false, "owner": "graph worker" },
+        { "name": "cancelled", "target": "cancelled", "terminal": true, "retryable": false, "cancellable": false, "owner": "graph worker" },
+        { "name": "stopped", "target": "failed", "terminal": true, "retryable": false, "cancellable": false, "owner": "graph worker", "debt": "Stopped conflates budget, non-progress, safety, and refusal reasons; the run's detail and log say which." }
       ],
       "transitions": [
-        { "from": "queued", "to": "running", "owner": "application agent runtime" }, { "from": "queued", "to": "cancelled", "owner": "API" },
-        { "from": "running", "to": "succeeded", "owner": "application agent runtime" }, { "from": "running", "to": "failed", "owner": "application agent runtime" },
-        { "from": "running", "to": "cancelled", "owner": "API" }, { "from": "running", "to": "stopped", "owner": "application agent runtime" }
+        { "from": "queued", "to": "running", "owner": "graph worker" }, { "from": "queued", "to": "cancelled", "owner": "graph worker" },
+        { "from": "running", "to": "waiting", "owner": "graph worker" }, { "from": "waiting", "to": "running", "owner": "graph worker" },
+        { "from": "waiting", "to": "cancelled", "owner": "graph worker" }, { "from": "waiting", "to": "stopped", "owner": "graph worker" },
+        { "from": "running", "to": "succeeded", "owner": "graph worker" }, { "from": "running", "to": "failed", "owner": "graph worker" },
+        { "from": "running", "to": "cancelled", "owner": "graph worker" }, { "from": "running", "to": "stopped", "owner": "graph worker" }
       ]
     },
     {

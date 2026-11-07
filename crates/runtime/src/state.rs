@@ -105,6 +105,10 @@ pub struct Spent {
     pub tokens: u64,
     pub cost_micro_units: u64,
     pub effects: u32,
+    /// How many times something consumed resources nobody measured. A budget
+    /// cannot bind on these, and saying how many there were is the honest
+    /// alternative to pretending they cost nothing.
+    pub unmeasured: u32,
 }
 
 /// Why a log could not be folded.
@@ -166,6 +170,19 @@ pub struct RunState {
     failure: Option<RunFailure>,
     started_at: Option<RecordedTime>,
     cancel_requested: Option<Identifier>,
+    /// The values the run was given, by name.
+    inputs: Option<BTreeMap<String, Digest>>,
+    /// Which loop each node belongs to while one is open, and what that loop has
+    /// spent since it opened. The iteration's record reports the same figures, so
+    /// closing it must not count them again.
+    member_of: BTreeMap<Identifier, Identifier>,
+    open_usage: BTreeMap<Identifier, (u64, u64)>,
+    /// What a node produced before the iteration that reset it. This is where a
+    /// loop's carried state comes from on its way into the next iteration.
+    previous: BTreeMap<Identifier, BTreeMap<String, Digest>>,
+    /// Who waived a node's failure at a gate, for the node's next attempt.
+    approved: BTreeMap<Identifier, Identifier>,
+    gate_rejection: Option<RunFailure>,
 }
 
 impl RunState {
@@ -204,6 +221,12 @@ impl RunState {
             failure: None,
             started_at: None,
             cancel_requested: None,
+            inputs: None,
+            member_of: BTreeMap::new(),
+            open_usage: BTreeMap::new(),
+            previous: BTreeMap::new(),
+            approved: BTreeMap::new(),
+            gate_rejection: None,
         };
 
         if first.position != 0 {
@@ -241,6 +264,10 @@ impl RunState {
                     event: recorded.event.as_str(),
                 });
             }
+            RunEvent::InputsBound { .. }
+            | RunEvent::ResourcesConsumed { .. }
+            | RunEvent::GateRejected { .. }
+            | RunEvent::Resumed { .. } => self.apply_outside_input(&recorded.event)?,
             RunEvent::Started { .. } => {
                 self.status = RunStatus::Running;
                 self.started_at = Some(recorded.at);
@@ -295,12 +322,6 @@ impl RunState {
                 self.waiting_on = Some(wait.clone());
                 self.status = RunStatus::Waiting;
             }
-            RunEvent::Resumed { .. } => {
-                if self.waiting_on.take().is_none() {
-                    return Err(FoldError::ResumedWithoutWait);
-                }
-                self.status = RunStatus::Running;
-            }
             RunEvent::CancellationRequested { by } => {
                 self.cancel_requested = Some(by.clone());
             }
@@ -315,6 +336,72 @@ impl RunState {
             RunEvent::Completed { .. } => self.status = RunStatus::Completed,
         }
         Ok(())
+    }
+
+    /// What the run was given, what it spent, and what a person answered.
+    fn apply_outside_input(&mut self, event: &RunEvent) -> Result<(), FoldError> {
+        match event {
+            RunEvent::InputsBound { inputs } => {
+                // A second binding is not a history any run produced: nobody could
+                // say which set of inputs the run's results came from.
+                if self.inputs.is_some() {
+                    return Err(FoldError::AfterTerminal {
+                        event: event.as_str(),
+                    });
+                }
+                self.inputs = Some(inputs.clone());
+            }
+            RunEvent::ResourcesConsumed { node, usage } => self.apply_usage(node, usage),
+            RunEvent::GateRejected {
+                node,
+                obligation,
+                by,
+            } => {
+                if self.waiting_on.take().is_none() {
+                    return Err(FoldError::ResumedWithoutWait);
+                }
+                self.status = RunStatus::Running;
+                self.gate_rejection = Some(RunFailure::GateRejected {
+                    node: node.clone(),
+                    obligation: obligation.clone(),
+                    by: by.clone(),
+                });
+            }
+            RunEvent::Resumed { by, .. } => {
+                let Some(wait) = self.waiting_on.take() else {
+                    return Err(FoldError::ResumedWithoutWait);
+                };
+                self.status = RunStatus::Running;
+                // Somebody with the authority answered the question, so the
+                // failure that raised it is answered too. Leaving it unresolved
+                // would ask the same person the same thing forever.
+                if let Wait::HumanGate { node, .. } = wait {
+                    self.failures.remove(&node);
+                    self.approved.insert(node, by.clone());
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// What a node consumed. Counted now, because it has been spent now.
+    fn apply_usage(&mut self, node: &Identifier, usage: &crate::event::NodeUsage) {
+        let tokens = usage.known_tokens();
+        let cost = usage.cost_micro_units;
+        if tokens.is_none() && cost.is_none() {
+            self.spent.unmeasured = self.spent.unmeasured.saturating_add(1);
+            return;
+        }
+        let tokens = tokens.unwrap_or(0);
+        let cost = cost.unwrap_or(0);
+        self.spent.tokens = self.spent.tokens.saturating_add(tokens);
+        self.spent.cost_micro_units = self.spent.cost_micro_units.saturating_add(cost);
+        if let Some(region) = self.member_of.get(node) {
+            let open = self.open_usage.entry(region.clone()).or_default();
+            open.0 = open.0.saturating_add(tokens);
+            open.1 = open.1.saturating_add(cost);
+        }
     }
 
     /// Effect claims, resolutions, and the ones nobody could resolve.
@@ -387,11 +474,16 @@ impl RunState {
                 // again, and clears the readings they reported last time round.
                 // A loop that read a stale continuation would keep going on an
                 // answer from an iteration that has already ended.
+                self.open_usage.remove(region);
                 for member in members {
-                    self.finished.remove(member);
+                    if let Some(outputs) = self.finished.remove(member) {
+                        self.previous.insert(member.clone(), outputs);
+                    }
                     self.running.remove(member);
                     self.failures.remove(member);
+                    self.approved.remove(member);
                     self.control.retain(|(node, _), _| node != member);
+                    self.member_of.insert(member.clone(), region.clone());
                 }
             }
             RunEvent::IterationFinished { region, record } => {
@@ -429,12 +521,18 @@ impl RunState {
                     .find(|outcome| !outcome.held)
                     .map(|outcome| outcome.invariant.clone());
 
+                // Whatever the iteration's nodes already reported was counted when
+                // they reported it. Only the rest is new.
+                let (tokens, cost) = self.open_usage.remove(region).unwrap_or_default();
                 self.spent.wall_ms = self.spent.wall_ms.saturating_add(record.spent.wall_ms);
-                self.spent.tokens = self.spent.tokens.saturating_add(record.spent.tokens);
+                self.spent.tokens = self
+                    .spent
+                    .tokens
+                    .saturating_add(record.spent.tokens.saturating_sub(tokens));
                 self.spent.cost_micro_units = self
                     .spent
                     .cost_micro_units
-                    .saturating_add(record.spent.cost_micro_units);
+                    .saturating_add(record.spent.cost_micro_units.saturating_sub(cost));
             }
             _ => {}
         }
@@ -536,6 +634,36 @@ impl RunState {
     #[must_use]
     pub fn outputs_of(&self, node: &Identifier) -> BTreeMap<String, Digest> {
         self.finished.get(node).cloned().unwrap_or_default()
+    }
+
+    /// What a node produced before the current iteration reset it.
+    #[must_use]
+    pub fn previous_outputs_of(&self, node: &Identifier) -> BTreeMap<String, Digest> {
+        self.previous.get(node).cloned().unwrap_or_default()
+    }
+
+    /// A value the run was given, by name.
+    #[must_use]
+    pub fn input(&self, name: &str) -> Option<Digest> {
+        self.inputs.as_ref()?.get(name).copied()
+    }
+
+    /// What a loop's open iteration has spent so far: tokens, then cost.
+    #[must_use]
+    pub fn iteration_usage(&self, region: &Identifier) -> (u64, u64) {
+        self.open_usage.get(region).copied().unwrap_or_default()
+    }
+
+    /// Who waived this node's failure at a gate, for its next attempt.
+    #[must_use]
+    pub fn approved_by(&self, node: &Identifier) -> Option<&Identifier> {
+        self.approved.get(node)
+    }
+
+    /// The refusal at a gate that this run has not ended on yet.
+    #[must_use]
+    pub const fn gate_rejection(&self) -> Option<&RunFailure> {
+        self.gate_rejection.as_ref()
     }
 
     /// A reading a node reported for one of its ports.

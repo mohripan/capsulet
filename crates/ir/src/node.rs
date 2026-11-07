@@ -7,6 +7,8 @@
 //! admitted, which is what makes "models propose, checkers decide" a property
 //! of the representation rather than a convention people are asked to follow.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -206,6 +208,16 @@ pub struct Node {
     pub provider: Option<ProviderBinding>,
     /// For a sub-workflow node, the definition it runs.
     pub sub_workflow: Option<Identifier>,
+    /// What this node does, as data: a prompt template, a validator's rule, the
+    /// job it enqueues.
+    ///
+    /// Part of the definition, so it is covered by the definition's digest and
+    /// changing a prompt makes a new version rather than quietly changing what
+    /// an existing one means. Strings only, because a float has no canonical
+    /// encoding. Omitted when empty, so a definition that has none keeps the
+    /// digest it always had.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameters: BTreeMap<String, String>,
 }
 
 impl Node {

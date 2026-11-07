@@ -622,7 +622,7 @@ where
 /// The one place in this module that reads a clock. Everything downstream takes
 /// time as a parameter so a decision can be replayed; recording when a run was
 /// created is the point at which a real time has to enter.
-fn recorded_now() -> RecordedTime {
+pub(crate) fn recorded_now() -> RecordedTime {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_millis());

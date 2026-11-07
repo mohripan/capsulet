@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -132,9 +132,12 @@ The generated router inventory currently exposes:
 | `POST` | `/v1/ingestion/review/claims/{id}/approve`, `/reject` | Review an ingested claim |
 | `GET`, `POST` | `/v1/agents` | List or create agent definitions |
 | `GET` | `/v1/agents/{id}` | Read one agent definition |
-| `POST` | `/v1/agents/{id}/runs` | Start a queued agent run |
+| `POST` | `/v1/agents/{id}/runs` | Start an agent run, which the graph worker then executes |
 | `GET` | `/v1/agent-runs` | List agent runs |
-| `GET` | `/v1/agent-runs/{id}` | Read one agent run and current state |
+| `GET` | `/v1/agent-runs/{id}` | Read one agent run: status, state, usage, and why it ended |
+| `GET` | `/v1/agent-runs/{id}/events` | Read a run's event log |
+| `POST` | `/v1/agent-runs/{id}/cancel` | Ask a run to stop at its next safe point |
+| `POST` | `/v1/agent-runs/{id}/decisions` | Approve or refuse at the gate a run is waiting on |
 | `GET`, `POST` | `/v1/workflows` | List or create workflow DAGs |
 | `GET`, `PUT`, `DELETE` | `/v1/workflows/{id}` | Read, replace, or delete a workflow DAG |
 | `GET`, `POST` | `/v1/automations` | List or create automations |
@@ -354,10 +357,61 @@ curl http://127.0.0.1:8080/v1/agent-runs
 curl http://127.0.0.1:8080/v1/agent-runs/agent_run_1
 ```
 
-The current experimental API persists a queued agent run and returns its opaque state snapshot. The
-application service has an in-process execution slice used by tests, but Capsulet has no production
-dedicated graph/agent worker. Creating a run through HTTP therefore does not claim that it will be
-independently executed. HTTP trace and run-control endpoints are planned next.
+### Agents and agent runs
+
+Starting a run compiles the agent into a versioned definition, and the graph worker executes it.
+`status` says where the run is: `queued`, `running`, `waiting`, `succeeded`, `failed`, `cancelled`, or
+`stopped`. `stopped` means a budget, a lack of progress, a safety check, or a person refusing ended it.
+None of these says the result is right: `assurance` is `unverified`, because agent runs execute in
+`observe` mode.
+
+Starting a run is refused with `422 agent_not_runnable`, naming what is wrong, when:
+
+- the graph uses planner transitions or contains a cycle;
+- a typed input port is not connected to a node or a state field, or is fed by more than one edge;
+- a model node names no `model`, a validator has no `rule.*`, or a job node has no `job_definition_id`.
+
+It is refused with `400` when `initial_state` is missing a field the graph reads, or holds a value that
+does not satisfy the port it feeds.
+
+What a node does comes from its `config`, which is part of the definition's digest:
+
+| Node kind | Config | What it does |
+| --- | --- | --- |
+| `query_normalizer` | | Collapses whitespace and trims. |
+| `prompt_builder` | `template` | Fills `{{port}}` from its inputs, in one pass, so a value containing `{{x}}` stays text. Documents become the text they cite. With no template, labels each input. |
+| `llm`, `planner` | `model`, optional `provider`, `max_tokens`, `temperature_milli`, `timeout_seconds` | Asks a local Ollama. |
+| `embedding` | `model` | Stores the vector and outputs its digest. |
+| `retriever` | optional `top_k` | Finds the project's active claims sharing words with the query. Lexical: nothing about meaning. |
+| `reranker` | | Orders documents by words shared with the query, keeping order among ties. |
+| `memory_read` | optional `limit` | Reads the project's active claims. Claims still under review are not offered. |
+| `memory_write` | | Proposes a candidate claim from `subject_id`, `predicate`, `object`, `evidence_ids`, and `observed_at`. Never an active one. Once per run. |
+| `validator` | `rule.*`, optional `on_fail` | See below. |
+| `job` | `job_definition_id`, optional `execution_pool` | Runs a job from this project and waits for it. Once per run. |
+| `return` | | Passes its input through. |
+
+A validator reports `{"passed": bool, "detail": text}` on a `validation_result` output. Its rules are
+`rule.non_empty`, `rule.min_chars`, `rule.max_chars`, `rule.contains`, `rule.not_contains`, and
+`rule.valid_json`. An unknown rule fails the node rather than passing. `on_fail` says what a failed check
+means:
+
+- `retry`, the default, goes round again under the `validator_pass` condition, and fails the run without
+  it;
+- `safety` fails the node, which `safety_failure` turns into `stopped`;
+- `escalate` suspends the run at a gate under `human_escalation`. Approving waives the failure for the
+  attempt that follows, and refusing stops the run.
+
+Connect a node to the state a run was given, or write a result back to it, with a `state_field` endpoint.
+A field both read and written is carried to the next iteration:
+
+```json
+{ "kind": "state_field", "field": "query", "value_type": "user_query" }
+```
+
+Budgets are enforced from the log. `max_steps` bounds iterations, `max_seconds` bounds the whole run, and
+`max_tokens` and `max_cost_micros` count what models report, as soon as they report it. Usage nobody
+measured appears as `unmeasured` rather than as zero, so a non-zero `unmeasured` means the totals are a
+lower bound. A local model has no price, so its cost is never counted.
 
 ## Current correctness certificate API
 

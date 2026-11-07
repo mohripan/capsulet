@@ -239,3 +239,35 @@ fn deep_nesting_is_refused_rather_than_overflowing() {
         Err(CanonicalError::Syntax { .. })
     ));
 }
+
+#[test]
+fn an_integer_schema_survives_being_written_and_read_back() {
+    use capsulet_ir::value::{IntegerRange, ValueSchema};
+
+    // A schema is an internally-tagged enum, which is read through a buffer that
+    // cannot answer a request for an `i128`. This wrote fine and then could not be
+    // read, so a stored definition with an integer port could never run.
+    let schema = ValueSchema::Integer {
+        range: IntegerRange::new(0, i128::from(u32::MAX)),
+    };
+    let bytes = capsulet_ir::to_canonical_bytes(&schema).expect("encodes");
+    let read: ValueSchema = serde_json::from_slice(&bytes).expect("reads back");
+    assert_eq!(read, schema);
+
+    let negative = ValueSchema::Integer {
+        range: IntegerRange::new(i128::from(i64::MIN), -1),
+    };
+    let bytes = capsulet_ir::to_canonical_bytes(&negative).expect("encodes");
+    let read: ValueSchema = serde_json::from_slice(&bytes).expect("reads back");
+    assert_eq!(read, negative);
+}
+
+#[test]
+fn a_document_schema_survives_being_written_and_read_back() {
+    use capsulet_ir::value::{ValueSchema, aliases};
+
+    let schema = aliases::documents();
+    let bytes = capsulet_ir::to_canonical_bytes(&schema).expect("encodes");
+    let read: ValueSchema = serde_json::from_slice(&bytes).expect("reads back");
+    assert_eq!(read, schema);
+}

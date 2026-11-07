@@ -200,6 +200,38 @@ services:
       retries: 20
     restart: unless-stopped
 
+  graph-worker:
+    init: true
+    build:
+      context: .
+      dockerfile: crates/Dockerfile
+      args:
+        PACKAGE: capsulet-graph-worker
+        BIN: capsulet-graph-worker
+    container_name: capsulet-graph-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
+      CAPSULET_GRAPH_WORKER_ID: graph-worker-compose
+      CAPSULET_GRAPH_WORKER_POLL_SECONDS: "1"
+      CAPSULET_GRAPH_WORKER_LEASE_SECONDS: "60"
+      CAPSULET_GRAPH_WORKER_HEALTH_ADDR: 0.0.0.0:8084
+      # Model nodes use this. Without a reachable model they fail and say so, and
+      # everything deterministic still runs.
+      CAPSULET_OLLAMA_URL: ${CAPSULET_OLLAMA_URL:-http://host.docker.internal:11434}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8084/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   evaluator:
     init: true
     build:

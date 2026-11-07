@@ -7,23 +7,22 @@
 
 use std::env;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, anyhow};
-use async_trait::async_trait;
+use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use capsulet_core::{ComponentDescriptor, ComponentKind};
-use capsulet_ir::loop_region::FailureKind;
 use capsulet_observability as observability;
 use capsulet_postgres::{PostgresPoolConfig, PostgresStore};
 
+use crate::agent::AgentExecutor;
 use crate::clock::SystemClock;
-use crate::execute::{
-    CompensationRequest, EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest,
-};
+use crate::model::{ModelClient, OllamaClient};
 use crate::runtime::{GraphWorker, Progress, WorkerConfig};
 
 const DEFAULT_LEASE_SECONDS: i64 = 60;
 const DEFAULT_IDLE_POLL_SECONDS: u64 = 2;
+const DEFAULT_HEALTH_ADDR: &str = "0.0.0.0:8084";
 
 /// Runs the graph worker from environment configuration.
 ///
@@ -56,18 +55,47 @@ pub async fn run() -> anyhow::Result<()> {
         .await
         .context("run graph worker migrations")?;
 
+    start_health_server(
+        store.clone(),
+        &env::var("CAPSULET_GRAPH_WORKER_HEALTH_ADDR")
+            .unwrap_or_else(|_| DEFAULT_HEALTH_ADDR.to_string()),
+    )
+    .await?;
+
     let config = config_from_env();
     let idle = config.idle_poll;
+    let model = model_from_env();
+    if model.is_none() {
+        observability::tracing::warn!(
+            component = "graph-worker",
+            "CAPSULET_OLLAMA_URL is not set; model nodes will fail and say so"
+        );
+    }
     let worker = GraphWorker::new(
-        store,
-        Arc::new(UnconfiguredExecutor),
+        store.clone(),
+        Arc::new(AgentExecutor::new(store, model)),
         Arc::new(SystemClock),
         config,
     );
 
     loop {
-        match worker.advance_one().await {
-            Ok(Progress::NothingToDo) => tokio::time::sleep(idle).await,
+        let started = Instant::now();
+        let result = worker.advance_one().await;
+        observability::record_service_tick(
+            "graph-worker",
+            match &result {
+                Ok(Progress::NothingToDo) => "idle",
+                Ok(_) => "advanced",
+                Err(_) => "failed",
+            },
+            started.elapsed(),
+        );
+        match result {
+            // Nothing to do, or a run still going with nothing it could do this pass.
+            // Going straight back would turn the second into a busy loop.
+            Ok(Progress::NothingToDo | Progress::StillRunning) => {
+                tokio::time::sleep(idle).await;
+            }
             Ok(progress) => {
                 observability::tracing::info!(component = "graph-worker", ?progress);
             }
@@ -100,43 +128,43 @@ fn config_from_env() -> WorkerConfig {
     }
 }
 
-/// The executor this binary ships with, which performs nothing.
-///
-/// Node providers and effect transports arrive with the verifier protocol in
-/// M4. Until they do, a deployed worker refuses the work rather than pretending
-/// to have done it: a node that reports success it did not achieve is worse
-/// than a node that stops.
-struct UnconfiguredExecutor;
+/// The model client, when a deployment has configured one.
+fn model_from_env() -> Option<Arc<dyn ModelClient>> {
+    env::var("CAPSULET_OLLAMA_URL")
+        .ok()
+        .filter(|url| !url.trim().is_empty())
+        .map(|url| Arc::new(OllamaClient::new(url)) as Arc<dyn ModelClient>)
+}
 
-#[async_trait]
-impl Executor for UnconfiguredExecutor {
-    async fn run_node(&self, request: NodeRequest<'_>) -> NodeOutcome {
-        NodeOutcome::Failed {
-            failure: FailureKind::VerifierUnavailable,
-            detail: format!(
-                "no provider is configured for `{}`; node execution arrives with M4",
-                request.node.id
-            ),
+async fn start_health_server(store: PostgresStore, address: &str) -> anyhow::Result<()> {
+    let app = Router::new()
+        .route("/livez", get(|| async { StatusCode::OK }))
+        .route("/healthz", get(ready))
+        .route("/readyz", get(ready))
+        .route("/metrics", get(metrics))
+        .with_state(store);
+    let listener = tokio::net::TcpListener::bind(address)
+        .await
+        .with_context(|| format!("bind graph worker health listener on {address}"))?;
+    tokio::spawn(async move {
+        if let Err(error) = axum::serve(listener, app).await {
+            observability::tracing::warn!(%error, "graph worker health server stopped");
         }
-    }
+    });
+    Ok(())
+}
 
-    async fn perform_effect(&self, request: EffectRequest<'_>) -> EffectOutcome {
-        EffectOutcome::Failed {
-            failure: FailureKind::VerifierUnavailable,
-            detail: format!(
-                "no transport is configured for `{}`; effect execution arrives with M4",
-                request.effect.id
-            ),
-        }
+async fn ready(State(store): State<PostgresStore>) -> StatusCode {
+    match store.ping().await {
+        Ok(()) => StatusCode::OK,
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE,
     }
+}
 
-    async fn compensate(&self, request: CompensationRequest<'_>) -> EffectOutcome {
-        EffectOutcome::Failed {
-            failure: FailureKind::VerifierUnavailable,
-            detail: format!(
-                "no transport is configured for `{}`, so `{}` cannot be undone here",
-                request.effect.id, request.route
-            ),
-        }
-    }
+async fn metrics() -> axum::response::Response {
+    (
+        [("content-type", "text/plain; version=0.0.4")],
+        observability::render_metrics(),
+    )
+        .into_response()
 }

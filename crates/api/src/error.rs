@@ -58,6 +58,10 @@ pub(crate) enum ApiError {
     RunAlreadyExists(String),
     #[error("agent run already exists: {0}")]
     AgentRunAlreadyExists(String),
+    #[error("this agent cannot run: {0}")]
+    AgentNotRunnable(String),
+    #[error("agent run {0} is not somewhere this can be done")]
+    AgentRunStateConflict(String),
     #[error("job run logs not found: {0}")]
     RunLogsNotFound(String),
     #[error("job artifact not found: {0}")]
@@ -117,12 +121,12 @@ impl ApiError {
             Self::WorkflowLocked(_)
             | Self::JobDefinitionInUse(_)
             | Self::RunAlreadyExists(_)
-            | Self::AgentRunAlreadyExists(_) => {
-                StatusCode::CONFLICT
-            }
-            Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
-                StatusCode::UNPROCESSABLE_ENTITY
-            }
+            | Self::AgentRunAlreadyExists(_)
+            | Self::AgentRunStateConflict(_) => StatusCode::CONFLICT,
+            Self::UnknownJobDefinition(_)
+            | Self::UnknownExecutionPool(_)
+            | Self::AdmissionRefused { .. }
+            | Self::AgentNotRunnable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::ResourceNotFound
             | Self::JobDefinitionSourceNotFound(_)
             | Self::WorkflowNotFound(_)
@@ -140,7 +144,6 @@ impl ApiError {
             | Self::IrDefinitionNotFound(_)
             | Self::AssuranceCertificateNotFound(_)
             | Self::AssuranceEvidenceMissing(_) => StatusCode::NOT_FOUND,
-            Self::AdmissionRefused { .. } => StatusCode::UNPROCESSABLE_ENTITY,
             Self::AdmissionUnavailable(_) | Self::Proposer(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::MissingEndpointContract(_) | Self::Store(_) | Self::ObjectStore(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -174,6 +177,8 @@ impl ApiError {
             Self::RunNotFound(_) => "job_run_not_found",
             Self::RunAlreadyExists(_) => "job_run_already_exists",
             Self::AgentRunAlreadyExists(_) => "agent_run_already_exists",
+            Self::AgentNotRunnable(_) => "agent_not_runnable",
+            Self::AgentRunStateConflict(_) => "agent_run_state_conflict",
             Self::Proposer(_) => "proposer_unavailable",
             Self::RunLogsNotFound(_) => "job_run_logs_not_found",
             Self::ArtifactNotFound(_) => "job_artifact_not_found",

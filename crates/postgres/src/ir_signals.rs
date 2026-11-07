@@ -56,12 +56,22 @@ impl PostgresStore {
         run_id: &str,
         signal: &Signal,
     ) -> Result<i64, PostgresStoreError> {
-        let (kind, subject) = match &signal.kind {
-            SignalKind::Event { name } => ("event", Some(name.as_str().to_string())),
-            SignalKind::HumanDecision { obligation } => {
-                ("human_decision", Some(obligation.as_str().to_string()))
-            }
-            SignalKind::TimerElapsed => ("timer_elapsed", None),
+        let (kind, subject, payload) = match &signal.kind {
+            SignalKind::Event { name } => (
+                "event",
+                Some(name.as_str().to_string()),
+                serde_json::json!({}),
+            ),
+            SignalKind::HumanDecision {
+                obligation,
+                approved,
+            } => (
+                "human_decision",
+                Some(obligation.as_str().to_string()),
+                serde_json::json!({ "approved": approved }),
+            ),
+            SignalKind::TimerElapsed => ("timer_elapsed", None, serde_json::json!({})),
+            SignalKind::Cancel => ("cancel", None, serde_json::json!({})),
         };
         let authorities: Vec<&str> = signal
             .authorities
@@ -74,9 +84,9 @@ impl PostgresStore {
         let id = sqlx::query_scalar::<_, i64>(
             r"
             INSERT INTO ir_run_signals (
-                tenant_id, project_id, run_id, kind, subject, delivered_by, authorities
+                tenant_id, project_id, run_id, kind, subject, delivered_by, authorities, payload
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)
             RETURNING id
             ",
         )
@@ -87,6 +97,7 @@ impl PostgresStore {
         .bind(subject)
         .bind(signal.by.as_str())
         .bind(authorities)
+        .bind(payload)
         .fetch_one(&self.pool)
         .await?;
 
@@ -107,7 +118,7 @@ impl PostgresStore {
     ) -> Result<Vec<DeliveredSignal>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, run_id, kind, subject, delivered_by, authorities
+            SELECT id, run_id, kind, subject, delivered_by, authorities, payload
             FROM ir_run_signals
             WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3
               AND consumed_at IS NULL
@@ -173,6 +184,7 @@ fn row_to_signal(row: &sqlx::postgres::PgRow) -> Result<DeliveredSignal, Postgre
     let subject: Option<String> = row.get("subject");
     let delivered_by: String = row.get("delivered_by");
     let authorities: serde_json::Value = row.get("authorities");
+    let payload: serde_json::Value = row.get("payload");
 
     let parse = |value: &str| {
         Identifier::parse(value)
@@ -190,8 +202,15 @@ fn row_to_signal(row: &sqlx::postgres::PgRow) -> Result<DeliveredSignal, Postgre
         },
         "human_decision" => SignalKind::HumanDecision {
             obligation: parse(named("human decision")?)?,
+            // A decision stored before refusals existed could only have been an
+            // approval. Anything else that does not say so is not one.
+            approved: payload
+                .get("approved")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or_else(|| payload.as_object().is_some_and(serde_json::Map::is_empty)),
         },
         "timer_elapsed" => SignalKind::TimerElapsed,
+        "cancel" => SignalKind::Cancel,
         other => {
             return Err(PostgresStoreError::InvalidPersistedValue(format!(
                 "unknown signal kind `{other}`"

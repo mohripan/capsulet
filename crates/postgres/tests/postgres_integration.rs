@@ -55,6 +55,46 @@ fn scoped_agent_run(id: &str, agent: &AgentDefinition) -> AgentRunRecord {
         status: AgentRunStatus::Queued,
         state_version: 0,
         state_json: r#"{"query":"scoped"}"#.to_string(),
+        execution: None,
+    }
+}
+
+/// The smallest definition a run can be started against. These tests are about who
+/// owns what, so nothing in them cares what it does.
+fn minimal_definition() -> &'static capsulet_ir::Definition {
+    static DEFINITION: std::sync::OnceLock<capsulet_ir::Definition> = std::sync::OnceLock::new();
+    DEFINITION.get_or_init(|| capsulet_ir::Definition {
+        schema_version: capsulet_ir::Definition::current_schema_version(),
+        id: capsulet_ir::Identifier::parse("minimal").expect("valid"),
+        version: "1".to_string(),
+        name: "Minimal".to_string(),
+        assurance: capsulet_ir::AssuranceMode::Observe,
+        capabilities: capsulet_ir::CapabilitySet::empty(),
+        budget: capsulet_ir::ResourceBudget::deterministic(1_000),
+        graph: capsulet_ir::Graph::new(capsulet_ir::GraphBuilder::default()).expect("valid"),
+        boundaries: vec![],
+        contracts: vec![],
+    })
+}
+
+fn minimal_admission() -> &'static capsulet_ir::admission::AdmissionRecord {
+    static ADMISSION: std::sync::OnceLock<capsulet_ir::admission::AdmissionRecord> =
+        std::sync::OnceLock::new();
+    ADMISSION.get_or_init(|| capsulet_ir::admit(minimal_definition()).expect("admitted"))
+}
+
+fn no_inputs() -> &'static std::collections::BTreeMap<String, String> {
+    static INPUTS: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    &INPUTS
+}
+
+fn minimal_start(run: &AgentRunRecord) -> capsulet_postgres::AgentRunStart<'_> {
+    capsulet_postgres::AgentRunStart {
+        run,
+        definition: minimal_definition(),
+        admission: minimal_admission(),
+        inputs: no_inputs(),
+        at: capsulet_ir::correctness::evidence::RecordedTime(0),
     }
 }
 
@@ -271,7 +311,7 @@ async fn agent_run_creation_is_scoped_and_never_overwrites() {
 
     let run = scoped_agent_run(&unique_id("run_scoped"), &agent);
     store
-        .create_agent_run_in_project(&run, "default", &project)
+        .start_agent_run_in_project(&minimal_start(&run), "default", &project)
         .await
         .expect("create");
 
@@ -279,7 +319,7 @@ async fn agent_run_creation_is_scoped_and_never_overwrites() {
     let mut resubmitted = run.clone();
     resubmitted.state_json = r#"{"query":"overwritten"}"#.to_string();
     let conflict = store
-        .create_agent_run_in_project(&resubmitted, "default", &project)
+        .start_agent_run_in_project(&minimal_start(&resubmitted), "default", &project)
         .await
         .expect_err("the id is taken");
     assert!(matches!(conflict, PostgresStoreError::AlreadyExists(_)));
@@ -292,13 +332,13 @@ async fn agent_run_creation_is_scoped_and_never_overwrites() {
 
     // Another project cannot learn the id is taken, or start this agent.
     let taken_elsewhere = store
-        .create_agent_run_in_project(&run, "default", &foreign)
+        .start_agent_run_in_project(&minimal_start(&run), "default", &foreign)
         .await
         .expect_err("another project owns this run id");
     assert!(matches!(taken_elsewhere, PostgresStoreError::ScopeMismatch));
     let foreign_start = scoped_agent_run(&unique_id("run_foreign_start"), &agent);
     let refused = store
-        .create_agent_run_in_project(&foreign_start, "default", &foreign)
+        .start_agent_run_in_project(&minimal_start(&foreign_start), "default", &foreign)
         .await
         .expect_err("the agent belongs to another project");
     assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
@@ -335,7 +375,7 @@ async fn agent_run_listing_applies_scope_before_the_limit() {
         .expect("agent");
     let owned = scoped_agent_run(&unique_id("run_listed"), &agent);
     store
-        .create_agent_run_in_project(&owned, "default", &project)
+        .start_agent_run_in_project(&minimal_start(&owned), "default", &project)
         .await
         .expect("owned");
 
@@ -351,8 +391,8 @@ async fn agent_run_listing_applies_scope_before_the_limit() {
         .await
         .expect("agent");
     store
-        .create_agent_run_in_project(
-            &scoped_agent_run(&unique_id("run_foreign"), &foreign_agent),
+        .start_agent_run_in_project(
+            &minimal_start(&scoped_agent_run(&unique_id("run_foreign"), &foreign_agent)),
             "default",
             &other,
         )
@@ -1767,6 +1807,7 @@ async fn saves_and_finds_agent_run_when_database_is_available() {
         status: AgentRunStatus::Queued,
         state_version: 0,
         state_json: r#"{"query":"reset MFA"}"#.to_string(),
+        execution: None,
     };
 
     store.upsert_agent_run(&run).await.expect("save run");
@@ -1802,6 +1843,7 @@ async fn saves_and_lists_agent_trace_events_when_database_is_available() {
         status: AgentRunStatus::Queued,
         state_version: 0,
         state_json: r#"{"query":"reset MFA"}"#.to_string(),
+        execution: None,
     };
     store.upsert_agent_run(&run).await.expect("save run");
 

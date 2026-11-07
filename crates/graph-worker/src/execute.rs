@@ -17,20 +17,127 @@ use async_trait::async_trait;
 use capsulet_ir::definition::Definition;
 use capsulet_ir::digest::Digest;
 use capsulet_ir::effect::Effect;
+use capsulet_ir::graph::{Combine, Endpoint};
 use capsulet_ir::id::Identifier;
 use capsulet_ir::loop_region::FailureKind;
 use capsulet_ir::node::Node;
-use capsulet_runtime::event::ControlValue;
+use capsulet_ir::region::RegionKind;
+use capsulet_runtime::event::{ControlValue, NodeUsage};
+use capsulet_runtime::state::RunState;
+
+/// Where a value feeding a node's port comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSource {
+    /// `node.port`, or the name of the graph input.
+    pub name: String,
+    /// `None` when the source has produced nothing. That is the executor's to
+    /// report, because a node that runs on a value nobody supplied is a node that
+    /// made one up.
+    pub digest: Option<Digest>,
+}
+
+/// One input port, with the sources feeding it and how they combine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedInput {
+    pub combine: Combine,
+    pub sources: Vec<ResolvedSource>,
+}
+
+/// Works out what feeds each of a node's input ports, from the definition and the
+/// log alone.
+///
+/// A region's entry node is where a loop's carried state comes back in: on any
+/// iteration after the first, a port the loop declares as state reads what the
+/// region's exit produced last time round, rather than the value the run started
+/// with. Without that a loop that retries would retry on its original inputs and
+/// could never improve on its last attempt.
+#[must_use]
+pub fn resolve_inputs(
+    definition: &Definition,
+    state: &RunState,
+    node: &Node,
+) -> BTreeMap<String, ResolvedInput> {
+    let carried = definition
+        .graph
+        .region_of_node(&node.id)
+        .filter(|region| region.entry == node.id)
+        .and_then(|region| match &region.kind {
+            RegionKind::Loop { spec } if state.loop_progress(&region.id).finished > 0 => {
+                Some((spec, state.previous_outputs_of(&region.exit)))
+            }
+            _ => None,
+        });
+
+    let mut inputs = BTreeMap::new();
+    for edge in definition.graph.edges() {
+        for target in &edge.targets {
+            let Endpoint::Port {
+                node: target_node,
+                port,
+            } = target
+            else {
+                continue;
+            };
+            if target_node != &node.id {
+                continue;
+            }
+            let sources = edge
+                .sources
+                .iter()
+                .map(|source| match source {
+                    Endpoint::Port { node, port } => ResolvedSource {
+                        name: format!("{node}.{port}"),
+                        digest: state.outputs_of(node).get(port.as_str()).copied(),
+                    },
+                    Endpoint::GraphInput { name } => {
+                        let from_last_iteration = carried.as_ref().and_then(|(spec, outputs)| {
+                            spec.state
+                                .contains_key(port.as_str())
+                                .then(|| outputs.get(port.as_str()).copied())
+                                .flatten()
+                        });
+                        ResolvedSource {
+                            name: name.to_string(),
+                            digest: from_last_iteration.or_else(|| state.input(name.as_str())),
+                        }
+                    }
+                    // A graph output is a target, and the graph refuses it as a
+                    // source at admission. Reported as absent rather than trusted.
+                    Endpoint::GraphOutput { name } => ResolvedSource {
+                        name: name.to_string(),
+                        digest: None,
+                    },
+                })
+                .collect();
+            inputs.insert(
+                port.to_string(),
+                ResolvedInput {
+                    combine: edge.combine.clone(),
+                    sources,
+                },
+            );
+        }
+    }
+    inputs
+}
 
 /// Everything an executor is told about the work it has been asked to do.
 #[derive(Debug, Clone, Copy)]
 pub struct NodeRequest<'a> {
+    pub tenant: &'a str,
+    pub project: &'a str,
     pub run: &'a str,
     pub definition: &'a Definition,
     pub node: &'a Node,
     /// Which iteration of which loop region this is, when the node sits inside
     /// one. A node that runs several times needs to know which time it is.
     pub iteration: Option<(&'a Identifier, u32)>,
+    /// What feeds each input port.
+    pub inputs: &'a BTreeMap<String, ResolvedInput>,
+    /// What this node produced the last time it ran, if it was reset by a loop.
+    pub previous_outputs: &'a BTreeMap<String, Digest>,
+    /// Who waived this node's failure at a gate, on the attempt after they did.
+    pub approved_by: Option<&'a Identifier>,
 }
 
 /// How running a node came out.
@@ -48,30 +155,49 @@ pub enum NodeOutcome {
         /// loop depends on stops the run rather than having a value assumed for
         /// it.
         control: BTreeMap<String, ControlValue>,
+        /// What the node consumed. `None` when it consumes nothing worth
+        /// reporting; a model call that could not say what it used reports a
+        /// [`NodeUsage`] with its figures unknown.
+        usage: Option<NodeUsage>,
     },
     Failed {
         failure: FailureKind,
         detail: String,
+        /// A failed model call may still have been paid for.
+        usage: Option<NodeUsage>,
     },
 }
 
 /// An effect the worker has already claimed and is asking to be performed.
 #[derive(Debug, Clone, Copy)]
 pub struct EffectRequest<'a> {
+    pub tenant: &'a str,
+    pub project: &'a str,
     pub run: &'a str,
+    pub definition: &'a Definition,
     pub node: &'a Identifier,
     pub effect: &'a Effect,
     pub attempt: u32,
     /// The idempotency key to present, where the effect declared one. Presenting
     /// a different key than the last attempt would make a retry a second effect.
     pub key: Option<&'a str>,
+    /// What feeds each input port of the node performing the effect.
+    pub inputs: &'a BTreeMap<String, ResolvedInput>,
 }
 
 /// How performing an effect came out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectOutcome {
-    /// It happened, and here is the proof.
-    Performed { receipt: Digest },
+    /// It happened, and here is the proof, along with whatever the node produced
+    /// by doing it.
+    Performed {
+        receipt: Digest,
+        outputs: BTreeMap<String, Digest>,
+        /// Set when the effect happened and the node failed anyway: a job that ran
+        /// and came back failed. The claim is finalized, because it did happen, and
+        /// the node's failure routes like any other.
+        node_failure: Option<(FailureKind, String)>,
+    },
     /// It did not happen, and the executor is sure of that.
     ///
     /// Sure is the operative word. Report this only when the far side rejected
@@ -91,6 +217,8 @@ pub enum EffectOutcome {
 /// An effect that happened and now has to be taken back.
 #[derive(Debug, Clone, Copy)]
 pub struct CompensationRequest<'a> {
+    pub tenant: &'a str,
+    pub project: &'a str,
     pub run: &'a str,
     pub node: &'a Identifier,
     pub effect: &'a Effect,
@@ -123,6 +251,19 @@ impl NodeOutcome {
         Self::Finished {
             outputs,
             control: BTreeMap::new(),
+            usage: None,
+        }
+    }
+}
+
+impl EffectOutcome {
+    /// An effect that happened and produced nothing the graph reads.
+    #[must_use]
+    pub const fn performed(receipt: Digest) -> Self {
+        Self::Performed {
+            receipt,
+            outputs: BTreeMap::new(),
+            node_failure: None,
         }
     }
 }

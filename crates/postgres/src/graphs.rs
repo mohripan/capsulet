@@ -183,7 +183,7 @@ impl PostgresStore {
     ) -> Result<Vec<GraphNode>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, name, kind
+            SELECT id, name, kind, config
             FROM graph_nodes
             WHERE graph_id = $1
             ORDER BY position ASC
@@ -196,12 +196,20 @@ impl PostgresStore {
         for row in rows {
             let node_id = NodeId::new(row.try_get::<String, _>("id")?)
                 .map_err(PostgresStoreError::InvalidPersistedValue)?;
-            nodes.push(GraphNode::new(
-                node_id.clone(),
-                row.try_get::<String, _>("name")?,
-                parse_node_kind(&row.try_get::<String, _>("kind")?)?,
-                self.load_graph_ports(graph_id, &node_id).await?,
-            ));
+            nodes.push(
+                GraphNode::new(
+                    node_id.clone(),
+                    row.try_get::<String, _>("name")?,
+                    parse_node_kind(&row.try_get::<String, _>("kind")?)?,
+                    self.load_graph_ports(graph_id, &node_id).await?,
+                )
+                .with_config(
+                    serde_json::from_value(row.try_get::<serde_json::Value, _>("config")?)
+                        .map_err(|error| {
+                            PostgresStoreError::InvalidPersistedValue(error.to_string())
+                        })?,
+                ),
+            );
         }
         Ok(nodes)
     }
@@ -413,8 +421,8 @@ async fn insert_graph_node(
 ) -> Result<(), PostgresStoreError> {
     sqlx::query(
         r"
-        INSERT INTO graph_nodes (graph_id, id, position, name, kind)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO graph_nodes (graph_id, id, position, name, kind, config)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
         ",
     )
     .bind(graph_id.as_str())
@@ -422,6 +430,10 @@ async fn insert_graph_node(
     .bind(to_i32(position)?)
     .bind(node.name())
     .bind(node.kind().to_string())
+    .bind(
+        serde_json::to_value(node.config())
+            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?,
+    )
     .execute(&mut **tx)
     .await?;
     Ok(())

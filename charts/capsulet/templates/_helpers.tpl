@@ -205,3 +205,11 @@ as prefixes, matching the runner's pool policy behavior.
 {{- end -}}
 {{- printf "object.spec.containers.all(c, %s)" (join " || " $checks) -}}
 {{- end -}}
+
+{{/*
+The port a background component serves health and metrics on.
+*/}}
+{{- define "capsulet.healthPort" -}}
+{{- $ports := dict "worker" 8081 "scheduler" 8082 "evaluator" 8083 "graph-worker" 8084 -}}
+{{- get $ports . -}}
+{{- end }}

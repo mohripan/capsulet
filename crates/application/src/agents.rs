@@ -10,6 +10,35 @@ pub struct AgentRunRecord {
     pub status: AgentRunStatus,
     pub state_version: u64,
     pub state_json: String,
+    /// How the durable runtime is executing this run. `None` for a run from before
+    /// agent runs executed, which has no log to read.
+    pub execution: Option<AgentRunExecution>,
+}
+
+/// Where a run's execution stands, as read from its log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentRunExecution {
+    /// The IR run doing the work.
+    pub ir_run_id: String,
+    /// The exact definition version being executed, by digest.
+    pub definition_digest: String,
+    /// Why the run ended where it did, when it did not simply finish.
+    pub detail: Option<String>,
+    /// What the run is suspended on, when it is.
+    pub waiting_on: Option<String>,
+    pub usage: AgentRunUsage,
+}
+
+/// What a run has consumed, summed from its log.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AgentRunUsage {
+    pub tokens: u64,
+    pub cost_micro_units: u64,
+    pub effects: u32,
+    /// How many times something consumed resources nobody measured. Those are not
+    /// in the totals above, and a total that cannot see them should not be read as
+    /// complete.
+    pub unmeasured: u32,
 }
 
 pub struct AgentService<'a, R> {
@@ -46,6 +75,7 @@ where
             status: AgentRunStatus::Queued,
             state_version: 0,
             state_json: command.initial_state_json,
+            execution: None,
         };
         self.repository.save_run(&record).await
     }

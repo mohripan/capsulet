@@ -21,7 +21,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `chaos` | no | yes | IR worker crash recovery at step boundaries | Cargo, Docker |
 | `migrations` | no | yes | Supported forward migrations | Cargo, Docker |
 | `security` | no | yes | Rust/npm/Python dependency and license policy, including expiring exceptions | cargo-audit, cargo-deny, npm, Python |
-| `compose` | no | yes | Compose configuration validation only; smoke pending [#98](https://github.com/mohripan/capsulet/issues/98) | Docker |
+| `compose` | no | yes | Compose configuration, then agents run over HTTP through the built stack, with the graph worker killed mid-run. Job, workflow, dashboard and seed checks are still open under [#98](https://github.com/mohripan/capsulet/issues/98) | Docker, PowerShell |
 | `helm` | no | yes | Chart lint and deterministic render | Helm |
 | `kind` | no | yes | Cluster discovery only; install/smoke pending [#102](https://github.com/mohripan/capsulet/issues/102) | Kind, kubectl, Helm, Docker |
 | `wasm-python` | no | no | WASI Python runner, nightly by name | Cargo, Wasmtime |
@@ -33,9 +33,9 @@ executable's target directory so Windows does not block replacing an executable 
 Run directories include a timestamp and process ID and must be newly created, preventing
 concurrent verifier commands from merging or overwriting their captured evidence.
 
-The current graph is provisional, not the complete M1 release gate. In particular, a green
-`compose` or `kind` result does not prove a deployment was built, installed, exercised, or
-uninstalled. Disposable PostgreSQL containers are isolated from host data, but per-test mutable
+The current graph is provisional, not the complete M1 release gate. In particular, a green `kind`
+result does not prove a deployment was built, installed, exercised, or uninstalled, and a green
+`compose` result proves only the agent path above. Disposable PostgreSQL containers are isolated from host data, but per-test mutable
 database isolation still needs reconciliation in [#96](https://github.com/mohripan/capsulet/issues/96).
 Container scanning, secret scanning, immutable artifact attestations, release identity, required-job
 aggregation and the clean-checkout rehearsal remain open under

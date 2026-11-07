@@ -64,6 +64,7 @@ fn effect_node() -> Node {
         },
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -150,6 +151,7 @@ fn a_verifier_may_not_reach_a_model() {
         budget: ResourceBudget::deterministic(600_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     };
 
     assert_eq!(
@@ -200,6 +202,7 @@ fn a_provider_binding_must_spend_a_capability_the_node_holds() {
             selection: "qwen3:4b".to_string(),
         }),
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     };
 
     assert_eq!(

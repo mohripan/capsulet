@@ -79,6 +79,7 @@ fn schema_chunk_2(name: &str) -> Option<Value> {
         "CreateAgentRequest" => serialize::<crate::models::CreateAgentRequest>(),
         "AgentBudgetRequest" => serialize::<crate::models::AgentBudgetRequest>(),
         "StartAgentRunRequest" => serialize::<crate::models::StartAgentRunRequest>(),
+        "DecideAgentRunRequest" => serialize::<crate::models::DecideAgentRunRequest>(),
         "JobDefinitionSourceResponse" => serialize::<crate::models::JobDefinitionSourceResponse>(),
         "WorkflowEditabilityResponse" => serialize::<crate::models::WorkflowEditabilityResponse>(),
         "TopologyResponse" => serialize::<crate::models::TopologyResponse>(),

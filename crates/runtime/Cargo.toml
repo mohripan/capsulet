@@ -13,6 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 capsulet-ir = { path = "../ir" }
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [lints]

@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008, CAP-CORRECTNESS-013 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008, CAP-CORRECTNESS-013 -->
 # Architecture Overview
 
 Capsulet is a correctness-first AI-agent workflow platform with three layers. The implemented
@@ -20,7 +20,7 @@ The detailed system design and implementation boundaries are in the repository-l
 ## Components
 
 - **API:** Axum HTTP control plane for memory graph records, ingestion review, entity resolution, claim conflicts, typed agent execution graphs, agents, agent runs, job definitions, compatibility workflow DAGs, automations and trigger metadata, health, logs, cancellation, and artifacts.
-- **Application runtime:** agent-run executor that walks graph order, calls node adapters, persists state snapshots, emits trace events, and enforces budgets and termination policies.
+- **Graph worker:** durable worker that executes agent runs and IR runs: it leases a run, folds its log, asks the decision core what may happen, does that one thing, and appends what resulted.
 - **Scheduler:** PostgreSQL polling loop that fires due legacy interval automations and advances every ready node in compatibility workflow DAGs.
 - **Worker:** lower-level job runtime that promotes retries, recovers expired leases, leases queued jobs, heartbeats active work, invokes a runner, and persists outcomes.
 - **Runner library:** stub, trusted local-process, and Kubernetes Job execution backends.
@@ -140,12 +140,12 @@ The core memory unit is the claim, not the node. A claim keeps provenance and re
 
 1. The API stores a validated typed execution graph: nodes, ports, hyperedges, transition policy, and static order.
 2. The API stores an agent definition that references the graph and declares budget and termination policies.
-3. Starting an agent run creates a queued run with an initial JSON state document.
-4. The application runtime marks the run running, executes graph nodes through a node-adapter trait, and writes a new state snapshot after each completed node.
-5. Every node start, completion, stop, budget exhaustion, and failure emits a run-local trace event.
-6. The run exits as `succeeded`, `failed`, or `stopped` based on executor outcome, validator pass, or budget/termination policy.
+3. Starting an agent run compiles the agent into a versioned definition and enqueues an IR run with the state it was given, in one transaction. An agent that cannot run, or a state missing a field it reads, is refused here by name.
+4. The graph worker leases the run and executes its nodes as a bounded loop. Every value is checked against its port and stored by digest, and every step lands in the run's log.
+5. A validator that fails sends the run round again with what its last attempt left, under `validator_pass`. Without that policy a failed check fails the run.
+6. The run ends `succeeded`, `failed`, `cancelled`, or `stopped`. `stopped` is a budget, a lack of progress, a safety check, or a person refusing at a gate.
 
-The first runtime slice executes the graph's static order. The model is intentionally typed and stateful so later planner/cyclic execution can reuse the same graph, state, trace, and budget contracts. Execution graphs query and update governed memory through explicit adapters instead of embedding claim governance inside execution graph primitives.
+A run's status says where it is and nothing about whether its result is right: agent runs execute in `observe` mode and report `unverified`. A graph where a model chooses the next node cannot run yet and is refused at run start. Execution graphs read and propose to governed memory through nodes, and a proposal is a candidate until somebody reviews it.
 
 ## Job lifecycle
 

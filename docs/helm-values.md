@@ -33,6 +33,7 @@ Top-level component sections:
 - `worker`
 - `scheduler`
 - `evaluator`
+- `graphWorker`
 - `dashboard`
 
 Each component supports:
@@ -75,6 +76,17 @@ worker:
 An empty `executionNamespace` means the Helm release namespace.
 
 The worker heartbeats active runs and extends their lease. `leaseSeconds` must leave enough time for at least one heartbeat between lease acquisition and expiry.
+
+The graph worker executes agent runs. `graphWorker.ollamaUrl` points it at a local model; left empty,
+model nodes fail and say so, and everything deterministic still runs. Reaching a model needs egress the
+default network policy does not grant:
+
+```yaml
+graphWorker:
+  pollSeconds: 2
+  leaseSeconds: 60
+  ollamaUrl: http://ollama:11434
+```
 
 The scheduler has its own polling controls:
 

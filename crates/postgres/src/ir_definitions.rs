@@ -59,53 +59,15 @@ impl PostgresStore {
         definition: &Definition,
         admission: &AdmissionRecord,
     ) -> Result<Digest, PostgresStoreError> {
-        let bytes = capsulet_ir::to_canonical_bytes(definition)
-            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
-        let digest = Digest::of(&bytes);
-        let canonical = String::from_utf8(bytes)
-            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
-        let admission_json = serde_json::to_value(admission)
-            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
-
         let mut transaction = self.pool.begin().await?;
-
-        // The definition row and its first version are created together. A
-        // definition with no versions would be a name with nothing behind it.
-        sqlx::query(
-            r"
-            INSERT INTO ir_definitions (id, tenant_id, project_id, name)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (tenant_id, project_id, id) DO NOTHING
-            ",
+        let digest = insert_definition_version(
+            &mut transaction,
+            tenant_id,
+            project_id,
+            definition,
+            admission,
         )
-        .bind(definition.id.as_str())
-        .bind(tenant_id)
-        .bind(project_id)
-        .bind(&definition.name)
-        .execute(&mut *transaction)
         .await?;
-
-        sqlx::query(
-            r"
-            INSERT INTO ir_definition_versions (
-                tenant_id, project_id, definition_id, digest, version,
-                schema_version, canonical_bytes, admission
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-            ON CONFLICT (tenant_id, project_id, digest) DO NOTHING
-            ",
-        )
-        .bind(tenant_id)
-        .bind(project_id)
-        .bind(definition.id.as_str())
-        .bind(digest.to_string())
-        .bind(&definition.version)
-        .bind(definition.schema_version.to_string())
-        .bind(&canonical)
-        .bind(admission_json)
-        .execute(&mut *transaction)
-        .await?;
-
         transaction.commit().await?;
         Ok(digest)
     }
@@ -188,4 +150,60 @@ fn row_to_version(row: &sqlx::postgres::PgRow) -> IrDefinitionVersion {
         schema_version: row.get("schema_version"),
         canonical_bytes: row.get("canonical_bytes"),
     }
+}
+
+/// Writes a definition version inside a caller's transaction.
+pub(crate) async fn insert_definition_version(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+    project_id: &str,
+    definition: &Definition,
+    admission: &AdmissionRecord,
+) -> Result<Digest, PostgresStoreError> {
+    let bytes = capsulet_ir::to_canonical_bytes(definition)
+        .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
+    let digest = Digest::of(&bytes);
+    let canonical = String::from_utf8(bytes)
+        .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
+    let admission_json = serde_json::to_value(admission)
+        .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
+
+    // The definition row and its first version are created together. A
+    // definition with no versions would be a name with nothing behind it.
+    sqlx::query(
+        r"
+        INSERT INTO ir_definitions (id, tenant_id, project_id, name)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (tenant_id, project_id, id) DO NOTHING
+        ",
+    )
+    .bind(definition.id.as_str())
+    .bind(tenant_id)
+    .bind(project_id)
+    .bind(&definition.name)
+    .execute(&mut **transaction)
+    .await?;
+
+    sqlx::query(
+        r"
+        INSERT INTO ir_definition_versions (
+            tenant_id, project_id, definition_id, digest, version,
+            schema_version, canonical_bytes, admission
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        ON CONFLICT (tenant_id, project_id, digest) DO NOTHING
+        ",
+    )
+    .bind(tenant_id)
+    .bind(project_id)
+    .bind(definition.id.as_str())
+    .bind(digest.to_string())
+    .bind(&definition.version)
+    .bind(definition.schema_version.to_string())
+    .bind(&canonical)
+    .bind(admission_json)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(digest)
 }

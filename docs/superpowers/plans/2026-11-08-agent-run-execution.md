@@ -68,17 +68,32 @@ no paid account, no GPU.
 ## Tasks
 
 - [x] 1. Atomic, SQL-scoped graph, agent and agent-run persistence (#97).
-- [ ] 2. IR and runtime: `parameters`, `inputs_bound`, `resources_consumed`, cancel signal, value check.
-- [ ] 3. Worker: resolved node inputs, heartbeat during work, usage accounting, cancel handling.
-- [ ] 4. Runnable `from_agent`: state fields through the boundary nodes, ordering, effects, grants.
-- [ ] 5. Value store and the agent executor with its providers.
-- [ ] 6. API: start, read, events, cancel and decide on agent runs through the IR path.
-- [ ] 7. Deployment: health endpoints, Compose, Helm, images, a real end-to-end smoke test.
-- [ ] 8. Dashboard: agent runs and their history.
-- [ ] 9. Docs and claims: invert `CAP-AGENT-002`, add ADR 0019.
+- [x] 2. IR and runtime: `parameters`, `inputs_bound`, `resources_consumed`, cancel signal, value check.
+- [x] 3. Worker: resolved node inputs, heartbeat during work, usage accounting, cancel handling.
+- [x] 4. Runnable `from_agent`: state fields through the boundary nodes, ordering, effects, grants.
+- [x] 5. Value store and the agent executor with its providers.
+- [x] 6. API: start, read, events, cancel and decide on agent runs through the IR path.
+- [x] 7. Deployment: health endpoints, Compose, Helm, images, a real end-to-end smoke test.
+- [x] 8. Dashboard: agent runs and their history.
+- [x] 9. Docs and claims: invert `CAP-AGENT-002`, add ADR 0019.
 
 ## Done means
 
 A run started over HTTP against a stack brought up from `compose.yaml` reaches a terminal status
 through the deployed worker, survives that worker being killed, can be cancelled, and reports what
 each node did and what it spent. `CAP-AGENT-002` no longer says otherwise, and a gate proves it.
+
+## What the work found
+
+- A definition with an integer port could be stored and never read back, and neither could an integer
+  loop reading. Serde reads an internally-tagged enum through a buffer that cannot answer a request for
+  an `i128`. This is the failure the M3 report recorded for `RunEvent`, in two more places, and every
+  port carrying documents has an integer in it. Fixed with a reader that asks for whatever number is
+  there. A value past 64 bits still cannot survive the buffer and is refused rather than rounded.
+- `decide` ran a memory write unclaimed, because it only claimed effects for `NodeKind::Effect`. A retry
+  after a crash would have written twice.
+- An approval at a gate could not have worked: the failure that raised the gate stayed unresolved, so a
+  resumed run would have asked the same person the same thing forever.
+- The token budget could not have bound anything, because a loop's spend only grew when an iteration
+  closed. A run could overspend by a whole iteration, so usage now counts as soon as it is recorded, and
+  closing an iteration only adds what its nodes did not already report.

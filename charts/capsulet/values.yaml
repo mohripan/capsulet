@@ -231,6 +231,32 @@ scheduler:
       cpu: 300m
       memory: 256Mi
 
+# Advances agent runs and IR runs. Replicas are safe: runs are leased with a fencing
+# epoch, so two workers can never both advance one.
+graphWorker:
+  enabled: true
+  replicaCount: 2
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  image:
+    repositorySuffix: graph-worker
+  pollSeconds: 2
+  leaseSeconds: 60
+  # A local Ollama for model nodes, for example http://ollama:11434. Left empty, model
+  # nodes fail and say so, and everything deterministic still runs. Reaching it needs
+  # egress the default network policy does not grant.
+  ollamaUrl: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
 evaluator:
   enabled: true
   replicaCount: 2

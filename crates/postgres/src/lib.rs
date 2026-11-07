@@ -5,6 +5,7 @@ use std::{env, time::Duration};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use thiserror::Error;
 
+mod agent_runs;
 mod agents;
 mod artifacts;
 mod assurance;
@@ -31,6 +32,7 @@ mod worker_store;
 mod workflow_runs;
 mod workflows;
 
+pub use agent_runs::{AgentRunStart, MAX_IR_RUN_VALUE_BYTES};
 pub use artifacts::UpstreamArtifact;
 pub use assurance::{EvidenceLocation, StoredCertificate};
 pub use audit::{AuditEvent, AuditScope, NewAuditEvent};

@@ -61,56 +61,17 @@ impl PostgresStore {
         mode: AssuranceMode,
         at: RecordedTime,
     ) -> Result<IrRunRecord, PostgresStoreError> {
-        let admitted = RunEvent::Admitted {
-            definition: *definition_digest,
-            mode,
-        };
-        // Serialized to text and cast, never through `serde_json::Value`: that
-        // intermediate cannot hold a 128-bit integer, and a loop's progress
-        // measure is one. Going straight to text keeps the encoder able to
-        // write every value the IR can express.
-        let payload = serde_json::to_string(&admitted)
-            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
-
         let mut transaction = self.pool.begin().await?;
-
-        sqlx::query(
-            r"
-            INSERT INTO ir_runs (tenant_id, project_id, id, definition_digest)
-            VALUES ($1, $2, $3, $4)
-            ",
+        insert_run_and_admission(
+            &mut transaction,
+            tenant_id,
+            project_id,
+            run_id,
+            definition_digest,
+            mode,
+            at,
         )
-        .bind(tenant_id)
-        .bind(project_id)
-        .bind(run_id)
-        .bind(definition_digest.to_string())
-        .execute(&mut *transaction)
         .await?;
-
-        sqlx::query(
-            r"
-            WITH claimed AS (
-                UPDATE ir_runs
-                SET next_position = next_position + 1
-                WHERE tenant_id = $1 AND project_id = $2 AND id = $3
-                RETURNING next_position - 1 AS position
-            )
-            INSERT INTO ir_run_events (
-                tenant_id, project_id, run_id, position, kind, payload, epoch, recorded_at
-            )
-            SELECT $1, $2, $3, claimed.position, $4, $5::jsonb, 0, $6
-            FROM claimed
-            ",
-        )
-        .bind(tenant_id)
-        .bind(project_id)
-        .bind(run_id)
-        .bind(admitted.as_str())
-        .bind(payload)
-        .bind(at.epoch_millis())
-        .execute(&mut *transaction)
-        .await?;
-
         transaction.commit().await?;
 
         self.get_ir_run(tenant_id, project_id, run_id)
@@ -473,6 +434,88 @@ impl PostgresStore {
 
         Ok(result.rows_affected() == 1)
     }
+}
+
+/// Writes a run and its admission event inside a caller's transaction.
+pub(crate) async fn insert_run_and_admission(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+    project_id: &str,
+    run_id: &str,
+    definition_digest: &Digest,
+    mode: AssuranceMode,
+    at: RecordedTime,
+) -> Result<(), PostgresStoreError> {
+    sqlx::query(
+        r"
+        INSERT INTO ir_runs (tenant_id, project_id, id, definition_digest)
+        VALUES ($1, $2, $3, $4)
+        ",
+    )
+    .bind(tenant_id)
+    .bind(project_id)
+    .bind(run_id)
+    .bind(definition_digest.to_string())
+    .execute(&mut **transaction)
+    .await?;
+
+    insert_event_unfenced(
+        transaction,
+        tenant_id,
+        project_id,
+        run_id,
+        &RunEvent::Admitted {
+            definition: *definition_digest,
+            mode,
+        },
+        at,
+    )
+    .await
+}
+
+/// Appends an event before any worker has leased the run.
+///
+/// Only what creating a run writes belongs here: its admission and the inputs it was
+/// given. Everything after that goes through [`PostgresStore::append_ir_run_event`],
+/// which names an epoch, because by then there is an owner to fence.
+pub(crate) async fn insert_event_unfenced(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+    project_id: &str,
+    run_id: &str,
+    event: &RunEvent,
+    at: RecordedTime,
+) -> Result<(), PostgresStoreError> {
+    // Serialized to text and cast, never through `serde_json::Value`: that
+    // intermediate cannot hold a 128-bit integer, and a loop's progress
+    // measure is one. Going straight to text keeps the encoder able to
+    // write every value the IR can express.
+    let payload = serde_json::to_string(event)
+        .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
+    sqlx::query(
+        r"
+        WITH claimed AS (
+            UPDATE ir_runs
+            SET next_position = next_position + 1
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            RETURNING next_position - 1 AS position
+        )
+        INSERT INTO ir_run_events (
+            tenant_id, project_id, run_id, position, kind, payload, epoch, recorded_at
+        )
+        SELECT $1, $2, $3, claimed.position, $4, $5::jsonb, 0, $6
+        FROM claimed
+        ",
+    )
+    .bind(tenant_id)
+    .bind(project_id)
+    .bind(run_id)
+    .bind(event.as_str())
+    .bind(payload)
+    .bind(at.epoch_millis())
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
 }
 
 fn row_to_run(row: &sqlx::postgres::PgRow) -> Result<IrRunRecord, PostgresStoreError> {

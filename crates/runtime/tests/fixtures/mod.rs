@@ -81,6 +81,7 @@ fn node(name: &str, kind: NodeKind, inputs: Vec<InputPort>, outputs: Vec<OutputP
         budget: ResourceBudget::deterministic(1_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -176,6 +177,7 @@ pub fn effect_definition(idempotency: Idempotency) -> Definition {
         },
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     };
 
     let graph = Graph::new(GraphBuilder {
@@ -228,6 +230,7 @@ pub fn reversible_effect_definition() -> Definition {
         },
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     };
 
     let graph = Graph::new(GraphBuilder {

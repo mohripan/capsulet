@@ -205,9 +205,9 @@ async fn an_effect_is_claimed_before_it_is_performed_and_finalized_after() {
     let (tenant, project, run_id) = seeded_run(&store, &definition).await;
 
     let executor = Arc::new(ScriptedExecutor::new());
-    executor.effects(vec![EffectOutcome::Performed {
-        receipt: Digest::of(b"pull request 41"),
-    }]);
+    executor.effects(vec![EffectOutcome::performed(Digest::of(
+        b"pull request 41",
+    ))]);
     let clock = Arc::new(TestClock::at(NOW));
     let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
 
@@ -262,9 +262,7 @@ async fn an_effect_whose_outcome_is_unknown_is_retried_only_when_the_ir_allows_i
         EffectOutcome::Uncertain {
             detail: "the connection dropped before the response".to_string(),
         },
-        EffectOutcome::Performed {
-            receipt: Digest::of(b"pull request 41"),
-        },
+        EffectOutcome::performed(Digest::of(b"pull request 41")),
     ]);
     let clock = Arc::new(TestClock::at(NOW));
     let worker = graph_worker(&store, &executor, &clock, "worker-a", &tenant);
@@ -341,6 +339,7 @@ async fn a_node_failure_with_no_declared_route_stops_the_run() {
         NodeOutcome::Failed {
             failure: FailureKind::SchemaMismatch,
             detail: "the model returned prose".to_string(),
+            usage: None,
         },
     );
     let clock = Arc::new(TestClock::at(NOW));

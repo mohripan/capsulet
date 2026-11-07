@@ -80,8 +80,13 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-AGENT-001` | experimental | capability | Agent definitions and queued agent runs, opaque JSON state snapshots, and semantic trace events can be persisted and exercised through the application runtime. |
-| `CAP-AGENT-002` | implemented | limitation | There is no production dedicated agent or graph worker; creating an agent run persists queued work but does not independently execute it. |
+| `CAP-AGENT-001` | experimental | capability | Agent definitions and agent runs are persisted with their owning project, and a run reports its status, state and usage from its durable log rather than from a stored status. |
+| `CAP-AGENT-002` | implemented | capability | Starting an agent run enqueues it on the durable path, and the graph worker executes it: deterministic nodes, local-model nodes, memory reads, validators, and job and memory-write effects that happen once per run however many workers it takes. |
+| `CAP-AGENT-003` | implemented | capability | A validator that fails sends an agent round again with what its last attempt left, and a run ended by a budget, by a lack of progress or by a safety check reports stopped, never succeeded. |
+| `CAP-AGENT-004` | implemented | capability | An agent run can be cancelled over the API, and a run waiting at a human gate can be approved, which waives the failure, or refused, which stops the run. |
+| `CAP-AGENT-005` | implemented | capability | What a model reports spending counts against a run as soon as it is known, and usage nobody measured is counted as unknown rather than as zero. |
+| `CAP-AGENT-006` | implemented | capability | An agent cannot propose a memory claim that is active, cannot run a job its project does not own, and cannot be read, started or cancelled from another project. |
+| `CAP-AGENT-007` | implemented | limitation | A graph where a model chooses the next node cannot run and is refused at run start; agent runs execute in observe mode, so a finished run is unverified; and retrieval is lexical, finding shared words and nothing about meaning. |
 | `CAP-GRAPH-001` | implemented | capability | Capsulet returns a deterministic static order for valid acyclic typed agent graph definitions. |
 
 ## HTTP API

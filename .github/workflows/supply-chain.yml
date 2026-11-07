@@ -70,6 +70,12 @@ jobs:
             build-args: |
               PACKAGE=capsulet-scheduler
               BIN=capsulet-scheduler
+          - name: graph-worker
+            dockerfile: crates/Dockerfile
+            context: .
+            build-args: |
+              PACKAGE=capsulet-graph-worker
+              BIN=capsulet-graph-worker
           - name: evaluator
             dockerfile: crates/Dockerfile
             context: .

@@ -25,6 +25,8 @@
         "dashboard/app/**/layout.tsx",
         "dashboard/app/components.tsx",
         "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/agent-runs/*-client.tsx",
+        "dashboard/app/agent-runs/*/*-client.tsx",
         "dashboard/app/runs/*/*-client.tsx",
         "dashboard/app/runs/*-client.tsx",
         "dashboard/app/mock-data.ts"

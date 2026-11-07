@@ -125,6 +125,21 @@
           "agent_id": {
             "type": "string"
           },
+          "assurance": {
+            "description": "Always `unverified` today: agent runs execute in `observe` mode, so nothing\nhas checked their result. Never inferred from `status`.",
+            "type": "string"
+          },
+          "execution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentRunExecutionResponse",
+                "description": "How the durable runtime is executing this run. Absent on a run from before\nagent runs executed."
+              }
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -132,11 +147,13 @@
             "type": "object"
           },
           "state_version": {
+            "description": "How many nodes have finished.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "status": {
+            "description": "Where the run is, as an execution concept. `stopped` means a budget, a lack of\nprogress, a safety check or a person ended it. None of these, `succeeded`\nincluded, says the result is right; that is what `assurance` is for.",
             "type": "string"
           }
         },
@@ -145,7 +162,8 @@
           "agent_id",
           "status",
           "state_version",
-          "state"
+          "state",
+          "assurance"
         ],
         "type": "object"
       },
@@ -1716,6 +1734,19 @@
         ],
         "type": "object"
       },
+      "DecideAgentRunRequest": {
+        "description": "A person's answer at an agent run's gate.",
+        "properties": {
+          "approved": {
+            "description": "Whether to waive the failure that raised the gate, or end the run.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approved"
+        ],
+        "type": "object"
+      },
       "DefinitionVersionResponse": {
         "description": "One stored definition version.",
         "properties": {
@@ -1954,6 +1985,16 @@
       },
       "GraphNodeRequest": {
         "properties": {
+          "config": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "What this node does: a prompt template, a model, a validator's rule, the\njob it runs. Strings only, because it becomes part of a definition digest.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -1980,6 +2021,15 @@
       },
       "GraphNodeResponse": {
         "properties": {
+          "config": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -2000,7 +2050,8 @@
           "id",
           "name",
           "kind",
-          "ports"
+          "ports",
+          "config"
         ],
         "type": "object"
       },
@@ -4964,6 +5015,227 @@
           }
         ],
         "summary": "get agent run",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:read",
+        "x-capsulet-resource": "agents",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/agent-runs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelAgentRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "cancel agent run",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:operate",
+        "x-capsulet-resource": "agents",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/agent-runs/{id}/decisions": {
+      "post": {
+        "operationId": "decideAgentRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideAgentRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "decide agent run",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:operate",
+        "x-capsulet-resource": "agents",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/agent-runs/{id}/events": {
+      "get": {
+        "operationId": "getAgentRunEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrRunEventsResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "get agent run events",
         "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
         "x-capsulet-project-roles": [

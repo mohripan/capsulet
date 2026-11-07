@@ -55,6 +55,7 @@ fn definition(name: &str) -> Definition {
             budget: ResourceBudget::deterministic(1_000),
             provider: None,
             sub_workflow: None,
+            parameters: std::collections::BTreeMap::new(),
         }],
         ..GraphBuilder::default()
     })
@@ -99,6 +100,7 @@ fn effect_definition(name: &str, idempotency: Idempotency) -> Definition {
         },
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     };
 
     let graph = Graph::new(GraphBuilder {

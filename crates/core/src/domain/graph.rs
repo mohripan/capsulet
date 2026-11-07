@@ -135,6 +135,7 @@ pub struct GraphNode {
     name: String,
     kind: NodeKind,
     ports: Vec<GraphPort>,
+    config: BTreeMap<String, String>,
 }
 
 impl GraphNode {
@@ -145,7 +146,22 @@ impl GraphNode {
             name: name.into(),
             kind,
             ports,
+            config: BTreeMap::new(),
         }
+    }
+
+    /// Says what this node does: a prompt template, a model, a validator's rule.
+    ///
+    /// Strings only, so the value survives into a definition digest unchanged.
+    #[must_use]
+    pub fn with_config(mut self, config: BTreeMap<String, String>) -> Self {
+        self.config = config;
+        self
+    }
+
+    #[must_use]
+    pub const fn config(&self) -> &BTreeMap<String, String> {
+        &self.config
     }
 
     #[must_use]

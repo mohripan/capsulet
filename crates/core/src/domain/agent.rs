@@ -129,6 +129,8 @@ impl AgentTerminationPolicy {
 pub enum AgentRunStatus {
     Queued,
     Running,
+    /// Suspended on something outside the run, such as a person's decision.
+    Waiting,
     Succeeded,
     Failed,
     Cancelled,
@@ -140,6 +142,7 @@ impl Display for AgentRunStatus {
         f.write_str(match self {
             Self::Queued => "queued",
             Self::Running => "running",
+            Self::Waiting => "waiting",
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",

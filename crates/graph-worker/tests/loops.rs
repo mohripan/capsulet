@@ -56,6 +56,7 @@ fn checker_that_stops_after(iterations: usize) -> Arc<ScriptedExecutor> {
                     value: round < iterations,
                 },
             )]),
+            usage: None,
         });
     }
     executor.node_sequence("check", answers);

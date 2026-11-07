@@ -1,5 +1,5 @@
 {{- $root := . -}}
-{{- $components := dict "api" .Values.api "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator "dashboard" .Values.dashboard -}}
+{{- $components := dict "api" .Values.api "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator "graph-worker" .Values.graphWorker "dashboard" .Values.dashboard -}}
 {{- range $name, $component := $components }}
 {{- if $component.enabled }}
 apiVersion: apps/v1
@@ -66,7 +66,7 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "capsulet.fullname" $root }}-config
-          {{- if or (eq $name "api") (eq $name "worker") (eq $name "scheduler") (eq $name "evaluator") }}
+          {{- if or (eq $name "api") (eq $name "worker") (eq $name "scheduler") (eq $name "evaluator") (eq $name "graph-worker") }}
           env:
             - name: CAPSULET_DATABASE_URL
               valueFrom:
@@ -96,6 +96,22 @@ spec:
                 secretKeyRef:
                   name: {{ $root.Values.api.webhooks.existingSecret | quote }}
                   key: {{ $root.Values.api.webhooks.secretKey | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if eq $name "graph-worker" }}
+            - name: CAPSULET_GRAPH_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: CAPSULET_GRAPH_WORKER_POLL_SECONDS
+              value: {{ $root.Values.graphWorker.pollSeconds | quote }}
+            - name: CAPSULET_GRAPH_WORKER_LEASE_SECONDS
+              value: {{ $root.Values.graphWorker.leaseSeconds | quote }}
+            - name: CAPSULET_GRAPH_WORKER_HEALTH_ADDR
+              value: "0.0.0.0:8084"
+            {{- with $root.Values.graphWorker.ollamaUrl }}
+            - name: CAPSULET_OLLAMA_URL
+              value: {{ . | quote }}
             {{- end }}
             {{- end }}
             {{- if eq $name "scheduler" }}
@@ -218,10 +234,10 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
           {{- end }}
-          {{- if or (eq $name "worker") (eq $name "scheduler") (eq $name "evaluator") }}
+          {{- if or (eq $name "worker") (eq $name "scheduler") (eq $name "evaluator") (eq $name "graph-worker") }}
           ports:
             - name: health
-              containerPort: {{ ternary 8081 (ternary 8082 8083 (eq $name "scheduler")) (eq $name "worker") }}
+              containerPort: {{ include "capsulet.healthPort" $name }}
               protocol: TCP
           startupProbe:
             httpGet:

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use capsulet_application::AgentRunRecord;
 use capsulet_core::{
     AgentBudget, AgentDefinition, AgentTerminationPolicy, Automation, AutomationTrigger,
@@ -222,6 +224,10 @@ pub struct GraphNodeRequest {
     pub name: String,
     pub kind: String,
     pub ports: Vec<GraphPortRequest>,
+    /// What this node does: a prompt template, a model, a validator's rule, the
+    /// job it runs. Strings only, because it becomes part of a definition digest.
+    #[serde(default)]
+    pub config: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -538,6 +544,7 @@ pub(crate) struct GraphNodeResponse {
     pub(crate) name: String,
     pub(crate) kind: String,
     pub(crate) ports: Vec<GraphPortResponse>,
+    pub(crate) config: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -595,10 +602,50 @@ pub(crate) struct AgentBudgetResponse {
 pub(crate) struct AgentRunResponse {
     pub(crate) id: String,
     pub(crate) agent_id: String,
+    /// Where the run is, as an execution concept. `stopped` means a budget, a lack of
+    /// progress, a safety check or a person ended it. None of these, `succeeded`
+    /// included, says the result is right; that is what `assurance` is for.
     pub(crate) status: String,
+    /// How many nodes have finished.
     pub(crate) state_version: u64,
     #[schema(value_type = Object)]
     pub(crate) state: Value,
+    /// Always `unverified` today: agent runs execute in `observe` mode, so nothing
+    /// has checked their result. Never inferred from `status`.
+    pub(crate) assurance: String,
+    /// How the durable runtime is executing this run. Absent on a run from before
+    /// agent runs executed.
+    pub(crate) execution: Option<AgentRunExecutionResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AgentRunExecutionResponse {
+    /// The IR run doing the work, whose log is `GET /v1/agent-runs/{id}/events`.
+    pub(crate) ir_run_id: String,
+    /// The exact definition version being executed.
+    pub(crate) definition_digest: String,
+    /// Why the run ended where it did, when it did not simply finish.
+    pub(crate) detail: Option<String>,
+    /// What the run is suspended on, when it is.
+    pub(crate) waiting_on: Option<String>,
+    pub(crate) usage: AgentRunUsageResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AgentRunUsageResponse {
+    pub(crate) tokens: u64,
+    pub(crate) cost_micro_units: u64,
+    pub(crate) effects: u32,
+    /// How many times something consumed resources nobody measured. Those are not in
+    /// the totals, so a non-zero value means the totals are a lower bound.
+    pub(crate) unmeasured: u32,
+}
+
+/// A person's answer at an agent run's gate.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DecideAgentRunRequest {
+    /// Whether to waive the failure that raised the gate, or end the run.
+    pub approved: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -829,6 +876,7 @@ impl From<&GraphNode> for GraphNodeResponse {
             name: node.name().to_string(),
             kind: node.kind().to_string(),
             ports: node.ports().iter().map(GraphPortResponse::from).collect(),
+            config: node.config().clone(),
         }
     }
 }
@@ -938,6 +986,22 @@ impl AgentRunResponse {
             status: run.status.to_string(),
             state_version: run.state_version,
             state: json_from_string(&run.state_json)?,
+            assurance: "unverified".to_string(),
+            execution: run
+                .execution
+                .as_ref()
+                .map(|execution| AgentRunExecutionResponse {
+                    ir_run_id: execution.ir_run_id.clone(),
+                    definition_digest: execution.definition_digest.clone(),
+                    detail: execution.detail.clone(),
+                    waiting_on: execution.waiting_on.clone(),
+                    usage: AgentRunUsageResponse {
+                        tokens: execution.usage.tokens,
+                        cost_micro_units: execution.usage.cost_micro_units,
+                        effects: execution.usage.effects,
+                        unmeasured: execution.usage.unmeasured,
+                    },
+                }),
         })
     }
 }
@@ -974,7 +1038,8 @@ impl GraphNodeRequest {
                 .into_iter()
                 .map(GraphPortRequest::into_port)
                 .collect::<Result<Vec<_>, _>>()?,
-        ))
+        )
+        .with_config(self.config))
     }
 }
 

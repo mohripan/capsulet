@@ -130,6 +130,15 @@ fn decide_next(definition: &Definition, state: &RunState, now: RecordedTime) -> 
         };
     }
 
+    // A person with the authority said no. That ends the run, and going through
+    // here rather than ending it on the spot is what gets anything it still owes
+    // compensated first.
+    if let Some(rejection) = state.gate_rejection() {
+        return Decision::Fail {
+            reason: rejection.clone(),
+        };
+    }
+
     // Cancellation is honoured here: after any outstanding effect has been
     // resolved, and before anything new is started. Stopping earlier would end
     // the run with something in flight; stopping later would perform an effect
@@ -196,9 +205,11 @@ fn decide_next(definition: &Definition, state: &RunState, now: RecordedTime) -> 
     if let Some(node) = next_ready_node(definition, state) {
         let declared = definition.graph.node(&node);
         // An effect node's whole purpose is its effect, so starting it means
-        // performing that effect under a claim.
+        // performing that effect under a claim. The same goes for a memory write:
+        // it declares a protected effect too, and running it unclaimed would make
+        // a retry after a crash a second write.
         if let Some(effect) = declared
-            .filter(|declared| declared.kind == NodeKind::Effect)
+            .filter(|declared| matches!(declared.kind, NodeKind::Effect | NodeKind::MemoryWrite))
             .and_then(|declared| declared.effects.first())
             && !state.effect_completed(&node, &effect.id)
         {

@@ -246,12 +246,23 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         tenant_id: &str,
         project_id: &str,
     ) -> Result<Option<AgentDefinition>, Self::Error>;
-    async fn create_agent_run(
+    /// Starts an agent run: its definition, its IR run, its inputs, all or nothing.
+    async fn start_agent_run(
         &self,
-        run: &AgentRunRecord,
+        start: &capsulet_postgres::AgentRunStart<'_>,
         tenant_id: &str,
         project_id: &str,
     ) -> Result<(), Self::Error>;
+    /// Delivers something from outside to a run's inbox, for the worker to answer.
+    async fn deliver_ir_run_signal(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _run_id: &str,
+        _signal: &capsulet_runtime::Signal,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
     async fn list_agent_runs(
         &self,
         tenant_id: &str,
@@ -946,14 +957,26 @@ impl ApiStore for PostgresStore {
         self.find_agent_in_project(id, tenant_id, project_id).await
     }
 
-    async fn create_agent_run(
+    async fn start_agent_run(
         &self,
-        run: &AgentRunRecord,
+        start: &capsulet_postgres::AgentRunStart<'_>,
         tenant_id: &str,
         project_id: &str,
     ) -> Result<(), Self::Error> {
-        self.create_agent_run_in_project(run, tenant_id, project_id)
+        self.start_agent_run_in_project(start, tenant_id, project_id)
             .await
+    }
+
+    async fn deliver_ir_run_signal(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        run_id: &str,
+        signal: &capsulet_runtime::Signal,
+    ) -> Result<(), Self::Error> {
+        PostgresStore::deliver_ir_run_signal(self, tenant_id, project_id, run_id, signal)
+            .await
+            .map(|_| ())
     }
 
     async fn list_agent_runs(
@@ -962,7 +985,7 @@ impl ApiStore for PostgresStore {
         project_id: &str,
         limit: i64,
     ) -> Result<Vec<AgentRunRecord>, Self::Error> {
-        self.list_agent_runs_in_project(tenant_id, project_id, limit)
+        self.list_agent_runs_with_progress(tenant_id, project_id, limit)
             .await
     }
 
@@ -972,7 +995,7 @@ impl ApiStore for PostgresStore {
         tenant_id: &str,
         project_id: &str,
     ) -> Result<Option<AgentRunRecord>, Self::Error> {
-        self.find_agent_run_in_project(id, tenant_id, project_id)
+        self.find_agent_run_with_progress(id, tenant_id, project_id)
             .await
     }
 

@@ -49,6 +49,7 @@ fn definition() -> Definition {
                 budget: ResourceBudget::deterministic(1_000),
                 provider: None,
                 sub_workflow: None,
+                parameters: std::collections::BTreeMap::new(),
             },
             Node {
                 id: id("check"),
@@ -61,6 +62,7 @@ fn definition() -> Definition {
                 budget: ResourceBudget::deterministic(60_000),
                 provider: None,
                 sub_workflow: None,
+                parameters: std::collections::BTreeMap::new(),
             },
         ],
         edges: vec![Hyperedge {

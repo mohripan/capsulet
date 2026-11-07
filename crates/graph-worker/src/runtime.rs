@@ -29,12 +29,13 @@ use capsulet_postgres::{IrRunRecord, PostgresStore, PostgresStoreError, SignalOu
 use capsulet_runtime::effect::{EffectAttempt, EffectContext};
 use capsulet_runtime::failure::{self, Compensation};
 use capsulet_runtime::loops;
-use capsulet_runtime::wait::{self, WaitError};
+use capsulet_runtime::wait::{self, SignalKind, WaitError};
 use capsulet_runtime::{Decision, RunEvent, RunFailure, RunState, decide};
 
 use crate::clock::Clock;
 use crate::execute::{
     CompensationRequest, EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest,
+    resolve_inputs,
 };
 
 /// How the worker is configured.
@@ -375,29 +376,118 @@ impl GraphWorker {
             matches!(region.kind, RegionKind::Loop { .. })
                 .then(|| (&region.id, state.loop_progress(&region.id).finished))
         });
-        let outcome = self
-            .executor
-            .run_node(NodeRequest {
-                run: &lease.id,
-                definition,
-                node: declared,
-                iteration,
-            })
-            .await;
+        let inputs = resolve_inputs(definition, state, declared);
+        let previous_outputs = state.previous_outputs_of(node);
+        let Some(outcome) = self
+            .while_holding_lease(
+                lease,
+                self.executor.run_node(NodeRequest {
+                    tenant: &lease.tenant_id,
+                    project: &lease.project_id,
+                    run: &lease.id,
+                    definition,
+                    node: declared,
+                    iteration,
+                    inputs: &inputs,
+                    previous_outputs: &previous_outputs,
+                    approved_by: state.approved_by(node),
+                }),
+            )
+            .await?
+        else {
+            return Ok(false);
+        };
 
-        let event = match outcome {
-            NodeOutcome::Finished { outputs, control } => RunEvent::NodeFinished {
-                node: node.clone(),
+        let at = self.clock.now();
+        let (event, usage) = match outcome {
+            NodeOutcome::Finished {
                 outputs,
                 control,
-            },
-            NodeOutcome::Failed { failure, detail } => RunEvent::NodeFailed {
-                node: node.clone(),
+                usage,
+            } => (
+                RunEvent::NodeFinished {
+                    node: node.clone(),
+                    outputs,
+                    control,
+                },
+                usage,
+            ),
+            NodeOutcome::Failed {
                 failure,
                 detail,
-            },
+                usage,
+            } => (
+                RunEvent::NodeFailed {
+                    node: node.clone(),
+                    failure,
+                    detail,
+                },
+                usage,
+            ),
         };
-        self.append(lease, &event, self.clock.now()).await
+        // Spent before finished, so a crash between the two still spent it.
+        if let Some(usage) = usage
+            && !self
+                .append(
+                    lease,
+                    &RunEvent::ResourcesConsumed {
+                        node: node.clone(),
+                        usage,
+                    },
+                    at,
+                )
+                .await?
+        {
+            return Ok(false);
+        }
+        self.append(lease, &event, at).await
+    }
+
+    /// Runs some work while keeping the lease alive.
+    ///
+    /// A lease is only worth having if it outlasts the work under it. Heartbeating
+    /// between steps alone means any node slower than its lease gets taken over
+    /// and run a second time by somebody else, which for a model call is a bill
+    /// and for anything less careful is a duplicate.
+    ///
+    /// Returns `None` when the lease was lost, dropping the work: whatever it was
+    /// doing now belongs to the new owner, and an effect interrupted this way is
+    /// exactly what a claim with no resolution exists to describe.
+    async fn while_holding_lease<T>(
+        &self,
+        lease: &IrRunRecord,
+        work: impl Future<Output = T>,
+    ) -> Result<Option<T>, WorkerError> {
+        let period = Duration::from_millis(
+            u64::try_from(self.config.lease_seconds)
+                .unwrap_or(1)
+                .saturating_mul(1_000)
+                / 3,
+        )
+        .max(Duration::from_millis(100));
+        let mut beat = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+        tokio::pin!(work);
+        loop {
+            tokio::select! {
+                result = &mut work => return Ok(Some(result)),
+                _ = beat.tick() => {
+                    let held = self
+                        .store
+                        .heartbeat_ir_run(
+                            &lease.tenant_id,
+                            &lease.project_id,
+                            &lease.id,
+                            &self.config.worker_id,
+                            lease.epoch,
+                            self.config.lease_seconds,
+                        )
+                        .await?;
+                    if !held {
+                        return Ok(None);
+                    }
+                }
+            }
+        }
     }
 
     /// Claims an effect, performs it, and records how it came out.
@@ -460,33 +550,66 @@ impl GraphWorker {
             return Ok(false);
         }
 
-        let outcome = self
-            .executor
-            .perform_effect(EffectRequest {
-                run: &lease.id,
-                node,
-                effect: declared,
-                attempt: claim.attempt(),
-                key: claim.key(),
-            })
-            .await;
+        let inputs = definition
+            .graph
+            .node(node)
+            .map(|declared| resolve_inputs(definition, state, declared))
+            .unwrap_or_default();
+        let Some(outcome) = self
+            .while_holding_lease(
+                lease,
+                self.executor.perform_effect(EffectRequest {
+                    tenant: &lease.tenant_id,
+                    project: &lease.project_id,
+                    run: &lease.id,
+                    definition,
+                    node,
+                    effect: declared,
+                    attempt: claim.attempt(),
+                    key: claim.key(),
+                    inputs: &inputs,
+                }),
+            )
+            .await?
+        else {
+            return Ok(false);
+        };
 
+        self.record_effect_outcome(lease, node, &claim, outcome)
+            .await
+    }
+
+    /// Writes down how a claimed effect came out.
+    async fn record_effect_outcome(
+        &self,
+        lease: &IrRunRecord,
+        node: &Identifier,
+        claim: &EffectAttempt,
+        outcome: EffectOutcome,
+    ) -> Result<bool, WorkerError> {
         let at = self.clock.now();
         match outcome {
-            EffectOutcome::Performed { receipt } => {
+            EffectOutcome::Performed {
+                receipt,
+                outputs,
+                node_failure,
+            } => {
                 if !self.append(lease, &claim.finalized(receipt), at).await? {
                     return Ok(false);
                 }
-                self.append(
-                    lease,
-                    &RunEvent::NodeFinished {
+                let event = match node_failure {
+                    Some((failure, detail)) => RunEvent::NodeFailed {
                         node: node.clone(),
-                        outputs: std::collections::BTreeMap::new(),
+                        failure,
+                        detail,
+                    },
+                    None => RunEvent::NodeFinished {
+                        node: node.clone(),
+                        outputs,
                         control: std::collections::BTreeMap::new(),
                     },
-                    at,
-                )
-                .await
+                };
+                self.append(lease, &event, at).await
             }
             EffectOutcome::Failed { failure, detail } => {
                 // It definitely did not happen, so the claim is abandoned
@@ -627,12 +750,11 @@ impl GraphWorker {
                 // events cover. Measured from the log rather than from a timer
                 // the worker held, so a handover does not lose it.
                 wall_ms: iteration_wall_ms(state, region_id, now),
-                // Tokens and cost are what a node spent, and only the executor
-                // knows that. Reporting zero says "nothing measured this"
-                // rather than "this cost nothing"; providers arrive in M4 and
-                // bring the measurement with them.
-                tokens: 0,
-                cost_micro_units: 0,
+                // What the iteration's nodes reported, read from the log. Anything
+                // nobody measured is counted separately rather than as zero; see
+                // `Spent::unmeasured`.
+                tokens: state.iteration_usage(region_id).0,
+                cost_micro_units: state.iteration_usage(region_id).1,
                 effect_count: 0,
             },
         };
@@ -664,19 +786,26 @@ impl GraphWorker {
                 ),
             })?;
 
-        let outcome = self
-            .executor
-            .compensate(CompensationRequest {
-                run: &lease.id,
-                node: &compensation.node,
-                effect: declared,
-                route: &compensation.route,
-            })
-            .await;
+        let Some(outcome) = self
+            .while_holding_lease(
+                lease,
+                self.executor.compensate(CompensationRequest {
+                    tenant: &lease.tenant_id,
+                    project: &lease.project_id,
+                    run: &lease.id,
+                    node: &compensation.node,
+                    effect: declared,
+                    route: &compensation.route,
+                }),
+            )
+            .await?
+        else {
+            return Ok(false);
+        };
 
         let at = self.clock.now();
         match outcome {
-            EffectOutcome::Performed { receipt } => {
+            EffectOutcome::Performed { receipt, .. } => {
                 self.append(lease, &failure::compensated(compensation, receipt), at)
                     .await
             }
@@ -716,6 +845,26 @@ impl GraphWorker {
 
         let mut resumed = false;
         for signal in pending {
+            // A cancellation is not an answer to a wait, and it may arrive while
+            // the run is not waiting at all. Recording it is all that happens here;
+            // the decision core picks the next point where stopping is safe.
+            if matches!(signal.signal.kind, SignalKind::Cancel) {
+                let outcome = if state.cancellation_requested().is_some() {
+                    SignalOutcome::Refused
+                } else {
+                    let event = failure::request_cancellation(signal.signal.by.clone());
+                    match self.append_recorded(lease, &event, now).await? {
+                        Some(position) => {
+                            resumed = true;
+                            SignalOutcome::Resumed { position }
+                        }
+                        None => return Ok(false),
+                    }
+                };
+                self.store.consume_ir_run_signal(signal.id, outcome).await?;
+                continue;
+            }
+
             let outcome = if resumed {
                 // The run is running again, so anything else in the inbox is a
                 // duplicate delivery rather than a second thing to answer.

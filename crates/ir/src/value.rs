@@ -60,10 +60,59 @@ pub enum SchemaMismatch {
     },
 }
 
+/// Reads a 128-bit integer through an internally-tagged enum.
+///
+/// Serde reads such an enum by buffering the object first, and asking that buffer for
+/// an `i128` by name fails with `i128 is not supported`, even for a small number the
+/// buffer is holding perfectly well. Writing succeeds, so the failure is silent on the
+/// way in and only appears when the value is read back. Asking for whatever number is
+/// there works, because the buffer can always answer that.
+///
+/// A value that does not fit 64 bits still cannot survive the buffer, and that is
+/// refused here rather than rounded.
+///
+/// # Errors
+///
+/// Returns the deserializer's error when the value is not an integer.
+pub fn deserialize_wide_integer<'de, D>(deserializer: D) -> Result<i128, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct WideInteger;
+
+    impl serde::de::Visitor<'_> for WideInteger {
+        type Value = i128;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an integer")
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<i128, E> {
+            Ok(i128::from(value))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<i128, E> {
+            Ok(i128::from(value))
+        }
+
+        fn visit_i128<E>(self, value: i128) -> Result<i128, E> {
+            Ok(value)
+        }
+
+        fn visit_u128<E: serde::de::Error>(self, value: u128) -> Result<i128, E> {
+            i128::try_from(value).map_err(E::custom)
+        }
+    }
+
+    deserializer.deserialize_any(WideInteger)
+}
+
 /// An inclusive integer range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IntegerRange {
+    #[serde(deserialize_with = "deserialize_wide_integer")]
     pub minimum: i128,
+    #[serde(deserialize_with = "deserialize_wide_integer")]
     pub maximum: i128,
 }
 

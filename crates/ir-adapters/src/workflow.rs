@@ -75,6 +75,7 @@ pub fn from_workflow(workflow: &WorkflowDefinition) -> Result<Adapted, AdapterEr
             },
             provider: None,
             sub_workflow: None,
+            parameters: std::collections::BTreeMap::new(),
         });
     }
 

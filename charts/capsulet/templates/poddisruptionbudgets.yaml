@@ -1,5 +1,5 @@
 {{- $root := . -}}
-{{- $components := dict "api" .Values.api "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator "dashboard" .Values.dashboard -}}
+{{- $components := dict "api" .Values.api "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator "graph-worker" .Values.graphWorker "dashboard" .Values.dashboard -}}
 {{- if .Values.highAvailability.podDisruptionBudget.enabled }}
 {{- range $name, $component := $components }}
 {{- if and $component.enabled (gt (int $component.replicaCount) 1) }}

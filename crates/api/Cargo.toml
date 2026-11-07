@@ -21,6 +21,7 @@ jsonwebtoken.workspace = true
 capsulet-application = { path = "../application" }
 capsulet-core = { path = "../core" }
 capsulet-ir = { path = "../ir" }
+capsulet-ir-adapters = { path = "../ir-adapters" }
 capsulet-kernel = { path = "../kernel" }
 capsulet-proposer = { path = "../proposer" }
 capsulet-postgres = { path = "../postgres" }

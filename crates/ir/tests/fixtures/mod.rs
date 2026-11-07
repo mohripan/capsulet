@@ -53,6 +53,7 @@ pub fn node(name: &str, kind: NodeKind, inputs: Vec<InputPort>, outputs: Vec<Out
         budget: ResourceBudget::deterministic(1_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -84,6 +85,7 @@ pub fn publish_node() -> Node {
         },
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     }
 }
 

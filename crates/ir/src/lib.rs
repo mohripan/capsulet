@@ -19,6 +19,7 @@
 //! golden file to match new output.
 
 pub mod admission;
+pub mod agent;
 pub mod assurance;
 pub mod canonical;
 pub mod capability;

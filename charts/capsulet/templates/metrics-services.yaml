@@ -1,5 +1,5 @@
 {{- $root := . -}}
-{{- $components := dict "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator -}}
+{{- $components := dict "worker" .Values.worker "scheduler" .Values.scheduler "evaluator" .Values.evaluator "graph-worker" .Values.graphWorker -}}
 {{- range $name, $component := $components }}
 {{- if $component.enabled }}
 apiVersion: v1
@@ -14,7 +14,7 @@ spec:
   clusterIP: None
   ports:
     - name: metrics
-      port: {{ ternary 8081 (ternary 8082 8083 (eq $name "scheduler")) (eq $name "worker") }}
+      port: {{ include "capsulet.healthPort" $name }}
       targetPort: health
       protocol: TCP
   selector:

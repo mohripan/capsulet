@@ -325,6 +325,11 @@ impl Graph {
         self.regions.values().find(|region| region.contains(node))
     }
 
+    /// The values this graph is given from outside.
+    pub fn inputs(&self) -> impl Iterator<Item = &OutputPort> {
+        self.inputs.values()
+    }
+
     /// The nodes that must finish before this one may start: the sources of
     /// every edge feeding it, plus every control predecessor.
     #[must_use]

@@ -82,7 +82,7 @@ include `completed + unverified`, `completed + conditional`, `failed + unverifie
 | Workflow definition | configuration | API | Draft/enabled/disabled controls compatibility scheduling. |
 | Workflow run | execution | API and scheduler | Removal is distinct from cancellation; failed/timed-out runs may resume from checkpoints. |
 | Workflow step run | execution | scheduler and worker reconciliation | Uses the workflow-run enum; skipped and removed mappings are lossy. |
-| Agent run | execution | API and application agent runtime | Static in-process runtime only; no dedicated production agent worker. |
+| Agent run | execution | API enqueues; graph worker advances | Status is read from the run's log. `stopped` is a budget, non-progress, a safety check or a refusal, and never a success. |
 | Automation | configuration | API | Enabled/disabled controls trigger evaluation. |
 | Ingestion run | execution | API ingestion service | No current cancellation or retry state. |
 | Memory claim | review | ingestion, reviewer, memory governance | Active/contradicted are governance state, not execution or assurance. |

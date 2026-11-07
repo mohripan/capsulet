@@ -1004,6 +1004,39 @@ const ENDPOINTS: &[EndpointContract] = &[
         "200"
     ),
     endpoint!(
+        "GET",
+        "/v1/agent-runs/{id}/events",
+        "getAgentRunEvents",
+        "agents:read",
+        true,
+        true,
+        None,
+        "IrRunEventsResponse",
+        "200"
+    ),
+    endpoint!(
+        "POST",
+        "/v1/agent-runs/{id}/cancel",
+        "cancelAgentRun",
+        "agents:operate",
+        true,
+        true,
+        None,
+        "AgentRunResponse",
+        "202"
+    ),
+    endpoint!(
+        "POST",
+        "/v1/agent-runs/{id}/decisions",
+        "decideAgentRun",
+        "agents:operate",
+        true,
+        true,
+        Some("DecideAgentRunRequest"),
+        "AgentRunResponse",
+        "202"
+    ),
+    endpoint!(
         "POST",
         "/v1/reasoning/ask",
         "askReasoning",

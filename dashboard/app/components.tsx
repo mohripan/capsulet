@@ -41,14 +41,14 @@ const nav: Array<[LucideIcon, string, string]> = [
   [DatabaseZap, "Entities", "/memory/entities"],
   [CheckCheck, "Contradictions", "/memory/edges"],
   [FileCode2, "Schema Studio", "/memory/contracts"],
-  [Activity, "Agent Sessions", "/runs"],
-  [Route, "Retrieval Policies", "/workflows"],
-  [ListTree, "Evaluations", "/logs"],
+  [Activity, "Agent Runs", "/agent-runs"],
   [ShieldCheck, "Security", "/security"],
   [Settings, "Settings", "/settings"]
 ];
 
 const legacyNav: Array<[LucideIcon, string, string]> = [
+  [Activity, "Job Runs", "/runs"],
+  [ListTree, "Logs", "/logs"],
   [Workflow, "Automations", "/automations"],
   [PlugZap, "Trigger Plugins", "/trigger-plugins"],
   [GitBranch, "Workflows", "/workflows"],

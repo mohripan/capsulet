@@ -1018,12 +1018,13 @@ impl ApiStore for FakeStore {
             .cloned())
     }
 
-    async fn create_agent_run(
+    async fn start_agent_run(
         &self,
-        run: &AgentRunRecord,
+        start: &capsulet_postgres::AgentRunStart<'_>,
         tenant_id: &str,
         project_id: &str,
     ) -> Result<(), Self::Error> {
+        let run = start.run;
         if !self.owns("agents", run.agent_id.as_str(), tenant_id, project_id) {
             return Err("scope mismatch".to_string());
         }
@@ -2799,10 +2800,20 @@ fn rag_graph_request(id: &str) -> Value {
                 "ports": [
                     { "id": "embed.input", "direction": "input", "value_type": "normalized_query" },
                     { "id": "embed.output", "direction": "output", "value_type": "embedding_vector" }
-                ]
+                ],
+                "config": { "model": "small-embedder" }
             }
         ],
         "hyperedges": [
+            {
+                "id": "query_to_normalize",
+                "sources": [
+                    { "kind": "state_field", "field": "query", "value_type": "user_query" }
+                ],
+                "targets": [
+                    { "kind": "port", "node_id": "normalize", "port_id": "normalize.input", "value_type": "user_query" }
+                ]
+            },
             {
                 "id": "normalize_to_embed",
                 "sources": [
@@ -4068,7 +4079,7 @@ async fn creates_and_returns_typed_agent_graph() {
         .await
         .expect("response");
     assert_eq!(
-        response_json(get_response).await["hyperedges"][0]["targets"][0]["node_id"],
+        response_json(get_response).await["hyperedges"][1]["targets"][0]["node_id"],
         "embed"
     );
 }
@@ -5697,6 +5708,7 @@ fn ir_definition_body(assurance: capsulet_ir::definition::AssuranceMode) -> Valu
             budget: capsulet_ir::ResourceBudget::deterministic(1_000),
             provider: None,
             sub_workflow: None,
+            parameters: std::collections::BTreeMap::new(),
         }],
         ..capsulet_ir::GraphBuilder::default()
     })

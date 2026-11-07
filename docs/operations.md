@@ -7,15 +7,25 @@ admission exists.
 
 ## Agent runtime observability
 
-Agent runs persist their current state in `agent_runs`, every state version in `agent_state_snapshots`, and runtime decisions in `agent_trace_events`. Until the dedicated agent worker and HTTP trace endpoints land, operational inspection is database-level: check run status, state version progression, and trace sequence continuity for a run.
+An agent run is executed by the graph worker, and `GET /v1/agent-runs/{id}/events` returns its whole log: every node, what each one spent, and why the run ended. `GET /v1/agent-runs/{id}` summarizes that, with the reason in `execution.detail` and what a waiting run needs in `execution.waiting_on`.
+
+The graph worker serves `/livez`, `/readyz`, and `/metrics` on `CAPSULET_GRAPH_WORKER_HEALTH_ADDR`, default `0.0.0.0:8084`. Replicas are safe: runs are leased under a fencing epoch, so two workers can never both advance one. It reads:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CAPSULET_GRAPH_WORKER_ID` | `graph-worker` | The worker's identity in the run log. |
+| `CAPSULET_GRAPH_WORKER_POLL_SECONDS` | `2` | How long to wait when there is nothing to do. |
+| `CAPSULET_GRAPH_WORKER_LEASE_SECONDS` | `60` | How long a lease lasts. The worker heartbeats while a node runs, so a node may take longer than this. |
+| `CAPSULET_GRAPH_WORKER_TENANT` | unset | Restricts a dedicated fleet to one tenant's runs. |
+| `CAPSULET_OLLAMA_URL` | unset | The local model. Unset, model nodes fail and say so. |
+
+A run stuck `queued` means no graph worker is running. A run stuck `waiting` needs a decision at `POST /v1/agent-runs/{id}/decisions`. A job node waits for its job, so a run stuck `running` on one may mean the job worker is not running.
 
 Important tables:
 
 - `graph_definitions`, `graph_nodes`, `graph_ports`, and `graph_hyperedges`
-- `agent_definitions`
-- `agent_runs`
-- `agent_state_snapshots`
-- `agent_trace_events`
+- `agent_definitions` and `agent_runs`
+- `ir_runs`, `ir_run_events`, `ir_run_values`, `ir_run_signals`, and `ir_effect_claims`
 
 ## Compatibility scheduler observability
 

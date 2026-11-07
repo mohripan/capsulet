@@ -11,7 +11,7 @@ pub use agent_runtime::{
     AgentNodeExecution, AgentNodeExecutor, AgentNodeOutcome, AgentRuntime, AgentRuntimeError,
     AgentRuntimeRepository, AgentStopReason, AgentTraceRecord,
 };
-pub use agents::{AgentRunRecord, AgentService};
+pub use agents::{AgentRunExecution, AgentRunRecord, AgentRunUsage, AgentService};
 pub use commands::{CreateManualRunCommand, JobRunSummary, StartAgentRunCommand};
 pub use graphs::GraphService;
 pub use ports::{

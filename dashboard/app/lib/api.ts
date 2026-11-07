@@ -582,6 +582,11 @@ function clientOperation(
 // Experimental handwritten transport map. The checked OpenAPI document remains authoritative.
 export const DASHBOARD_OPERATIONS = {
   listRuns: clientOperation("GET", "/v1/jobs/runs", "listJobRuns", null, "ListRunsResponse"),
+  listAgentRuns: clientOperation("GET", "/v1/agent-runs", "listAgentRuns", null, "ListAgentRunsResponse"),
+  getAgentRun: clientOperation("GET", "/v1/agent-runs/{id}", "getAgentRun", null, "AgentRunResponse"),
+  getAgentRunEvents: clientOperation("GET", "/v1/agent-runs/{id}/events", "getAgentRunEvents", null, "IrRunEventsResponse"),
+  cancelAgentRun: clientOperation("POST", "/v1/agent-runs/{id}/cancel", "cancelAgentRun", null, "AgentRunResponse"),
+  decideAgentRun: clientOperation("POST", "/v1/agent-runs/{id}/decisions", "decideAgentRun", "DecideAgentRunRequest", "AgentRunResponse"),
   getCurrentPrincipal: clientOperation("GET", "/v1/auth/me", "getCurrentPrincipal", null, "PrincipalResponse", false),
   listProjects: clientOperation("GET", "/v1/projects", "listProjects", null, "ListProjectsResponse", false),
   listProjectMembers: clientOperation("GET", "/v1/projects/{project_id}/memberships", "listProjectMemberships", null, "ListProjectMembershipsResponse", false),
@@ -1070,6 +1075,113 @@ export async function triggerAutomation(id: string) {
 
 export async function listWorkflowRuns(query: TableQuery = {}) {
   return apiFetch<{ workflow_runs: WorkflowRun[] }>(`/v1/workflow-runs${queryString(query)}`);
+}
+
+export type AgentRunUsage = {
+  tokens: number;
+  cost_micro_units: number;
+  effects: number;
+  unmeasured: number;
+};
+
+export type AgentRun = {
+  id: string;
+  agent_id: string;
+  status: string;
+  state_version: number;
+  state: unknown;
+  assurance: string;
+  execution: {
+    ir_run_id: string;
+    definition_digest: string;
+    detail: string | null;
+    waiting_on: string | null;
+    usage: AgentRunUsage;
+  } | null;
+};
+
+export type AgentRunEvent = {
+  position: number;
+  epoch: number;
+  kind: string;
+  recorded_at: number;
+  event: Record<string, unknown>;
+};
+
+const FINISHED_AGENT_RUN_STATUSES = ["succeeded", "failed", "cancelled", "stopped"];
+
+export function isFinishedAgentRun(status: string) {
+  return FINISHED_AGENT_RUN_STATUSES.includes(status);
+}
+
+/** Usage nobody measured is shown as such, because a total that cannot see it is a lower bound. */
+export function tokensLabel(run: AgentRun) {
+  const usage = run.execution?.usage;
+  if (!usage) return "-";
+  return usage.unmeasured > 0 ? `at least ${usage.tokens}` : String(usage.tokens);
+}
+
+/** The most useful thing an event says, for a one-line history. */
+export function describeAgentRunEvent(event: AgentRunEvent) {
+  const body = event.event[event.kind];
+  if (body === null || typeof body !== "object") return "";
+  const fields = body as Record<string, unknown>;
+  switch (event.kind) {
+    case "node_failed":
+      return `${String(fields.node)}: ${String(fields.failure)}: ${String(fields.detail)}`;
+    case "resources_consumed": {
+      const usage = (fields.usage ?? {}) as Record<string, unknown>;
+      const measured = usage.input_tokens !== undefined || usage.output_tokens !== undefined;
+      const tokens = Number(usage.input_tokens ?? 0) + Number(usage.output_tokens ?? 0);
+      return `${String(fields.node)}: ${measured ? `${tokens} tokens` : "usage not reported"}`;
+    }
+    case "effect_claimed":
+    case "effect_finalized":
+    case "effect_abandoned":
+    case "effect_uncertain":
+      return `${String(fields.node)}: ${String(fields.effect)}`;
+    case "iteration_started":
+    case "iteration_finished":
+    case "loop_stopped":
+      return String(fields.region);
+    case "started":
+    case "resumed":
+    case "cancellation_requested":
+    case "cancelled":
+      return `by ${String(fields.by)}`;
+    case "gate_rejected":
+      return `${String(fields.node)}, refused by ${String(fields.by)}`;
+    case "failed": {
+      const reason = (fields.reason ?? {}) as Record<string, unknown>;
+      return String(reason.kind ?? "");
+    }
+    default:
+      return typeof fields.node === "string" ? fields.node : "";
+  }
+}
+
+export async function listAgentRuns() {
+  return apiFetch<{ agent_runs: AgentRun[] }>("/v1/agent-runs");
+}
+
+export async function getAgentRun(id: string) {
+  return apiFetch<AgentRun>(`/v1/agent-runs/${encodeURIComponent(id)}`);
+}
+
+export async function getAgentRunEvents(id: string) {
+  return apiFetch<{ run_id: string; events: AgentRunEvent[] }>(`/v1/agent-runs/${encodeURIComponent(id)}/events`);
+}
+
+export async function cancelAgentRun(id: string) {
+  return apiFetch<AgentRun>(`/v1/agent-runs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+}
+
+export async function decideAgentRun(id: string, approved: boolean) {
+  return apiFetch<AgentRun>(`/v1/agent-runs/${encodeURIComponent(id)}/decisions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ approved })
+  });
 }
 
 export async function getRun(id: string) {

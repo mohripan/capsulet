@@ -388,6 +388,28 @@ pub(crate) fn gates() -> Vec<Gate> {
                         "--locked",
                     ],
                 ),
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-graph-worker",
+                        "--test",
+                        "execution",
+                        "--locked",
+                    ],
+                ),
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-graph-worker",
+                        "--test",
+                        "agent_runs",
+                        "--locked",
+                    ],
+                ),
             ],
         ),
         gate(
@@ -472,11 +494,18 @@ pub(crate) fn gates() -> Vec<Gate> {
         ),
         gate(
             "compose",
-            "Compose configuration validation (smoke pending #98)",
+            "Compose configuration, and agents run through the real stack with a worker killed",
             &["docker"],
-            1_200,
+            1_800,
             &[Full],
-            vec![command("docker", &["compose", "config", "--quiet"])],
+            vec![
+                command("docker", &["compose", "config", "--quiet"]),
+                command(
+                    powershell,
+                    &["-NoProfile", "-File", "scripts/agent-smoke.ps1"],
+                ),
+                command("docker", &["compose", "down"]),
+            ],
         ),
         gate(
             "helm",

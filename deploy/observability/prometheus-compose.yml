@@ -17,6 +17,9 @@ scrape_configs:
   - job_name: capsulet-scheduler
     static_configs:
       - targets: ["scheduler:8082"]
+  - job_name: capsulet-graph-worker
+    static_configs:
+      - targets: ["graph-worker:8084"]
 
   - job_name: capsulet-evaluator
     static_configs:

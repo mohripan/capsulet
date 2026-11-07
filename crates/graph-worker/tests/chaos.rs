@@ -76,6 +76,7 @@ async fn a_run_survives_the_worker_dying_at_every_step_boundary() {
                         "keep-going".to_string(),
                         ControlValue::Bool { value: round < 2 },
                     )]),
+                    usage: None,
                 })
                 .collect(),
         );
@@ -85,9 +86,7 @@ async fn a_run_survives_the_worker_dying_at_every_step_boundary() {
             EffectOutcome::Uncertain {
                 detail: "the connection dropped before the response".to_string(),
             },
-            EffectOutcome::Performed {
-                receipt: capsulet_ir::Digest::of(b"pull request 41"),
-            },
+            EffectOutcome::performed(capsulet_ir::Digest::of(b"pull request 41")),
         ]);
         let clock = Arc::new(TestClock::at(NOW));
 

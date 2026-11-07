@@ -106,6 +106,7 @@ fn pure(name: &str, inputs: Vec<InputPort>, outputs: Vec<OutputPort>) -> Node {
         budget: ResourceBudget::deterministic(1_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -169,6 +170,7 @@ pub fn effect_definition(name: &str, idempotency: Idempotency) -> Definition {
         },
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     };
 
     let graph = Graph::new(GraphBuilder {
@@ -226,6 +228,7 @@ pub fn loop_definition(name: &str, max_iterations: u32) -> Definition {
         budget: ResourceBudget::deterministic(60_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     };
 
     let edge = |id_of: &str, from: &str, from_port: &str, to: &str| Hyperedge {
@@ -337,6 +340,7 @@ pub fn loop_definition_with_successor(name: &str, max_iterations: u32) -> Defini
         budget: ResourceBudget::deterministic(60_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     });
     parts.edges.push(Hyperedge {
         id: id("leave-to-summarise"),
@@ -407,6 +411,7 @@ fn publish_node(idempotency: Idempotency) -> Node {
         },
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -424,6 +429,7 @@ fn chaos_graph(idempotency: Idempotency) -> GraphBuilder {
         budget: ResourceBudget::deterministic(60_000),
         provider: None,
         sub_workflow: None,
+        parameters: std::collections::BTreeMap::new(),
     };
 
     let edge = |id_of: &str, from: &str, from_port: &str, to: &str| Hyperedge {
@@ -731,9 +737,7 @@ impl Executor for ScriptedExecutor {
             .lock()
             .expect("the scripted outcomes are not poisoned");
         if scripted.is_empty() {
-            EffectOutcome::Performed {
-                receipt: capsulet_ir::Digest::of(b"performed"),
-            }
+            EffectOutcome::performed(capsulet_ir::Digest::of(b"performed"))
         } else {
             scripted.remove(0)
         }
@@ -752,9 +756,7 @@ impl Executor for ScriptedExecutor {
             .lock()
             .expect("the scripted outcomes are not poisoned");
         if scripted.is_empty() {
-            EffectOutcome::Performed {
-                receipt: capsulet_ir::Digest::of(b"compensated"),
-            }
+            EffectOutcome::performed(capsulet_ir::Digest::of(b"compensated"))
         } else {
             scripted.remove(0)
         }

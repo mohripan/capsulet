@@ -23,12 +23,13 @@ pub mod event;
 pub mod failure;
 pub mod loops;
 pub mod state;
+pub mod values;
 pub mod wait;
 
 pub use certify::{CertifyError, RunEvidence, evidence_of};
 pub use decide::{Decision, decide};
 pub use effect::{EffectAttempt, EffectContext, EffectError, KeySource, check_effect_keys};
-pub use event::{Epoch, RecordedEvent, RunEvent, RunFailure, Wait};
+pub use event::{Epoch, NodeUsage, RecordedEvent, RunEvent, RunFailure, Wait};
 pub use failure::{Compensation, TimedOut};
 pub use loops::{Repair, repair};
 pub use state::{

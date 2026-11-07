@@ -177,8 +177,8 @@ pub fn coverage() -> Vec<Coverage> {
         Coverage {
             construct: "graph state field endpoint",
             level: CoverageLevel::WithLoss,
-            note: "Becomes a graph-level input or output. Shared mutable agent state is not a \
-                   value the IR models, so the sharing is not carried.",
+            note: "Becomes a graph-level input or output that crosses the loop through its boundary \
+                   nodes. Only state a graph declares is carried.",
         },
         Coverage {
             construct: "agent budget",
@@ -188,9 +188,9 @@ pub fn coverage() -> Vec<Coverage> {
         Coverage {
             construct: "agent termination condition",
             level: CoverageLevel::WithLoss,
-            note: "Becomes repair routes and stop reasons. The current runtime decides \
-                   continuation outside the graph, so a placeholder condition node stands in for \
-                   the port a loop needs.",
+            note: "Becomes repair routes and stop reasons, with continuation decided by a \
+                   deterministic node reading every validator's result. A failed check that is not \
+                   retried ends the run instead of being carried past.",
         },
         Coverage {
             construct: "governed memory claim",
@@ -209,6 +209,12 @@ pub fn coverage() -> Vec<Coverage> {
             note: "Wraps into a platform certificate without re-deciding it. The original \
                    verdict is carried as a declared oracle, because the snapshot it was decided \
                    against is not stored with it.",
+        },
+        Coverage {
+            construct: "agent planner transition",
+            level: CoverageLevel::Unsupported,
+            note: "A model choosing the next node has no representation yet. Refused at run start \
+                   rather than run in static order, which would look like it worked.",
         },
         Coverage {
             construct: "workflow run and step run state",

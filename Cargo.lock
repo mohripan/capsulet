@@ -343,6 +343,7 @@ dependencies = [
  "capsulet-application",
  "capsulet-core",
  "capsulet-ir",
+ "capsulet-ir-adapters",
  "capsulet-kernel",
  "capsulet-observability",
  "capsulet-postgres",
@@ -430,15 +431,23 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum",
+ "capsulet-api",
+ "capsulet-application",
  "capsulet-core",
  "capsulet-ir",
  "capsulet-kernel",
  "capsulet-observability",
  "capsulet-postgres",
  "capsulet-runtime",
+ "capsulet-storage",
+ "http-body-util",
+ "reqwest 0.12.28",
+ "serde_json",
  "sqlx",
  "thiserror 2.0.20",
  "tokio",
+ "tower",
 ]
 
 [[package]]
@@ -553,6 +562,7 @@ version = "0.1.0"
 dependencies = [
  "capsulet-ir",
  "serde",
+ "serde_json",
  "thiserror 2.0.20",
 ]
 

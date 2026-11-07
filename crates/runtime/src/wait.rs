@@ -45,7 +45,7 @@ impl Signal {
         }
     }
 
-    /// A person's decision, with the authorities they hold.
+    /// A person's approval, with the authorities they hold.
     #[must_use]
     pub fn decision(
         obligation: Identifier,
@@ -53,9 +53,42 @@ impl Signal {
         authorities: BTreeSet<Identifier>,
     ) -> Self {
         Self {
-            kind: SignalKind::HumanDecision { obligation },
+            kind: SignalKind::HumanDecision {
+                obligation,
+                approved: true,
+            },
             by,
             authorities,
+        }
+    }
+
+    /// A person's refusal, with the authorities they hold.
+    ///
+    /// Refusing takes the same authority as approving. A gate anybody could slam
+    /// shut is a denial of service on the run behind it.
+    #[must_use]
+    pub fn rejection(
+        obligation: Identifier,
+        by: Identifier,
+        authorities: BTreeSet<Identifier>,
+    ) -> Self {
+        Self {
+            kind: SignalKind::HumanDecision {
+                obligation,
+                approved: false,
+            },
+            by,
+            authorities,
+        }
+    }
+
+    /// Somebody asking for the run to stop.
+    #[must_use]
+    pub const fn cancellation(by: Identifier) -> Self {
+        Self {
+            kind: SignalKind::Cancel,
+            by,
+            authorities: BTreeSet::new(),
         }
     }
 
@@ -74,9 +107,17 @@ impl Signal {
 /// What kind of thing arrived.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignalKind {
-    Event { name: Identifier },
-    HumanDecision { obligation: Identifier },
+    Event {
+        name: Identifier,
+    },
+    HumanDecision {
+        obligation: Identifier,
+        approved: bool,
+    },
     TimerElapsed,
+    /// A request to stop. It resumes nothing: the worker records it, and the
+    /// decision core picks the next point where stopping is safe.
+    Cancel,
 }
 
 /// The event that suspends a run.
@@ -109,6 +150,7 @@ pub fn resume(
     now: RecordedTime,
 ) -> Result<RunEvent, WaitError> {
     let wait = waiting_on.ok_or(WaitError::NotWaiting)?;
+    let mut refused_at = None;
 
     match (wait, &signal.kind) {
         (Wait::Timer { until }, SignalKind::TimerElapsed) => {
@@ -125,9 +167,10 @@ pub fn resume(
             }
         }
         (
-            Wait::HumanGate { obligation, .. },
+            Wait::HumanGate { node, obligation },
             SignalKind::HumanDecision {
                 obligation: decided,
+                approved,
             },
         ) => {
             if obligation != decided {
@@ -144,6 +187,9 @@ pub fn resume(
                     by: signal.by.clone(),
                 });
             }
+            if !approved {
+                refused_at = Some((node.clone(), obligation.clone()));
+            }
         }
         _ => {
             return Err(WaitError::Mismatch {
@@ -153,9 +199,16 @@ pub fn resume(
         }
     }
 
-    Ok(RunEvent::Resumed {
-        wait: wait.clone(),
-        by: signal.by.clone(),
+    Ok(match refused_at {
+        Some((node, obligation)) => RunEvent::GateRejected {
+            node,
+            obligation,
+            by: signal.by.clone(),
+        },
+        None => RunEvent::Resumed {
+            wait: wait.clone(),
+            by: signal.by.clone(),
+        },
     })
 }
 

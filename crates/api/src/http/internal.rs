@@ -267,6 +267,12 @@ where
         .route_operations(&["startAgentRun"], post(crate::graphs::start_agent_run))
         .route_operations(&["listAgentRuns"], get(crate::graphs::list_agent_runs))
         .route_operations(&["getAgentRun"], get(crate::graphs::get_agent_run))
+        .route_operations(
+            &["getAgentRunEvents"],
+            get(crate::graphs::get_agent_run_events),
+        )
+        .route_operations(&["cancelAgentRun"], post(crate::graphs::cancel_agent_run))
+        .route_operations(&["decideAgentRun"], post(crate::graphs::decide_agent_run))
         .route_operations(&["askReasoning"], post(crate::reasoning::ask))
         .route_operations(
             &["listCertificates"],

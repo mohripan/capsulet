@@ -7,16 +7,20 @@
 
 use capsulet_core::{
     AgentBudget, AgentDefinition, AgentId, AgentTerminationPolicy, ExecutionPoolName,
-    GraphDefinition, JobDefinitionId, TerminationCondition, WorkflowDefinition,
+    GraphDefinition, GraphHyperedge, GraphId, GraphNode, GraphPort, GraphTransitionPolicy,
+    HyperedgeEndpoint, HyperedgeId, JobDefinitionId, NodeId, NodeKind as GraphNodeKind,
+    PortDirection, PortId, PortValueType, TerminationCondition, WorkflowDefinition,
     WorkflowDependencyPolicy, WorkflowGraph, WorkflowId, WorkflowStatus, WorkflowStep,
     WorkflowStepDependency, WorkflowStepId,
 };
 use capsulet_ir::admission::AdmissionCode;
 use capsulet_ir::definition::AssuranceMode;
+use capsulet_ir::effect::Idempotency;
 use capsulet_ir::node::NodeKind;
 use capsulet_ir::region::RegionKind;
 use capsulet_ir::{admit, digest_of};
 use capsulet_ir_adapters::{CoverageLevel, coverage, from_agent, from_graph, from_workflow};
+use std::collections::BTreeMap;
 
 fn workflow_id() -> WorkflowId {
     WorkflowId::new("wf_release").expect("the fixture id is valid")
@@ -178,29 +182,151 @@ fn a_graph_translates_with_its_node_kinds_becoming_rules() {
     }
 }
 
-#[test]
-fn an_agent_becomes_a_bounded_loop_with_its_budget() {
-    let agent = AgentDefinition::new(
+fn port(id: &str, direction: PortDirection, value_type: PortValueType) -> GraphPort {
+    GraphPort::new(PortId::new(id).expect("valid"), direction, value_type)
+}
+
+fn config(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+    pairs
+        .iter()
+        .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+        .collect()
+}
+
+fn state(field: &str, value_type: PortValueType) -> HyperedgeEndpoint {
+    HyperedgeEndpoint::state_field(field, value_type)
+}
+
+fn at(node: &str, port_id: &str) -> HyperedgeEndpoint {
+    HyperedgeEndpoint::port(
+        NodeId::new(node).expect("valid"),
+        PortId::new(port_id).expect("valid"),
+    )
+}
+
+fn edge(id: &str, source: HyperedgeEndpoint, target: HyperedgeEndpoint) -> GraphHyperedge {
+    GraphHyperedge::new(
+        HyperedgeId::new(id).expect("valid"),
+        vec![source],
+        vec![target],
+    )
+}
+
+/// `query -> prompt -> model -> check`, with the answer written back to state.
+fn rag_nodes() -> Vec<GraphNode> {
+    vec![
+        GraphNode::new(
+            NodeId::new("prompt").expect("valid"),
+            "Prompt",
+            GraphNodeKind::PromptBuilder,
+            vec![
+                port("query", PortDirection::Input, PortValueType::UserQuery),
+                port("text", PortDirection::Output, PortValueType::Prompt),
+            ],
+        )
+        .with_config(config(&[("template", "Answer this: {{query}}")])),
+        GraphNode::new(
+            NodeId::new("model").expect("valid"),
+            "Model",
+            GraphNodeKind::Llm,
+            vec![
+                port("prompt", PortDirection::Input, PortValueType::Prompt),
+                port(
+                    "answer",
+                    PortDirection::Output,
+                    PortValueType::ModelResponse,
+                ),
+            ],
+        )
+        .with_config(config(&[("model", "small-model")])),
+        GraphNode::new(
+            NodeId::new("check").expect("valid"),
+            "Check",
+            GraphNodeKind::Validator,
+            vec![
+                port("answer", PortDirection::Input, PortValueType::ModelResponse),
+                port(
+                    "result",
+                    PortDirection::Output,
+                    PortValueType::ValidationResult,
+                ),
+            ],
+        )
+        .with_config(config(&[("rule.non_empty", "true")])),
+    ]
+}
+
+fn rag_edges() -> Vec<GraphHyperedge> {
+    vec![
+        edge(
+            "query-in",
+            state("query", PortValueType::UserQuery),
+            at("prompt", "query"),
+        ),
+        edge("prompt-model", at("prompt", "text"), at("model", "prompt")),
+        edge("model-check", at("model", "answer"), at("check", "answer")),
+        edge(
+            "answer-out",
+            at("model", "answer"),
+            state("answer", PortValueType::ModelResponse),
+        ),
+    ]
+}
+
+fn rag_graph() -> GraphDefinition {
+    GraphDefinition::new(
+        GraphId::new("graph_rag").expect("valid"),
+        "RAG",
+        rag_nodes(),
+        rag_edges(),
+        GraphTransitionPolicy::static_acyclic(),
+    )
+    .expect("the fixture graph builds")
+}
+
+fn agent_of(graph: GraphDefinition, conditions: Vec<TerminationCondition>) -> AgentDefinition {
+    AgentDefinition::new(
         AgentId::new("agent_rag").expect("valid"),
         "RAG agent",
-        agent_graph(),
+        graph,
         Some(AgentBudget::new(8, 40_000, 300, 250_000).expect("the budget is valid")),
-        Some(AgentTerminationPolicy::new(vec![
+        Some(AgentTerminationPolicy::new(conditions)),
+    )
+    .expect("the agent is valid")
+}
+
+fn rag_agent() -> AgentDefinition {
+    agent_of(
+        rag_graph(),
+        vec![
             TerminationCondition::ValidatorPass,
             TerminationCondition::NoProgress,
             TerminationCondition::HumanEscalation,
-        ])),
+        ],
     )
-    .expect("the agent is valid");
+}
 
-    let adapted = from_agent(&agent).expect("the agent translates");
+fn refusal_of(graph: GraphDefinition) -> String {
+    match from_agent(&agent_of(graph, vec![TerminationCondition::ValidatorPass])) {
+        Err(capsulet_ir_adapters::AdapterError::Unsupported { construct }) => construct,
+        Err(other) => panic!("expected a refusal naming the construct, got {other}"),
+        Ok(_) => panic!("this graph must be refused"),
+    }
+}
+
+#[test]
+fn an_agent_becomes_a_bounded_loop_that_admits_and_records_its_budget() {
+    let adapted = from_agent(&rag_agent()).expect("the agent translates");
+    if let Err(refusal) = admit(&adapted.definition) {
+        panic!("a translated agent must pass structural admission: {refusal}");
+    }
+
     let region = adapted
         .definition
         .graph
         .regions()
         .next()
         .expect("the agent becomes a loop region");
-
     let RegionKind::Loop { spec } = &region.kind else {
         panic!("an agent with a budget is a loop");
     };
@@ -208,16 +334,241 @@ fn an_agent_becomes_a_bounded_loop_with_its_budget() {
     assert_eq!(spec.budget.tokens, 40_000);
     assert_eq!(spec.budget.wall_ms, 300_000);
     assert_eq!(spec.budget.cost_micro_units, 250_000);
-
-    // The placeholder condition is recorded rather than presented as fidelity.
+    assert_eq!(adapted.definition.assurance, AssuranceMode::Observe);
     assert!(
-        adapted
-            .notes
-            .iter()
-            .any(|note| note.detail.contains("placeholder condition node")),
-        "{:?}",
-        adapted.notes
+        spec.progress.is_some(),
+        "stopping on no progress needs a measure to read"
     );
+    assert_eq!(
+        spec.continuation.evaluated_by.as_str(),
+        capsulet_ir::agent::AGENT_CONTINUE
+    );
+}
+
+#[test]
+fn a_loops_exit_cannot_run_before_its_body() {
+    let adapted = from_agent(&rag_agent()).expect("the agent translates");
+    let graph = &adapted.definition.graph;
+    let leave = capsulet_ir::Identifier::parse(capsulet_ir::agent::AGENT_LEAVE).expect("valid");
+    let decide = capsulet_ir::Identifier::parse(capsulet_ir::agent::AGENT_CONTINUE).expect("valid");
+
+    assert!(graph.predecessors_of(&leave).contains(&decide));
+    for body in ["prompt", "model", "check"] {
+        let body = capsulet_ir::Identifier::parse(body).expect("valid");
+        assert!(
+            graph.predecessors_of(&decide).contains(&body),
+            "`{body}` must finish before the loop decides whether to go round again"
+        );
+    }
+}
+
+#[test]
+fn a_state_field_crosses_the_loop_through_its_boundary() {
+    let adapted = from_agent(&rag_agent()).expect("the agent translates");
+    let enter = adapted
+        .definition
+        .graph
+        .nodes()
+        .find(|node| node.id.as_str() == capsulet_ir::agent::AGENT_ENTER)
+        .expect("the entry node");
+    let leave = adapted
+        .definition
+        .graph
+        .nodes()
+        .find(|node| node.id.as_str() == capsulet_ir::agent::AGENT_LEAVE)
+        .expect("the exit node");
+
+    assert!(enter.outputs.iter().any(|port| port.id.as_str() == "query"));
+    assert!(
+        leave
+            .outputs
+            .iter()
+            .any(|port| port.id.as_str() == "answer")
+    );
+}
+
+#[test]
+fn a_field_both_read_and_written_is_carried_to_the_next_iteration() {
+    let mut edges = rag_edges();
+    edges.pop();
+    edges.push(edge(
+        "query-out",
+        at("model", "answer"),
+        state("query", PortValueType::ModelResponse),
+    ));
+    let graph = GraphDefinition::new(
+        GraphId::new("graph_carry").expect("valid"),
+        "Carry",
+        rag_nodes(),
+        edges,
+        GraphTransitionPolicy::static_acyclic(),
+    )
+    .expect("the graph builds");
+    let adapted = from_agent(&agent_of(graph, vec![TerminationCondition::ValidatorPass]))
+        .expect("the agent translates");
+
+    let region = adapted.definition.graph.regions().next().expect("a region");
+    let RegionKind::Loop { spec } = &region.kind else {
+        panic!("a loop");
+    };
+    assert!(spec.state.contains_key("query"));
+}
+
+#[test]
+fn what_a_node_does_is_part_of_the_digest() {
+    let digest_of_template = |template: &str| {
+        let mut nodes = rag_nodes();
+        nodes[0] = nodes[0]
+            .clone()
+            .with_config(config(&[("template", template)]));
+        let graph = GraphDefinition::new(
+            GraphId::new("graph_rag").expect("valid"),
+            "RAG",
+            nodes,
+            rag_edges(),
+            GraphTransitionPolicy::static_acyclic(),
+        )
+        .expect("the graph builds");
+        let adapted = from_agent(&agent_of(graph, vec![TerminationCondition::ValidatorPass]))
+            .expect("the agent translates");
+        capsulet_ir::digest_of(&adapted.definition).expect("a digest")
+    };
+    assert_ne!(
+        digest_of_template("Answer: {{query}}"),
+        digest_of_template("Summarise: {{query}}"),
+        "changing a prompt must make a new version rather than change what one means"
+    );
+}
+
+#[test]
+fn a_model_node_names_the_exact_model_it_is_granted() {
+    let adapted = from_agent(&rag_agent()).expect("the agent translates");
+    let model = adapted
+        .definition
+        .graph
+        .nodes()
+        .find(|node| node.id.as_str() == "model")
+        .expect("the model node");
+    let provider = model.provider.as_ref().expect("a binding");
+    assert_eq!(provider.selection, "small-model");
+    assert_eq!(
+        model.parameters.get(capsulet_ir::agent::KIND_PARAMETER),
+        Some(&"llm".to_string())
+    );
+}
+
+#[test]
+fn a_planner_graph_is_refused_rather_than_run_in_static_order() {
+    let graph = GraphDefinition::new(
+        GraphId::new("graph_planner").expect("valid"),
+        "Planner",
+        rag_nodes(),
+        rag_edges(),
+        GraphTransitionPolicy::planner(vec![NodeId::new("model").expect("valid")]),
+    )
+    .expect("the graph builds");
+    assert!(refusal_of(graph).contains("planner"));
+}
+
+#[test]
+fn a_typed_input_nothing_feeds_is_refused_by_name() {
+    let graph = GraphDefinition::new(
+        GraphId::new("graph_unfed").expect("valid"),
+        "Unfed",
+        rag_nodes(),
+        rag_edges()[1..].to_vec(),
+        GraphTransitionPolicy::static_acyclic(),
+    )
+    .expect("the graph builds");
+    assert!(refusal_of(graph).contains("`query`"));
+}
+
+#[test]
+fn a_port_fed_twice_is_refused() {
+    let mut edges = rag_edges();
+    edges.push(edge(
+        "query-again",
+        state("other", PortValueType::UserQuery),
+        at("prompt", "query"),
+    ));
+    let graph = GraphDefinition::new(
+        GraphId::new("graph_twice").expect("valid"),
+        "Twice",
+        rag_nodes(),
+        edges,
+        GraphTransitionPolicy::static_acyclic(),
+    )
+    .expect("the graph builds");
+    assert!(refusal_of(graph).contains("more than one edge"));
+}
+
+#[test]
+fn a_model_node_without_a_model_is_refused() {
+    let mut nodes = rag_nodes();
+    nodes[1] = nodes[1].clone().with_config(BTreeMap::new());
+    let graph = GraphDefinition::new(
+        GraphId::new("graph_nameless").expect("valid"),
+        "Nameless",
+        nodes,
+        rag_edges(),
+        GraphTransitionPolicy::static_acyclic(),
+    )
+    .expect("the graph builds");
+    assert!(refusal_of(graph).contains("`model`"));
+}
+
+#[test]
+fn a_validator_with_no_rule_is_refused() {
+    let mut nodes = rag_nodes();
+    nodes[2] = nodes[2].clone().with_config(BTreeMap::new());
+    let graph = GraphDefinition::new(
+        GraphId::new("graph_ruleless").expect("valid"),
+        "Ruleless",
+        nodes,
+        rag_edges(),
+        GraphTransitionPolicy::static_acyclic(),
+    )
+    .expect("the graph builds");
+    assert!(refusal_of(graph).contains("check nothing"));
+}
+
+#[test]
+fn job_and_memory_write_nodes_admit_with_keyed_effects() {
+    let job = GraphNode::new(
+        NodeId::new("job").expect("valid"),
+        "Job",
+        GraphNodeKind::Job,
+        vec![port("result", PortDirection::Output, PortValueType::Json)],
+    )
+    .with_config(config(&[("job_definition_id", "job_build")]));
+    let write = GraphNode::new(
+        NodeId::new("write").expect("valid"),
+        "Write",
+        GraphNodeKind::MemoryWrite,
+        vec![port("claim", PortDirection::Input, PortValueType::Json)],
+    );
+    let graph = GraphDefinition::new(
+        GraphId::new("graph_effects").expect("valid"),
+        "Effects",
+        vec![job, write],
+        vec![edge("job-write", at("job", "result"), at("write", "claim"))],
+        GraphTransitionPolicy::static_acyclic(),
+    )
+    .expect("the graph builds");
+    let adapted = from_agent(&agent_of(graph, vec![TerminationCondition::ValidatorPass]))
+        .expect("the agent translates");
+    if let Err(refusal) = admit(&adapted.definition) {
+        panic!("effect nodes must admit: {refusal}");
+    }
+    for node in adapted.definition.graph.nodes() {
+        for effect in &node.effects {
+            assert!(
+                matches!(effect.idempotency, Idempotency::Keyed { .. }),
+                "`{}` must say how a retry avoids a duplicate",
+                effect.id
+            );
+        }
+    }
 }
 
 #[test]
@@ -276,12 +627,14 @@ fn every_unsupported_construct_is_declared_rather_than_approximated() {
 
 #[test]
 fn nothing_that_executes_depends_on_the_adapters() {
-    // The adapters describe; they do not run anything. If an execution crate
-    // starts depending on them, that is a decision worth making deliberately.
+    // The adapters describe; they do not run anything. The API is the one
+    // deliberate exception: starting an agent run compiles the agent, and the graph
+    // worker runs the result. It runs definitions, not adapters, so it stays off
+    // this list's other side too.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for crate_name in [
-        "api",
         "application",
+        "graph-worker",
         "evaluator",
         "runner",
         "scheduler",
@@ -292,7 +645,7 @@ fn nothing_that_executes_depends_on_the_adapters() {
             .unwrap_or_else(|_| panic!("{} is readable", manifest.display()));
         assert!(
             !text.contains("capsulet-ir-adapters"),
-            "`{crate_name}` depends on the adapters; M2 wires nothing into execution"
+            "`{crate_name}` depends on the adapters; only the API compiles agents"
         );
     }
 }

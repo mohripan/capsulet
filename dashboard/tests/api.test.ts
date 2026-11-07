@@ -26,7 +26,12 @@ import {
   rejectEntityResolution,
   rejectReviewClaim,
   resolveClaimConflict,
-  runIngestionConnector
+  runIngestionConnector,
+  type AgentRun,
+  decideAgentRun,
+  describeAgentRunEvent,
+  isFinishedAgentRun,
+  tokensLabel
 } from "../app/lib/api";
 
 describe("dashboard API helpers", () => {
@@ -54,6 +59,69 @@ describe("dashboard API helpers", () => {
       else Reflect.deleteProperty(globalThis, "window");
     }
   });
+  it("does not read unmeasured agent usage as a total", () => {
+    const usage = { tokens: 12, cost_micro_units: 0, effects: 0, unmeasured: 0 };
+    const execution = { ir_run_id: "run", definition_digest: "sha256:x", detail: null, waiting_on: null, usage };
+    const run: AgentRun = {
+      id: "run",
+      agent_id: "agent",
+      status: "running",
+      state_version: 1,
+      state: {},
+      assurance: "unverified",
+      execution
+    };
+    assert.equal(tokensLabel(run), "12");
+    assert.equal(tokensLabel({ ...run, execution: { ...execution, usage: { ...usage, unmeasured: 1 } } }), "at least 12");
+    assert.equal(tokensLabel({ ...run, execution: null }), "-");
+  });
+
+  it("knows which agent runs have finished", () => {
+    for (const status of ["succeeded", "failed", "cancelled", "stopped"]) {
+      assert.equal(isFinishedAgentRun(status), true);
+    }
+    for (const status of ["queued", "running", "waiting"]) {
+      assert.equal(isFinishedAgentRun(status), false);
+    }
+  });
+
+  it("describes what happened in an agent run", () => {
+    const line = (kind: string, body: unknown) =>
+      describeAgentRunEvent({ position: 0, epoch: 1, kind, recorded_at: 0, event: { [kind]: body } });
+    assert.equal(line("node_failed", { node: "check", failure: "unsafe_effect", detail: "no" }), "check: unsafe_effect: no");
+    assert.equal(line("resources_consumed", { node: "model", usage: { input_tokens: 3, output_tokens: 4 } }), "model: 7 tokens");
+    assert.equal(line("resources_consumed", { node: "model", usage: {} }), "model: usage not reported");
+    assert.equal(line("gate_rejected", { node: "check", by: "reviewer" }), "check, refused by reviewer");
+    assert.equal(line("node_started", { node: "model" }), "model");
+  });
+
+  it("decides on an agent run with the selected project and a typed body", async () => {
+    const originalFetch = globalThis.fetch;
+    const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+    let capturedUrl = "";
+    let captured: RequestInit | undefined;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { localStorage: { getItem: () => "finance" } }
+    });
+    globalThis.fetch = async (input, init) => {
+      capturedUrl = String(input);
+      captured = init;
+      return jsonResponse({ id: "run" }, 202);
+    };
+    try {
+      await decideAgentRun("run", false);
+      assert.match(capturedUrl, /\/v1\/agent-runs\/run\/decisions$/);
+      assert.equal(captured?.method, "POST");
+      assert.deepEqual(JSON.parse(String(captured?.body)), { approved: false });
+      assert.equal(new Headers(captured?.headers).get("x-capsulet-project-id"), "finance");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (windowDescriptor) Object.defineProperty(globalThis, "window", windowDescriptor);
+      else Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+
   it("formats artifact sizes", () => {
     assert.equal(formatBytes(20), "20 B");
     assert.equal(formatBytes(1536), "1.5 KiB");

@@ -13,7 +13,7 @@ Append-only SQLx migrations under `migrations/` define:
 - compatibility `workflow_definitions`, `workflow_steps`, `workflow_step_dependencies`, `workflow_runs`, and `workflow_step_runs`;
 - `automations`, `automation_triggers`, `custom_trigger_plugins`, durable trigger events/evaluations, audit events, and retention-cleanup markers.
 
-Agent runs carry current status, state version, and current state JSON. Every saved state version is also stored in `agent_state_snapshots`, and runtime decisions are appended to `agent_trace_events` with run-local sequence numbers.
+An agent run links to the IR run executing it. Its status, state version, usage and final state are read from that run's append-only log and from `ir_run_values`, which holds the bytes behind the log's digests, scoped to a project. The `status` and `state_json` columns on `agent_runs` hold what the run was created with. `agent_state_snapshots` and `agent_trace_events` hold history from before agent runs executed.
 
 Job run rows carry cancellation/retry fields, lease owner/expiry, and heartbeat timestamps. Workflow-run removal is represented explicitly so operational history can be hidden without silently deleting unrelated definitions.
 
@@ -42,7 +42,7 @@ Before leasing new work, workers:
 
 Final updates are guarded by status and lease ownership. This prevents stale completions from overwriting cancellation or a replacement attempt. Kubernetes runs use deterministic run/attempt Job names: a replacement worker adopts the expired running lease and reattaches to the existing Job without creating another attempt.
 
-The agent runtime writes current run state and trace events through repository ports so it can later be driven by a dedicated worker without changing persistence. The compatibility scheduler also uses PostgreSQL transactions to create due interval workflow runs and reconcile DAG nodes. Dependency edges are persisted separately from step position.
+The graph worker writes a run's history as events under a fencing epoch, so a worker that lost its lease cannot append to a run it no longer owns. The compatibility scheduler also uses PostgreSQL transactions to create due interval workflow runs and reconcile DAG nodes. Dependency edges are persisted separately from step position.
 
 ## Object boundary
 

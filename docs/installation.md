@@ -6,6 +6,7 @@ installation path, not a public-alpha release. The default chart renders:
 
 - API
 - worker
+- graph worker
 - scheduler
 - evaluator
 - dashboard
@@ -28,6 +29,7 @@ docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-api --build-arg B
 docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-worker --build-arg BIN=capsulet-worker -t capsulet-worker:dev .
 docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-scheduler --build-arg BIN=capsulet-scheduler -t capsulet-scheduler:dev .
 docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-evaluator --build-arg BIN=capsulet-evaluator -t capsulet-evaluator:dev .
+docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-graph-worker --build-arg BIN=capsulet-graph-worker -t capsulet-graph-worker:dev .
 docker build -f dashboard/Dockerfile -t capsulet-dashboard:dev dashboard
 ```
 

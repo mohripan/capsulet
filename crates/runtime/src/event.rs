@@ -54,8 +54,13 @@ impl Epoch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ControlValue {
-    Bool { value: bool },
-    Integer { value: i128 },
+    Bool {
+        value: bool,
+    },
+    Integer {
+        #[serde(deserialize_with = "capsulet_ir::value::deserialize_wide_integer")]
+        value: i128,
+    },
 }
 
 impl ControlValue {
@@ -94,10 +99,58 @@ pub enum Wait {
     },
 }
 
+/// What one piece of work consumed, as far as anybody measured.
+///
+/// Every figure is optional, because a provider that reports no token count has
+/// not reported zero tokens. Unknown stays unknown here and is counted as such,
+/// rather than turning into a number a budget or a dashboard would believe.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeUsage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_micro_units: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+}
+
+impl NodeUsage {
+    /// The tokens anybody counted. `None` when nobody counted any.
+    #[must_use]
+    pub const fn known_tokens(&self) -> Option<u64> {
+        match (self.input_tokens, self.output_tokens) {
+            (None, None) => None,
+            (input, output) => {
+                let input = match input {
+                    Some(value) => value,
+                    None => 0,
+                };
+                let output = match output {
+                    Some(value) => value,
+                    None => 0,
+                };
+                Some(input.saturating_add(output))
+            }
+        }
+    }
+}
+
 /// Why a run stopped short.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RunFailure {
+    /// The authority a gate named looked at the question and said no.
+    GateRejected {
+        node: Identifier,
+        obligation: Identifier,
+        by: Identifier,
+    },
     /// A node reported a typed failure.
     Node {
         node: Identifier,
@@ -157,8 +210,25 @@ pub enum RunEvent {
         definition: Digest,
         mode: AssuranceMode,
     },
+    /// The values the run was given, by name and content digest.
+    ///
+    /// Written straight after admission and in the same transaction. Pinned here
+    /// because the log is the run: a run whose inputs live anywhere else is a run
+    /// nobody can say what it was asked to do.
+    InputsBound {
+        inputs: BTreeMap<String, Digest>,
+    },
     Started {
         by: Identifier,
+    },
+    /// What a node consumed, written as soon as it is known.
+    ///
+    /// A separate event rather than a field on [`RunEvent::NodeFinished`], because
+    /// a model that answered has been paid for whether or not the node goes on to
+    /// finish. A crash between the two must not hand the budget back.
+    ResourcesConsumed {
+        node: Identifier,
+        usage: NodeUsage,
     },
     NodeStarted {
         node: Identifier,
@@ -239,6 +309,13 @@ pub enum RunEvent {
         wait: Wait,
         by: Identifier,
     },
+    /// The authority a gate named refused. The run ends through the decision
+    /// core rather than here, so anything it still owes is compensated first.
+    GateRejected {
+        node: Identifier,
+        obligation: Identifier,
+        by: Identifier,
+    },
     /// Somebody asked for the run to stop.
     ///
     /// A request rather than the stop itself, because stopping in the middle of
@@ -273,7 +350,10 @@ impl RunEvent {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Admitted { .. } => "admitted",
+            Self::InputsBound { .. } => "inputs_bound",
             Self::Started { .. } => "started",
+            Self::ResourcesConsumed { .. } => "resources_consumed",
+            Self::GateRejected { .. } => "gate_rejected",
             Self::NodeStarted { .. } => "node_started",
             Self::NodeFinished { .. } => "node_finished",
             Self::NodeFailed { .. } => "node_failed",

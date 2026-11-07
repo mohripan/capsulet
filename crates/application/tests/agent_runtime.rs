@@ -97,6 +97,7 @@ fn queued_run() -> AgentRunRecord {
         status: AgentRunStatus::Queued,
         state_version: 0,
         state_json: r#"{"query":"hello"}"#.to_string(),
+        execution: None,
     }
 }
 

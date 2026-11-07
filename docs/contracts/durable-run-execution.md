@@ -35,6 +35,10 @@ anybody downgrade `enforce` to `observe` at the moment it mattered. `GET /v1/ir/
 returns the log itself rather than a summary, because the log *is* the run and a caller checking a
 claim has to see the events it was folded from.
 
+An agent run takes the same path. `POST /v1/agents/{id}/runs` compiles the agent, and writes the
+definition version, the run, its admission and its inputs in one transaction. Cancelling a run and
+answering a gate both land in the signal inbox, and the worker is what acts on them.
+
 Automations do not yet target IR definitions; when they do, that is the path they take.
 
 Checked by: `verify --gate claims`.
@@ -120,9 +124,23 @@ chaos`, which drives a real loop through every kill point.
 
 Checked by: `verify --gate ir` (`crates/runtime/tests/failure.rs`) and `verify --gate postgres`.
 
+## What runs
+
+Agents do. Starting an agent run compiles the agent into a definition, and the deployed worker's
+executor runs what it says: deterministic nodes, local-model nodes, memory reads, validators, and job
+and memory-write effects. See [ADR 0019](../adr/0019-agent-runs-execute-on-the-durable-path.md).
+
+A definition registered directly, whose nodes were not compiled from an agent, still has no provider
+and fails with `verifier_unavailable`. That is what the verifier protocol in M4 is for.
+
+A worker holds its lease for as long as a node takes, by heartbeating while the work runs. Without
+that, any node slower than its lease is taken over and run a second time.
+
+Checked by: `verify --gate postgres` (`crates/graph-worker/tests/agent_runs.rs` and `execution.rs`).
+
 ## What is not claimed
 
-- Node execution and effect transports are not implemented. The deployed worker ships an executor
-  that refuses every node with `verifier_unavailable`; providers arrive in M4.
+- Directly registered definitions have no node providers or effect transports. Only nodes compiled
+  from an agent run.
 - A certificate is assembled from the log, but obligations and verifier records are supplied by the
-  caller. Nothing here produces them, because nothing here checks anything yet.
+  caller. Nothing here produces them, so an agent run is `observe` mode and reports `unverified`.

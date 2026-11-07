@@ -207,6 +207,26 @@
       "marker_required": true
     },
     {
+      "path": "dashboard/app/agent-runs/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/agent-runs/agent-runs-client.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/agent-runs/[id]/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/agent-runs/[id]/agent-run-detail-client.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
       "path": "dashboard/app/runs/[id]/page.tsx",
       "category": "dashboard",
       "marker_required": true
@@ -813,6 +833,10 @@
         {
           "path": "crates/runtime/tests/loops.rs",
           "selector": "an_iteration_that_started_and_crashed_still_spent_an_iteration"
+        },
+        {
+          "path": "crates/runtime/tests/agent_execution.rs",
+          "selector": "what_a_node_consumed_counts_as_soon_as_it_is_recorded"
         }
       ]
     },
@@ -843,6 +867,84 @@
         {
           "path": "crates/graph-worker/tests/loops.rs",
           "selector": "the_worker_runs_a_loop_until_its_condition_goes_false"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+      "tests": [
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_failed_check_goes_round_again_carrying_what_the_last_attempt_left"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_job_in_another_project_is_refused_rather_than_run"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_job_node_runs_its_job_once_and_reports_how_it_came_out"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_model_repeating_itself_is_stopped_for_going_nowhere"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_model_that_reports_no_usage_is_counted_as_unknown"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_planner_agent_is_refused_at_the_start_by_name"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_run_started_over_http_is_executed_by_the_worker"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_safety_check_stops_the_run"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_worker_stopping_after_every_step_changes_nothing"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "an_agent_can_only_propose_a_claim_never_activate_one"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "another_project_can_see_none_of_it"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "approving_at_a_gate_waives_the_failure_and_the_run_finishes"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "refusing_at_a_gate_stops_the_run"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "running_out_of_iterations_stops_a_run_rather_than_succeeding_it"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "running_out_of_tokens_stops_a_run_part_way_through"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-graph-worker --locked --test execution",
+      "tests": [
+        {
+          "path": "crates/graph-worker/tests/execution.rs",
+          "selector": "a_node_slower_than_its_lease_is_not_run_twice"
         }
       ]
     }
@@ -961,7 +1063,7 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Graphs and agents",
-      "statement": "Agent definitions and queued agent runs, opaque JSON state snapshots, and semantic trace events can be persisted and exercised through the application runtime.",
+      "statement": "Agent definitions and agent runs are persisted with their owning project, and a run reports its status, state and usage from its durable log rather than from a stored status.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -969,7 +1071,11 @@
         "docs/architecture.md",
         "docs/operations.md",
         "docs/persistence.md",
-        "dashboard/app/components.tsx"
+        "dashboard/app/components.tsx",
+        "dashboard/app/agent-runs/page.tsx",
+        "dashboard/app/agent-runs/[id]/page.tsx",
+        "dashboard/app/agent-runs/agent-runs-client.tsx",
+        "dashboard/app/agent-runs/[id]/agent-run-detail-client.tsx"
       ],
       "evidence": [
         {
@@ -977,27 +1083,325 @@
           "path": "crates/application/tests/agents.rs",
           "command": "cargo test -p capsulet-application --test agents --locked",
           "selector": "agent_service_starts_queued_run_with_initial_state"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_run_started_over_http_is_executed_by_the_worker"
         }
       ]
     },
     {
       "id": "CAP-AGENT-002",
-      "kind": "limitation",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Graphs and agents",
-      "statement": "There is no production dedicated agent or graph worker; creating an agent run persists queued work but does not independently execute it.",
+      "statement": "Starting an agent run enqueues it on the durable path, and the graph worker executes it: deterministic nodes, local-model nodes, memory reads, validators, and job and memory-write effects that happen once per run however many workers it takes.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
         "docs/api.md",
         "docs/architecture.md",
         "docs/operations.md",
-        "docs/persistence.md"
+        "docs/persistence.md",
+        "dashboard/app/agent-runs/page.tsx",
+        "dashboard/app/agent-runs/[id]/page.tsx",
+        "dashboard/app/agent-runs/agent-runs-client.tsx",
+        "dashboard/app/agent-runs/[id]/agent-run-detail-client.tsx"
       ],
       "evidence": [
         {
-          "type": "source",
-          "path": "crates/application/src/agent_runtime.rs"
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_run_started_over_http_is_executed_by_the_worker"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_worker_stopping_after_every_step_changes_nothing"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_job_node_runs_its_job_once_and_reports_how_it_came_out"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/execution.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test execution",
+          "selector": "a_node_slower_than_its_lease_is_not_run_twice"
+        }
+      ],
+      "verification": [
+        {
+          "assertion": "a-run-over-http-is-executed",
+          "evidence_selectors": [
+            "a_run_started_over_http_is_executed_by_the_worker"
+          ]
+        },
+        {
+          "assertion": "restarts-repeat-nothing",
+          "evidence_selectors": [
+            "a_worker_stopping_after_every_step_changes_nothing"
+          ]
+        },
+        {
+          "assertion": "a-job-runs-once",
+          "evidence_selectors": [
+            "a_job_node_runs_its_job_once_and_reports_how_it_came_out"
+          ]
+        },
+        {
+          "assertion": "a-slow-node-keeps-its-lease",
+          "evidence_selectors": [
+            "a_node_slower_than_its_lease_is_not_run_twice"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CAP-AGENT-003",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
+      "statement": "A validator that fails sends an agent round again with what its last attempt left, and a run ended by a budget, by a lack of progress or by a safety check reports stopped, never succeeded.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-retry-sees-its-last-attempt",
+          "evidence_selectors": [
+            "a_failed_check_goes_round_again_carrying_what_the_last_attempt_left"
+          ]
+        },
+        {
+          "assertion": "budgets-stop-a-run",
+          "evidence_selectors": [
+            "running_out_of_iterations_stops_a_run_rather_than_succeeding_it",
+            "running_out_of_tokens_stops_a_run_part_way_through"
+          ]
+        },
+        {
+          "assertion": "going-nowhere-stops-a-run",
+          "evidence_selectors": [
+            "a_model_repeating_itself_is_stopped_for_going_nowhere"
+          ]
+        },
+        {
+          "assertion": "a-safety-check-stops-a-run",
+          "evidence_selectors": [
+            "a_safety_check_stops_the_run"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_failed_check_goes_round_again_carrying_what_the_last_attempt_left"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "running_out_of_iterations_stops_a_run_rather_than_succeeding_it"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "running_out_of_tokens_stops_a_run_part_way_through"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_model_repeating_itself_is_stopped_for_going_nowhere"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_safety_check_stops_the_run"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AGENT-004",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
+      "statement": "An agent run can be cancelled over the API, and a run waiting at a human gate can be approved, which waives the failure, or refused, which stops the run.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "dashboard/app/agent-runs/[id]/page.tsx",
+        "dashboard/app/agent-runs/[id]/agent-run-detail-client.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "cancelling-stops-a-run",
+          "evidence_selectors": [
+            "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
+          ]
+        },
+        {
+          "assertion": "approving-finishes-a-run",
+          "evidence_selectors": [
+            "approving_at_a_gate_waives_the_failure_and_the_run_finishes"
+          ]
+        },
+        {
+          "assertion": "refusing-stops-a-run",
+          "evidence_selectors": [
+            "refusing_at_a_gate_stops_the_run"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "approving_at_a_gate_waives_the_failure_and_the_run_finishes"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "refusing_at_a_gate_stops_the_run"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AGENT-005",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
+      "statement": "What a model reports spending counts against a run as soon as it is known, and usage nobody measured is counted as unknown rather than as zero.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "unmeasured-usage-is-unknown",
+          "evidence_selectors": [
+            "a_model_that_reports_no_usage_is_counted_as_unknown"
+          ]
+        },
+        {
+          "assertion": "usage-counts-when-recorded",
+          "evidence_selectors": [
+            "what_a_node_consumed_counts_as_soon_as_it_is_recorded"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_model_that_reports_no_usage_is_counted_as_unknown"
+        },
+        {
+          "type": "test",
+          "path": "crates/runtime/tests/agent_execution.rs",
+          "command": "cargo test -p capsulet-runtime --locked",
+          "selector": "what_a_node_consumed_counts_as_soon_as_it_is_recorded"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AGENT-006",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
+      "statement": "An agent cannot propose a memory claim that is active, cannot run a job its project does not own, and cannot be read, started or cancelled from another project.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md"
+      ],
+      "verification": [
+        {
+          "assertion": "memory-writes-are-candidates",
+          "evidence_selectors": [
+            "an_agent_can_only_propose_a_claim_never_activate_one"
+          ]
+        },
+        {
+          "assertion": "jobs-stay-in-their-project",
+          "evidence_selectors": [
+            "a_job_in_another_project_is_refused_rather_than_run"
+          ]
+        },
+        {
+          "assertion": "runs-stay-in-their-project",
+          "evidence_selectors": [
+            "another_project_can_see_none_of_it"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "an_agent_can_only_propose_a_claim_never_activate_one"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_job_in_another_project_is_refused_rather_than_run"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "another_project_can_see_none_of_it"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AGENT-007",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
+      "statement": "A graph where a model chooses the next node cannot run and is refused at run start; agent runs execute in observe mode, so a finished run is unverified; and retrieval is lexical, finding shared words and nothing about meaning.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_planner_agent_is_refused_at_the_start_by_name"
         }
       ]
     },
@@ -1242,7 +1646,11 @@
         "dashboard/app/security/page.tsx",
         "dashboard/app/trigger-plugins/page.tsx",
         "dashboard/app/workflows/new/page.tsx",
-        "dashboard/app/workflows/page.tsx"
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/agent-runs/page.tsx",
+        "dashboard/app/agent-runs/[id]/page.tsx",
+        "dashboard/app/agent-runs/agent-runs-client.tsx",
+        "dashboard/app/agent-runs/[id]/agent-run-detail-client.tsx"
       ],
       "evidence": [
         {
