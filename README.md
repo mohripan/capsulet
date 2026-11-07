@@ -1,12 +1,12 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001, CAP-CORRECTNESS-013 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001, CAP-CORRECTNESS-013 -->
 # Capsulet
 
 Capsulet is a correctness-first AI-agent workflow platform for building and operating workflows
 whose important outputs can be inspected, checked, and governed.
 
 The product has three layers: an implemented workflow/job engine for deterministic execution and
-compatibility, an experimental agent platform with typed graphs and governed memory, and a
-correctness plane whose deterministic kernel is implemented but whose runtime-wide admission and
+compatibility, an experimental agent platform with typed graphs, a durable worker that executes them, and
+governed memory, and a correctness plane whose deterministic kernel is implemented but whose runtime-wide admission and
 assurance model is planned. See the
 [product constitution](docs/superpowers/specs/2026-08-30-correctness-first-agent-workflow-platform-design.md)
 and the [public claim registry](docs/contracts/product-claims.md) for the authoritative boundaries.
@@ -24,8 +24,9 @@ is `verify --profile full`; inspect its machine-readable definition with
 
 - typed agent graph definitions with nodes, ports, hyperedges, transition policies, and static execution order
 - agent definitions with graph references, step/token/time/cost budgets, and termination policies
-- queued agent runs with durable state snapshots and semantic trace events
-- application-level agent runtime execution with pluggable node adapters, budget enforcement, failure handling, and validator-pass completion
+- agent runs executed by a dedicated durable worker, with deterministic nodes, local-model nodes, memory reads, validators, and job and memory-write effects that happen once per run
+- validators that send an agent round again until it passes or a budget stops it, with usage and every step readable from the run's log
+- cancelling a run, and approving or refusing one waiting at a human gate, over the API
 - claim-first memory records for sources, evidence, entities, claims, events, relationships, and contract DSL summaries
 - nested memory subgraphs with owner, schema, permissions, summary-claim, summary-trace, membership, activation, canonical entity, graph attachment, and explicit cross-subgraph edge primitives
 - deterministic local ingestion that proposes candidate claims and evidence-backed memory from uploaded text
@@ -52,8 +53,9 @@ Capsulet is organized as three cooperating layers:
 - **Workflow engine (implemented compatibility infrastructure):** durable jobs, runners, workflow
   DAGs, triggers, retries, cancellation, logs, and artifacts.
 - **Agent platform (experimental):** typed agent definitions and static execution graphs, budgets,
-  opaque JSON state snapshots, traces, and governed-memory adapters. There is not yet a dedicated
-  production agent worker.
+  validators that drive a bounded loop, and a durable worker that executes them against governed
+  memory and a local model. A graph where a model chooses the next node cannot run yet and is refused
+  at run start, and a finished run is `unverified`: nothing has checked its result.
 - **Correctness plane (implemented kernel slice; planned platform enforcement):** proposals,
   deterministic checks, evidence, residual obligations, and certificates. Runtime-wide protected
   boundary admission and the unified verified-computation IR are not implemented yet.
@@ -62,13 +64,13 @@ Governed memory is a major agent-platform subsystem, not Capsulet's complete ide
 claims, entities, events, relationships, evidence, permissions, source authority, contradictions,
 review state, and nested contexts.
 
-An agent definition binds a graph to an enterprise control envelope: max steps, tokens, runtime seconds, cost, and explicit termination conditions. An agent run carries a JSON state document. The runtime executes graph nodes through pluggable adapters, writes state snapshots after node completion, appends trace events, and stops on success, failure, or budget/termination policy.
+An agent definition binds a graph to a control envelope: iterations, tokens, runtime seconds, cost, and explicit termination conditions. Starting a run compiles the agent into a versioned definition, and the graph worker executes it as a bounded loop. Node configuration is part of that version, so changing a prompt makes a new one. A failed validator sends the run round again with what its last attempt left. A budget, a lack of progress, a safety check or a person's refusal ends it as `stopped`, never as `succeeded`.
 
 ```text
-agent graph -> agent definition -> agent run -> node adapter -> state snapshot
-                                      |              |
-                                      v              v
-                               trace events    model/tool/vector work
+state -> agent-enter -> (your graph) -> agent-continue -> agent-leave -> state
+                             |                 |
+                             v                 v
+                   event log and usage    go round again?
 ```
 
 The memory graph is claim-first. A claim records what was said, who or what it is about, where it came from, when it was observed or valid, its confidence, and its review state. Nested subgraphs provide bounded memory contexts for teams, projects, customers, incidents, or personal modules. Each active subgraph must have an owner, schema, permissions, summary claim, and traceability from that summary back to inner claims or evidence. Canonical entities connect local entities across subgraphs without erasing context-specific disagreement.
@@ -124,7 +126,7 @@ proposer -> kernel (deterministic) -> certificate
 
 ## How execution stays durable
 
-PostgreSQL is the source of truth. Agent graph definitions, agent definitions, agent runs, state snapshots, and trace events are persisted durably. The runtime can be driven by a worker in later slices without changing the graph or run model.
+PostgreSQL is the source of truth. An agent run's status is a fold over its append-only event log, so a worker that dies mid-run loses nothing: the next one reads the log and carries on. Effects are claimed before they are attempted, so a job or a memory write happens once however many workers it takes. See [ADR 0019](docs/adr/0019-agent-runs-execute-on-the-durable-path.md).
 
 The existing job runner path remains durable as the lower-level execution substrate. A worker atomically leases a queued job, records the attempt, and renews the lease while execution is active. After lease expiry, non-reattachable work is requeued; Kubernetes work can be adopted by another worker without incrementing the attempt count. Heartbeat and finalization both require the current lease owner, so the previous worker cannot commit a result after adoption. See [ADR 0013](docs/adr/0013-owner-bound-finalization-for-adoptable-job-attempts.md).
 
@@ -141,7 +143,7 @@ docker compose ps
 
 Open the dashboard at <http://127.0.0.1:3000> and the API at <http://127.0.0.1:8080>.
 
-The local stack includes PostgreSQL, MinIO, Mailpit, API, worker, scheduler, evaluator, and dashboard. Compose waits on dependency health and restarts long-running services after failure. Sign in with the development token `capsulet-local-admin-token-change-me`; replace it before exposing the stack.
+The local stack includes PostgreSQL, MinIO, Mailpit, API, worker, graph worker, scheduler, evaluator, and dashboard. Compose waits on dependency health and restarts long-running services after failure. Sign in with the development token `capsulet-local-admin-token-change-me`; replace it before exposing the stack.
 
 Useful checks:
 
@@ -149,7 +151,7 @@ Useful checks:
 curl http://127.0.0.1:8080/livez
 curl http://127.0.0.1:8080/readyz
 curl http://127.0.0.1:8080/metrics
-docker compose logs -f api worker scheduler evaluator
+docker compose logs -f api worker graph-worker scheduler evaluator
 ```
 
 Stop the stack without deleting persisted volumes:
@@ -168,13 +170,20 @@ curl -H 'Authorization: Bearer <token>' -X POST http://127.0.0.1:8080/v1/agents
 curl -H 'Authorization: Bearer <token>' -X POST http://127.0.0.1:8080/v1/agents/<agent-id>/runs
 ```
 
-Read graph, agent, and run state:
+Read a run, read its log, and act on it:
 
 ```sh
-curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/graphs
-curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/agents
-curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/agent-runs
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/agent-runs/<run-id>
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:8080/v1/agent-runs/<run-id>/events
+curl -H 'Authorization: Bearer <token>' -X POST http://127.0.0.1:8080/v1/agent-runs/<run-id>/cancel
+curl -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"approved":true}' -X POST http://127.0.0.1:8080/v1/agent-runs/<run-id>/decisions
 ```
+
+Model nodes use a local [Ollama](https://ollama.com) at `CAPSULET_OLLAMA_URL`. With none reachable they
+fail and say so, and everything deterministic still runs. See [the API guide](docs/api.md#agents-and-agent-runs)
+for what a node can be configured to do. `scripts/agent-smoke.ps1` runs agents through the stack, killing
+the worker mid-run.
 
 ## Memory Studio API
 
@@ -247,7 +256,7 @@ The response contains the workflow run and preserved successful step runs. Activ
 
 ## Kubernetes with Helm
 
-The chart installs the API, worker, scheduler, evaluator, dashboard, migration job, separated control-plane/execution service accounts, default-deny execution network policy, services, configuration, and optional bundled PostgreSQL and MinIO.
+The chart installs the API, worker, graph worker, scheduler, evaluator, dashboard, migration job, separated control-plane/execution service accounts, default-deny execution network policy, services, configuration, and optional bundled PostgreSQL and MinIO.
 
 ```sh
 helm lint charts/capsulet
@@ -280,6 +289,7 @@ crates/
   scheduler/    compatibility automation triggering and DAG reconciliation
   evaluator/    durable trigger evaluation and retention cleanup
   worker/       lower-level job runtime loop, runner selection, and health endpoints
+  graph-worker/ durable worker that executes agent runs and IR runs
   storage/      filesystem and S3-compatible object storage
   cli/          command-line client
 dashboard/      Next.js dashboard

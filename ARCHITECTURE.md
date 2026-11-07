@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008, CAP-CORRECTNESS-013 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-MEMORY-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008, CAP-CORRECTNESS-013 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -13,8 +13,8 @@ For a shorter operator-facing overview, see [docs/architecture.md](docs/architec
 ## Scope and maturity
 
 **Implemented now:** an authenticated PostgreSQL-backed control plane, deterministic job execution,
-compatibility workflow DAGs, governed-memory records, typed graph/agent definitions, a testable
-application agent runtime, dashboard, object storage, and runner adapters.
+compatibility workflow DAGs, governed-memory records, typed graph/agent definitions, a dashboard,
+object storage, and runner adapters.
 
 **Experimental:** agent and memory APIs, automations, the handwritten dashboard and SDK, Helm
 self-hosting, and operational integrations.
@@ -25,6 +25,10 @@ today's workflows and agent graphs in the IR.
 
 **New in M3:** a dedicated durable graph worker executes the IR. A run's state is a fold over an
 append-only event log, so recovery after a crash is the ordinary path rather than a special one.
+
+**New since M3:** agent runs execute. Starting one compiles the agent into a definition and the graph
+worker runs it, with deterministic, local-model, memory, validator and once-only effect nodes. See
+[ADR 0019](docs/adr/0019-agent-runs-execute-on-the-durable-path.md).
 
 **Hardened since M3:** the correctness kernel and the assurance gate were audited against their own
 documented guarantees. Three were not implemented — a boundary was satisfied by a certificate that
@@ -198,7 +202,7 @@ The Axum API is the synchronous control-plane boundary. It:
 - runs embedded SQLx migrations on startup, unless migration behavior is configured separately;
 - creates, lists, reviews, and governs memory sources, evidence, entities, claims, events, relationships, memory contracts, nested subgraphs, canonical identities, entity-resolution proposals, and claim conflicts;
 - creates, lists, and reads typed agent execution graph definitions;
-- creates, lists, and reads agent definitions and queued agent runs;
+- creates, lists, and reads agent definitions, and starts, reads, cancels and decides on agent runs;
 - creates, lists, reads, updates, and deletes job definitions;
 - creates and reads compatibility workflow definitions, including dependency edges;
 - manages automations, trigger definitions, and custom-trigger plugin metadata;
@@ -209,20 +213,33 @@ The Axum API is the synchronous control-plane boundary. It:
 
 The API is the HTTP transport adapter. Route wiring, middleware, request extraction, response models, and status-code mapping live in `capsulet-api`. Shared application commands and ports live in `capsulet-application`; some HTTP orchestration still lives in `capsulet-api` and is being moved behind application services incrementally. PostgreSQL and object storage remain concrete adapters through `capsulet-postgres` and `capsulet-storage`. Bearer authentication is fail-closed by default, viewer/operator/admin roles authorize routes, and mutation audits are durable.
 
-### Agent runtime (`capsulet-application::agent_runtime`)
+### Agent runs
 
-The first agent runtime slice lives in the application crate so it can be driven by the API, a future agent worker, or tests without depending on HTTP or SQLx. It:
+An agent run is an IR run with a product record in front of it. `POST /v1/agents/{id}/runs` compiles the
+agent through `capsulet-ir-adapters::from_agent` and writes the definition version, the run, its
+admission and its inputs in one transaction. The graph worker advances it from there, and everything
+the API reports about a run is read from its log.
 
-- validates that the run belongs to the agent and is not terminal;
-- marks queued runs running;
-- walks the graph's static order;
-- calls a pluggable `AgentNodeExecutor` for each node;
-- persists every state version through an `AgentRuntimeRepository`;
-- appends semantic trace events for node start/completion, budget stops, failures, and run success;
-- enforces step, token, and cost budgets;
-- maps validator-pass outcomes to `succeeded` and other explicit stops to `stopped`.
+The compiled shape is a bounded loop around the graph:
 
-Provider-specific LLM, embedding, vector-search, reranking, prompt, memory, and validation adapters should implement the node executor boundary rather than entering the domain model. The runtime acts on agent execution graphs and should call the memory graph through explicit memory query/write adapters rather than mixing claim governance into execution-graph primitives.
+```text
+inputs -> agent-enter -> (the graph) -> agent-continue -> agent-leave -> outputs
+```
+
+- State fields cross the loop through its boundary nodes. A field both read and written is carried to
+  the next iteration, which is how a retry sees its own last attempt.
+- `agent-continue` is deterministic. It reads every validator's result, and reports the continuation
+  and how many different results the loop has produced, so a loop repeating itself is stopped.
+- Node configuration is part of the definition, so changing a prompt makes a new version.
+
+`capsulet_graph_worker::AgentExecutor` runs each node. Every value it produces is checked against its
+port's schema before being stored, which makes port types constrain values rather than only wiring.
+Values live in `ir_run_values`, scoped to a project, and the log carries their digests. A model call
+goes through `ModelClient`, and the one implementation is a local Ollama. With none configured a model
+node fails and says so. Retrieval is lexical: it finds shared words and nothing about meaning.
+
+`capsulet-application::agent_runtime` predates this and only tests call it. It stays until nothing
+cites it, and does not describe production.
 
 ### Scheduler (`capsulet-scheduler`)
 
@@ -256,7 +273,7 @@ The `capsulet-runner` binary is only a component placeholder; execution is coord
 
 ### Dashboard (`dashboard`)
 
-The Next.js dashboard currently provides Memory Studio views for ingestion, claim review, entity resolution, nested graph governance, and claim conflicts, alongside operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, artifacts, identity, and audit events. Graph/agent authoring and agent-run trace views are the next primary runtime surface. Browser requests go through `/api/capsulet/...`; the server-side proxy reads an HttpOnly credential cookie and forwards its bearer token to `CAPSULET_DASHBOARD_API_URL`.
+The Next.js dashboard currently provides Memory Studio views for ingestion, claim review, entity resolution, nested graph governance, and claim conflicts, alongside operational views for job definitions, workflow DAGs, automations, execution pools/host groups, runs, logs, artifacts, identity, and audit events. Agent runs and their event logs have a view; graph and agent authoring are still next. Browser requests go through `/api/capsulet/...`; the server-side proxy reads an HttpOnly credential cookie and forwards its bearer token to `CAPSULET_DASHBOARD_API_URL`.
 
 ### CLI (`capsulet-cli`)
 
@@ -499,13 +516,10 @@ and a test or source pointer:
   `policy_version` a certificate carries against the policy in force. Recording the rule on the body
   would break every existing seal, so the rule is pinned by test instead (`CAP-ASSURANCE-006`).
 
-A larger change is planned for the agent runtime. Today node output moves between nodes as an
-opaque `state_json` string that nothing inspects, while `GraphDefinition::new` compares
-`PortValueType` discriminants across hyperedges, so the typing is checked at the ports and not on
-the values. `NodeKind::Validator` is likewise a node an author can omit, which makes validation
-opt-in rather than a guarantee. The intended evolution replaces `state_json` with typed values
-carrying references into the memory graph, turns node executors into proposers whose output the
-runtime commits only on an admitted verdict, and adds byte offsets and source content hashes to
-`Evidence` so that citations can be re-derived from their sources. See
+A larger change is planned for agent runs. Values are now checked against their ports, but
+`NodeKind::Validator` is still a node an author can omit, which makes validation opt-in rather than a
+guarantee, and a run's output is committed without an admitted verdict. The intended evolution turns
+node executors into proposers whose output the runtime commits only on one, which is what `enforce`
+mode and the M4 verifier protocol are for. See
 [docs/design/correctness-architecture.md](docs/design/correctness-architecture.md) and
 [ADR 0012](docs/adr/0012-correctness-kernel-and-proposer-checker-split.md).
