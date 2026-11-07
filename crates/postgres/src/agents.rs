@@ -11,21 +11,61 @@ use sqlx::Row;
 use crate::{PostgresStore, PostgresStoreError};
 
 impl PostgresStore {
-    /// Saves or replaces an agent definition and its backing typed graph.
+    /// Saves or replaces an agent definition and its backing typed graph, in the
+    /// default project.
     ///
     /// # Errors
     ///
     /// Returns [`PostgresStoreError`] when persistence fails.
     pub async fn upsert_agent(&self, agent: &AgentDefinition) -> Result<(), PostgresStoreError> {
         self.upsert_graph(agent.graph()).await?;
+        self.upsert_agent_in_project(agent, "default", "default")
+            .await
+    }
+
+    /// Saves or replaces an agent definition owned by one project.
+    ///
+    /// The graph it binds must already belong to the same project, and stays
+    /// locked until the write commits, so an agent can never end up bound to a
+    /// graph its project does not own. The graph itself is not written: an agent
+    /// carries a copy, and saving one must not revert whatever the graph's own
+    /// endpoint last stored.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError::ScopeMismatch`] when the graph or the agent
+    /// id belongs to another project, and [`PostgresStoreError`] when persistence
+    /// fails.
+    pub async fn upsert_agent_in_project(
+        &self,
+        agent: &AgentDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), PostgresStoreError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
+        let graph_owned = sqlx::query_scalar::<_, i32>(
+            r"
+            SELECT 1 FROM graph_definitions
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            FOR SHARE
+            ",
+        )
+        .bind(agent.graph().id().as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if graph_owned.is_none() {
+            return Err(PostgresStoreError::ScopeMismatch);
+        }
+
+        let written = sqlx::query(
             r"
             INSERT INTO agent_definitions (
                 id, name, graph_id, budget_max_steps, budget_max_tokens,
-                budget_max_seconds, budget_max_cost_micros, updated_at
+                budget_max_seconds, budget_max_cost_micros, tenant_id, project_id, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 graph_id = EXCLUDED.graph_id,
@@ -34,6 +74,8 @@ impl PostgresStore {
                 budget_max_seconds = EXCLUDED.budget_max_seconds,
                 budget_max_cost_micros = EXCLUDED.budget_max_cost_micros,
                 updated_at = now()
+            WHERE agent_definitions.tenant_id = EXCLUDED.tenant_id
+              AND agent_definitions.project_id = EXCLUDED.project_id
             ",
         )
         .bind(agent.id().as_str())
@@ -55,8 +97,13 @@ impl PostgresStore {
             i64::try_from(agent.budget().max_cost_micros())
                 .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?,
         )
+        .bind(tenant_id)
+        .bind(project_id)
         .execute(&mut *tx)
         .await?;
+        if written.rows_affected() == 0 {
+            return Err(PostgresStoreError::ScopeMismatch);
+        }
 
         sqlx::query("DELETE FROM agent_termination_conditions WHERE agent_id = $1")
             .bind(agent.id().as_str())
@@ -135,6 +182,208 @@ impl PostgresStore {
             )?),
             Some(self.load_termination_policy(id).await?),
         )?))
+    }
+
+    /// Finds one agent definition inside a project.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn find_agent_in_project(
+        &self,
+        id: &AgentId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<AgentDefinition>, PostgresStoreError> {
+        let owned = sqlx::query_scalar::<_, i32>(
+            "SELECT 1 FROM agent_definitions WHERE id = $1 AND tenant_id = $2 AND project_id = $3",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        if owned.is_none() {
+            return Ok(None);
+        }
+        self.find_agent(id).await
+    }
+
+    /// Lists a project's agents by most recent update, scoping before the limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn list_agents_in_project(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentDefinition>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id
+            FROM agent_definitions
+            WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY updated_at DESC, id ASC
+            LIMIT $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut agents = Vec::with_capacity(rows.len());
+        for row in rows {
+            let agent_id = AgentId::new(row.try_get::<String, _>("id")?)
+                .map_err(PostgresStoreError::InvalidPersistedValue)?;
+            if let Some(agent) = self.find_agent(&agent_id).await? {
+                agents.push(agent);
+            }
+        }
+        Ok(agents)
+    }
+
+    /// Creates a queued agent run owned by one project.
+    ///
+    /// Insert only. An id that already exists is a conflict rather than an
+    /// overwrite, because overwriting would reset a run that may be under way.
+    /// The agent must belong to the same project, and stays locked until the
+    /// write commits.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError::ScopeMismatch`] when the agent or the run id
+    /// belongs to another project, [`PostgresStoreError::AlreadyExists`] when
+    /// this project already has a run with this id, and [`PostgresStoreError`]
+    /// when persistence fails.
+    pub async fn create_agent_run_in_project(
+        &self,
+        run: &AgentRunRecord,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), PostgresStoreError> {
+        let mut tx = self.pool.begin().await?;
+        let agent_owned = sqlx::query_scalar::<_, i32>(
+            r"
+            SELECT 1 FROM agent_definitions
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            FOR SHARE
+            ",
+        )
+        .bind(run.agent_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if agent_owned.is_none() {
+            return Err(PostgresStoreError::ScopeMismatch);
+        }
+
+        let state_version = i64::try_from(run.state_version)
+            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?;
+        let written = sqlx::query(
+            r"
+            INSERT INTO agent_runs (
+                id, agent_id, status, state_version, state_json, tenant_id, project_id, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+            ON CONFLICT (id) DO NOTHING
+            ",
+        )
+        .bind(run.id.as_str())
+        .bind(run.agent_id.as_str())
+        .bind(run.status.to_string())
+        .bind(state_version)
+        .bind(run.state_json.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .execute(&mut *tx)
+        .await?;
+        if written.rows_affected() == 0 {
+            let same_project = sqlx::query_scalar::<_, i32>(
+                "SELECT 1 FROM agent_runs WHERE id = $1 AND tenant_id = $2 AND project_id = $3",
+            )
+            .bind(run.id.as_str())
+            .bind(tenant_id)
+            .bind(project_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            return Err(if same_project.is_some() {
+                PostgresStoreError::AlreadyExists(run.id.as_str().to_string())
+            } else {
+                PostgresStoreError::ScopeMismatch
+            });
+        }
+
+        sqlx::query(
+            r"
+            INSERT INTO agent_state_snapshots (agent_run_id, version, state_json)
+            VALUES ($1, $2, $3)
+            ",
+        )
+        .bind(run.id.as_str())
+        .bind(state_version)
+        .bind(run.state_json.as_str())
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Finds one agent run inside a project.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn find_agent_run_in_project(
+        &self,
+        id: &AgentRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<AgentRunRecord>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, agent_id, status, state_version, state_json
+            FROM agent_runs
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_agent_run).transpose()
+    }
+
+    /// Lists a project's agent runs by most recent update, scoping before the limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn list_agent_runs_in_project(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentRunRecord>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, agent_id, status, state_version, state_json
+            FROM agent_runs
+            WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY updated_at DESC, id ASC
+            LIMIT $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_agent_run).collect()
     }
 
     /// Lists agent definitions by most recent update.
@@ -240,16 +489,7 @@ impl PostgresStore {
         else {
             return Ok(None);
         };
-        Ok(Some(AgentRunRecord {
-            id: AgentRunId::new(row.try_get::<String, _>("id")?)
-                .map_err(PostgresStoreError::InvalidPersistedValue)?,
-            agent_id: AgentId::new(row.try_get::<String, _>("agent_id")?)
-                .map_err(PostgresStoreError::InvalidPersistedValue)?,
-            status: parse_agent_run_status(&row.try_get::<String, _>("status")?)?,
-            state_version: u64::try_from(row.try_get::<i64, _>("state_version")?)
-                .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?,
-            state_json: row.try_get::<String, _>("state_json")?,
-        }))
+        row_to_agent_run(&row).map(Some)
     }
 
     /// Lists agent runs by most recent update.
@@ -272,21 +512,7 @@ impl PostgresStore {
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
-        rows.iter()
-            .map(|row| {
-                Ok(AgentRunRecord {
-                    id: AgentRunId::new(row.try_get::<String, _>("id")?)
-                        .map_err(PostgresStoreError::InvalidPersistedValue)?,
-                    agent_id: AgentId::new(row.try_get::<String, _>("agent_id")?)
-                        .map_err(PostgresStoreError::InvalidPersistedValue)?,
-                    status: parse_agent_run_status(&row.try_get::<String, _>("status")?)?,
-                    state_version: u64::try_from(row.try_get::<i64, _>("state_version")?).map_err(
-                        |error| PostgresStoreError::InvalidPersistedValue(error.to_string()),
-                    )?,
-                    state_json: row.try_get::<String, _>("state_json")?,
-                })
-            })
-            .collect()
+        rows.iter().map(row_to_agent_run).collect()
     }
 
     /// Appends or replaces an agent trace event at a run-local sequence.
@@ -401,6 +627,19 @@ impl AgentRuntimeRepository for PostgresStore {
     async fn append_trace_event(&self, event: &AgentTraceRecord) -> Result<(), Self::Error> {
         self.append_agent_trace_event(event).await
     }
+}
+
+fn row_to_agent_run(row: &sqlx::postgres::PgRow) -> Result<AgentRunRecord, PostgresStoreError> {
+    Ok(AgentRunRecord {
+        id: AgentRunId::new(row.try_get::<String, _>("id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        agent_id: AgentId::new(row.try_get::<String, _>("agent_id")?)
+            .map_err(PostgresStoreError::InvalidPersistedValue)?,
+        status: parse_agent_run_status(&row.try_get::<String, _>("status")?)?,
+        state_version: u64::try_from(row.try_get::<i64, _>("state_version")?)
+            .map_err(|error| PostgresStoreError::InvalidPersistedValue(error.to_string()))?,
+        state_json: row.try_get::<String, _>("state_json")?,
+    })
 }
 
 fn parse_agent_run_status(value: &str) -> Result<AgentRunStatus, PostgresStoreError> {

@@ -56,6 +56,8 @@ pub(crate) enum ApiError {
     RunNotFound(String),
     #[error("job run already exists: {0}")]
     RunAlreadyExists(String),
+    #[error("agent run already exists: {0}")]
+    AgentRunAlreadyExists(String),
     #[error("job run logs not found: {0}")]
     RunLogsNotFound(String),
     #[error("job artifact not found: {0}")]
@@ -112,7 +114,10 @@ impl ApiError {
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::Validation(_) | Self::InvalidWorkflowRunTransition(_) => StatusCode::BAD_REQUEST,
             Self::QueueOverloaded(_) => StatusCode::TOO_MANY_REQUESTS,
-            Self::WorkflowLocked(_) | Self::JobDefinitionInUse(_) | Self::RunAlreadyExists(_) => {
+            Self::WorkflowLocked(_)
+            | Self::JobDefinitionInUse(_)
+            | Self::RunAlreadyExists(_)
+            | Self::AgentRunAlreadyExists(_) => {
                 StatusCode::CONFLICT
             }
             Self::UnknownJobDefinition(_) | Self::UnknownExecutionPool(_) => {
@@ -168,6 +173,7 @@ impl ApiError {
             Self::TriggerPluginNotFound(_) => "trigger_plugin_not_found",
             Self::RunNotFound(_) => "job_run_not_found",
             Self::RunAlreadyExists(_) => "job_run_already_exists",
+            Self::AgentRunAlreadyExists(_) => "agent_run_already_exists",
             Self::Proposer(_) => "proposer_unavailable",
             Self::RunLogsNotFound(_) => "job_run_logs_not_found",
             Self::ArtifactNotFound(_) => "job_artifact_not_found",

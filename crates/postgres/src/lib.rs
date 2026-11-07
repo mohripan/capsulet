@@ -230,6 +230,10 @@ impl PostgresStore {
 pub enum PostgresStoreError {
     #[error("resource not found in selected tenant/project")]
     ScopeMismatch,
+    /// This project already has a resource with this id. Distinct from
+    /// [`Self::ScopeMismatch`], which must not reveal that an id exists elsewhere.
+    #[error("{0} already exists in this project")]
+    AlreadyExists(String),
     #[error("postgres error: {0}")]
     Sqlx(#[from] sqlx::Error),
     #[error("migration error: {0}")]

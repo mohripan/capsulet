@@ -22,10 +22,350 @@ use capsulet_core::{
 
 use capsulet_core::JobRunStatus;
 
-use capsulet_postgres::PostgresStore;
+use capsulet_postgres::{PostgresStore, PostgresStoreError};
 
 mod support;
 use support::{fixture_id as unique_id, required_database_url as database_url};
+
+async fn scoped_store() -> PostgresStore {
+    let store = PostgresStore::connect(&database_url())
+        .await
+        .expect("connect to postgres");
+    store.migrate().await.expect("run migrations");
+    store
+}
+
+fn scoped_agent(id: &str, graph: GraphDefinition) -> AgentDefinition {
+    AgentDefinition::new(
+        AgentId::new(id).expect("agent id"),
+        "Scoped agent",
+        graph,
+        Some(AgentBudget::new(4, 1_000, 60, 1_000).expect("budget")),
+        Some(AgentTerminationPolicy::new(vec![
+            capsulet_core::TerminationCondition::ValidatorPass,
+        ])),
+    )
+    .expect("agent")
+}
+
+fn scoped_agent_run(id: &str, agent: &AgentDefinition) -> AgentRunRecord {
+    AgentRunRecord {
+        id: AgentRunId::new(id).expect("run id"),
+        agent_id: agent.id().clone(),
+        status: AgentRunStatus::Queued,
+        state_version: 0,
+        state_json: r#"{"query":"scoped"}"#.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn graph_upsert_cannot_replace_another_projects_definition_or_parts() {
+    let store = scoped_store().await;
+    let project = unique_id("graph_owner");
+    let foreign = unique_id("graph_foreign");
+    let original = sample_graph("scoped_graph");
+    store
+        .upsert_graph_in_project(&original, "default", &project)
+        .await
+        .expect("create in the owning project");
+
+    let replacement = GraphDefinition::new(
+        original.id().clone(),
+        "Taken over",
+        vec![],
+        vec![],
+        GraphTransitionPolicy::static_acyclic(),
+    )
+    .expect("a valid empty graph");
+    let refused = store
+        .upsert_graph_in_project(&replacement, "default", &foreign)
+        .await
+        .expect_err("another project must not replace the graph");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+
+    let stored = store
+        .find_graph_in_project(original.id(), "default", &project)
+        .await
+        .expect("find")
+        .expect("the original survives");
+    assert_eq!(stored.name(), original.name());
+    assert_eq!(stored.nodes().len(), original.nodes().len());
+    assert_eq!(stored.hyperedges().len(), original.hyperedges().len());
+    assert!(
+        store
+            .find_graph_in_project(original.id(), "default", &foreign)
+            .await
+            .expect("find")
+            .is_none(),
+        "the graph must be invisible outside its project"
+    );
+    assert!(
+        store
+            .find_graph_in_project(original.id(), "other-tenant", &project)
+            .await
+            .expect("find")
+            .is_none(),
+        "the graph must be invisible outside its tenant"
+    );
+}
+
+#[tokio::test]
+async fn graph_listing_applies_scope_before_the_limit() {
+    let store = scoped_store().await;
+    let project = unique_id("graph_list");
+    let owned = sample_graph("listed_graph");
+    store
+        .upsert_graph_in_project(&owned, "default", &project)
+        .await
+        .expect("owned");
+    let newer_foreign = sample_graph("listed_foreign");
+    store
+        .upsert_graph_in_project(&newer_foreign, "default", &unique_id("graph_list_other"))
+        .await
+        .expect("foreign");
+
+    let listed = store
+        .list_graphs_in_project("default", &project, 1)
+        .await
+        .expect("list");
+    assert_eq!(listed.len(), 1, "foreign rows must not consume the limit");
+    assert_eq!(listed[0].id(), owned.id());
+}
+
+#[tokio::test]
+async fn agent_upsert_refuses_a_graph_from_another_project_without_writing() {
+    let store = scoped_store().await;
+    let project = unique_id("agent_owner");
+    let foreign = unique_id("agent_foreign");
+    let graph = sample_graph("agent_graph");
+    store
+        .upsert_graph_in_project(&graph, "default", &foreign)
+        .await
+        .expect("foreign graph");
+
+    let agent = scoped_agent(&unique_id("agent_borrowing"), graph);
+    let refused = store
+        .upsert_agent_in_project(&agent, "default", &project)
+        .await
+        .expect_err("an agent cannot bind a graph its project does not own");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+    assert!(
+        store
+            .find_agent_in_project(agent.id(), "default", &project)
+            .await
+            .expect("find")
+            .is_none(),
+        "a refused agent must not leave a partial row"
+    );
+}
+
+#[tokio::test]
+async fn agent_upsert_does_not_rewrite_its_graph_or_cross_projects() {
+    let store = scoped_store().await;
+    let project = unique_id("agent_keep");
+    let graph = sample_graph("agent_keep_graph");
+    store
+        .upsert_graph_in_project(&graph, "default", &project)
+        .await
+        .expect("graph");
+
+    // The agent carries a stale copy of the graph; saving it must not write that
+    // copy back over what the graph's own endpoint last stored.
+    let agent = scoped_agent(&unique_id("agent_keep"), graph.clone());
+    let renamed = GraphDefinition::new(
+        graph.id().clone(),
+        "Renamed by its owner",
+        graph.nodes().to_vec(),
+        graph.hyperedges().to_vec(),
+        graph.transition_policy().clone(),
+    )
+    .expect("graph");
+    store
+        .upsert_graph_in_project(&renamed, "default", &project)
+        .await
+        .expect("rename");
+    store
+        .upsert_agent_in_project(&agent, "default", &project)
+        .await
+        .expect("agent");
+    let stored = store
+        .find_graph_in_project(graph.id(), "default", &project)
+        .await
+        .expect("find")
+        .expect("graph");
+    assert_eq!(stored.name(), "Renamed by its owner");
+
+    let other = unique_id("agent_keep_other");
+    let other_graph = sample_graph("agent_keep_other_graph");
+    store
+        .upsert_graph_in_project(&other_graph, "default", &other)
+        .await
+        .expect("other graph");
+    let takeover = scoped_agent(agent.id().as_str(), other_graph);
+    let refused = store
+        .upsert_agent_in_project(&takeover, "default", &other)
+        .await
+        .expect_err("another project must not replace the agent");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+    let kept = store
+        .find_agent_in_project(agent.id(), "default", &project)
+        .await
+        .expect("find")
+        .expect("the original agent survives");
+    assert_eq!(kept.graph().id(), graph.id());
+}
+
+#[tokio::test]
+async fn agent_listing_applies_scope_before_the_limit() {
+    let store = scoped_store().await;
+    let project = unique_id("agent_list");
+    let graph = sample_graph("agent_list_graph");
+    store
+        .upsert_graph_in_project(&graph, "default", &project)
+        .await
+        .expect("graph");
+    let owned = scoped_agent(&unique_id("agent_listed"), graph);
+    store
+        .upsert_agent_in_project(&owned, "default", &project)
+        .await
+        .expect("agent");
+
+    let other = unique_id("agent_list_other");
+    let foreign_graph = sample_graph("agent_list_foreign_graph");
+    store
+        .upsert_graph_in_project(&foreign_graph, "default", &other)
+        .await
+        .expect("foreign graph");
+    store
+        .upsert_agent_in_project(
+            &scoped_agent(&unique_id("agent_foreign"), foreign_graph),
+            "default",
+            &other,
+        )
+        .await
+        .expect("foreign agent");
+
+    let listed = store
+        .list_agents_in_project("default", &project, 1)
+        .await
+        .expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id(), owned.id());
+}
+
+#[tokio::test]
+async fn agent_run_creation_is_scoped_and_never_overwrites() {
+    let store = scoped_store().await;
+    let project = unique_id("run_owner");
+    let foreign = unique_id("run_foreign");
+    let graph = sample_graph("run_graph");
+    store
+        .upsert_graph_in_project(&graph, "default", &project)
+        .await
+        .expect("graph");
+    let agent = scoped_agent(&unique_id("run_agent"), graph);
+    store
+        .upsert_agent_in_project(&agent, "default", &project)
+        .await
+        .expect("agent");
+
+    let run = scoped_agent_run(&unique_id("run_scoped"), &agent);
+    store
+        .create_agent_run_in_project(&run, "default", &project)
+        .await
+        .expect("create");
+
+    // The same id again is a conflict, not a reset of work already under way.
+    let mut resubmitted = run.clone();
+    resubmitted.state_json = r#"{"query":"overwritten"}"#.to_string();
+    let conflict = store
+        .create_agent_run_in_project(&resubmitted, "default", &project)
+        .await
+        .expect_err("the id is taken");
+    assert!(matches!(conflict, PostgresStoreError::AlreadyExists(_)));
+    let stored = store
+        .find_agent_run_in_project(&run.id, "default", &project)
+        .await
+        .expect("find")
+        .expect("run");
+    assert_eq!(stored.state_json, run.state_json);
+
+    // Another project cannot learn the id is taken, or start this agent.
+    let taken_elsewhere = store
+        .create_agent_run_in_project(&run, "default", &foreign)
+        .await
+        .expect_err("another project owns this run id");
+    assert!(matches!(taken_elsewhere, PostgresStoreError::ScopeMismatch));
+    let foreign_start = scoped_agent_run(&unique_id("run_foreign_start"), &agent);
+    let refused = store
+        .create_agent_run_in_project(&foreign_start, "default", &foreign)
+        .await
+        .expect_err("the agent belongs to another project");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+    assert!(
+        store
+            .find_agent_run(&foreign_start.id)
+            .await
+            .expect("find")
+            .is_none(),
+        "a refused run must not leave a row"
+    );
+    assert!(
+        store
+            .find_agent_run_in_project(&run.id, "default", &foreign)
+            .await
+            .expect("find")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn agent_run_listing_applies_scope_before_the_limit() {
+    let store = scoped_store().await;
+    let project = unique_id("run_list");
+    let graph = sample_graph("run_list_graph");
+    store
+        .upsert_graph_in_project(&graph, "default", &project)
+        .await
+        .expect("graph");
+    let agent = scoped_agent(&unique_id("run_list_agent"), graph);
+    store
+        .upsert_agent_in_project(&agent, "default", &project)
+        .await
+        .expect("agent");
+    let owned = scoped_agent_run(&unique_id("run_listed"), &agent);
+    store
+        .create_agent_run_in_project(&owned, "default", &project)
+        .await
+        .expect("owned");
+
+    let other = unique_id("run_list_other");
+    let foreign_graph = sample_graph("run_list_foreign_graph");
+    store
+        .upsert_graph_in_project(&foreign_graph, "default", &other)
+        .await
+        .expect("graph");
+    let foreign_agent = scoped_agent(&unique_id("run_list_foreign_agent"), foreign_graph);
+    store
+        .upsert_agent_in_project(&foreign_agent, "default", &other)
+        .await
+        .expect("agent");
+    store
+        .create_agent_run_in_project(
+            &scoped_agent_run(&unique_id("run_foreign"), &foreign_agent),
+            "default",
+            &other,
+        )
+        .await
+        .expect("foreign");
+
+    let listed = store
+        .list_agent_runs_in_project("default", &project, 1)
+        .await
+        .expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, owned.id);
+}
 
 #[tokio::test]
 async fn audit_events_with_unverified_scope_are_retained_but_not_assigned_to_default_project() {

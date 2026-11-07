@@ -10,14 +10,35 @@ use sqlx::Row;
 use crate::{PostgresStore, PostgresStoreError};
 
 impl PostgresStore {
-    /// Saves or replaces a typed graph definition and all owned graph parts.
+    /// Saves or replaces a typed graph definition in the default project.
     ///
     /// # Errors
     ///
     /// Returns [`PostgresStoreError`] when persistence fails.
     pub async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), PostgresStoreError> {
+        self.upsert_graph_in_project(graph, "default", "default")
+            .await
+    }
+
+    /// Saves or replaces a typed graph and its parts, owned by one project.
+    ///
+    /// The header write is the ownership check: the upsert only matches a row
+    /// the project already owns, so a colliding id cannot take over another
+    /// project's graph, and ownership is never a second statement that could
+    /// fail after the graph was written.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError::ScopeMismatch`] when the id belongs to
+    /// another project, and [`PostgresStoreError`] when persistence fails.
+    pub async fn upsert_graph_in_project(
+        &self,
+        graph: &GraphDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), PostgresStoreError> {
         let mut tx = self.pool.begin().await?;
-        upsert_graph_header(&mut tx, graph).await?;
+        upsert_graph_header(&mut tx, graph, tenant_id, project_id).await?;
         clear_graph_parts(&mut tx, graph.id()).await?;
         insert_graph_nodes(&mut tx, graph).await?;
         insert_transition_actions(&mut tx, graph).await?;
@@ -61,6 +82,67 @@ impl PostgresStore {
             hyperedges,
             transition_policy,
         )?))
+    }
+
+    /// Finds one typed graph definition inside a project.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn find_graph_in_project(
+        &self,
+        id: &GraphId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<GraphDefinition>, PostgresStoreError> {
+        let owned = sqlx::query_scalar::<_, i32>(
+            "SELECT 1 FROM graph_definitions WHERE id = $1 AND tenant_id = $2 AND project_id = $3",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        if owned.is_none() {
+            return Ok(None);
+        }
+        self.find_graph(id).await
+    }
+
+    /// Lists a project's graphs by most recent update, scoping before the limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn list_graphs_in_project(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<GraphDefinition>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id
+            FROM graph_definitions
+            WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY updated_at DESC, id ASC
+            LIMIT $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut graphs = Vec::with_capacity(rows.len());
+        for row in rows {
+            let graph_id = GraphId::new(row.try_get::<String, _>("id")?)
+                .map_err(PostgresStoreError::InvalidPersistedValue)?;
+            if let Some(graph) = self.find_graph(&graph_id).await? {
+                graphs.push(graph);
+            }
+        }
+        Ok(graphs)
     }
 
     /// Lists typed graph definitions by most recent update.
@@ -258,25 +340,36 @@ impl GraphRepository for PostgresStore {
 async fn upsert_graph_header(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     graph: &GraphDefinition,
+    tenant_id: &str,
+    project_id: &str,
 ) -> Result<(), PostgresStoreError> {
     let (transition_mode, cycles_allowed) = transition_policy_parts(graph.transition_policy());
-    sqlx::query(
+    let written = sqlx::query(
         r"
-        INSERT INTO graph_definitions (id, name, transition_mode, cycles_allowed, updated_at)
-        VALUES ($1, $2, $3, $4, now())
+        INSERT INTO graph_definitions (
+            id, name, transition_mode, cycles_allowed, tenant_id, project_id, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, now())
         ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             transition_mode = EXCLUDED.transition_mode,
             cycles_allowed = EXCLUDED.cycles_allowed,
             updated_at = now()
+        WHERE graph_definitions.tenant_id = EXCLUDED.tenant_id
+          AND graph_definitions.project_id = EXCLUDED.project_id
         ",
     )
     .bind(graph.id().as_str())
     .bind(graph.name())
     .bind(transition_mode)
     .bind(cycles_allowed)
+    .bind(tenant_id)
+    .bind(project_id)
     .execute(&mut **tx)
     .await?;
+    if written.rows_affected() == 0 {
+        return Err(PostgresStoreError::ScopeMismatch);
+    }
     Ok(())
 }
 

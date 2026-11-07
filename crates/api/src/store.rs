@@ -37,6 +37,10 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         false
     }
 
+    fn is_already_exists(_error: &Self::Error) -> bool {
+        false
+    }
+
     async fn ping(&self) -> Result<(), Self::Error>;
     async fn prometheus_metrics(&self) -> Result<String, Self::Error> {
         Ok(String::new())
@@ -206,15 +210,60 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         tenant_id: &str,
         project_id: &str,
     ) -> Result<bool, Self::Error>;
-    async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error>;
-    async fn list_graphs(&self, limit: i64) -> Result<Vec<GraphDefinition>, Self::Error>;
-    async fn find_graph(&self, id: &GraphId) -> Result<Option<GraphDefinition>, Self::Error>;
-    async fn upsert_agent(&self, agent: &AgentDefinition) -> Result<(), Self::Error>;
-    async fn list_agents(&self, limit: i64) -> Result<Vec<AgentDefinition>, Self::Error>;
-    async fn find_agent(&self, id: &AgentId) -> Result<Option<AgentDefinition>, Self::Error>;
-    async fn upsert_agent_run(&self, run: &AgentRunRecord) -> Result<(), Self::Error>;
-    async fn list_agent_runs(&self, limit: i64) -> Result<Vec<AgentRunRecord>, Self::Error>;
-    async fn find_agent_run(&self, id: &AgentRunId) -> Result<Option<AgentRunRecord>, Self::Error>;
+    async fn upsert_graph(
+        &self,
+        graph: &GraphDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error>;
+    async fn list_graphs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<GraphDefinition>, Self::Error>;
+    async fn find_graph(
+        &self,
+        id: &GraphId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<GraphDefinition>, Self::Error>;
+    async fn upsert_agent(
+        &self,
+        agent: &AgentDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error>;
+    async fn list_agents(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentDefinition>, Self::Error>;
+    async fn find_agent(
+        &self,
+        id: &AgentId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<AgentDefinition>, Self::Error>;
+    async fn create_agent_run(
+        &self,
+        run: &AgentRunRecord,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error>;
+    async fn list_agent_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentRunRecord>, Self::Error>;
+    async fn find_agent_run(
+        &self,
+        id: &AgentRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<AgentRunRecord>, Self::Error>;
     async fn upsert_memory_source(&self, source: &Source) -> Result<(), Self::Error>;
     async fn list_memory_sources(
         &self,
@@ -580,6 +629,11 @@ impl ApiStore for PostgresStore {
     fn is_scope_mismatch(error: &Self::Error) -> bool {
         matches!(error, PostgresStoreError::ScopeMismatch)
     }
+
+    fn is_already_exists(error: &Self::Error) -> bool {
+        matches!(error, PostgresStoreError::AlreadyExists(_))
+    }
+
     type Error = PostgresStoreError;
 
     async fn ping(&self) -> Result<(), Self::Error> {
@@ -834,40 +888,92 @@ impl ApiStore for PostgresStore {
             .await
     }
 
-    async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error> {
-        self.upsert_graph(graph).await
+    async fn upsert_graph(
+        &self,
+        graph: &GraphDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        self.upsert_graph_in_project(graph, tenant_id, project_id)
+            .await
     }
 
-    async fn list_graphs(&self, limit: i64) -> Result<Vec<GraphDefinition>, Self::Error> {
-        self.list_graphs(limit).await
+    async fn list_graphs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<GraphDefinition>, Self::Error> {
+        self.list_graphs_in_project(tenant_id, project_id, limit)
+            .await
     }
 
-    async fn find_graph(&self, id: &GraphId) -> Result<Option<GraphDefinition>, Self::Error> {
-        self.find_graph(id).await
+    async fn find_graph(
+        &self,
+        id: &GraphId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<GraphDefinition>, Self::Error> {
+        self.find_graph_in_project(id, tenant_id, project_id).await
     }
 
-    async fn upsert_agent(&self, agent: &AgentDefinition) -> Result<(), Self::Error> {
-        self.upsert_agent(agent).await
+    async fn upsert_agent(
+        &self,
+        agent: &AgentDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        self.upsert_agent_in_project(agent, tenant_id, project_id)
+            .await
     }
 
-    async fn list_agents(&self, limit: i64) -> Result<Vec<AgentDefinition>, Self::Error> {
-        self.list_agents(limit).await
+    async fn list_agents(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentDefinition>, Self::Error> {
+        self.list_agents_in_project(tenant_id, project_id, limit)
+            .await
     }
 
-    async fn find_agent(&self, id: &AgentId) -> Result<Option<AgentDefinition>, Self::Error> {
-        self.find_agent(id).await
+    async fn find_agent(
+        &self,
+        id: &AgentId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<AgentDefinition>, Self::Error> {
+        self.find_agent_in_project(id, tenant_id, project_id).await
     }
 
-    async fn upsert_agent_run(&self, run: &AgentRunRecord) -> Result<(), Self::Error> {
-        self.upsert_agent_run(run).await
+    async fn create_agent_run(
+        &self,
+        run: &AgentRunRecord,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        self.create_agent_run_in_project(run, tenant_id, project_id)
+            .await
     }
 
-    async fn list_agent_runs(&self, limit: i64) -> Result<Vec<AgentRunRecord>, Self::Error> {
-        self.list_agent_runs(limit).await
+    async fn list_agent_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentRunRecord>, Self::Error> {
+        self.list_agent_runs_in_project(tenant_id, project_id, limit)
+            .await
     }
 
-    async fn find_agent_run(&self, id: &AgentRunId) -> Result<Option<AgentRunRecord>, Self::Error> {
-        self.find_agent_run(id).await
+    async fn find_agent_run(
+        &self,
+        id: &AgentRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<AgentRunRecord>, Self::Error> {
+        self.find_agent_run_in_project(id, tenant_id, project_id)
+            .await
     }
 
     async fn upsert_memory_source(&self, source: &Source) -> Result<(), Self::Error> {

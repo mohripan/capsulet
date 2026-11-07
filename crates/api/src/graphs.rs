@@ -11,7 +11,7 @@ use serde_json::to_string;
 use crate::{
     auth::Principal,
     error::ApiError,
-    http::{assign_resource_project, generated_id, project_context, require_resource_project},
+    http::{generated_id, project_context, require_resource_project},
     models::{
         AgentResponse, AgentRunResponse, CreateAgentRequest, CreateGraphRequest, GraphResponse,
         ListAgentRunsResponse, ListAgentsResponse, ListGraphsResponse, StartAgentRunRequest,
@@ -34,22 +34,13 @@ where
     let context = project_context(&headers, &principal)?;
     let id = request.id.clone().unwrap_or_else(|| generated_id("graph"));
     let graph = request.into_graph(id)?;
-    // The id may come from the request body, and the upsert conflicts on the id alone.
-    if state
-        .store
-        .find_graph(graph.id())
-        .await
-        .map_err(ApiError::store)?
-        .is_some()
-    {
-        require_resource_project(&state.store, "graphs", graph.id().as_str(), &context).await?;
-    }
+    // The upsert is the ownership check: an id another project holds matches no
+    // row, and the graph and its owner are written together.
     state
         .store
-        .upsert_graph(&graph)
+        .upsert_graph(&graph, &context.tenant_id, &context.project_id)
         .await
-        .map_err(ApiError::store)?;
-    assign_resource_project(&state.store, "graphs", graph.id().as_str(), &context).await?;
+        .map_err(ApiError::scoped_store::<S>)?;
     Ok((StatusCode::CREATED, Json(GraphResponse::from(&graph))))
 }
 
@@ -65,19 +56,12 @@ where
     let context = project_context(&headers, &principal)?;
     let graphs = state
         .store
-        .list_graphs(100)
+        .list_graphs(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
-    let mut scoped = Vec::new();
-    for graph in &graphs {
-        if require_resource_project(&state.store, "graphs", graph.id().as_str(), &context)
-            .await
-            .is_ok()
-        {
-            scoped.push(GraphResponse::from(graph));
-        }
-    }
-    Ok(Json(ListGraphsResponse { graphs: scoped }))
+    Ok(Json(ListGraphsResponse {
+        graphs: graphs.iter().map(GraphResponse::from).collect(),
+    }))
 }
 
 pub(crate) async fn get_graph<S, O>(
@@ -93,7 +77,12 @@ where
     let context = project_context(&headers, &principal)?;
     let id = GraphId::new(id).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "graphs", id.as_str(), &context).await?;
-    let Some(graph) = state.store.find_graph(&id).await.map_err(ApiError::store)? else {
+    let Some(graph) = state
+        .store
+        .find_graph(&id, &context.tenant_id, &context.project_id)
+        .await
+        .map_err(ApiError::store)?
+    else {
         return Err(ApiError::GraphNotFound(id.as_str().to_string()));
     };
     Ok(Json(GraphResponse::from(&graph)))
@@ -114,7 +103,7 @@ where
     require_resource_project(&state.store, "graphs", graph_id.as_str(), &context).await?;
     let Some(graph) = state
         .store
-        .find_graph(&graph_id)
+        .find_graph(&graph_id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -131,21 +120,11 @@ where
         )?),
     )
     .map_err(|error| ApiError::Validation(error.to_string()))?;
-    if state
-        .store
-        .find_agent(agent.id())
-        .await
-        .map_err(ApiError::store)?
-        .is_some()
-    {
-        require_resource_project(&state.store, "agents", agent.id().as_str(), &context).await?;
-    }
     state
         .store
-        .upsert_agent(&agent)
+        .upsert_agent(&agent, &context.tenant_id, &context.project_id)
         .await
-        .map_err(ApiError::store)?;
-    assign_resource_project(&state.store, "agents", agent.id().as_str(), &context).await?;
+        .map_err(ApiError::scoped_store::<S>)?;
     Ok((StatusCode::CREATED, Json(AgentResponse::from(&agent))))
 }
 
@@ -161,19 +140,12 @@ where
     let context = project_context(&headers, &principal)?;
     let agents = state
         .store
-        .list_agents(100)
+        .list_agents(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
-    let mut scoped = Vec::new();
-    for agent in &agents {
-        if require_resource_project(&state.store, "agents", agent.id().as_str(), &context)
-            .await
-            .is_ok()
-        {
-            scoped.push(AgentResponse::from(agent));
-        }
-    }
-    Ok(Json(ListAgentsResponse { agents: scoped }))
+    Ok(Json(ListAgentsResponse {
+        agents: agents.iter().map(AgentResponse::from).collect(),
+    }))
 }
 
 pub(crate) async fn get_agent<S, O>(
@@ -189,7 +161,12 @@ where
     let context = project_context(&headers, &principal)?;
     let id = AgentId::new(id).map_err(ApiError::validation)?;
     require_resource_project(&state.store, "agents", id.as_str(), &context).await?;
-    let Some(agent) = state.store.find_agent(&id).await.map_err(ApiError::store)? else {
+    let Some(agent) = state
+        .store
+        .find_agent(&id, &context.tenant_id, &context.project_id)
+        .await
+        .map_err(ApiError::store)?
+    else {
         return Err(ApiError::AgentNotFound(id.as_str().to_string()));
     };
     Ok(Json(AgentResponse::from(&agent)))
@@ -211,7 +188,7 @@ where
     require_resource_project(&state.store, "agents", agent_id.as_str(), &context).await?;
     if state
         .store
-        .find_agent(&agent_id)
+        .find_agent(&agent_id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()
@@ -225,15 +202,6 @@ where
             .unwrap_or_else(|| generated_id("agent_run")),
     )
     .map_err(ApiError::validation)?;
-    if state
-        .store
-        .find_agent_run(&run_id)
-        .await
-        .map_err(ApiError::store)?
-        .is_some()
-    {
-        require_resource_project(&state.store, "agent_runs", run_id.as_str(), &context).await?;
-    }
     let state_json = to_string(&request.initial_state)
         .map_err(|error| ApiError::Validation(error.to_string()))?;
     let command = StartAgentRunCommand {
@@ -248,12 +216,19 @@ where
         state_version: 0,
         state_json,
     };
+    // Insert only: an id that is already taken is a conflict rather than a reset
+    // of a run that may be under way.
     state
         .store
-        .upsert_agent_run(&record)
+        .create_agent_run(&record, &context.tenant_id, &context.project_id)
         .await
-        .map_err(ApiError::store)?;
-    assign_resource_project(&state.store, "agent_runs", record.id.as_str(), &context).await?;
+        .map_err(|error| {
+            if S::is_already_exists(&error) {
+                ApiError::AgentRunAlreadyExists(record.id.as_str().to_string())
+            } else {
+                ApiError::scoped_store::<S>(error)
+            }
+        })?;
     Ok((StatusCode::CREATED, Json(AgentRunResponse::new(&record)?)))
 }
 
@@ -269,19 +244,15 @@ where
     let context = project_context(&headers, &principal)?;
     let runs = state
         .store
-        .list_agent_runs(100)
+        .list_agent_runs(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
-    let mut scoped = Vec::new();
-    for run in &runs {
-        if require_resource_project(&state.store, "agent_runs", run.id.as_str(), &context)
-            .await
-            .is_ok()
-        {
-            scoped.push(AgentRunResponse::new(run)?);
-        }
-    }
-    Ok(Json(ListAgentRunsResponse { agent_runs: scoped }))
+    Ok(Json(ListAgentRunsResponse {
+        agent_runs: runs
+            .iter()
+            .map(AgentRunResponse::new)
+            .collect::<Result<Vec<_>, _>>()?,
+    }))
 }
 
 pub(crate) async fn get_agent_run<S, O>(
@@ -299,7 +270,7 @@ where
     require_resource_project(&state.store, "agent_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
-        .find_agent_run(&id)
+        .find_agent_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {

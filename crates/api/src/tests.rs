@@ -167,12 +167,59 @@ impl ObjectStore for FakeObjectStore {
     }
 }
 
+impl FakeStore {
+    /// Whether a project owns a resource, reading an unrecorded owner as the
+    /// default project the way the fake's `resource_project` does.
+    fn owns(&self, resource: &str, id: &str, tenant_id: &str, project_id: &str) -> bool {
+        self.ownership
+            .lock()
+            .expect("ownership lock")
+            .iter()
+            .find(|owner| owner.resource == resource && owner.id == id)
+            .map_or(tenant_id == "default" && project_id == "default", |owner| {
+                owner.tenant_id == tenant_id && owner.project_id == project_id
+            })
+    }
+
+    /// Records ownership on first write and refuses a write from another project,
+    /// standing in for the scoped upsert's `WHERE` clause.
+    fn claim_resource(
+        &self,
+        resource: &str,
+        id: &str,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), String> {
+        let mut ownership = self.ownership.lock().map_err(|error| error.to_string())?;
+        if let Some(owner) = ownership
+            .iter()
+            .find(|owner| owner.resource == resource && owner.id == id)
+        {
+            if owner.tenant_id != tenant_id || owner.project_id != project_id {
+                return Err("scope mismatch".to_string());
+            }
+        } else {
+            ownership.push(FakeOwnership {
+                resource: resource.to_string(),
+                id: id.to_string(),
+                tenant_id: tenant_id.to_string(),
+                project_id: project_id.to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
 #[async_trait::async_trait]
 impl ApiStore for FakeStore {
     type Error = String;
 
     fn is_scope_mismatch(error: &Self::Error) -> bool {
         error == "scope mismatch"
+    }
+
+    fn is_already_exists(error: &Self::Error) -> bool {
+        error == "already exists"
     }
 
     async fn record_audit_event(
@@ -868,26 +915,47 @@ impl ApiStore for FakeStore {
             .cloned())
     }
 
-    async fn upsert_graph(&self, graph: &GraphDefinition) -> Result<(), Self::Error> {
+    async fn upsert_graph(
+        &self,
+        graph: &GraphDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        self.claim_resource("graphs", graph.id().as_str(), tenant_id, project_id)?;
         let mut graphs = self.graphs.lock().map_err(|error| error.to_string())?;
         graphs.retain(|existing| existing.id() != graph.id());
         graphs.push(graph.clone());
         Ok(())
     }
 
-    async fn list_graphs(&self, limit: i64) -> Result<Vec<GraphDefinition>, Self::Error> {
+    async fn list_graphs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<GraphDefinition>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
-        Ok(self
+        let graphs = self
             .graphs
             .lock()
             .map_err(|error| error.to_string())?
-            .iter()
+            .clone();
+        Ok(graphs
+            .into_iter()
+            .filter(|graph| self.owns("graphs", graph.id().as_str(), tenant_id, project_id))
             .take(limit)
-            .cloned()
             .collect())
     }
 
-    async fn find_graph(&self, id: &GraphId) -> Result<Option<GraphDefinition>, Self::Error> {
+    async fn find_graph(
+        &self,
+        id: &GraphId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<GraphDefinition>, Self::Error> {
+        if !self.owns("graphs", id.as_str(), tenant_id, project_id) {
+            return Ok(None);
+        }
         Ok(self
             .graphs
             .lock()
@@ -897,26 +965,50 @@ impl ApiStore for FakeStore {
             .cloned())
     }
 
-    async fn upsert_agent(&self, agent: &AgentDefinition) -> Result<(), Self::Error> {
+    async fn upsert_agent(
+        &self,
+        agent: &AgentDefinition,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        if !self.owns("graphs", agent.graph().id().as_str(), tenant_id, project_id) {
+            return Err("scope mismatch".to_string());
+        }
+        self.claim_resource("agents", agent.id().as_str(), tenant_id, project_id)?;
         let mut agents = self.agents.lock().map_err(|error| error.to_string())?;
         agents.retain(|existing| existing.id() != agent.id());
         agents.push(agent.clone());
         Ok(())
     }
 
-    async fn list_agents(&self, limit: i64) -> Result<Vec<AgentDefinition>, Self::Error> {
+    async fn list_agents(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentDefinition>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
-        Ok(self
+        let agents = self
             .agents
             .lock()
             .map_err(|error| error.to_string())?
-            .iter()
+            .clone();
+        Ok(agents
+            .into_iter()
+            .filter(|agent| self.owns("agents", agent.id().as_str(), tenant_id, project_id))
             .take(limit)
-            .cloned()
             .collect())
     }
 
-    async fn find_agent(&self, id: &AgentId) -> Result<Option<AgentDefinition>, Self::Error> {
+    async fn find_agent(
+        &self,
+        id: &AgentId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<AgentDefinition>, Self::Error> {
+        if !self.owns("agents", id.as_str(), tenant_id, project_id) {
+            return Ok(None);
+        }
         Ok(self
             .agents
             .lock()
@@ -926,26 +1018,58 @@ impl ApiStore for FakeStore {
             .cloned())
     }
 
-    async fn upsert_agent_run(&self, run: &AgentRunRecord) -> Result<(), Self::Error> {
+    async fn create_agent_run(
+        &self,
+        run: &AgentRunRecord,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        if !self.owns("agents", run.agent_id.as_str(), tenant_id, project_id) {
+            return Err("scope mismatch".to_string());
+        }
         let mut runs = self.agent_runs.lock().map_err(|error| error.to_string())?;
-        runs.retain(|existing| existing.id != run.id);
+        if runs.iter().any(|existing| existing.id == run.id) {
+            return Err(
+                if self.owns("agent_runs", run.id.as_str(), tenant_id, project_id) {
+                    "already exists".to_string()
+                } else {
+                    "scope mismatch".to_string()
+                },
+            );
+        }
+        self.claim_resource("agent_runs", run.id.as_str(), tenant_id, project_id)?;
         runs.push(run.clone());
         Ok(())
     }
 
-    async fn list_agent_runs(&self, limit: i64) -> Result<Vec<AgentRunRecord>, Self::Error> {
+    async fn list_agent_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentRunRecord>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
-        Ok(self
+        let runs = self
             .agent_runs
             .lock()
             .map_err(|error| error.to_string())?
-            .iter()
+            .clone();
+        Ok(runs
+            .into_iter()
+            .filter(|run| self.owns("agent_runs", run.id.as_str(), tenant_id, project_id))
             .take(limit)
-            .cloned()
             .collect())
     }
 
-    async fn find_agent_run(&self, id: &AgentRunId) -> Result<Option<AgentRunRecord>, Self::Error> {
+    async fn find_agent_run(
+        &self,
+        id: &AgentRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<AgentRunRecord>, Self::Error> {
+        if !self.owns("agent_runs", id.as_str(), tenant_id, project_id) {
+            return Ok(None);
+        }
         Ok(self
             .agent_runs
             .lock()
@@ -4030,6 +4154,50 @@ async fn creates_and_returns_agent_definition() {
     let body = response_json(get_response).await;
     assert_eq!(body["budget"]["max_steps"], 12);
     assert_eq!(body["termination_conditions"][0], "validator_pass");
+}
+
+#[tokio::test]
+async fn resubmitting_an_agent_run_id_is_a_conflict_not_a_reset() {
+    let app = test_app(FakeStore::default());
+    create_graph(&app, "conflict_graph").await;
+    create_agent(&app, "conflict_agent", "conflict_graph").await;
+
+    let start = |query: &'static str| {
+        app.clone().oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/agents/conflict_agent/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "id": "conflict_run", "initial_state": { "query": query } })
+                        .to_string(),
+                ))
+                .expect("request"),
+        )
+    };
+    assert_eq!(
+        start("first").await.expect("response").status(),
+        axum::http::StatusCode::CREATED
+    );
+
+    let conflict = start("second").await.expect("response");
+    assert_eq!(conflict.status(), axum::http::StatusCode::CONFLICT);
+    assert_eq!(
+        response_json(conflict).await["code"],
+        "agent_run_already_exists"
+    );
+
+    let stored = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/agent-runs/conflict_run")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response_json(stored).await["state"]["query"], "first");
 }
 
 #[tokio::test]
