@@ -7,12 +7,13 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use opentelemetry::trace::{SpanId, SpanKind, Status, TracerProvider as _};
 use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData, SpanExporter};
+use tracing::Dispatch;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -147,7 +148,19 @@ impl SpanExporter for Unreachable {
     }
 }
 
+/// A dispatcher kept registered for the life of the process.
+///
+/// `tracing-core` caches whether each callsite is of interest. While exactly one
+/// dispatcher is registered, it decides that for a callsite by asking only the
+/// dispatcher of whichever thread hits the callsite first. In a test binary that
+/// thread is often another test's, with no subscriber, and the callsite is then cached
+/// as of no interest for every thread: a capture on this thread silently sees
+/// nothing. With a second dispatcher always registered, every callsite is decided by
+/// asking all of them.
+static ANCHOR: OnceLock<Dispatch> = OnceLock::new();
+
 fn install(provider: &SdkTracerProvider) -> DefaultGuard {
+    ANCHOR.get_or_init(|| Dispatch::new(tracing_subscriber::registry().with(LevelFilter::INFO)));
     let subscriber = tracing_subscriber::registry()
         .with(LevelFilter::INFO)
         .with(tracing_opentelemetry::layer().with_tracer(provider.tracer("capsulet-test")));

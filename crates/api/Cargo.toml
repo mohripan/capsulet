@@ -43,6 +43,7 @@ utoipa.workspace = true
 utoipa-axum.workspace = true
 
 [dev-dependencies]
+capsulet-observability = { path = "../observability", features = ["testing"] }
 http-body-util.workspace = true
 tower.workspace = true
 

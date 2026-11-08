@@ -8,7 +8,7 @@ use std::{
 
 use axum::{
     Extension, Json, Router,
-    extract::{DefaultBodyLimit, Path, Query, Request, State},
+    extract::{DefaultBodyLimit, MatchedPath, Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::{
@@ -551,9 +551,19 @@ where
     }
 }
 
+/// The label for requests no route matched.
+const UNMATCHED_ROUTE: &str = "unmatched";
+
 async fn request_context(mut request: Request, next: Next) -> Response {
     let method = request.method().clone();
     let path = request.uri().path().to_string();
+    // The route template, never the path: a path carries ids, and anybody can send any
+    // path, so a label taken from it has no bound on how many values it can take.
+    let route = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map_or(UNMATCHED_ROUTE, MatchedPath::as_str)
+        .to_string();
     let request_id = observability::request_id(
         request
             .headers()
@@ -567,7 +577,8 @@ async fn request_context(mut request: Request, next: Next) -> Response {
         "http.request",
         request.id = %request_id,
         http.method = %method,
-        http.route = %path,
+        http.route = %route,
+        url.path = %path,
         http.status_code = observability::tracing::field::Empty,
         duration.ms = observability::tracing::field::Empty,
     );
@@ -576,7 +587,7 @@ async fn request_context(mut request: Request, next: Next) -> Response {
         let mut response = next.run(request).await;
         let status = response.status();
         let elapsed = started.elapsed();
-        observability::record_http_request(method.as_str(), &path, status.as_u16(), elapsed);
+        observability::record_http_request(method.as_str(), &route, status.as_u16(), elapsed);
         observability::tracing::Span::current()
             .record("http.status_code", status.as_u16())
             .record("duration.ms", elapsed.as_millis());

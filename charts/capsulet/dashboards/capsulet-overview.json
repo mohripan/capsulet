@@ -15,7 +15,7 @@
       "id": 1,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
       "targets": [
-        { "expr": "sum by (method, route, status) (rate(capsulet_http_requests_total[5m]))", "legendFormat": "{{method}} {{route}} {{status}}", "refId": "A" },
+        { "expr": "sum by (method, route, status_class) (rate(capsulet_http_requests_total[5m]))", "legendFormat": "{{method}} {{route}} {{status_class}}", "refId": "A" },
         { "expr": "sum(rate(capsulet_http_request_errors_total[5m]))", "legendFormat": "errors", "refId": "B" }
       ],
       "title": "API Requests",

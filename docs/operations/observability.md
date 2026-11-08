@@ -46,6 +46,11 @@ identifier can become a label. `kind` is one of the node kinds the agent executo
 32 distinct model names a process sees and reports every later one as `_other`; the exact model is
 always on the trace.
 
+The `capsulet_http_*` metrics are labelled by `method`, `status_class`, and `route`, which is the
+route template (`/v1/agent-runs/{id}`), or `unmatched` when no route matched. It is never the request
+path: a path carries ids, and a client can send any path it likes, so a label taken from it would
+have no bound on its values.
+
 Grafana and alerting starter assets live under `ops/observability/`. Helm can
 package the same assets with:
 
@@ -155,7 +160,7 @@ so their leases are traced separately; and the graph worker's metrics are Promet
 
 ### Other service spans
 
-- `http.request` records request ID, method, route, status code, and elapsed milliseconds.
+- `http.request` records request ID, method, route template (`http.route`), path (`url.path`), status code, and elapsed milliseconds.
 - `worker.drain`, `worker.run_task`, and `worker.tick` record worker loop, task, run, execution pool, and outcome fields.
 - `worker.kubernetes_reconcile` records active run counts and orphaned Kubernetes job deletions.
 - `scheduler.tick` records triggered automations, advanced workflow runs, and outcome.

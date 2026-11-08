@@ -1443,7 +1443,8 @@ async fn a_run_is_one_trace_from_its_request_through_every_lease_on_every_worker
         .find(|span| {
             span.name == "http.request"
                 && span.attribute("http.method") == Some("POST")
-                && span.attribute("http.route") == Some(path.as_str())
+                && span.attribute("http.route") == Some("/v1/agents/{id}/runs")
+                && span.attribute("url.path") == Some(path.as_str())
         })
         .expect("the request that started the run was traced");
 

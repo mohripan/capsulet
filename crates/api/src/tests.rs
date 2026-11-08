@@ -6110,3 +6110,52 @@ async fn the_names_a_decision_reads_are_only_those_a_reviewer_confirmed() {
     );
     assert_eq!(groups[0].resolutions(), ["r1", "r2"]);
 }
+
+#[tokio::test]
+async fn request_metrics_and_spans_name_the_route_template_not_the_path() {
+    let _ = capsulet_observability::testing::install_metrics();
+    let capture = capsulet_observability::testing::TraceCapture::start();
+    let app = test_app(FakeStore::default());
+    for path in [
+        "/v1/agent-runs/run_route_label_one",
+        "/v1/agent-runs/run_route_label_two",
+        "/no/such/route_label_three",
+    ] {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+    }
+
+    let rendered = capsulet_observability::render_metrics();
+    assert!(
+        rendered.contains("route=\"/v1/agent-runs/{id}\""),
+        "{rendered}"
+    );
+    assert!(rendered.contains("route=\"unmatched\""), "{rendered}");
+    for id in [
+        "run_route_label_one",
+        "run_route_label_two",
+        "route_label_three",
+    ] {
+        assert!(
+            !rendered.contains(id),
+            "a request path became a metric label: {id}"
+        );
+    }
+
+    let spans = capture.spans();
+    assert!(spans.iter().any(|span| {
+        span.name == "http.request"
+            && span.attribute("http.route") == Some("/v1/agent-runs/{id}")
+            && span.attribute("url.path") == Some("/v1/agent-runs/run_route_label_one")
+    }));
+    assert!(spans.iter().any(|span| {
+        span.name == "http.request" && span.attribute("http.route") == Some("unmatched")
+    }));
+}
