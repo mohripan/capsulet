@@ -330,7 +330,7 @@ npm run build
 npm run test:e2e
 ```
 
-Database integration tests run when `CAPSULET_TEST_DATABASE_URL` is set. Full local and Kubernetes validation steps are documented in [development](docs/development.md).
+Database integration tests require `CAPSULET_TEST_DATABASE_URL`, naming a server on which each test binary creates a database of its own. Full local and Kubernetes validation steps are documented in [development](docs/development.md).
 
 ## Documentation
 

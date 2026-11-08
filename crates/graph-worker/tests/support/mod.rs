@@ -6,7 +6,6 @@
 //! A store, a scripted executor, and a clock the test moves.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::env::VarError;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
@@ -29,41 +28,31 @@ use capsulet_ir::{
 };
 use capsulet_postgres::PostgresStore;
 
+// The PostgreSQL suites' rule for test databases, written once and shared.
+#[path = "../../../postgres/tests/support/database.rs"]
+mod database;
+
 static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// A fixed moment the tests measure from.
 pub const NOW: i64 = 1_772_000_000_000;
 
-/// A name no other test binary can collide with.
+/// A stable name, unique within this test binary.
 ///
-/// The gates run several suites against one database, and a per-binary counter
-/// alone produced `tenant_1` in two of them. A test that leases another suite's
-/// run fails in a way that looks like a worker bug and is not one.
-///
-/// The process id is not enough on its own either: Windows reuses one within seconds,
-/// and a database that outlives the run still holds the last run's rows. The moment
-/// this process first asked does not repeat.
+/// Unique within the binary is enough because the binary has a database of its own,
+/// so a worker in one suite can never lease another suite's run.
 pub fn fixture_id(prefix: &str) -> String {
-    static STARTED: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
-    let started = STARTED.get_or_init(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.as_nanos())
-    });
     let sequence = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
-    let process = std::process::id();
-    format!("{prefix}_gw{process}_{started:x}_{sequence}")
+    format!("{prefix}_{sequence}")
 }
 
+/// This test binary's own database, recreated empty when the process first asks.
 pub fn required_database_url() -> String {
-    std::env::var("CAPSULET_TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .unwrap_or_else(|_: VarError| {
-            panic!(
-                "CAPSULET_TEST_DATABASE_URL is required; run \
-                 `cargo run -p capsulet-xtask --locked -- verify --gate postgres`"
-            )
-        })
+    database::isolated_url(concat!(
+        env!("CARGO_PKG_NAME"),
+        "/",
+        env!("CARGO_CRATE_NAME")
+    ))
 }
 
 pub fn id(value: &str) -> Identifier {

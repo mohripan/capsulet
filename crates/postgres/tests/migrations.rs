@@ -6,13 +6,7 @@ mod support;
 
 #[test]
 fn migration_files_are_forward_only_and_uniquely_ordered() {
-    let first = support::fixture_id("migration");
-    assert!(first.starts_with("migration_"), "{first}");
-    assert_ne!(
-        first,
-        support::fixture_id("migration"),
-        "fixture ids never repeat"
-    );
+    assert_eq!(support::fixture_id("migration"), "migration_1");
     let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations");
     let mut names = std::fs::read_dir(directory)
         .expect("read migrations")

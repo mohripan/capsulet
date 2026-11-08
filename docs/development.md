@@ -170,6 +170,14 @@ $env:CAPSULET_TEST_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/
 cargo test -p capsulet-postgres
 ```
 
+The URL names a server, not the database the tests write to. Each database-backed test binary
+creates a database of its own on that server, `test_<package>_<binary>` (for example
+`test_capsulet_graph_worker_agent_runs`), dropping and recreating it the first time the process asks.
+No two binaries share tables, so fixture ids are stable (`tenant_1`, `run_2`), and what a failing run
+left behind stays there to inspect until that binary runs again. The role in the URL must be allowed
+to create databases; the Compose `capsulet` role and the verifier's disposable server both are.
+Without the variable, a database-backed test fails and says how to run it rather than passing.
+
 Stop the local database when you are done:
 
 ```sh

@@ -5,8 +5,9 @@
 //! own tenant, and its workers only lease that tenant's runs, so the suite can share
 //! a database without one test advancing another's run.
 
+mod support;
+
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -33,26 +34,12 @@ use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-static NEXT: AtomicU64 = AtomicU64::new(1);
-
 fn unique(prefix: &str) -> String {
-    static STARTED: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
-    let started = STARTED.get_or_init(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.as_nanos())
-    });
-    let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
-    format!("{prefix}_ar{started:x}_{sequence}")
+    support::fixture_id(prefix)
 }
 
 fn database_url() -> String {
-    std::env::var("CAPSULET_TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .expect(
-            "CAPSULET_TEST_DATABASE_URL is required; run \
-             `cargo run -p capsulet-xtask --locked -- verify --gate postgres`",
-        )
+    support::required_database_url()
 }
 
 /// A model that says what it was told to say and remembers what it was asked.
@@ -178,7 +165,12 @@ impl Stack {
         )
         .expect("a valid credential set");
 
-        let root = std::env::temp_dir().join(unique("capsulet-agent-runs"));
+        // Outside the database, so named for this process as well as this test.
+        let root = std::env::temp_dir().join(format!(
+            "capsulet-agent-runs-{}-{}",
+            std::process::id(),
+            unique("objects")
+        ));
         std::fs::create_dir_all(&root).expect("a scratch directory");
         let app = router(
             AppState::new(
