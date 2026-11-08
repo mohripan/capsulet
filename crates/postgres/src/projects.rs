@@ -246,32 +246,6 @@ impl PostgresStore {
         row.map(|row| Ok((row.try_get("tenant_id")?, row.try_get("project_id")?)))
             .transpose()
     }
-
-    /// Assigns tenant/project ownership to a resource.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PostgresStoreError`] when persistence fails.
-    pub async fn set_resource_project(
-        &self,
-        resource: &str,
-        id: &str,
-        tenant_id: &str,
-        project_id: &str,
-    ) -> Result<(), PostgresStoreError> {
-        let table = resource_table(resource).ok_or_else(|| {
-            PostgresStoreError::InvalidPersistedValue(format!("unknown resource: {resource}"))
-        })?;
-        sqlx::query(&format!(
-            "UPDATE {table} SET tenant_id = $2, project_id = $3 WHERE id = $1"
-        ))
-        .bind(id)
-        .bind(tenant_id)
-        .bind(project_id)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
 }
 
 fn row_to_project_membership(

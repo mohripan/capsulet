@@ -106,15 +106,6 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     ) -> Result<Option<(String, String)>, Self::Error> {
         Ok(None)
     }
-    async fn set_resource_project(
-        &self,
-        _resource: &str,
-        _id: &str,
-        _tenant_id: &str,
-        _project_id: &str,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
     async fn authenticate_service_account_hash(
         &self,
         _token_hash: &[u8; 32],
@@ -562,21 +553,33 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         run_id: &IngestionRunId,
     ) -> Result<Vec<IngestionRunOutputRecord>, Self::Error>;
-    async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error>;
-    async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error>;
-    async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error>;
+    /// Saves an automation, its triggers and its owner, all or nothing.
+    async fn save_automation(
+        &self,
+        automation: &Automation,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error>;
+    async fn list_automations(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Automation>, Self::Error>;
+    async fn find_automation(
+        &self,
+        id: &AutomationId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Automation>, Self::Error>;
     async fn set_automation_status(
         &self,
         id: &AutomationId,
         status: capsulet_core::AutomationStatus,
     ) -> Result<Option<Automation>, Self::Error>;
     async fn delete_automation(&self, id: &AutomationId) -> Result<bool, Self::Error>;
-    async fn replace_automation_triggers(
-        &self,
-        automation_id: &AutomationId,
-        triggers: &[AutomationTrigger],
-        condition_json: &str,
-    ) -> Result<(), Self::Error>;
     async fn list_automation_triggers(
         &self,
         automation_id: &AutomationId,
@@ -584,14 +587,20 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn upsert_custom_trigger_plugin(
         &self,
         plugin: &CustomTriggerPlugin,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<(), Self::Error>;
     async fn list_custom_trigger_plugins(
         &self,
+        tenant_id: &str,
+        project_id: &str,
         limit: i64,
     ) -> Result<Vec<CustomTriggerPlugin>, Self::Error>;
     async fn find_custom_trigger_plugin(
         &self,
         id: &str,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<CustomTriggerPlugin>, Self::Error>;
     async fn create_workflow_run(
         &self,
@@ -599,8 +608,15 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         automation_id: Option<&AutomationId>,
         run_id: &WorkflowRunId,
         input_json: &str,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<WorkflowRun, Self::Error>;
-    async fn list_workflow_runs(&self, limit: i64) -> Result<Vec<WorkflowRun>, Self::Error>;
+    async fn list_workflow_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<WorkflowRun>, Self::Error>;
     async fn find_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
@@ -621,8 +637,20 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         workflow_run_id: &WorkflowRunId,
     ) -> Result<Vec<WorkflowStepRun>, Self::Error>;
-    async fn save_run(&self, run: &JobRun) -> Result<(), Self::Error>;
-    async fn list_runs(&self, limit: i64) -> Result<Vec<JobRun>, Self::Error>;
+    /// Creates a job run owned by a project. Returns whether this call created it,
+    /// so a caller that named the id can say it was already taken.
+    async fn create_job_run(
+        &self,
+        run: &JobRun,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error>;
+    async fn list_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<JobRun>, Self::Error>;
     async fn find_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error>;
     async fn find_run_log(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error>;
     async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error>;
@@ -739,16 +767,6 @@ impl ApiStore for PostgresStore {
         PostgresStore::resource_project(self, resource, id).await
     }
 
-    async fn set_resource_project(
-        &self,
-        resource: &str,
-        id: &str,
-        tenant_id: &str,
-        project_id: &str,
-    ) -> Result<(), Self::Error> {
-        PostgresStore::set_resource_project(self, resource, id, tenant_id, project_id).await
-    }
-
     async fn authenticate_service_account_hash(
         &self,
         token_hash: &[u8; 32],
@@ -797,8 +815,14 @@ impl ApiStore for PostgresStore {
         self.job_definition_exists(id).await
     }
 
-    async fn save_run(&self, run: &JobRun) -> Result<(), Self::Error> {
-        self.save(run).await
+    async fn create_job_run(
+        &self,
+        run: &JobRun,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error> {
+        self.create_job_run_if_absent_in_project(run, tenant_id, project_id)
+            .await
     }
 
     async fn upsert_job_definition(
@@ -1447,16 +1471,36 @@ impl ApiStore for PostgresStore {
         self.list_ingestion_run_outputs(run_id).await
     }
 
-    async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {
-        self.upsert_automation(automation).await
+    async fn save_automation(
+        &self,
+        automation: &Automation,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        self.save_automation_in_project(automation, triggers, condition_json, tenant_id, project_id)
+            .await
     }
 
-    async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error> {
-        self.list_automations(limit).await
+    async fn list_automations(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Automation>, Self::Error> {
+        self.list_automations_in_project(tenant_id, project_id, limit)
+            .await
     }
 
-    async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error> {
-        self.find_automation(id).await
+    async fn find_automation(
+        &self,
+        id: &AutomationId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Automation>, Self::Error> {
+        self.find_automation_in_project(id, tenant_id, project_id)
+            .await
     }
 
     async fn set_automation_status(
@@ -1471,16 +1515,6 @@ impl ApiStore for PostgresStore {
         self.delete_automation(id).await
     }
 
-    async fn replace_automation_triggers(
-        &self,
-        automation_id: &AutomationId,
-        triggers: &[AutomationTrigger],
-        condition_json: &str,
-    ) -> Result<(), Self::Error> {
-        self.replace_automation_triggers(automation_id, triggers, condition_json)
-            .await
-    }
-
     async fn list_automation_triggers(
         &self,
         automation_id: &AutomationId,
@@ -1491,22 +1525,31 @@ impl ApiStore for PostgresStore {
     async fn upsert_custom_trigger_plugin(
         &self,
         plugin: &CustomTriggerPlugin,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<(), Self::Error> {
-        self.upsert_custom_trigger_plugin(plugin).await
+        self.upsert_custom_trigger_plugin_in_project(plugin, tenant_id, project_id)
+            .await
     }
 
     async fn list_custom_trigger_plugins(
         &self,
+        tenant_id: &str,
+        project_id: &str,
         limit: i64,
     ) -> Result<Vec<CustomTriggerPlugin>, Self::Error> {
-        self.list_custom_trigger_plugins(limit).await
+        self.list_custom_trigger_plugins_in_project(tenant_id, project_id, limit)
+            .await
     }
 
     async fn find_custom_trigger_plugin(
         &self,
         id: &str,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<CustomTriggerPlugin>, Self::Error> {
-        self.find_custom_trigger_plugin(id).await
+        self.find_custom_trigger_plugin_in_project(id, tenant_id, project_id)
+            .await
     }
 
     async fn create_workflow_run(
@@ -1515,13 +1558,28 @@ impl ApiStore for PostgresStore {
         automation_id: Option<&AutomationId>,
         run_id: &WorkflowRunId,
         input_json: &str,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<WorkflowRun, Self::Error> {
-        self.create_workflow_run(workflow_id, automation_id, run_id, input_json)
-            .await
+        self.create_workflow_run_in_project(
+            workflow_id,
+            automation_id,
+            run_id,
+            input_json,
+            tenant_id,
+            project_id,
+        )
+        .await
     }
 
-    async fn list_workflow_runs(&self, limit: i64) -> Result<Vec<WorkflowRun>, Self::Error> {
-        self.list_workflow_runs(limit).await
+    async fn list_workflow_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<WorkflowRun>, Self::Error> {
+        self.list_workflow_runs_in_project(tenant_id, project_id, limit)
+            .await
     }
 
     async fn find_workflow_run(
@@ -1559,8 +1617,14 @@ impl ApiStore for PostgresStore {
         self.list_workflow_step_runs(workflow_run_id).await
     }
 
-    async fn list_runs(&self, limit: i64) -> Result<Vec<JobRun>, Self::Error> {
-        self.list_job_runs(limit).await
+    async fn list_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<JobRun>, Self::Error> {
+        self.list_job_runs_in_project(tenant_id, project_id, limit)
+            .await
     }
 
     async fn find_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {

@@ -1404,14 +1404,21 @@ async fn service_accounts_are_listed_and_revoked_only_in_their_own_project() {
     .execute(store.pool())
     .await
     .expect("create project fixture");
+    let account_id = unique_id("isolated_account");
+    // Derived from the id, because token hashes are unique and a fixed one collides
+    // with the last run's row in any database that outlives the run.
+    let mut token_hash = [0_u8; 32];
+    for (slot, byte) in token_hash.iter_mut().zip(account_id.bytes().rev()) {
+        *slot = byte;
+    }
     let account = capsulet_postgres::NewServiceAccount {
-        id: unique_id("isolated_account"),
+        id: account_id,
         name: "project-ci".to_string(),
         tenant_id: "default".to_string(),
         project_id,
         role: "admin".to_string(),
         scopes: vec!["jobs:read".to_string()],
-        token_hash: [42; 32],
+        token_hash,
         expires_at_unix: None,
     };
     let saved = store

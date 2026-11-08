@@ -264,6 +264,93 @@ impl PostgresStore {
         ))
     }
 
+    /// Creates a queued workflow run owned by one project, or nothing.
+    ///
+    /// The workflow must belong to the same project. Its owner is part of the insert,
+    /// so a run can never exist in the wrong project even for a moment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError::ScopeMismatch`] when the workflow belongs to
+    /// another project, and [`PostgresStoreError`] when persistence fails.
+    pub async fn create_workflow_run_in_project(
+        &self,
+        workflow_id: &WorkflowId,
+        automation_id: Option<&AutomationId>,
+        run_id: &WorkflowRunId,
+        input_json: &str,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<WorkflowRun, PostgresStoreError> {
+        let workflow = self
+            .find_workflow_in_project(workflow_id, tenant_id, project_id)
+            .await?
+            .ok_or(PostgresStoreError::ScopeMismatch)?;
+        let workflow_snapshot = workflow_snapshot_json(&workflow);
+        let row = sqlx::query(
+            r"
+            INSERT INTO workflow_runs (
+                id, workflow_id, automation_id, input, status, current_step_position,
+                workflow_snapshot, deadline_at, tenant_id, project_id, updated_at
+            )
+            VALUES (
+                $1, $2, $3, $4::jsonb, 'queued', 0, $5::jsonb,
+                CASE WHEN $6::bigint IS NULL THEN NULL ELSE now() + ($6::bigint * interval '1 second') END,
+                $7, $8, now()
+            )
+            RETURNING created_at::text AS created_at
+            ",
+        )
+        .bind(run_id.as_str())
+        .bind(workflow_id.as_str())
+        .bind(automation_id.map(AutomationId::as_str))
+        .bind(input_json)
+        .bind(workflow_snapshot)
+        .bind(workflow.deadline_seconds().and_then(|value| i64::try_from(value).ok()))
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(WorkflowRun::new(
+            run_id.clone(),
+            workflow_id.clone(),
+            automation_id.cloned(),
+            input_json,
+            WorkflowRunStatus::Queued,
+            0,
+            row.try_get::<String, _>("created_at")?,
+        ))
+    }
+
+    /// Lists a project's workflow runs, scoping before the limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn list_workflow_runs_in_project(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<WorkflowRun>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
+            FROM workflow_runs
+            WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY created_at DESC
+            LIMIT $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_workflow_run).collect()
+    }
+
     /// Lists workflow runs.
     ///
     /// # Errors
@@ -862,13 +949,25 @@ impl PostgresStore {
             let job_run_id = generated_store_id("run_workflow_step");
             let step_run_id = generated_store_id("workflow_step_run");
             sqlx::query(
-                "INSERT INTO job_runs (id, job_definition_id, status, execution_pool, input, timeout_seconds, updated_at) VALUES ($1, $2, 'queued', $3, $4::jsonb, $5, now())",
+                r"
+                INSERT INTO job_runs (
+                    id, job_definition_id, status, execution_pool, input, timeout_seconds,
+                    tenant_id, project_id, updated_at
+                )
+                SELECT $1, $2, 'queued', $3, $4::jsonb, $5, tenant_id, project_id, now()
+                FROM workflow_runs
+                WHERE id = $6
+                ",
             )
             .bind(&job_run_id)
             .bind(step.job_definition_id().as_str())
             .bind(step.execution_pool().as_str())
             .bind(run.input_json())
-            .bind(step.timeout_seconds().and_then(|value| i64::try_from(value).ok()))
+            .bind(
+                step.timeout_seconds()
+                    .and_then(|value| i64::try_from(value).ok()),
+            )
+            .bind(run_id)
             .execute(&mut *tx)
             .await?;
             sqlx::query(

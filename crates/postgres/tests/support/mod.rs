@@ -5,9 +5,21 @@ use std::{
 
 static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(1);
 
+/// A name no other run against the same database can collide with.
+///
+/// A counter alone repeats in every process, and a process id repeats too: Windows
+/// hands the same one out again within seconds. Against a database that outlives the
+/// run, either collision makes a test fail on somebody else's row. The moment this
+/// process first asked, in nanoseconds, does not repeat.
 pub fn fixture_id(prefix: &str) -> String {
+    static STARTED: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+    let started = STARTED.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos())
+    });
     let sequence = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
-    format!("{prefix}_{sequence}")
+    format!("{prefix}_{started:x}_{sequence}")
 }
 
 pub fn required_database_url() -> String {

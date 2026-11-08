@@ -91,6 +91,35 @@ impl PostgresStore {
         rows.iter().map(row_to_job_run).collect()
     }
 
+    /// Lists a project's job runs, scoping before the limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn list_job_runs_in_project(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<JobRun>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, job_definition_id, status, execution_pool, input::text AS input, attempt_count, created_at::text AS created_at
+            FROM job_runs
+            WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY created_at DESC
+            LIMIT $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.iter().map(row_to_job_run).collect()
+    }
+
     /// Leases the oldest queued job run.
     ///
     /// # Errors

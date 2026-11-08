@@ -34,8 +34,14 @@ use tower::ServiceExt;
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
 fn unique(prefix: &str) -> String {
+    static STARTED: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+    let started = STARTED.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos())
+    });
     let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
-    format!("{prefix}_ar{}_{sequence}", std::process::id())
+    format!("{prefix}_ar{started:x}_{sequence}")
 }
 
 fn database_url() -> String {

@@ -39,10 +39,20 @@ pub const NOW: i64 = 1_772_000_000_000;
 /// The gates run several suites against one database, and a per-binary counter
 /// alone produced `tenant_1` in two of them. A test that leases another suite's
 /// run fails in a way that looks like a worker bug and is not one.
+///
+/// The process id is not enough on its own either: Windows reuses one within seconds,
+/// and a database that outlives the run still holds the last run's rows. The moment
+/// this process first asked does not repeat.
 pub fn fixture_id(prefix: &str) -> String {
+    static STARTED: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+    let started = STARTED.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos())
+    });
     let sequence = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
     let process = std::process::id();
-    format!("{prefix}_gw{process}_{sequence}")
+    format!("{prefix}_gw{process}_{started:x}_{sequence}")
 }
 
 pub fn required_database_url() -> String {

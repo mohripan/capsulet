@@ -181,6 +181,30 @@ impl FakeStore {
             })
     }
 
+    fn store_automation_triggers(
+        &self,
+        automation_id: &AutomationId,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+    ) -> Result<(), String> {
+        let mut stored_triggers = self
+            .automation_triggers
+            .lock()
+            .map_err(|error| error.to_string())?;
+        stored_triggers.retain(|trigger| trigger.automation_id() != automation_id);
+        stored_triggers.extend(triggers.iter().cloned());
+        let mut conditions = self
+            .automation_conditions
+            .lock()
+            .map_err(|error| error.to_string())?;
+        conditions.retain(|(id, _)| id != automation_id.as_str());
+        conditions.push((
+            automation_id.as_str().to_string(),
+            condition_json.to_string(),
+        ));
+        Ok(())
+    }
+
     /// Records ownership on first write and refuses a write from another project,
     /// standing in for the scoped upsert's `WHERE` clause.
     fn claim_resource(
@@ -591,24 +615,6 @@ impl ApiStore for FakeStore {
             .or_else(|| Some(("default".to_string(), "default".to_string()))))
     }
 
-    async fn set_resource_project(
-        &self,
-        resource: &str,
-        id: &str,
-        tenant_id: &str,
-        project_id: &str,
-    ) -> Result<(), Self::Error> {
-        let mut ownership = self.ownership.lock().map_err(|error| error.to_string())?;
-        ownership.retain(|ownership| !(ownership.resource == resource && ownership.id == id));
-        ownership.push(FakeOwnership {
-            resource: resource.to_string(),
-            id: id.to_string(),
-            tenant_id: tenant_id.to_string(),
-            project_id: project_id.to_string(),
-        });
-        Ok(())
-    }
-
     async fn enqueue_trigger_event(
         &self,
         _event: &TriggerEvent,
@@ -626,12 +632,31 @@ impl ApiStore for FakeStore {
             .any(|known| known == id.as_str()))
     }
 
-    async fn save_run(&self, run: &JobRun) -> Result<(), Self::Error> {
-        self.runs
-            .lock()
-            .map_err(|error| error.to_string())?
-            .push(run.clone());
-        Ok(())
+    async fn create_job_run(
+        &self,
+        run: &JobRun,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error> {
+        if !self.owns(
+            "job_definitions",
+            run.job_definition_id().as_str(),
+            tenant_id,
+            project_id,
+        ) {
+            return Err("scope mismatch".to_string());
+        }
+        let mut runs = self.runs.lock().map_err(|error| error.to_string())?;
+        if runs.iter().any(|existing| existing.id() == run.id()) {
+            return if self.owns("job_runs", run.id().as_str(), tenant_id, project_id) {
+                Ok(false)
+            } else {
+                Err("scope mismatch".to_string())
+            };
+        }
+        self.claim_resource("job_runs", run.id().as_str(), tenant_id, project_id)?;
+        runs.push(run.clone());
+        Ok(true)
     }
 
     async fn upsert_job_definition(
@@ -1743,11 +1768,39 @@ impl ApiStore for FakeStore {
         Ok(workflows.len() != before)
     }
 
-    async fn upsert_automation(&self, automation: &Automation) -> Result<(), Self::Error> {
-        let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
-        automations.retain(|existing| existing.id() != automation.id());
-        automations.push(automation.clone());
-        Ok(())
+    async fn save_automation(
+        &self,
+        automation: &Automation,
+        triggers: &[AutomationTrigger],
+        condition_json: &str,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<(), Self::Error> {
+        if !self.owns(
+            "workflows",
+            automation.workflow_id().as_str(),
+            tenant_id,
+            project_id,
+        ) {
+            return Err("scope mismatch".to_string());
+        }
+        for plugin_id in triggers.iter().filter_map(AutomationTrigger::plugin_id) {
+            if !self.owns("trigger_plugins", plugin_id, tenant_id, project_id) {
+                return Err("scope mismatch".to_string());
+            }
+        }
+        self.claim_resource(
+            "automations",
+            automation.id().as_str(),
+            tenant_id,
+            project_id,
+        )?;
+        {
+            let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
+            automations.retain(|existing| existing.id() != automation.id());
+            automations.push(automation.clone());
+        }
+        self.store_automation_triggers(automation.id(), triggers, condition_json)
     }
 
     async fn workflow_has_active_runs(&self, id: &WorkflowId) -> Result<bool, Self::Error> {
@@ -1765,19 +1818,41 @@ impl ApiStore for FakeStore {
             }))
     }
 
-    async fn list_automations(&self, limit: i64) -> Result<Vec<Automation>, Self::Error> {
+    async fn list_automations(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Automation>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
-        Ok(self
+        let automations = self
             .automations
             .lock()
             .map_err(|error| error.to_string())?
-            .iter()
+            .clone();
+        Ok(automations
+            .into_iter()
+            .filter(|automation| {
+                self.owns(
+                    "automations",
+                    automation.id().as_str(),
+                    tenant_id,
+                    project_id,
+                )
+            })
             .take(limit)
-            .cloned()
             .collect())
     }
 
-    async fn find_automation(&self, id: &AutomationId) -> Result<Option<Automation>, Self::Error> {
+    async fn find_automation(
+        &self,
+        id: &AutomationId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Automation>, Self::Error> {
+        if !self.owns("automations", id.as_str(), tenant_id, project_id) {
+            return Ok(None);
+        }
         Ok(self
             .automations
             .lock()
@@ -1823,30 +1898,6 @@ impl ApiStore for FakeStore {
         Ok(deleted)
     }
 
-    async fn replace_automation_triggers(
-        &self,
-        automation_id: &AutomationId,
-        triggers: &[AutomationTrigger],
-        condition_json: &str,
-    ) -> Result<(), Self::Error> {
-        let mut stored_triggers = self
-            .automation_triggers
-            .lock()
-            .map_err(|error| error.to_string())?;
-        stored_triggers.retain(|trigger| trigger.automation_id() != automation_id);
-        stored_triggers.extend(triggers.iter().cloned());
-        let mut conditions = self
-            .automation_conditions
-            .lock()
-            .map_err(|error| error.to_string())?;
-        conditions.retain(|(id, _)| id != automation_id.as_str());
-        conditions.push((
-            automation_id.as_str().to_string(),
-            condition_json.to_string(),
-        ));
-        Ok(())
-    }
-
     async fn list_automation_triggers(
         &self,
         automation_id: &AutomationId,
@@ -1872,7 +1923,10 @@ impl ApiStore for FakeStore {
     async fn upsert_custom_trigger_plugin(
         &self,
         plugin: &CustomTriggerPlugin,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<(), Self::Error> {
+        self.claim_resource("trigger_plugins", plugin.id(), tenant_id, project_id)?;
         let mut plugins = self
             .trigger_plugins
             .lock()
@@ -1884,23 +1938,32 @@ impl ApiStore for FakeStore {
 
     async fn list_custom_trigger_plugins(
         &self,
+        tenant_id: &str,
+        project_id: &str,
         limit: i64,
     ) -> Result<Vec<CustomTriggerPlugin>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
-        Ok(self
+        let plugins = self
             .trigger_plugins
             .lock()
             .map_err(|error| error.to_string())?
-            .iter()
+            .clone();
+        Ok(plugins
+            .into_iter()
+            .filter(|plugin| self.owns("trigger_plugins", plugin.id(), tenant_id, project_id))
             .take(limit)
-            .cloned()
             .collect())
     }
 
     async fn find_custom_trigger_plugin(
         &self,
         id: &str,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<CustomTriggerPlugin>, Self::Error> {
+        if !self.owns("trigger_plugins", id, tenant_id, project_id) {
+            return Ok(None);
+        }
         Ok(self
             .trigger_plugins
             .lock()
@@ -1916,7 +1979,13 @@ impl ApiStore for FakeStore {
         automation_id: Option<&AutomationId>,
         run_id: &WorkflowRunId,
         input_json: &str,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<WorkflowRun, Self::Error> {
+        if !self.owns("workflows", workflow_id.as_str(), tenant_id, project_id) {
+            return Err("scope mismatch".to_string());
+        }
+        self.claim_resource("workflow_runs", run_id.as_str(), tenant_id, project_id)?;
         let run = WorkflowRun::new(
             run_id.clone(),
             workflow_id.clone(),
@@ -1933,15 +2002,22 @@ impl ApiStore for FakeStore {
         Ok(run)
     }
 
-    async fn list_workflow_runs(&self, limit: i64) -> Result<Vec<WorkflowRun>, Self::Error> {
+    async fn list_workflow_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<WorkflowRun>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
-        Ok(self
+        let runs = self
             .workflow_runs
             .lock()
             .map_err(|error| error.to_string())?
-            .iter()
+            .clone();
+        Ok(runs
+            .into_iter()
+            .filter(|run| self.owns("workflow_runs", run.id().as_str(), tenant_id, project_id))
             .take(limit)
-            .cloned()
             .collect())
     }
 
@@ -2060,15 +2136,18 @@ impl ApiStore for FakeStore {
             .collect())
     }
 
-    async fn list_runs(&self, limit: i64) -> Result<Vec<JobRun>, Self::Error> {
+    async fn list_runs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<JobRun>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
-        Ok(self
-            .runs
-            .lock()
-            .map_err(|error| error.to_string())?
-            .iter()
+        let runs = self.runs.lock().map_err(|error| error.to_string())?.clone();
+        Ok(runs
+            .into_iter()
+            .filter(|run| self.owns("job_runs", run.id().as_str(), tenant_id, project_id))
             .take(limit)
-            .cloned()
             .collect())
     }
 

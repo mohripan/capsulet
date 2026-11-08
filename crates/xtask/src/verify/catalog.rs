@@ -362,6 +362,17 @@ pub(crate) fn gates() -> Vec<Gate> {
                         "-p",
                         "capsulet-postgres",
                         "--test",
+                        "project_scope",
+                        "--locked",
+                    ],
+                ),
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-postgres",
+                        "--test",
                         "ir_runs",
                         "--locked",
                     ],

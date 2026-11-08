@@ -830,18 +830,6 @@ pub(crate) async fn require_resource_project<S: ApiStore>(
     }
 }
 
-pub(crate) async fn assign_resource_project<S: ApiStore>(
-    store: &S,
-    resource: &str,
-    id: &str,
-    context: &ProjectContext,
-) -> Result<(), ApiError> {
-    store
-        .set_resource_project(resource, id, &context.tenant_id, &context.project_id)
-        .await
-        .map_err(ApiError::store)
-}
-
 fn validate_project_role(value: &str) -> Result<String, ApiError> {
     match value {
         "project_viewer" | "project_operator" | "project_admin" => Ok(value.to_string()),
@@ -1830,7 +1818,7 @@ where
     }
     if state
         .store
-        .list_automations(500)
+        .list_automations(&context.tenant_id, &context.project_id, 500)
         .await
         .map_err(ApiError::store)?
         .iter()
@@ -1906,25 +1894,11 @@ where
             scoped_workflows.push(workflow);
         }
     }
-    let automations = state
+    let scoped_automations = state
         .store
-        .list_automations(100)
+        .list_automations(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
-    let mut scoped_automations = Vec::new();
-    for automation in automations {
-        if require_resource_project(
-            &state.store,
-            "automations",
-            automation.id().as_str(),
-            &context,
-        )
-        .await
-        .is_ok()
-        {
-            scoped_automations.push(automation);
-        }
-    }
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     for pool in state.execution_pools.iter() {
@@ -2330,7 +2304,7 @@ where
     .await?;
     let Some(automation) = state
         .store
-        .find_automation(&automation_id)
+        .find_automation(&automation_id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -2347,10 +2321,11 @@ where
             Some(automation.id()),
             &run_id,
             automation.job_input_json(),
+            &context.tenant_id,
+            &context.project_id,
         )
         .await
-        .map_err(ApiError::store)?;
-    assign_resource_project(&state.store, "workflow_runs", run.id().as_str(), &context).await?;
+        .map_err(ApiError::scoped_store::<S>)?;
     Ok((
         StatusCode::CREATED,
         Json(WorkflowRunResponse::new(&run, &[])),
@@ -2371,7 +2346,7 @@ where
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let runs = state
         .store
-        .list_workflow_runs(i64::from(limit))
+        .list_workflow_runs(&context.tenant_id, &context.project_id, i64::from(limit))
         .await
         .map_err(ApiError::store)?;
     let runs = filter_workflow_runs(runs, &query);
@@ -2447,9 +2422,15 @@ where
         state
             .store
             .list_job_definitions(&context.tenant_id, &context.project_id, 500),
-        state.store.list_automations(500),
-        state.store.list_runs(200),
-        state.store.list_workflow_runs(200),
+        state
+            .store
+            .list_automations(&context.tenant_id, &context.project_id, 500),
+        state
+            .store
+            .list_runs(&context.tenant_id, &context.project_id, 200),
+        state
+            .store
+            .list_workflow_runs(&context.tenant_id, &context.project_id, 200),
     )
     .map_err(ApiError::store)?;
 
@@ -2834,10 +2815,8 @@ where
     let run_id = match request.run_id {
         Some(value) => {
             let run_id = JobRunId::new(value).map_err(ApiError::validation)?;
-            // A caller-chosen id may collide with an existing run. The write below is an
-            // upsert, so without this a create would overwrite that run's status and input
-            // and `assign_resource_project` would hand it to the caller's project. Creating
-            // is never allowed to mutate an existing run, even one the caller owns.
+            // Checked here as well as in the write below, because a script run creates its
+            // definition first and a taken id should not leave one behind.
             if state
                 .store
                 .find_run(&run_id)
@@ -2890,8 +2869,16 @@ where
     .into_job_run();
 
     enforce_job_run_admission(&state, run.execution_pool().as_str()).await?;
-    state.store.save_run(&run).await.map_err(ApiError::store)?;
-    assign_resource_project(&state.store, "job_runs", run.id().as_str(), &context).await?;
+    // Insert only, with its owner: an id that is taken is a conflict rather than a
+    // reset of a run that may be under way, however the race with the check above went.
+    let created = state
+        .store
+        .create_job_run(&run, &context.tenant_id, &context.project_id)
+        .await
+        .map_err(ApiError::scoped_store::<S>)?;
+    if !created {
+        return Err(ApiError::RunAlreadyExists(run.id().as_str().to_string()));
+    }
     let run = state
         .store
         .find_run(run.id())
@@ -3065,7 +3052,7 @@ where
     let limit = query.limit.unwrap_or(50).clamp(1, 500);
     let runs = state
         .store
-        .list_runs(i64::from(limit))
+        .list_runs(&context.tenant_id, &context.project_id, i64::from(limit))
         .await
         .map_err(ApiError::store)?;
     let runs = filter_job_runs(runs, &query);
