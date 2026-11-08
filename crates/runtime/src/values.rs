@@ -16,12 +16,28 @@ use serde_json::Value;
 use thiserror::Error;
 
 /// How a value failed to be what its port declared.
+///
+/// Said in two parts, because the two go to different readers. `path` and `problem`
+/// come from the schema and never contain the value, so they can be recorded in a
+/// run's log. `found` is the offending piece of the value itself, for whoever sent
+/// it, and is left out of anything recorded: a log quoting what it rejected would be
+/// holding content an erasure cannot reach.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("at `{path}`: {problem}")]
+#[error("at `{path}`: {problem}{}", found.as_ref().map(|found| format!(" (found `{found}`)")).unwrap_or_default())]
 pub struct ValueViolation {
-    /// Where in the value, from the root.
+    /// Where in the value, from the root, in terms of the schema.
     pub path: String,
     pub problem: String,
+    /// The offending piece of the value, when quoting it helps the sender.
+    pub found: Option<String>,
+}
+
+impl ValueViolation {
+    /// The violation without any part of the value, for a log or a trace.
+    #[must_use]
+    pub fn without_content(&self) -> String {
+        format!("at `{}`: {}", self.path, self.problem)
+    }
 }
 
 /// Checks a value against a schema.
@@ -37,6 +53,15 @@ fn violation(path: &str, problem: String) -> ValueViolation {
     ValueViolation {
         path: path.to_string(),
         problem,
+        found: None,
+    }
+}
+
+fn quoting(path: &str, problem: String, found: String) -> ValueViolation {
+    ValueViolation {
+        path: path.to_string(),
+        problem,
+        found: Some(found),
     }
 }
 
@@ -89,9 +114,13 @@ fn check_scalar(schema: &ValueSchema, value: &Value, path: &str) -> Result<(), V
                 .or_else(|| value.as_u64().map(i128::from))
                 .ok_or_else(|| expected(path, "an integer", value))?;
             if reading < range.minimum || reading > range.maximum {
-                return Err(violation(
+                return Err(quoting(
                     path,
-                    format!("{reading} is outside {}..={}", range.minimum, range.maximum),
+                    format!(
+                        "the integer is outside {}..={}",
+                        range.minimum, range.maximum
+                    ),
+                    reading.to_string(),
                 ));
             }
             Ok(())
@@ -103,9 +132,10 @@ fn check_scalar(schema: &ValueSchema, value: &Value, path: &str) -> Result<(), V
             if is_decimal_at_scale(text, *scale) {
                 Ok(())
             } else {
-                Err(violation(
+                Err(quoting(
                     path,
-                    format!("`{text}` is not a decimal with exactly {scale} fractional digits"),
+                    format!("not a decimal with exactly {scale} fractional digits"),
+                    text.to_string(),
                 ))
             }
         }
@@ -131,7 +161,7 @@ fn check_scalar(schema: &ValueSchema, value: &Value, path: &str) -> Result<(), V
                 .ok_or_else(|| expected(path, "a content digest", value))?;
             text.parse::<Digest>()
                 .map(|_| ())
-                .map_err(|error| violation(path, error.to_string()))
+                .map_err(|_| quoting(path, "not a content digest".to_string(), text.to_string()))
         }
         ValueSchema::Enumeration { members } => {
             let text = value
@@ -140,9 +170,10 @@ fn check_scalar(schema: &ValueSchema, value: &Value, path: &str) -> Result<(), V
             if members.iter().any(|member| member == text) {
                 Ok(())
             } else {
-                Err(violation(
+                Err(quoting(
                     path,
-                    format!("`{text}` is not a declared member"),
+                    "not a declared member".to_string(),
+                    text.to_string(),
                 ))
             }
         }
@@ -179,9 +210,13 @@ fn check_union(
                 format!("no `{discriminant}` says which variant this is"),
             )
         })?;
-    let schema = variants
-        .get(tag)
-        .ok_or_else(|| violation(path, format!("`{tag}` is not a declared variant")))?;
+    let schema = variants.get(tag).ok_or_else(|| {
+        quoting(
+            path,
+            "names a variant that is not declared".to_string(),
+            tag.to_string(),
+        )
+    })?;
     let mut body = object.clone();
     body.remove(discriminant);
     // A record variant is checked against the rest of the object; anything else is
@@ -204,27 +239,25 @@ fn check_record(
     path: &str,
 ) -> Result<(), ValueViolation> {
     let Some(object) = value.as_object() else {
-        return Err(ValueViolation {
-            path: path.to_string(),
-            problem: format!("expected a record, found {}", shape_of(value)),
-        });
+        return Err(expected(path, "a record", value));
     };
-    for name in object.keys() {
-        if !fields.contains_key(name) {
-            return Err(ValueViolation {
-                path: format!("{path}.{name}"),
-                problem: "this record declares no such field".to_string(),
-            });
-        }
+    // The unknown name is the value's, not the schema's, so it is quoted rather than
+    // made part of the path.
+    if let Some(name) = object.keys().find(|name| !fields.contains_key(*name)) {
+        return Err(quoting(
+            path,
+            "has a field this record does not declare".to_string(),
+            name.clone(),
+        ));
     }
     for (name, field) in fields {
         match object.get(name) {
             Some(Value::Null) | None if !field.required => {}
             None => {
-                return Err(ValueViolation {
-                    path: format!("{path}.{name}"),
-                    problem: "this required field is missing".to_string(),
-                });
+                return Err(violation(
+                    &format!("{path}.{name}"),
+                    "this required field is missing".to_string(),
+                ));
             }
             Some(each) => check_at(&field.schema, each, &format!("{path}.{name}"))?,
         }
@@ -286,7 +319,39 @@ mod tests {
         let schema = aliases::for_port_value_type("validation_result").expect("a known tag");
         let extra = check_value(&schema, &json!({ "passed": true, "score": 0.9 }))
             .expect_err("an undeclared field");
-        assert_eq!(extra.path, "$.score");
+        assert_eq!(
+            extra.path, "$",
+            "the name is the value's, so it is not the path"
+        );
+        assert_eq!(extra.found.as_deref(), Some("score"));
+    }
+
+    #[test]
+    fn what_a_log_records_of_a_violation_never_quotes_the_value() {
+        let member = ValueSchema::Enumeration {
+            members: vec!["low".to_string(), "high".to_string()],
+        };
+        let secret = "hunter2-not-a-member";
+        let violation = check_value(&member, &json!(secret)).expect_err("not a member");
+        assert!(
+            violation.to_string().contains(secret),
+            "the sender is told what it sent: {violation}"
+        );
+        assert!(
+            !violation.without_content().contains(secret),
+            "{}",
+            violation.without_content()
+        );
+
+        let bad = json!([{ "source_id": "claim-1", "content_digest": secret }]);
+        let violation = check_value(&aliases::documents(), &bad).expect_err("not a digest");
+        assert!(!violation.without_content().contains(secret));
+        let extra = check_value(
+            &aliases::for_port_value_type("validation_result").expect("a known tag"),
+            &json!({ "passed": true, secret: 1 }),
+        )
+        .expect_err("an undeclared field");
+        assert!(!extra.without_content().contains(secret));
     }
 
     #[test]

@@ -654,6 +654,9 @@ pub(crate) struct AgentRunErasureResponse {
     /// How many stored values this request erased. Zero when an earlier request
     /// already had, which makes asking again harmless.
     pub(crate) values_erased: u64,
+    /// How many values the run held that another run of the project still holds.
+    /// They are kept for that run, and go when it is erased too.
+    pub(crate) values_kept: u64,
     /// The run as it reads now.
     pub(crate) run: AgentRunResponse,
 }

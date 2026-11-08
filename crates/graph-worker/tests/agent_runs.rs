@@ -1588,7 +1588,7 @@ async fn a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_conten
             &["validator_pass"],
         )
         .await;
-    stack
+    let id = stack
         .start(&agent, json!({ "query": QUERY, "answer": "" }))
         .await;
     let worker = stack.worker_using(Some(Arc::new(RefusingModel)), 256);
@@ -1614,6 +1614,13 @@ async fn a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_conten
     assert_eq!(node.error.as_deref(), Some("verifier_unavailable"));
 
     assert_nothing_said(&spans, &[QUERY, "overloaded while answering"]);
+
+    // Nor does the run's log, which an erasure cannot rewrite.
+    let (_, events) = stack.get(&format!("/v1/agent-runs/{id}/events")).await;
+    let log = events.to_string();
+    assert!(log.contains("refused with status 503"), "{log}");
+    assert!(!log.contains("overloaded while answering"), "{log}");
+    assert!(!log.contains(QUERY), "{log}");
 }
 
 #[tokio::test]
@@ -1954,7 +1961,7 @@ async fn a_run_that_has_not_ended_cannot_have_its_payloads_erased() {
 }
 
 #[tokio::test]
-async fn erasing_is_refused_while_a_live_run_holds_the_same_content() {
+async fn bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased() {
     const QUERY: &str = "shared-question-4417";
     let stack = Stack::new(Some(ScriptedModel::answering(&["an answer"]))).await;
     let agent = answering_agent(&stack).await;
@@ -1970,31 +1977,36 @@ async fn erasing_is_refused_while_a_live_run_holds_the_same_content() {
     let (status, body) = stack
         .post(&format!("/v1/agent-runs/{finished}/erase"), json!({}))
         .await;
-    assert_eq!(status, StatusCode::CONFLICT, "{body}");
-    assert_eq!(body["code"], "agent_run_payloads_in_use");
+    assert_eq!(status, StatusCode::OK, "{body}");
     assert!(
-        body["message"]
-            .as_str()
-            .is_some_and(|message| message.contains(&live)),
-        "the refusal names the run in the way: {body}"
+        body["values_kept"].as_u64().expect("a count") >= 1,
+        "{body}"
     );
+    assert_eq!(body["run"]["state"], json!({}));
+
+    // The live run never notices: what it was given is still there for it.
+    stack.run_to_rest().await;
+    let run = stack.run(&live).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    assert_eq!(run["state"]["query"], QUERY);
     assert!(
         held_content(&stack)
             .await
             .iter()
             .any(|each| each.contains(QUERY)),
-        "a refused erasure erases nothing"
+        "held, because a run that has not been erased holds it"
     );
 
-    let (status, _) = stack
-        .post(&format!("/v1/agent-runs/{live}/cancel"), json!({}))
-        .await;
-    assert_eq!(status, StatusCode::ACCEPTED);
-    stack.run_to_rest().await;
     let (status, body) = stack
-        .post(&format!("/v1/agent-runs/{finished}/erase"), json!({}))
+        .post(&format!("/v1/agent-runs/{live}/erase"), json!({}))
         .await;
-    assert_eq!(status, StatusCode::OK, "once it has ended: {body}");
+    assert_eq!(status, StatusCode::OK, "{body}");
+    for held in held_content(&stack).await {
+        assert!(
+            !held.contains(QUERY),
+            "nobody holds it now, and it is gone: {held}"
+        );
+    }
 }
 
 // ---- debug bundles
@@ -2176,4 +2188,90 @@ async fn a_bundle_explains_a_run_that_ran_out_of_budget() {
         .find(|node| node.kind == "llm")
         .expect("the model node");
     assert_eq!(model.finished, 2, "one call each time round, twice");
+}
+
+#[tokio::test]
+async fn payloads_past_retention_are_erased_and_newer_ones_kept() {
+    const SHARED: &str = "retention-shared-question-7701";
+    let stack = Stack::new(Some(ScriptedModel::answering(&["an answer"]))).await;
+    let agent = answering_agent(&stack).await;
+    let alone = stack
+        .start(
+            &agent,
+            json!({ "query": "retention-alone-7700", "answer": "" }),
+        )
+        .await;
+    let sharing = stack
+        .start(&agent, json!({ "query": SHARED, "answer": "" }))
+        .await;
+    stack.run_to_rest().await;
+    // Not run yet, and holding the same input as `sharing`.
+    let live = stack
+        .start(&agent, json!({ "query": SHARED, "answer": "" }))
+        .await;
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_millis(),
+    )
+    .expect("fits");
+
+    // Retention has not run out for anything that ended in the last hour.
+    let early = stack
+        .store
+        .erase_payloads_past_retention(now - 3_600_000, Some(&stack.tenant), 100)
+        .await
+        .expect("sweeps");
+    assert_eq!(early, capsulet_postgres::PayloadRetentionSweep::default());
+    assert_eq!(stack.run(&alone).await["state"]["answer"], "an answer");
+
+    let due = stack
+        .store
+        .erase_payloads_past_retention(now + 3_600_000, Some(&stack.tenant), 100)
+        .await
+        .expect("sweeps");
+    assert_eq!(
+        due.runs_erased, 2,
+        "both ended runs are past retention: {due:?}"
+    );
+    assert!(due.values_erased >= 4, "{due:?}");
+    assert!(
+        due.values_kept >= 1,
+        "what the live run holds stays: {due:?}"
+    );
+
+    for erased in [&alone, &sharing] {
+        let run = stack.run(erased).await;
+        assert_eq!(run["state"], json!({}));
+        assert!(run["execution"]["payloads_erased_at"].is_string());
+    }
+    let by: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT erased_by FROM ir_run_values \
+         WHERE tenant_id = $1 AND project_id = $2 AND erased_by IS NOT NULL",
+    )
+    .bind(&stack.tenant)
+    .bind(&stack.project)
+    .fetch_all(stack.store.pool())
+    .await
+    .expect("read");
+    assert_eq!(by, vec![capsulet_postgres::RETENTION_ERASER.to_string()]);
+    assert_eq!(
+        stack.run(&live).await["status"],
+        "queued",
+        "a run that has not ended is never swept"
+    );
+
+    // The live run runs as if nothing happened, and is swept once it is past retention.
+    stack.run_to_rest().await;
+    assert_eq!(stack.run(&live).await["state"]["query"], SHARED);
+    let next = stack
+        .store
+        .erase_payloads_past_retention(now + 3_600_000, Some(&stack.tenant), 100)
+        .await
+        .expect("sweeps");
+    assert_eq!(next.runs_erased, 1, "{next:?}");
+    for held in held_content(&stack).await {
+        assert!(!held.contains(SHARED), "still held: {held}");
+    }
 }

@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
+<!-- capsulet-claims: CAP-AGENT-008, CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Helm Values
 
 This document summarizes the current Helm values. The authoritative defaults live in `charts/capsulet/values.yaml`.
@@ -248,6 +248,16 @@ evaluator:
   sqlConnections:
     existingSecret: capsulet-sql-connections
     secretKey: connections
+```
+
+Retention cleanup removes job artifacts and trigger events after `evaluator.retentionDays` and audit
+events after `evaluator.auditRetentionDays`. `evaluator.agentRunPayloadRetentionDays` is unset by
+default; set it to erase what finished agent runs were given and produced that many days after they end,
+keeping their logs. It is the same erasure an admin can ask for, done as `capsulet-retention`:
+
+```yaml
+evaluator:
+  agentRunPayloadRetentionDays: 30
 ```
 
 Custom-trigger Jobs use `worker.runner.executionNamespace` and the same `executionIsolation` service account and RuntimeClass as ordinary execution Jobs.

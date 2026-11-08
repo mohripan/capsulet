@@ -116,6 +116,14 @@ pub async fn run() -> anyhow::Result<()> {
         "CAPSULET_AUDIT_RETENTION_DAYS",
         DEFAULT_AUDIT_RETENTION_DAYS,
     )?;
+    // Off unless set: erasing what runs held is not something an upgrade should start
+    // doing on its own.
+    let payload_retention_days = env::var("CAPSULET_AGENT_RUN_PAYLOAD_RETENTION_DAYS")
+        .ok()
+        .map(|value| {
+            parse_positive_i32_setting("CAPSULET_AGENT_RUN_PAYLOAD_RETENTION_DAYS", Some(&value), 1)
+        })
+        .transpose()?;
     let retention_interval = env::var("CAPSULET_RETENTION_INTERVAL_SECONDS")
         .ok()
         .map(|value| {
@@ -140,6 +148,7 @@ pub async fn run() -> anyhow::Result<()> {
                     &object_store,
                     retention_days,
                     audit_retention_days,
+                    payload_retention_days,
                 )
                 .await;
                 match &result {
@@ -208,6 +217,7 @@ async fn run_retention(
     object_store: &ConfiguredObjectStore,
     retention_days: i32,
     audit_retention_days: i32,
+    payload_retention_days: Option<i32>,
 ) -> anyhow::Result<()> {
     for candidate in store.list_retention_candidates(retention_days, 100).await? {
         for key in &candidate.object_keys {
@@ -234,6 +244,26 @@ async fn run_retention(
         .cleanup_old_trigger_events(retention_days)
         .await
         .context("cleanup old trigger events")?;
+    if let Some(days) = payload_retention_days {
+        let now_millis = i64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .context("read the clock")?
+                .as_millis(),
+        )
+        .context("the clock is past what a run log records")?;
+        let cutoff = now_millis.saturating_sub(i64::from(days).saturating_mul(86_400_000));
+        let sweep = store
+            .erase_payloads_past_retention(cutoff, None, 1_000)
+            .await
+            .context("erase agent run payloads past retention")?;
+        observability::tracing::info!(
+            runs_erased = sweep.runs_erased,
+            values_erased = sweep.values_erased,
+            values_kept = sweep.values_kept,
+            "agent run payload retention"
+        );
+    }
     Ok(())
 }
 

@@ -296,6 +296,7 @@
         "retentionDays": { "type": "integer", "minimum": 1 },
         "auditRetentionDays": { "type": "integer", "minimum": 1 },
         "retentionIntervalSeconds": { "type": "integer", "minimum": 60 },
+        "agentRunPayloadRetentionDays": { "type": ["integer", "null"], "minimum": 1 },
         "sqlConnections": {
           "type": "object",
           "properties": {

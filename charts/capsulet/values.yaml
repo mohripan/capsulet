@@ -271,6 +271,9 @@ evaluator:
   retentionDays: 30
   auditRetentionDays: 365
   retentionIntervalSeconds: 3600
+  # Erase what finished agent runs were given and produced this many days after
+  # they end, keeping their logs. Unset keeps payloads until someone erases them.
+  agentRunPayloadRetentionDays: null
   sqlConnections:
     existingSecret: ""
     secretKey: connections

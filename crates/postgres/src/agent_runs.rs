@@ -34,10 +34,20 @@ use crate::{PostgresStore, PostgresStoreError};
 /// The most a single stored value may hold, matching the table's constraint.
 pub const MAX_IR_RUN_VALUE_BYTES: usize = 16 * 1024 * 1024;
 
-/// The most values one erasure will follow references through. A run's own values
-/// are far fewer; the bound is there so a value that names a great many others
-/// cannot make one request unbounded.
-pub const MAX_ERASED_VALUES: usize = 100_000;
+/// The name a retention sweep erases under, in each tombstone's `erased_by`.
+pub const RETENTION_ERASER: &str = "capsulet-retention";
+
+/// How many runs a retention sweep reads at a time.
+const RETENTION_PAGE: i64 = 100;
+
+/// What one retention sweep did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PayloadRetentionSweep {
+    pub runs_erased: u64,
+    pub values_erased: u64,
+    /// Values those runs held that another run still holds, kept for it.
+    pub values_kept: u64,
+}
 
 /// What reading a stored value found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,18 +60,15 @@ pub enum StoredValue {
 /// How a request to erase a run's payloads came out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayloadErasure {
-    /// Erased now. `values` is how many stored values this request erased, which
-    /// leaves out any an earlier erasure of another run already had.
-    Erased { values: u64 },
+    /// Erased now. `values` is how many stored values went; `kept` is how many the
+    /// run held that another run still holds, which go when that run is erased.
+    Erased { values: u64, kept: u64 },
     /// An earlier request erased them; nothing changed.
     AlreadyErased,
     /// The run has not ended, and it may still read what it was given.
     StillRunning,
     /// The run is from before agent runs executed, and keeps no payloads here.
     NotDurable,
-    /// Another run of the project that has not ended holds some of the same bytes,
-    /// and would fail if they went. Nothing was erased.
-    InUse { run: String },
 }
 
 /// Everything starting an agent run writes.
@@ -79,11 +86,13 @@ pub struct AgentRunStart<'a> {
 }
 
 impl PostgresStore {
-    /// Stores a value under its content digest and returns the digest.
+    /// Stores a value under its content digest, as one `run_id` holds, and returns
+    /// the digest.
     ///
-    /// Idempotent: the same bytes in the same project are the same row. Scoped to the
-    /// project even though the key is a digest, so holding a digest is never a way to
-    /// read what another project stored.
+    /// Idempotent: the same bytes in the same project are the same row, and the run
+    /// is recorded as one of the runs holding it. Scoped to the project even though
+    /// the key is a digest, so holding a digest is never a way to read what another
+    /// project stored.
     ///
     /// # Errors
     ///
@@ -93,10 +102,15 @@ impl PostgresStore {
         &self,
         tenant_id: &str,
         project_id: &str,
+        run_id: &str,
         content: &str,
     ) -> Result<Digest, PostgresStoreError> {
         let digest = checked_digest(content)?;
-        insert_value(&self.pool, tenant_id, project_id, &digest, content).await?;
+        let mut tx = self.pool.begin().await?;
+        lock_project_values(&mut tx, tenant_id, project_id, false).await?;
+        insert_value(&mut *tx, tenant_id, project_id, &digest, content).await?;
+        hold_value(&mut tx, tenant_id, project_id, run_id, &digest).await?;
+        tx.commit().await?;
         Ok(digest)
     }
 
@@ -149,10 +163,10 @@ impl PostgresStore {
 
     /// Erases what an agent run was given and produced, keeping the record that it ran.
     ///
-    /// Erased: every value the run's log names as an input or an output, every value
-    /// those name in turn (an embedding behind its digest, the text of a retrieved
-    /// claim), and the copies of the starting state on the run's own rows. Each value
-    /// becomes a tombstone that says when it was erased and by whom.
+    /// Erased: the run's hold on every value it stored (its inputs, its outputs, and
+    /// what those name, such as an embedding's vector or a retrieved claim's text),
+    /// and the copies of its starting state on its own rows. A value no other run
+    /// holds becomes a tombstone that says when it was erased and by whom.
     ///
     /// Kept: the log, the definition, the admission, and anything certified about the
     /// run. Those hold digests and decisions rather than content, and they are what a
@@ -160,10 +174,11 @@ impl PostgresStore {
     /// works is anything that needs the bytes: re-running a node, re-checking a value
     /// against its schema, reading the run's final state.
     ///
-    /// Values are per project and shared by content, so another run in the project
-    /// that held exactly the same bytes loses them too. That is the point: the request
-    /// is to stop holding that content. A run that has not ended is refused, because
-    /// it may still read what it was given; cancel it first.
+    /// Values are stored once per project for each distinct content, so the same
+    /// bytes are often held by several runs. A value another run still holds is kept
+    /// for that run, and goes when that run is erased too: erasing one run never
+    /// takes anything from another. A run that has not ended is refused, because it
+    /// may still read what it was given; cancel it first.
     ///
     /// Returns `None` when the project has no such run.
     ///
@@ -179,6 +194,9 @@ impl PostgresStore {
         by: &str,
     ) -> Result<Option<PayloadErasure>, PostgresStoreError> {
         let mut tx = self.pool.begin().await?;
+        // Nothing in the project stores a value while this decides which ones go, so
+        // a run storing the same bytes at this moment cannot have them erased under it.
+        lock_project_values(&mut tx, tenant_id, project_id, true).await?;
         let Some(row) = sqlx::query(
             r"
             SELECT ir_run_id, payloads_erased_at IS NOT NULL AS erased FROM agent_runs
@@ -230,30 +248,8 @@ impl PostgresStore {
             .load_ir_run_events(tenant_id, project_id, &ir_run_id)
             .await?;
         let named = named_values(events.iter().map(|recorded| &recorded.event));
-        let erasing = reachable_values(&mut tx, tenant_id, project_id, named).await?;
-        if let Some(run) = self
-            .still_using(&mut tx, tenant_id, project_id, &ir_run_id, &erasing)
-            .await?
-        {
-            return Ok(Some(PayloadErasure::InUse { run }));
-        }
-
-        let digests: Vec<String> = erasing.iter().map(ToString::to_string).collect();
-        let erased = sqlx::query(
-            r"
-            UPDATE ir_run_values
-            SET content = NULL, size_bytes = 0, erased_at = now(), erased_by = $4
-            WHERE tenant_id = $1 AND project_id = $2 AND digest = ANY($3)
-              AND content IS NOT NULL
-            ",
-        )
-        .bind(tenant_id)
-        .bind(project_id)
-        .bind(&digests)
-        .bind(by)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+        let (erased, kept) =
+            release_values(&mut tx, tenant_id, project_id, &ir_run_id, &named, by).await?;
 
         sqlx::query(
             r"
@@ -275,7 +271,10 @@ impl PostgresStore {
             .await?;
 
         tx.commit().await?;
-        Ok(Some(PayloadErasure::Erased { values: erased }))
+        Ok(Some(PayloadErasure::Erased {
+            values: erased,
+            kept,
+        }))
     }
 
     /// Starts an agent run: the definition, the IR run, its inputs, and the link
@@ -299,6 +298,7 @@ impl PostgresStore {
         let run = start.run;
         let run_id = run.id.as_str();
         let mut tx = self.pool.begin().await?;
+        lock_project_values(&mut tx, tenant_id, project_id, false).await?;
 
         let agent_owned = sqlx::query_scalar::<_, i32>(
             r"
@@ -347,6 +347,9 @@ impl PostgresStore {
             start.at,
         )
         .await?;
+        for value_digest in bound.values() {
+            hold_value(&mut tx, tenant_id, project_id, run_id, value_digest).await?;
+        }
         crate::ir_runs::insert_event_unfenced(
             &mut tx,
             tenant_id,
@@ -458,41 +461,85 @@ impl PostgresStore {
         Ok(true)
     }
 
-    /// The first run of the project, other than `except`, that has not ended and
-    /// holds any of `values`.
+    /// Erases the payloads of every agent run that ended before `ended_before_millis`.
     ///
-    /// Erasing those would turn a request about one finished run into a failure of a
-    /// live one, so the erasure is refused instead and says which run is in the way.
-    async fn still_using(
+    /// The retention schedule: the same erasure a project admin can ask for, done
+    /// under [`RETENTION_ERASER`] for every run whose terminal event was recorded
+    /// before the cutoff, at most `max_runs` of them per sweep. As with any erasure,
+    /// bytes another run still holds are kept for it. `tenant` restricts the sweep to
+    /// one tenant's runs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when a query or an erasure fails. Runs erased
+    /// before the failure stay erased; each erasure is its own transaction.
+    pub async fn erase_payloads_past_retention(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        tenant_id: &str,
-        project_id: &str,
-        except: &str,
-        values: &BTreeSet<Digest>,
-    ) -> Result<Option<String>, PostgresStoreError> {
-        let live = sqlx::query_scalar::<_, String>(
-            r"
-            SELECT id FROM ir_runs
-            WHERE tenant_id = $1 AND project_id = $2 AND id <> $3
-              AND status NOT IN ('completed', 'failed', 'cancelled')
-            ORDER BY created_at, id
-            ",
-        )
-        .bind(tenant_id)
-        .bind(project_id)
-        .bind(except)
-        .fetch_all(&mut **tx)
-        .await?;
-        for run in live {
-            let events = self.load_ir_run_events(tenant_id, project_id, &run).await?;
-            let named = named_values(events.iter().map(|recorded| &recorded.event));
-            let held = reachable_values(tx, tenant_id, project_id, named).await?;
-            if !held.is_disjoint(values) {
-                return Ok(Some(run));
+        ended_before_millis: i64,
+        tenant: Option<&str>,
+        max_runs: u64,
+    ) -> Result<PayloadRetentionSweep, PostgresStoreError> {
+        let mut sweep = PayloadRetentionSweep::default();
+        let mut after = String::new();
+        let mut visited = 0_u64;
+        loop {
+            let page: Vec<(String, String, String)> = sqlx::query_as(
+                r"
+                SELECT runs.tenant_id, runs.project_id, runs.id
+                FROM agent_runs runs
+                JOIN ir_runs ir
+                  ON ir.tenant_id = runs.tenant_id
+                 AND ir.project_id = runs.project_id
+                 AND ir.id = runs.ir_run_id
+                WHERE runs.payloads_erased_at IS NULL
+                  AND ir.status IN ('completed', 'failed', 'cancelled')
+                  AND ($2::text IS NULL OR runs.tenant_id = $2)
+                  AND runs.id > $3
+                  AND EXISTS (
+                      SELECT 1 FROM ir_run_events ended
+                      WHERE ended.tenant_id = ir.tenant_id
+                        AND ended.project_id = ir.project_id
+                        AND ended.run_id = ir.id
+                        AND ended.kind IN ('completed', 'failed', 'cancelled')
+                        AND ended.recorded_at < $1
+                  )
+                ORDER BY runs.id
+                LIMIT $4
+                ",
+            )
+            .bind(ended_before_millis)
+            .bind(tenant)
+            .bind(&after)
+            .bind(RETENTION_PAGE)
+            .fetch_all(&self.pool)
+            .await?;
+            let full = i64::try_from(page.len()).unwrap_or(i64::MAX) == RETENTION_PAGE;
+            for (tenant_id, project_id, id) in page {
+                if visited >= max_runs {
+                    return Ok(sweep);
+                }
+                visited += 1;
+                let run = AgentRunId::new(id.clone())
+                    .map_err(PostgresStoreError::InvalidPersistedValue)?;
+                after = id;
+                if let Some(PayloadErasure::Erased { values, kept }) = self
+                    .erase_agent_run_payloads_in_project(
+                        &run,
+                        &tenant_id,
+                        &project_id,
+                        RETENTION_ERASER,
+                    )
+                    .await?
+                {
+                    sweep.runs_erased += 1;
+                    sweep.values_erased += values;
+                    sweep.values_kept += kept;
+                }
+            }
+            if !full {
+                return Ok(sweep);
             }
         }
-        Ok(None)
     }
 
     /// Finds an agent run with where it actually is, read from its log.
@@ -754,67 +801,117 @@ fn named_values<'a>(events: impl Iterator<Item = &'a RunEvent>) -> BTreeSet<Dige
     named
 }
 
-/// `named`, and every stored value they name in turn, up to [`MAX_ERASED_VALUES`].
+/// Releases a run's hold on its values, erasing those nobody else holds.
 ///
-/// A value names another by holding its digest as a string, which is how an
-/// embedding's vector and a retrieved claim's text are reached. Only digests this
-/// project holds are followed, so a string that merely looks like one leads nowhere.
-async fn reachable_values(
+/// Returns how many were erased and how many were kept for another run.
+async fn release_values(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     tenant_id: &str,
     project_id: &str,
-    named: BTreeSet<Digest>,
-) -> Result<BTreeSet<Digest>, PostgresStoreError> {
-    let mut reached = BTreeSet::new();
-    let mut frontier = named;
-    while !frontier.is_empty() && reached.len() < MAX_ERASED_VALUES {
-        let batch: Vec<String> = frontier.iter().map(ToString::to_string).collect();
-        reached.extend(frontier);
-        let rows = sqlx::query(
-            r"
-            SELECT content FROM ir_run_values
-            WHERE tenant_id = $1 AND project_id = $2 AND digest = ANY($3)
-              AND content IS NOT NULL
-            ",
-        )
-        .bind(tenant_id)
-        .bind(project_id)
-        .bind(&batch)
-        .fetch_all(&mut **tx)
-        .await?;
-        let mut next = BTreeSet::new();
-        for row in rows {
-            let content: String = row.try_get("content")?;
-            // A value that does not parse as JSON names nothing; it is still erased.
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
-                digests_in(&value, &mut next);
-            }
-        }
-        next.retain(|digest| !reached.contains(digest));
-        frontier = next;
-    }
-    Ok(reached)
+    ir_run_id: &str,
+    named: &BTreeSet<Digest>,
+    by: &str,
+) -> Result<(u64, u64), PostgresStoreError> {
+    // What the run held: every value recorded as its own when it stored it, and
+    // every value its log names, for anything stored before holds were recorded.
+    let mut holding: BTreeSet<String> = named.iter().map(ToString::to_string).collect();
+    let released: Vec<String> = sqlx::query_scalar(
+        r"
+        DELETE FROM ir_run_value_refs
+        WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3
+        RETURNING digest
+        ",
+    )
+    .bind(tenant_id)
+    .bind(project_id)
+    .bind(ir_run_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    holding.extend(released);
+    let digests: Vec<String> = holding.into_iter().collect();
+
+    let erased = sqlx::query(
+        r"
+        UPDATE ir_run_values held
+        SET content = NULL, size_bytes = 0, erased_at = now(), erased_by = $4
+        WHERE held.tenant_id = $1 AND held.project_id = $2 AND held.digest = ANY($3)
+          AND held.content IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM ir_run_value_refs other
+              WHERE other.tenant_id = held.tenant_id
+                AND other.project_id = held.project_id
+                AND other.digest = held.digest
+          )
+        ",
+    )
+    .bind(tenant_id)
+    .bind(project_id)
+    .bind(&digests)
+    .bind(by)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+    let kept = sqlx::query_scalar::<_, i64>(
+        r"
+        SELECT count(*) FROM ir_run_values
+        WHERE tenant_id = $1 AND project_id = $2 AND digest = ANY($3)
+          AND content IS NOT NULL
+        ",
+    )
+    .bind(tenant_id)
+    .bind(project_id)
+    .bind(&digests)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok((erased, u64::try_from(kept).unwrap_or(0)))
 }
 
-fn digests_in(value: &serde_json::Value, found: &mut BTreeSet<Digest>) {
-    match value {
-        serde_json::Value::String(text) => {
-            if let Ok(digest) = text.parse::<Digest>() {
-                found.insert(digest);
-            }
-        }
-        serde_json::Value::Array(items) => {
-            for item in items {
-                digests_in(item, found);
-            }
-        }
-        serde_json::Value::Object(fields) => {
-            for field in fields.values() {
-                digests_in(field, found);
-            }
-        }
-        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
-    }
+/// Records that a run holds a value.
+async fn hold_value(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+    project_id: &str,
+    run_id: &str,
+    digest: &Digest,
+) -> Result<(), PostgresStoreError> {
+    sqlx::query(
+        r"
+        INSERT INTO ir_run_value_refs (tenant_id, project_id, digest, run_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT DO NOTHING
+        ",
+    )
+    .bind(tenant_id)
+    .bind(project_id)
+    .bind(digest.to_string())
+    .bind(run_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Serialises erasure against storage within one project.
+///
+/// Storing takes the lock shared, so runs store side by side; erasing takes it
+/// alone, so the values it decides nobody holds cannot gain a holder before it
+/// commits. Held to the end of the transaction.
+async fn lock_project_values(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+    project_id: &str,
+    exclusive: bool,
+) -> Result<(), PostgresStoreError> {
+    let statement = if exclusive {
+        "SELECT pg_advisory_xact_lock(hashtextextended($1 || '/' || $2, 0))"
+    } else {
+        "SELECT pg_advisory_xact_lock_shared(hashtextextended($1 || '/' || $2, 0))"
+    };
+    sqlx::query(statement)
+        .bind(tenant_id)
+        .bind(project_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
 }
 
 /// Where a run is, in the terms an agent run reports.

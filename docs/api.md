@@ -416,16 +416,15 @@ measured appears as `unmeasured` rather than as zero, so a non-zero `unmeasured`
 lower bound. A local model has no price, so its cost is never counted.
 
 `POST /v1/agent-runs/{id}/erase` erases what a finished run was given and produced: its stored inputs
-and outputs, every stored value those name in turn (an embedding's vector, a retrieved claim's text),
-and the copies of its starting state. It needs `agents:write`, which only a project admin holds, and is
-audited like every other write. The answer is `200` with `values_erased` and the run as it now reads:
-`state` is `{}` and `execution.payloads_erased_at` says when. Asking again answers `200` with
-`values_erased: 0`.
+and outputs, the stored values those name (an embedding's vector, a retrieved claim's text), and the
+copies of its starting state. It needs `agents:write`, which only a project admin holds, and is audited
+like every other write. The answer is `200` with `values_erased`, `values_kept`, and the run as it now
+reads: `state` is `{}` and `execution.payloads_erased_at` says when. A value another run of the project
+also holds is kept for that run and counted in `values_kept`; it goes when that run is erased too. Asking
+again answers `200` with nothing more erased.
 
 It is refused with `409 agent_run_state_conflict` while the run has not ended, because it may still read
-what it was given (cancel it first), and for a run from before agent runs executed. Stored values are
-shared by content within a project, so it is refused with `409 agent_run_payloads_in_use`, naming the run,
-when a run that has not ended holds some of the same bytes; nothing is erased then.
+what it was given (cancel it first), and for a run from before agent runs executed.
 
 What is kept, and why, is in [persistence](persistence.md#erasing-a-runs-payloads).
 

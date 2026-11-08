@@ -84,29 +84,44 @@ Without the variable, a database-backed test fails and says how to run it rather
 
 ## Erasing a run's payloads
 
-A run's log holds digests, never the bytes behind them. The bytes are in `ir_run_values`, and the
-starting state also has copies on the `agent_runs` row and in `agent_state_snapshots`. Erasing a
-finished agent run (`POST /v1/agent-runs/{id}/erase`) separates the two:
+A run's log holds digests, never the bytes behind them. The bytes are in `ir_run_values`, stored once per
+project for each distinct content, and `ir_run_value_refs` records which runs hold each one: a run holds
+every value it stores, as it stores it. The starting state also has copies on the `agent_runs` row and in
+`agent_state_snapshots`. Erasing a finished agent run (`POST /v1/agent-runs/{id}/erase`, or the retention
+schedule below) separates the content from the record:
 
 | Erased | Kept |
 | --- | --- |
-| Every value the run's log names as an input or output, and every value those name by digest | The append-only log (`ir_run_events`): every event, every digest, every decision |
+| The run's hold on every value it stored: its inputs, its outputs, and what those name (an embedding's vector, a retrieved claim's text) | The append-only log (`ir_run_events`): every event, every digest, every decision |
+| The bytes of each of those values that no other run holds | Bytes another run still holds, until that run is erased too |
 | The starting state on `agent_runs` and in `agent_state_snapshots` | The definition version, the admission record, and any certificate |
 | | A tombstone for each erased value: its digest, `erased_at`, and `erased_by` |
 
+The same bytes are often held by many runs at once: an empty string, a common validator result, the same
+question asked twice. So erasing one run never takes anything from another. A value another run holds
+stays for it, the erasure reports it as kept, and its bytes go when the last run holding it is erased.
+Erasure and storage take a per-project lock, so a run storing the same bytes at the moment they are
+erased either holds them before the erasure decides, or stores them again after it.
+
 Decisions replay from the log alone, so `fold` and `decide` give the same answers after an erasure as
 before it. What no longer works is anything that needs the bytes: reading the run's state, re-running a
-node, or re-checking a value against its schema. A node of another run that reads an erased value fails
-with `missing_evidence`, saying the value was erased on request rather than that it is missing.
+node, or re-checking a value against its schema. A node that reads an erased value fails with
+`missing_evidence`, saying the value was erased on request rather than that it is missing. Producing the
+same bytes again later stores them again; an erasure is about what was held, not a ban on a string.
 
-Values are stored once per project for each distinct content, so erasing one run's values also erases
-them for any other ended run in the project that held exactly the same bytes. That run's own copy of its
-starting state is not touched; erase that run too to remove it. While a run that has not ended holds any
-of the same bytes, the erasure is refused and names it. A narrow race remains: a live run that stores
-identical bytes after that check but before the erasure commits loses them, and fails saying why.
-Producing the same bytes again later stores them again; an erasure is about what was held, not a ban on
-a string.
+The log carries no content to erase. A schema check records where a value failed and why, never the value
+itself (the API still shows a caller what it sent), and a model refusal records the status code, the
+provider and the model, not the provider's error body. Failure details name kinds, nodes, ports and rules,
+which come from the definition.
 
-Failure details in the log are not erased, because the log is not rewritten. Capsulet's own failure
-details name kinds, nodes and rules, but a schema check can quote the short value it rejected, and a
-model failure records the provider's error message, cut to 512 bytes.
+Capsulet does not encrypt stored values itself. Encryption at rest is the database's and its volume's;
+use an encrypted volume or a managed PostgreSQL with storage encryption. Raw values leave Capsulet only
+through the API that reads a run's state, which is project-scoped, and never through telemetry or a debug
+bundle.
+
+### Retention
+
+`CAPSULET_AGENT_RUN_PAYLOAD_RETENTION_DAYS` on the evaluator (`evaluator.agentRunPayloadRetentionDays`
+in Helm) erases the payloads of every agent run whose terminal event was recorded more than that many days
+ago, on the evaluator's retention interval and at most 1000 runs per sweep. It is unset by default, so an
+upgrade never starts erasing on its own. Tombstones it leaves say `capsulet-retention`.

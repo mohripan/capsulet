@@ -33,7 +33,8 @@ mod workflow_runs;
 mod workflows;
 
 pub use agent_runs::{
-    AgentRunStart, MAX_ERASED_VALUES, MAX_IR_RUN_VALUE_BYTES, PayloadErasure, StoredValue,
+    AgentRunStart, MAX_IR_RUN_VALUE_BYTES, PayloadErasure, PayloadRetentionSweep, RETENTION_ERASER,
+    StoredValue,
 };
 pub use artifacts::UpstreamArtifact;
 pub use assurance::{EvidenceLocation, StoredCertificate};

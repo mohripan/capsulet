@@ -857,6 +857,10 @@
         {
           "path": "crates/runtime/tests/agent_execution.rs",
           "selector": "what_a_node_consumed_counts_as_soon_as_it_is_recorded"
+        },
+        {
+          "path": "crates/runtime/src/values.rs",
+          "selector": "what_a_log_records_of_a_violation_never_quotes_the_value"
         }
       ]
     },
@@ -979,6 +983,10 @@
         },
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
           "selector": "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
         },
         {
@@ -987,7 +995,7 @@
         },
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "erasing_is_refused_while_a_live_run_holds_the_same_content"
+          "selector": "payloads_past_retention_are_erased_and_newer_ones_kept"
         },
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",
@@ -1507,10 +1515,11 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Graphs and agents",
-      "statement": "A project admin can erase what a finished agent run was given and produced, its stored inputs and outputs, the values those name and its starting state, while its event log, definition and certificates stay whole; erasure is refused while the run, or another run of the project holding the same content, has not ended, and asking again erases nothing more.",
+      "statement": "A project admin can erase what a finished agent run was given and produced, its stored inputs and outputs, the values those name and its starting state, while its event log, definition and certificates stay whole; bytes another run still holds are kept for that run and go when it is erased too, so erasing one run never breaks another; a run that has not ended is refused; an optional retention schedule erases runs a set number of days after they end; and the log itself records no content, since schema failures and model refusals are described without the value.",
       "public_surfaces": [
         "docs/api.md",
-        "docs/persistence.md"
+        "docs/persistence.md",
+        "docs/helm-values.md"
       ],
       "verification": [
         {
@@ -1526,9 +1535,22 @@
           ]
         },
         {
-          "assertion": "refuses-shared-live-content",
+          "assertion": "shared-bytes-kept-for-their-holder",
           "evidence_selectors": [
-            "erasing_is_refused_while_a_live_run_holds_the_same_content"
+            "bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased"
+          ]
+        },
+        {
+          "assertion": "retention-schedule",
+          "evidence_selectors": [
+            "payloads_past_retention_are_erased_and_newer_ones_kept"
+          ]
+        },
+        {
+          "assertion": "log-records-no-content",
+          "evidence_selectors": [
+            "what_a_log_records_of_a_violation_never_quotes_the_value",
+            "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
           ]
         }
       ],
@@ -1549,7 +1571,25 @@
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
           "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
-          "selector": "erasing_is_refused_while_a_live_run_holds_the_same_content"
+          "selector": "bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "payloads_past_retention_are_erased_and_newer_ones_kept"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
+        },
+        {
+          "type": "test",
+          "path": "crates/runtime/src/values.rs",
+          "command": "cargo test -p capsulet-runtime --locked",
+          "selector": "what_a_log_records_of_a_violation_never_quotes_the_value"
         }
       ]
     },

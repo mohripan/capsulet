@@ -159,10 +159,17 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "values_kept": {
+            "description": "How many values the run held that another run of the project still holds.\nThey are kept for that run, and go when it is erased too.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "values_erased",
+          "values_kept",
           "run"
         ],
         "type": "object"

@@ -46,8 +46,6 @@ use crate::telemetry::{self, ModelCall};
 const DEFAULT_TOP_K: usize = 5;
 /// How many of a project's newest claims a lexical search looks through.
 const CLAIM_SEARCH_WINDOW: i64 = 500;
-/// The most of a provider's error message a failure detail keeps, in bytes.
-const MAX_PROVIDER_MESSAGE: usize = 512;
 /// How often a job node looks to see whether its job has finished.
 const JOB_POLL: Duration = Duration::from_millis(500);
 
@@ -117,14 +115,14 @@ impl AgentExecutor {
                 let query = first_text(request.node, &inputs)?;
                 let top_k = parameter_number(request.node, "top_k").unwrap_or(DEFAULT_TOP_K);
                 let documents = self
-                    .search_claims(request.tenant, request.project, &query, top_k)
+                    .search_claims(request.tenant, request.project, request.run, &query, top_k)
                     .await?;
                 self.finish(request, &Value::Array(documents), None).await
             }
             "memory_read" => {
                 let limit = parameter_number(request.node, "limit").unwrap_or(DEFAULT_TOP_K);
                 let documents = self
-                    .search_claims(request.tenant, request.project, "", limit)
+                    .search_claims(request.tenant, request.project, request.run, "", limit)
                     .await?;
                 self.finish(request, &Value::Array(documents), None).await
             }
@@ -258,7 +256,13 @@ impl AgentExecutor {
         usage: Option<NodeUsage>,
     ) -> Result<NodeOutcome, Failure> {
         let outputs = self
-            .store_outputs(request.tenant, request.project, request.node, value)
+            .store_outputs(
+                request.tenant,
+                request.project,
+                request.run,
+                request.node,
+                value,
+            )
             .await
             .map_err(|mut failure| {
                 failure.usage = usage.clone().map(Box::new);
@@ -275,6 +279,7 @@ impl AgentExecutor {
         &self,
         tenant: &str,
         project: &str,
+        run: &str,
         node: &Node,
         value: &Value,
     ) -> Result<BTreeMap<String, Digest>, Failure> {
@@ -283,19 +288,26 @@ impl AgentExecutor {
             check_value(&port.schema, value).map_err(|violation| {
                 Failure::new(
                     FailureKind::SchemaMismatch,
-                    format!("output `{}` of `{}` {violation}", port.id, node.id),
+                    format!(
+                        "output `{}` of `{}` {}",
+                        port.id,
+                        node.id,
+                        violation.without_content()
+                    ),
                 )
             })?;
-            let digest = self.put_value(tenant, project, value).await?;
+            let digest = self.put_value(tenant, project, run, value).await?;
             outputs.insert(port.id.to_string(), digest);
         }
         Ok(outputs)
     }
 
+    /// Stores a value as one this run holds.
     async fn put_value(
         &self,
         tenant: &str,
         project: &str,
+        run: &str,
         value: &Value,
     ) -> Result<Digest, Failure> {
         let content = serde_json::to_string(value).map_err(|error| {
@@ -315,7 +327,7 @@ impl AgentExecutor {
             ));
         }
         self.store
-            .put_ir_run_value(tenant, project, &content)
+            .put_ir_run_value(tenant, project, run, &content)
             .await
             .map_err(|error| Failure::storage(&error))
     }
@@ -405,7 +417,7 @@ impl AgentExecutor {
         ] {
             outputs.insert(
                 port.to_string(),
-                self.put_value(request.tenant, request.project, &value)
+                self.put_value(request.tenant, request.project, request.run, &value)
                     .await?,
             );
         }
@@ -478,8 +490,11 @@ impl AgentExecutor {
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .parse()
-                        .map_err(|error: capsulet_ir::digest::DigestError| {
-                            Failure::new(FailureKind::StaleReference, error.to_string())
+                        .map_err(|_: capsulet_ir::digest::DigestError| {
+                            Failure::new(
+                                FailureKind::StaleReference,
+                                "a document's `content_digest` is not a content digest",
+                            )
                         })?;
                     let text = self.load_value(tenant, project, &digest).await?;
                     let source = item.get("source_id").and_then(Value::as_str).unwrap_or("");
@@ -533,7 +548,12 @@ impl AgentExecutor {
         // A vector is floating point, which has no canonical encoding, so it is stored
         // and the graph moves its digest. That is what the port's schema says.
         let digest = self
-            .put_value(request.tenant, request.project, &outcome.vector)
+            .put_value(
+                request.tenant,
+                request.project,
+                request.run,
+                &outcome.vector,
+            )
             .await?;
         self.finish(request, &json!(digest.to_string()), Some(outcome.usage))
             .await
@@ -569,12 +589,13 @@ impl AgentExecutor {
         &self,
         tenant: &str,
         project: &str,
+        run: &str,
         query: &str,
         limit: usize,
     ) -> Result<Vec<Value>, Failure> {
         let span = telemetry::retrieval_span(limit, CLAIM_SEARCH_WINDOW);
         let found = self
-            .rank_claims(tenant, project, query, limit)
+            .rank_claims(tenant, project, run, query, limit)
             .instrument(span.clone())
             .await;
         telemetry::finish_retrieval(&span, found.as_ref().ok().map(Vec::len));
@@ -585,6 +606,7 @@ impl AgentExecutor {
         &self,
         tenant: &str,
         project: &str,
+        run: &str,
         query: &str,
         limit: usize,
     ) -> Result<Vec<Value>, Failure> {
@@ -611,7 +633,7 @@ impl AgentExecutor {
         let mut documents = Vec::new();
         for (_, claim) in scored.into_iter().take(limit) {
             let digest = self
-                .put_value(tenant, project, &json!(claim_text(&claim)))
+                .put_value(tenant, project, run, &json!(claim_text(&claim)))
                 .await?;
             documents.push(json!({
                 "source_id": claim.id().as_str(),
@@ -817,7 +839,13 @@ impl AgentExecutor {
                     "status": status.to_string(),
                 });
                 let outputs = match self
-                    .store_outputs(request.tenant, request.project, node, &reported)
+                    .store_outputs(
+                        request.tenant,
+                        request.project,
+                        request.run,
+                        node,
+                        &reported,
+                    )
                     .await
                 {
                     Ok(outputs) => outputs,
@@ -1050,13 +1078,11 @@ fn model_failure(provider: &str, model: &str, error: &ModelError) -> Failure {
         }
         ModelError::Malformed(_) => FailureKind::SchemaMismatch,
     };
-    // A provider's error body is recorded as it was sent, but not all of it: the
-    // detail lives in the run's log, which an erasure does not rewrite.
+    // A provider's error body is not recorded: the detail lives in the run's log,
+    // which an erasure does not rewrite, and a provider can repeat the prompt back in
+    // it. The status, the provider and the model are what diagnose a refusal.
     let said = match error {
-        ModelError::Rejected { status, body } => format!(
-            "refused with status {status}: {}",
-            cut(body, MAX_PROVIDER_MESSAGE)
-        ),
+        ModelError::Rejected { status, .. } => format!("refused with status {status}"),
         ModelError::Unreachable(_) | ModelError::Malformed(_) => error.to_string(),
     };
     Failure {
@@ -1068,18 +1094,6 @@ fn model_failure(provider: &str, model: &str, error: &ModelError) -> Failure {
             ..NodeUsage::default()
         })),
     }
-}
-
-/// At most `limit` bytes of `text`, cut on a character boundary.
-fn cut(text: &str, limit: usize) -> &str {
-    if text.len() <= limit {
-        return text;
-    }
-    let mut end = limit;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    &text[..end]
 }
 
 /// Collapses runs of whitespace and trims. The same text in always comes out the same.

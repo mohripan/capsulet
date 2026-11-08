@@ -490,8 +490,9 @@ where
 /// The run's stored inputs and outputs, everything those name in turn, and the copy
 /// of its starting state are erased; its log, definition and anything certified about
 /// it stay, so the decisions it took can still be replayed. A run that has not ended
-/// is refused, because it may still read what it was given; cancel it first. Asking
-/// again is harmless and erases nothing more.
+/// is refused, because it may still read what it was given; cancel it first. Bytes
+/// another run also holds are kept for it. Asking again is harmless and erases
+/// nothing more.
 pub(crate) async fn erase_agent_run_payloads<S, O>(
     State(state): State<AppState<S, O>>,
     headers: HeaderMap,
@@ -510,25 +511,18 @@ where
         .erase_agent_run_payloads(&id, &context.tenant_id, &context.project_id, by.as_str())
         .await
         .map_err(ApiError::store)?;
-    let values_erased = match outcome {
+    let (values_erased, values_kept) = match outcome {
         None => return Err(ApiError::ResourceNotFound),
-        Some(PayloadErasure::Erased { values }) => values,
-        Some(PayloadErasure::AlreadyErased) => 0,
+        Some(PayloadErasure::Erased { values, kept }) => (values, kept),
+        Some(PayloadErasure::AlreadyErased) => (0, 0),
         Some(PayloadErasure::StillRunning | PayloadErasure::NotDurable) => {
             return Err(ApiError::AgentRunStateConflict(id.as_str().to_string()));
-        }
-        // The run named is this project's, so naming it tells the caller nothing
-        // they could not list for themselves.
-        Some(PayloadErasure::InUse { run }) => {
-            return Err(ApiError::AgentRunPayloadsInUse {
-                run: id.as_str().to_string(),
-                other: run,
-            });
         }
     };
     let run = find_run(&state.store, &id, &context).await?;
     Ok(Json(AgentRunErasureResponse {
         values_erased,
+        values_kept,
         run: AgentRunResponse::new(&run)?,
     }))
 }

@@ -165,6 +165,10 @@ spec:
               value: {{ $root.Values.evaluator.auditRetentionDays | quote }}
             - name: CAPSULET_RETENTION_INTERVAL_SECONDS
               value: {{ $root.Values.evaluator.retentionIntervalSeconds | quote }}
+            {{- if $root.Values.evaluator.agentRunPayloadRetentionDays }}
+            - name: CAPSULET_AGENT_RUN_PAYLOAD_RETENTION_DAYS
+              value: {{ $root.Values.evaluator.agentRunPayloadRetentionDays | quote }}
+            {{- end }}
             - name: CAPSULET_EXECUTION_NAMESPACE
               value: {{ default $root.Release.Namespace $root.Values.worker.runner.executionNamespace | quote }}
             - name: CAPSULET_EXECUTION_SERVICE_ACCOUNT

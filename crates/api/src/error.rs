@@ -62,8 +62,6 @@ pub(crate) enum ApiError {
     AgentNotRunnable(String),
     #[error("agent run {0} is not somewhere this can be done")]
     AgentRunStateConflict(String),
-    #[error("agent run {run} shares stored content with run {other}, which has not ended")]
-    AgentRunPayloadsInUse { run: String, other: String },
     #[error("job run logs not found: {0}")]
     RunLogsNotFound(String),
     #[error("job artifact not found: {0}")]
@@ -124,8 +122,7 @@ impl ApiError {
             | Self::JobDefinitionInUse(_)
             | Self::RunAlreadyExists(_)
             | Self::AgentRunAlreadyExists(_)
-            | Self::AgentRunStateConflict(_)
-            | Self::AgentRunPayloadsInUse { .. } => StatusCode::CONFLICT,
+            | Self::AgentRunStateConflict(_) => StatusCode::CONFLICT,
             Self::UnknownJobDefinition(_)
             | Self::UnknownExecutionPool(_)
             | Self::AdmissionRefused { .. }
@@ -182,7 +179,6 @@ impl ApiError {
             Self::AgentRunAlreadyExists(_) => "agent_run_already_exists",
             Self::AgentNotRunnable(_) => "agent_not_runnable",
             Self::AgentRunStateConflict(_) => "agent_run_state_conflict",
-            Self::AgentRunPayloadsInUse { .. } => "agent_run_payloads_in_use",
             Self::Proposer(_) => "proposer_unavailable",
             Self::RunLogsNotFound(_) => "job_run_logs_not_found",
             Self::ArtifactNotFound(_) => "job_artifact_not_found",
