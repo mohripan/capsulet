@@ -647,16 +647,21 @@ impl PostgresStore {
 
     pub async fn list_memory_contracts(
         &self,
+        tenant_id: &str,
+        project_id: &str,
         limit: i64,
     ) -> Result<Vec<MemoryContract>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
             SELECT id, tenant_id, project_id, name, source
             FROM memory_contracts
+            WHERE tenant_id = $1 AND project_id = $2
             ORDER BY updated_at DESC, id ASC
-            LIMIT $1
+            LIMIT $3
             ",
         )
+        .bind(tenant_id)
+        .bind(project_id)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
@@ -699,7 +704,12 @@ impl PostgresStore {
                 id, tenant_id, project_id, parent_subgraph_id, name, description, owner_kind,
                 owner_id, contract_id, summary_claim_id, permissions, status, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now()
+            WHERE $4::text IS NULL OR EXISTS (
+                SELECT 1 FROM memory_subgraphs parent
+                WHERE parent.id = $4 AND parent.tenant_id = $2 AND parent.project_id = $3
+                FOR SHARE
+            )
             ON CONFLICT (id) DO UPDATE SET
                 parent_subgraph_id = EXCLUDED.parent_subgraph_id,
                 name = EXCLUDED.name,
@@ -729,7 +739,7 @@ impl PostgresStore {
         .bind(subgraph.status().to_string())
         .execute(&self.pool)
         .await?;
-        scope_guard(&result, "memory_subgraphs", subgraph.id().as_str())
+        subgraph_scoped_write(&result)
     }
 
     pub async fn list_memory_subgraphs(
@@ -783,7 +793,12 @@ impl PostgresStore {
             INSERT INTO memory_subgraph_members (
                 id, tenant_id, project_id, subgraph_id, member_kind, member_id, role, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+            SELECT $1, $2, $3, $4, $5, $6, $7, now()
+            WHERE EXISTS (
+                SELECT 1 FROM memory_subgraphs parent
+                WHERE parent.id = $4 AND parent.tenant_id = $2 AND parent.project_id = $3
+                FOR SHARE
+            )
             ON CONFLICT (id) DO UPDATE SET
                 subgraph_id = EXCLUDED.subgraph_id,
                 member_kind = EXCLUDED.member_kind,
@@ -803,7 +818,7 @@ impl PostgresStore {
         .bind(member.role().to_string())
         .execute(&self.pool)
         .await?;
-        scope_guard(&result, "memory_subgraph_members", member.id().as_str())
+        subgraph_scoped_write(&result)
     }
 
     pub async fn upsert_memory_canonical_entity(
@@ -869,7 +884,12 @@ impl PostgresStore {
                 id, tenant_id, project_id, subgraph_id, entity_id, canonical_entity_id,
                 confidence, status, evidence_ids, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, now()
+            WHERE EXISTS (
+                SELECT 1 FROM memory_subgraphs parent
+                WHERE parent.id = $4 AND parent.tenant_id = $2 AND parent.project_id = $3
+                FOR SHARE
+            )
             ON CONFLICT (id) DO UPDATE SET
                 subgraph_id = EXCLUDED.subgraph_id,
                 entity_id = EXCLUDED.entity_id,
@@ -893,11 +913,7 @@ impl PostgresStore {
         .bind(id_strings(resolution.evidence_ids()))
         .execute(&self.pool)
         .await?;
-        scope_guard(
-            &result,
-            "memory_entity_resolutions",
-            resolution.id().as_str(),
-        )
+        subgraph_scoped_write(&result)
     }
 
     pub async fn list_memory_entity_resolutions(
@@ -953,7 +969,17 @@ impl PostgresStore {
                 from_member_kind, from_member_id, to_member_kind, to_member_id,
                 claim_ids, evidence_ids, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now()
+            WHERE EXISTS (
+                SELECT 1 FROM memory_subgraphs from_end
+                WHERE from_end.id = $5 AND from_end.tenant_id = $2 AND from_end.project_id = $3
+                FOR SHARE
+            )
+            AND EXISTS (
+                SELECT 1 FROM memory_subgraphs to_end
+                WHERE to_end.id = $6 AND to_end.tenant_id = $2 AND to_end.project_id = $3
+                FOR SHARE
+            )
             ON CONFLICT (id) DO UPDATE SET
                 edge_type = EXCLUDED.edge_type,
                 from_subgraph_id = EXCLUDED.from_subgraph_id,
@@ -983,7 +1009,7 @@ impl PostgresStore {
         .bind(id_strings(edge.evidence_ids()))
         .execute(&self.pool)
         .await?;
-        scope_guard(&result, "memory_subgraph_edges", edge.id().as_str())
+        subgraph_scoped_write(&result)
     }
 
     pub async fn upsert_memory_summary_trace(
@@ -995,7 +1021,12 @@ impl PostgresStore {
             INSERT INTO memory_summary_traces (
                 id, tenant_id, project_id, subgraph_id, summary_claim_id, inner_claim_ids, evidence_ids
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            SELECT $1, $2, $3, $4, $5, $6, $7
+            WHERE EXISTS (
+                SELECT 1 FROM memory_subgraphs parent
+                WHERE parent.id = $4 AND parent.tenant_id = $2 AND parent.project_id = $3
+                FOR SHARE
+            )
             ON CONFLICT (id) DO UPDATE SET
                 subgraph_id = EXCLUDED.subgraph_id,
                 summary_claim_id = EXCLUDED.summary_claim_id,
@@ -1014,24 +1045,31 @@ impl PostgresStore {
         .bind(id_strings(trace.evidence_ids()))
         .execute(&self.pool)
         .await?;
-        scope_guard(&result, "memory_summary_traces", trace.id().as_str())
+        subgraph_scoped_write(&result)
     }
 
     pub async fn list_memory_summary_traces(
         &self,
         subgraph_id: &MemorySubgraphId,
         summary_claim_id: &ClaimId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<SummaryTrace>, PostgresStoreError> {
+        // Scoped on the trace itself, not only on its subgraph: a trace another
+        // project wrote against this subgraph must not count toward its activation.
         let rows = sqlx::query(
             r"
             SELECT id, tenant_id, project_id, subgraph_id, summary_claim_id, inner_claim_ids, evidence_ids
             FROM memory_summary_traces
             WHERE subgraph_id = $1 AND summary_claim_id = $2
+              AND tenant_id = $3 AND project_id = $4
             ORDER BY created_at DESC, id ASC
             ",
         )
         .bind(subgraph_id.as_str())
         .bind(summary_claim_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_summary_trace).collect()
@@ -1046,7 +1084,12 @@ impl PostgresStore {
             INSERT INTO memory_entity_graph_attachments (
                 id, tenant_id, project_id, canonical_entity_id, subgraph_id, attachment_type, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, now())
+            SELECT $1, $2, $3, $4, $5, $6, now()
+            WHERE EXISTS (
+                SELECT 1 FROM memory_subgraphs parent
+                WHERE parent.id = $5 AND parent.tenant_id = $2 AND parent.project_id = $3
+                FOR SHARE
+            )
             ON CONFLICT (id) DO UPDATE SET
                 canonical_entity_id = EXCLUDED.canonical_entity_id,
                 subgraph_id = EXCLUDED.subgraph_id,
@@ -1064,12 +1107,21 @@ impl PostgresStore {
         .bind(attachment.attachment_type().to_string())
         .execute(&self.pool)
         .await?;
-        scope_guard(
-            &result,
-            "memory_entity_graph_attachments",
-            attachment.id().as_str(),
-        )
+        subgraph_scoped_write(&result)
     }
+}
+
+/// A write that names a subgraph is its own ownership check. It inserts nothing when the
+/// subgraph it names belongs to another project, so a record can never hang off a
+/// subgraph it was not written in, and the scoped `ON CONFLICT ... WHERE` updates nothing
+/// when another project holds the id. Both report as [`PostgresStoreError::ScopeMismatch`],
+/// the answer a missing subgraph gets, so a write cannot be used to learn whether some
+/// other project's id exists.
+fn subgraph_scoped_write(result: &sqlx::postgres::PgQueryResult) -> Result<(), PostgresStoreError> {
+    if result.rows_affected() == 0 {
+        return Err(PostgresStoreError::ScopeMismatch);
+    }
+    Ok(())
 }
 
 /// Memory ids are globally unique, so an upsert can name a row owned by another tenant. The

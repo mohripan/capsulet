@@ -1027,13 +1027,12 @@ where
     let context = project_context(&headers, &principal)?;
     let contracts = state
         .store
-        .list_memory_contracts(100)
+        .list_memory_contracts(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
     Ok(Json(ListMemoryContractsResponse {
         contracts: contracts
             .iter()
-            .filter(|contract| in_scope(contract.scope(), &context))
             .map(MemoryContractResponse::new)
             .collect::<Result<Vec<_>, _>>()?,
     }))
@@ -1098,7 +1097,7 @@ where
         .store
         .upsert_memory_subgraph(&subgraph)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(|error| subgraph_write_error::<S>(error, &named_subgraph(&subgraph)))?;
     Ok((
         StatusCode::CREATED,
         Json(MemorySubgraphResponse::from(&subgraph)),
@@ -1162,11 +1161,6 @@ where
     let context = write_context(&headers, &principal)?;
     let id = MemorySubgraphId::new(id).map_err(ApiError::validation)?;
     let summary_claim_id = ClaimId::new(request.summary_claim_id).map_err(ApiError::validation)?;
-    let traces = state
-        .store
-        .list_memory_summary_traces(&id, &summary_claim_id)
-        .await
-        .map_err(ApiError::store)?;
     let Some(subgraph) = state
         .store
         .find_memory_subgraph_in_project(&id, &context.tenant_id, &context.project_id)
@@ -1175,6 +1169,17 @@ where
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
+    // Only this project's traces can support its summary, whoever wrote against the id.
+    let traces = state
+        .store
+        .list_memory_summary_traces(
+            &id,
+            &summary_claim_id,
+            &context.tenant_id,
+            &context.project_id,
+        )
+        .await
+        .map_err(ApiError::store)?;
     let activated = subgraph
         .activate(MemorySubgraphActivation::new(
             Some(
@@ -1194,7 +1199,7 @@ where
         .store
         .upsert_memory_subgraph(&activated)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(|error| subgraph_write_error::<S>(error, &named_subgraph(&activated)))?;
     Ok(Json(MemorySubgraphResponse::from(&activated)))
 }
 
@@ -1224,7 +1229,7 @@ where
         .store
         .upsert_memory_subgraph_member(&member)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(|error| subgraph_write_error::<S>(error, member.subgraph_id().as_str()))?;
     Ok((
         StatusCode::CREATED,
         Json(MemorySubgraphMemberResponse::from(&member)),
@@ -1318,7 +1323,7 @@ where
         .store
         .upsert_memory_entity_resolution(&resolution)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(|error| subgraph_write_error::<S>(error, resolution.subgraph_id().as_str()))?;
     Ok((
         StatusCode::CREATED,
         Json(EntityResolutionResponse::from(&resolution)),
@@ -1429,7 +1434,7 @@ where
         .store
         .upsert_memory_entity_resolution(&reviewed)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(|error| subgraph_write_error::<S>(error, reviewed.subgraph_id().as_str()))?;
     Ok(Json(EntityResolutionResponse::from(&reviewed)))
 }
 
@@ -1585,7 +1590,7 @@ where
         .store
         .upsert_memory_summary_trace(&trace)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(|error| subgraph_write_error::<S>(error, trace.subgraph_id().as_str()))?;
     Ok((
         StatusCode::CREATED,
         Json(SummaryTraceResponse::from(&trace)),
@@ -1616,7 +1621,7 @@ where
         .store
         .upsert_memory_entity_graph_attachment(&attachment)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(|error| subgraph_write_error::<S>(error, attachment.subgraph_id().as_str()))?;
     Ok((
         StatusCode::CREATED,
         Json(EntityGraphAttachmentResponse::from(&attachment)),
@@ -1663,8 +1668,36 @@ where
         .store
         .upsert_memory_subgraph_edge(&edge)
         .await
-        .map_err(ApiError::store)?;
+        .map_err(|error| {
+            subgraph_write_error::<S>(
+                error,
+                &format!(
+                    "{} or {}",
+                    edge.from_subgraph_id().as_str(),
+                    edge.to_subgraph_id().as_str()
+                ),
+            )
+        })?;
     Ok((StatusCode::CREATED, Json(SubgraphEdgeResponse::from(&edge))))
+}
+
+/// The store refuses a write that names a subgraph outside the caller's project, and the
+/// API reports that subgraph as missing, the same answer reading it would give.
+fn subgraph_write_error<S: ApiStore>(error: S::Error, subgraph: &str) -> ApiError {
+    if S::is_scope_mismatch(&error) {
+        ApiError::MemoryNotFound(subgraph.to_string())
+    } else {
+        ApiError::store(error)
+    }
+}
+
+/// The subgraph a refused subgraph write is about: its parent when it names one.
+fn named_subgraph(subgraph: &MemorySubgraph) -> String {
+    subgraph
+        .parent_subgraph_id()
+        .unwrap_or_else(|| subgraph.id())
+        .as_str()
+        .to_string()
 }
 
 fn write_context(headers: &HeaderMap, principal: &Principal) -> Result<ProjectContext, ApiError> {

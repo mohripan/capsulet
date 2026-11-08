@@ -134,7 +134,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-IAM-004` | implemented | capability | Project administrators manage project memberships, and a user never inherits the membership of a service account with the same name. |
 | `CAP-IAM-005` | implemented | capability | Service accounts authenticate by token hash, are listed and revoked only within their own project, stop authenticating once revoked, and never inherit a same-named user's membership. |
 | `CAP-IAM-006` | implemented | capability | Mutations are recorded as durable audit events in the project the write selected, and an audit listing excludes other projects and tenants before it applies its limit. |
-| `CAP-IAM-008` | implemented | limitation | Two memory paths are not yet scoped in the query: memory contracts are listed across every project and filtered after the listing limit, and a subgraph member or edge is not checked against its parent subgraph's project. |
+| `CAP-IAM-009` | implemented | capability | Memory contracts, summary traces and ingestion run outputs are read within the caller's project before any listing limit, and a memory write that names a subgraph (a member, an edge, a summary trace, an entity resolution, a graph attachment or a child subgraph) is refused when that subgraph belongs to another project. |
 
 ## Jobs and runners
 

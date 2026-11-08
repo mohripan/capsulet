@@ -24,6 +24,10 @@
         },
         {
           "path": "crates/api/src/tests.rs",
+          "selector": "another_projects_summary_trace_cannot_activate_a_subgraph"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
           "selector": "approving_claim_detects_and_reviews_conflicting_active_claims"
         },
         {
@@ -57,6 +61,14 @@
         {
           "path": "crates/api/src/tests.rs",
           "selector": "job_definitions_are_scoped_to_selected_project"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "memory_contracts_are_listed_within_the_project_before_the_limit"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "nothing_attaches_to_another_projects_subgraph_over_the_api"
         },
         {
           "path": "crates/api/src/tests.rs",
@@ -742,6 +754,14 @@
         },
         {
           "path": "crates/postgres/tests/project_scope.rs",
+          "selector": "a_subgraph_edge_cannot_reach_another_projects_subgraph"
+        },
+        {
+          "path": "crates/postgres/tests/project_scope.rs",
+          "selector": "a_subgraph_member_cannot_attach_to_another_projects_subgraph"
+        },
+        {
+          "path": "crates/postgres/tests/project_scope.rs",
           "selector": "a_workflow_run_is_created_with_its_owner_or_not_at_all"
         },
         {
@@ -751,6 +771,22 @@
         {
           "path": "crates/postgres/tests/project_scope.rs",
           "selector": "another_project_can_neither_read_nor_change_a_run_by_its_id"
+        },
+        {
+          "path": "crates/postgres/tests/project_scope.rs",
+          "selector": "ingestion_run_outputs_are_listed_within_their_project"
+        },
+        {
+          "path": "crates/postgres/tests/project_scope.rs",
+          "selector": "memory_contract_listing_applies_scope_before_the_limit"
+        },
+        {
+          "path": "crates/postgres/tests/project_scope.rs",
+          "selector": "nothing_else_names_another_projects_subgraph"
+        },
+        {
+          "path": "crates/postgres/tests/project_scope.rs",
+          "selector": "summary_traces_are_listed_within_their_project"
         }
       ]
     },

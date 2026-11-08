@@ -1412,13 +1412,22 @@ impl ApiStore for FakeStore {
         Ok(())
     }
 
-    async fn list_memory_contracts(&self, limit: i64) -> Result<Vec<MemoryContract>, Self::Error> {
+    async fn list_memory_contracts(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<MemoryContract>, Self::Error> {
         let limit = usize::try_from(limit).map_err(|error| error.to_string())?;
         Ok(self
             .memory_contracts
             .lock()
             .map_err(|error| error.to_string())?
             .iter()
+            .filter(|contract| {
+                contract.scope().tenant_id() == tenant_id
+                    && contract.scope().project_id() == project_id
+            })
             .take(limit)
             .cloned()
             .collect())
@@ -1438,6 +1447,9 @@ impl ApiStore for FakeStore {
     }
 
     async fn upsert_memory_subgraph(&self, subgraph: &MemorySubgraph) -> Result<(), Self::Error> {
+        if let Some(parent) = subgraph.parent_subgraph_id() {
+            self.require_subgraph_in_scope(parent, subgraph.scope())?;
+        }
         let mut subgraphs = self
             .memory_subgraphs
             .lock()
@@ -1485,6 +1497,7 @@ impl ApiStore for FakeStore {
         &self,
         member: &MemorySubgraphMember,
     ) -> Result<(), Self::Error> {
+        self.require_subgraph_in_scope(member.subgraph_id(), member.scope())?;
         let mut members = self
             .memory_subgraph_members
             .lock()
@@ -1531,6 +1544,7 @@ impl ApiStore for FakeStore {
         &self,
         resolution: &EntityResolution,
     ) -> Result<(), Self::Error> {
+        self.require_subgraph_in_scope(resolution.subgraph_id(), resolution.scope())?;
         let mut resolutions = self
             .memory_entity_resolutions
             .lock()
@@ -1575,6 +1589,8 @@ impl ApiStore for FakeStore {
     }
 
     async fn upsert_memory_subgraph_edge(&self, edge: &SubgraphEdge) -> Result<(), Self::Error> {
+        self.require_subgraph_in_scope(edge.from_subgraph_id(), edge.scope())?;
+        self.require_subgraph_in_scope(edge.to_subgraph_id(), edge.scope())?;
         let mut edges = self
             .memory_subgraph_edges
             .lock()
@@ -1585,6 +1601,7 @@ impl ApiStore for FakeStore {
     }
 
     async fn upsert_memory_summary_trace(&self, trace: &SummaryTrace) -> Result<(), Self::Error> {
+        self.require_subgraph_in_scope(trace.subgraph_id(), trace.scope())?;
         let mut traces = self
             .memory_summary_traces
             .lock()
@@ -1598,6 +1615,8 @@ impl ApiStore for FakeStore {
         &self,
         subgraph_id: &capsulet_core::MemorySubgraphId,
         summary_claim_id: &ClaimId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<SummaryTrace>, Self::Error> {
         Ok(self
             .memory_summary_traces
@@ -1605,7 +1624,10 @@ impl ApiStore for FakeStore {
             .map_err(|error| error.to_string())?
             .iter()
             .filter(|trace| {
-                trace.subgraph_id() == subgraph_id && trace.summary_claim_id() == summary_claim_id
+                trace.subgraph_id() == subgraph_id
+                    && trace.summary_claim_id() == summary_claim_id
+                    && trace.scope().tenant_id() == tenant_id
+                    && trace.scope().project_id() == project_id
             })
             .cloned()
             .collect())
@@ -1615,6 +1637,7 @@ impl ApiStore for FakeStore {
         &self,
         attachment: &EntityGraphAttachment,
     ) -> Result<(), Self::Error> {
+        self.require_subgraph_in_scope(attachment.subgraph_id(), attachment.scope())?;
         let mut attachments = self
             .memory_entity_graph_attachments
             .lock()
@@ -1742,7 +1765,16 @@ impl ApiStore for FakeStore {
     async fn list_ingestion_run_outputs(
         &self,
         run_id: &IngestionRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<IngestionRunOutputRecord>, Self::Error> {
+        if self
+            .find_ingestion_run(run_id, tenant_id, project_id)
+            .await?
+            .is_none()
+        {
+            return Ok(Vec::new());
+        }
         Ok(self
             .ingestion_run_outputs
             .lock()
@@ -2360,6 +2392,26 @@ impl FakeStore {
                 (ownership.tenant_id.as_str(), ownership.project_id.as_str())
             });
         Ok(owner == (tenant_id, project_id))
+    }
+
+    /// Refuses a memory write that names a subgraph outside its own scope, the way the
+    /// `PostgreSQL` write does: a subgraph in another project is the same as no subgraph.
+    fn require_subgraph_in_scope(
+        &self,
+        id: &capsulet_core::MemorySubgraphId,
+        scope: &capsulet_core::MemoryScope,
+    ) -> Result<(), String> {
+        let in_scope = self
+            .memory_subgraphs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .any(|subgraph| subgraph.id() == id && subgraph.scope() == scope);
+        if in_scope {
+            Ok(())
+        } else {
+            Err("scope mismatch".to_string())
+        }
     }
 
     fn ensure_default_projects(&self) {
@@ -2989,6 +3041,270 @@ async fn creates_and_activates_nested_memory_graph() {
 
     assert_eq!(activate_response.status(), axum::http::StatusCode::OK);
     assert_eq!(response_json(activate_response).await["status"], "active");
+}
+
+fn project_request(method: Method, uri: &str, project: &str, body: Option<Value>) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(
+            "authorization",
+            "Bearer admin-token-0123456789-abcdefghijkl",
+        )
+        .header("x-capsulet-project-id", project)
+        .header("content-type", "application/json")
+        .body(body.map_or_else(Body::empty, |value| Body::from(value.to_string())))
+        .expect("request")
+}
+
+#[tokio::test]
+async fn memory_contracts_are_listed_within_the_project_before_the_limit() {
+    let dsl = "entity Project:\n  fields:\n    name: string\n";
+    let store = FakeStore::default();
+    {
+        // A hundred of another project's contracts come first, filling the listing limit.
+        let mut contracts = store.memory_contracts.lock().expect("contracts mutex");
+        for index in 0..100 {
+            contracts.push(
+                MemoryContract::parse_scoped(
+                    MemoryContractId::new(format!("contract_finance_{index}")).expect("id"),
+                    capsulet_core::MemoryScope::new("default", "finance").expect("scope"),
+                    "Finance",
+                    dsl,
+                )
+                .expect("contract"),
+            );
+        }
+    }
+    let app = authenticated_app(store);
+
+    let created = app
+        .clone()
+        .oneshot(project_request(
+            Method::POST,
+            "/v1/memory/contracts",
+            "default",
+            Some(json!({ "id": "contract_default", "name": "Default", "source": dsl })),
+        ))
+        .await
+        .expect("response");
+    assert_eq!(created.status(), axum::http::StatusCode::CREATED);
+    let listed = app
+        .oneshot(project_request(
+            Method::GET,
+            "/v1/memory/contracts",
+            "default",
+            None,
+        ))
+        .await
+        .expect("response");
+
+    assert_eq!(listed.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response_json(listed).await["contracts"]
+            .as_array()
+            .expect("contracts")
+            .iter()
+            .map(|contract| contract["id"].clone())
+            .collect::<Vec<_>>(),
+        vec![json!("contract_default")],
+        "another project's contracts must not crowd this project's out of the listing"
+    );
+}
+
+#[tokio::test]
+async fn nothing_attaches_to_another_projects_subgraph_over_the_api() {
+    let store = FakeStore::default();
+    let app = authenticated_app(store.clone());
+    for (project, id) in [
+        ("finance", "subgraph_finance"),
+        ("default", "subgraph_default"),
+    ] {
+        let created = app
+            .clone()
+            .oneshot(project_request(
+                Method::POST,
+                "/v1/memory/subgraphs",
+                project,
+                Some(json!({ "id": id, "name": "Memory" })),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(created.status(), axum::http::StatusCode::CREATED);
+    }
+
+    for (uri, body) in writes_naming_subgraph_finance() {
+        let refused = app
+            .clone()
+            .oneshot(project_request(Method::POST, uri, "default", Some(body)))
+            .await
+            .expect("response");
+        assert_eq!(
+            refused.status(),
+            axum::http::StatusCode::NOT_FOUND,
+            "{uri} must not reach another project's subgraph"
+        );
+        assert_eq!(response_json(refused).await["code"], "memory_not_found");
+    }
+
+    assert!(
+        store
+            .memory_subgraph_members
+            .lock()
+            .expect("members")
+            .is_empty()
+    );
+    assert!(
+        store
+            .memory_subgraph_edges
+            .lock()
+            .expect("edges")
+            .is_empty()
+    );
+    assert!(
+        store
+            .memory_summary_traces
+            .lock()
+            .expect("traces")
+            .is_empty()
+    );
+    assert!(
+        store
+            .memory_entity_resolutions
+            .lock()
+            .expect("resolutions")
+            .is_empty()
+    );
+    assert!(
+        store
+            .memory_entity_graph_attachments
+            .lock()
+            .expect("attachments")
+            .is_empty()
+    );
+    assert_eq!(store.memory_subgraphs.lock().expect("subgraphs").len(), 2);
+}
+
+/// Every memory write that names a subgraph, each naming `subgraph_finance`.
+fn writes_naming_subgraph_finance() -> Vec<(&'static str, Value)> {
+    let edge = |from: &str, to: &str| {
+        json!({
+            "edge_type": "contradicts",
+            "from_subgraph_id": from,
+            "to_subgraph_id": to,
+            "from_member_kind": "claim",
+            "from_member_id": "claim_a",
+            "to_member_kind": "claim",
+            "to_member_id": "claim_b",
+            "claim_ids": ["claim_a"],
+            "evidence_ids": []
+        })
+    };
+    vec![
+        (
+            "/v1/memory/subgraphs/subgraph_finance/members",
+            json!({ "member_kind": "claim", "member_id": "claim_a", "role": "summary" }),
+        ),
+        (
+            "/v1/memory/subgraph-edges",
+            edge("subgraph_default", "subgraph_finance"),
+        ),
+        (
+            "/v1/memory/subgraph-edges",
+            edge("subgraph_finance", "subgraph_default"),
+        ),
+        (
+            "/v1/memory/summary-traces",
+            json!({
+                "subgraph_id": "subgraph_finance",
+                "summary_claim_id": "claim_a",
+                "inner_claim_ids": [],
+                "evidence_ids": ["evidence_a"]
+            }),
+        ),
+        (
+            "/v1/memory/entity-resolutions",
+            json!({
+                "subgraph_id": "subgraph_finance",
+                "entity_id": "entity_a",
+                "canonical_entity_id": "canonical_a",
+                "confidence": 0.9,
+                "status": "candidate",
+                "evidence_ids": []
+            }),
+        ),
+        (
+            "/v1/memory/entity-graph-attachments",
+            json!({
+                "canonical_entity_id": "canonical_a",
+                "subgraph_id": "subgraph_finance",
+                "attachment_type": "supporting"
+            }),
+        ),
+        (
+            "/v1/memory/subgraphs",
+            json!({
+                "id": "subgraph_child",
+                "parent_subgraph_id": "subgraph_finance",
+                "name": "Child"
+            }),
+        ),
+    ]
+}
+
+#[tokio::test]
+async fn another_projects_summary_trace_cannot_activate_a_subgraph() {
+    let store = FakeStore::default();
+    let app = authenticated_app(store.clone());
+    let created = app
+        .clone()
+        .oneshot(project_request(
+            Method::POST,
+            "/v1/memory/subgraphs",
+            "default",
+            Some(json!({ "id": "subgraph_sales", "name": "Sales memory" })),
+        ))
+        .await
+        .expect("response");
+    assert_eq!(created.status(), axum::http::StatusCode::CREATED);
+    // A trace another project wrote against this subgraph before writes were checked.
+    store.memory_summary_traces.lock().expect("traces").push(
+        SummaryTrace::new(
+            capsulet_core::SummaryTraceId::new("trace_planted").expect("id"),
+            capsulet_core::MemoryScope::new("default", "finance").expect("scope"),
+            capsulet_core::MemorySubgraphId::new("subgraph_sales").expect("id"),
+            ClaimId::new("claim_summary").expect("id"),
+            Vec::new(),
+            vec![EvidenceId::new("evidence_planted").expect("id")],
+        )
+        .expect("trace"),
+    );
+
+    let activated = app
+        .oneshot(project_request(
+            Method::POST,
+            "/v1/memory/subgraphs/subgraph_sales/activate",
+            "default",
+            Some(json!({
+                "owner_kind": "team",
+                "owner_id": "sales",
+                "contract_id": "contract_sales",
+                "permissions": { "read": ["sales"] },
+                "summary_claim_id": "claim_summary"
+            })),
+        ))
+        .await
+        .expect("response");
+
+    assert_eq!(
+        activated.status(),
+        axum::http::StatusCode::BAD_REQUEST,
+        "the summary has no trace in its own project"
+    );
+    assert_eq!(
+        store.memory_subgraphs.lock().expect("subgraphs")[0].status(),
+        capsulet_core::MemorySubgraphStatus::Draft
+    );
 }
 
 fn rag_graph_request(id: &str) -> Value {
@@ -3874,6 +4190,10 @@ async fn entity_resolution_queue_confirms_and_rejects_candidates() {
                 "display_name": "Project Atlas",
                 "aliases": []
             }),
+        ),
+        (
+            "/v1/memory/subgraphs",
+            json!({ "id": "global", "name": "Global memory" }),
         ),
     ] {
         let response = app
@@ -6181,6 +6501,19 @@ async fn the_names_a_decision_reads_are_only_those_a_reviewer_confirmed() {
 
     let store = FakeStore::default();
     let scope = MemoryScope::new("default", "default").expect("scope");
+    store
+        .upsert_memory_subgraph(
+            &MemorySubgraph::draft(
+                MemorySubgraphId::new("subgraph").expect("id"),
+                scope.clone(),
+                None,
+                "Organizations",
+                None,
+            )
+            .expect("subgraph"),
+        )
+        .await
+        .expect("stored");
     for (id, name) in [
         ("e_ibm", "IBM"),
         ("e_long", "International Business Machines"),

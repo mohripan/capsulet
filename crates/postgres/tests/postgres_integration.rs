@@ -1327,7 +1327,7 @@ async fn saves_ingestion_connector_run_and_outputs_when_database_is_available() 
         .await
         .expect("list runs");
     let outputs = store
-        .list_ingestion_run_outputs(run.id())
+        .list_ingestion_run_outputs(run.id(), scope.tenant_id(), scope.project_id())
         .await
         .expect("list outputs");
 

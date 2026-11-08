@@ -2693,11 +2693,11 @@
       ]
     },
     {
-      "id": "CAP-IAM-008",
-      "kind": "limitation",
+      "id": "CAP-IAM-009",
+      "kind": "capability",
       "maturity": "implemented",
       "area": "Identity and IAM",
-      "statement": "Two memory paths are not yet scoped in the query: memory contracts are listed across every project and filtered after the listing limit, and a subgraph member or edge is not checked against its parent subgraph's project.",
+      "statement": "Memory contracts, summary traces and ingestion run outputs are read within the caller's project before any listing limit, and a memory write that names a subgraph (a member, an edge, a summary trace, an entity resolution, a graph attachment or a child subgraph) is refused when that subgraph belongs to another project.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -2715,14 +2715,110 @@
         "charts/capsulet/values.yaml",
         "charts/capsulet/values.schema.json"
       ],
-      "evidence": [
+      "verification": [
         {
-          "type": "source",
-          "path": "crates/postgres/src/memory.rs"
+          "assertion": "contracts-scoped-before-limit",
+          "evidence_selectors": [
+            "memory_contract_listing_applies_scope_before_the_limit",
+            "memory_contracts_are_listed_within_the_project_before_the_limit"
+          ]
         },
         {
-          "type": "source",
-          "path": "crates/api/src/memory.rs"
+          "assertion": "summary-traces-scoped",
+          "evidence_selectors": [
+            "summary_traces_are_listed_within_their_project",
+            "another_projects_summary_trace_cannot_activate_a_subgraph"
+          ]
+        },
+        {
+          "assertion": "ingestion-outputs-scoped",
+          "evidence_selectors": [
+            "ingestion_run_outputs_are_listed_within_their_project"
+          ]
+        },
+        {
+          "assertion": "member-refuses-foreign-subgraph",
+          "evidence_selectors": [
+            "a_subgraph_member_cannot_attach_to_another_projects_subgraph"
+          ]
+        },
+        {
+          "assertion": "edge-refuses-foreign-subgraph",
+          "evidence_selectors": [
+            "a_subgraph_edge_cannot_reach_another_projects_subgraph"
+          ]
+        },
+        {
+          "assertion": "other-subgraph-writes-refuse-foreign-subgraph",
+          "evidence_selectors": [
+            "nothing_else_names_another_projects_subgraph",
+            "nothing_attaches_to_another_projects_subgraph_over_the_api"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "memory_contract_listing_applies_scope_before_the_limit"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "memory_contracts_are_listed_within_the_project_before_the_limit"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "summary_traces_are_listed_within_their_project"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "another_projects_summary_trace_cannot_activate_a_subgraph"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "ingestion_run_outputs_are_listed_within_their_project"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "a_subgraph_member_cannot_attach_to_another_projects_subgraph"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "a_subgraph_edge_cannot_reach_another_projects_subgraph"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "nothing_else_names_another_projects_subgraph"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "nothing_attaches_to_another_projects_subgraph_over_the_api"
         }
       ]
     },

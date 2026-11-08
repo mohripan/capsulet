@@ -273,16 +273,22 @@ impl PostgresStore {
     pub async fn list_ingestion_run_outputs(
         &self,
         run_id: &IngestionRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<IngestionRunOutputRecord>, PostgresStoreError> {
+        // An output carries no owner of its own; it belongs to its run's project.
         let rows = sqlx::query(
             r"
-            SELECT run_id, kind, memory_id
-            FROM ingestion_run_outputs
-            WHERE run_id = $1
-            ORDER BY kind ASC, memory_id ASC
+            SELECT outputs.run_id, outputs.kind, outputs.memory_id
+            FROM ingestion_run_outputs outputs
+            JOIN ingestion_runs runs ON runs.id = outputs.run_id
+            WHERE outputs.run_id = $1 AND runs.tenant_id = $2 AND runs.project_id = $3
+            ORDER BY outputs.kind ASC, outputs.memory_id ASC
             ",
         )
         .bind(run_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_ingestion_run_output).collect()

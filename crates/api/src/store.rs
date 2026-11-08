@@ -588,11 +588,20 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         id: &RelationshipId,
     ) -> Result<Option<Relationship>, Self::Error>;
     async fn upsert_memory_contract(&self, contract: &MemoryContract) -> Result<(), Self::Error>;
-    async fn list_memory_contracts(&self, limit: i64) -> Result<Vec<MemoryContract>, Self::Error>;
+    /// A project's contracts, scoped before the limit.
+    async fn list_memory_contracts(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<MemoryContract>, Self::Error>;
     async fn find_memory_contract(
         &self,
         id: &MemoryContractId,
     ) -> Result<Option<MemoryContract>, Self::Error>;
+    /// Saves a subgraph. Like every write below that names a subgraph, it refuses a
+    /// subgraph outside the record's own project with an error
+    /// [`Self::is_scope_mismatch`] recognises.
     async fn upsert_memory_subgraph(&self, subgraph: &MemorySubgraph) -> Result<(), Self::Error>;
     async fn list_memory_subgraphs(
         &self,
@@ -634,10 +643,13 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     ) -> Result<Option<EntityResolution>, Self::Error>;
     async fn upsert_memory_subgraph_edge(&self, edge: &SubgraphEdge) -> Result<(), Self::Error>;
     async fn upsert_memory_summary_trace(&self, trace: &SummaryTrace) -> Result<(), Self::Error>;
+    /// The project's own traces for a summary; another project's trace never counts.
     async fn list_memory_summary_traces(
         &self,
         subgraph_id: &MemorySubgraphId,
         summary_claim_id: &ClaimId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<SummaryTrace>, Self::Error>;
     async fn upsert_memory_entity_graph_attachment(
         &self,
@@ -676,9 +688,12 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         output: &IngestionRunOutputRecord,
     ) -> Result<(), Self::Error>;
+    /// The outputs of a run the project owns; none for another project's run.
     async fn list_ingestion_run_outputs(
         &self,
         run_id: &IngestionRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<IngestionRunOutputRecord>, Self::Error>;
     /// Saves an automation, its triggers and its owner, all or nothing.
     async fn save_automation(
@@ -1584,8 +1599,14 @@ impl ApiStore for PostgresStore {
         self.upsert_memory_contract(contract).await
     }
 
-    async fn list_memory_contracts(&self, limit: i64) -> Result<Vec<MemoryContract>, Self::Error> {
-        self.list_memory_contracts(limit).await
+    async fn list_memory_contracts(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<MemoryContract>, Self::Error> {
+        self.list_memory_contracts(tenant_id, project_id, limit)
+            .await
     }
 
     async fn find_memory_contract(
@@ -1676,8 +1697,10 @@ impl ApiStore for PostgresStore {
         &self,
         subgraph_id: &MemorySubgraphId,
         summary_claim_id: &ClaimId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<SummaryTrace>, Self::Error> {
-        self.list_memory_summary_traces(subgraph_id, summary_claim_id)
+        self.list_memory_summary_traces(subgraph_id, summary_claim_id, tenant_id, project_id)
             .await
     }
 
@@ -1747,8 +1770,11 @@ impl ApiStore for PostgresStore {
     async fn list_ingestion_run_outputs(
         &self,
         run_id: &IngestionRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<IngestionRunOutputRecord>, Self::Error> {
-        self.list_ingestion_run_outputs(run_id).await
+        self.list_ingestion_run_outputs(run_id, tenant_id, project_id)
+            .await
     }
 
     async fn save_automation(

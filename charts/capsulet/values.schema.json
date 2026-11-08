@@ -1,5 +1,5 @@
 {
-  "$comment": "capsulet-claims: CAP-PRODUCT-001, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-008, CAP-PERSISTENCE-001, CAP-SECURITY-001, CAP-HELM-001",
+  "$comment": "capsulet-claims: CAP-PRODUCT-001, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-PERSISTENCE-001, CAP-SECURITY-001, CAP-HELM-001",
   "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "Capsulet alpha-readiness Helm values",
   "description": "Experimental self-hosting configuration for the correctness-first AI-agent workflow platform.",

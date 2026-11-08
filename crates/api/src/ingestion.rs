@@ -308,7 +308,7 @@ where
     }
     let outputs = state
         .store
-        .list_ingestion_run_outputs(&id)
+        .list_ingestion_run_outputs(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     Ok(Json(IngestionRunWithOutputsResponse {

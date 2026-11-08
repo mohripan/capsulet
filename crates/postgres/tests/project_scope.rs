@@ -1,4 +1,4 @@
-//! Who owns what, for automations, trigger plugins, and the runs they lead to.
+//! Who owns what, for automations, trigger plugins, the runs they lead to, and memory.
 //!
 //! Ownership is part of the write. Writing a resource and then assigning its owner in a
 //! second statement leaves a window where a failure strands a resource in the wrong
@@ -635,4 +635,485 @@ async fn every_scoped_memory_lookup_runs(store: &PostgresStore, project: &str) {
     absent!(find_memory_contract_in_project, MemoryContractId);
     absent!(find_memory_subgraph_in_project, MemorySubgraphId);
     absent!(find_memory_entity_resolution_in_project, EntityResolutionId);
+}
+
+/// One project's memory: a claim with its evidence and subject, a canonical entity, and
+/// a draft subgraph, so a write that names one of them has a real row to name.
+struct ProjectMemory {
+    scope: capsulet_core::MemoryScope,
+    evidence: capsulet_core::EvidenceId,
+    entity: capsulet_core::EntityId,
+    claim: capsulet_core::ClaimId,
+    canonical: capsulet_core::CanonicalEntityId,
+    subgraph: capsulet_core::MemorySubgraphId,
+}
+
+async fn project_memory(store: &PostgresStore, tenant: &str, project: &str) -> ProjectMemory {
+    use capsulet_core::{
+        Authority, CanonicalEntity, CanonicalEntityId, Claim, ClaimId, ClaimStatus, Confidence,
+        Entity, EntityId, Evidence, EvidenceId, MemoryScope, Source, SourceId,
+    };
+
+    let scope = MemoryScope::new(tenant, project).expect("scope");
+    let source = Source::new(
+        SourceId::new(unique_id("mem_source")).expect("id"),
+        scope.clone(),
+        "notes",
+        None,
+        "Notes",
+        Authority::High,
+    )
+    .expect("source");
+    store.upsert_memory_source(&source).await.expect("source");
+    let evidence = Evidence::new(
+        EvidenceId::new(unique_id("mem_evidence")).expect("id"),
+        scope.clone(),
+        source.id().clone(),
+        "notes.md#L1",
+        "Atlas ships in August.",
+        "2026-11-08T00:00:00Z",
+    )
+    .expect("evidence");
+    store
+        .upsert_memory_evidence(&evidence)
+        .await
+        .expect("evidence");
+    let entity = Entity::new(
+        EntityId::new(unique_id("mem_entity")).expect("id"),
+        scope.clone(),
+        "Project",
+        "Atlas",
+        Vec::new(),
+    )
+    .expect("entity");
+    store.upsert_memory_entity(&entity).await.expect("entity");
+    let claim = Claim::new(
+        ClaimId::new(unique_id("mem_claim")).expect("id"),
+        scope.clone(),
+        entity.id().clone(),
+        "summary",
+        "Atlas ships in August.",
+        vec![evidence.id().clone()],
+        Confidence::new(0.9).expect("confidence"),
+        Authority::High,
+        "2026-11-08T00:00:00Z",
+        None,
+        None,
+    )
+    .expect("claim")
+    .with_status(ClaimStatus::Active);
+    store.upsert_memory_claim(&claim).await.expect("claim");
+    let canonical = CanonicalEntity::new(
+        CanonicalEntityId::new(unique_id("mem_canonical")).expect("id"),
+        scope.clone(),
+        "Project",
+        "Atlas",
+        Vec::new(),
+    )
+    .expect("canonical");
+    store
+        .upsert_memory_canonical_entity(&canonical)
+        .await
+        .expect("canonical");
+    let subgraph = draft_subgraph(&scope, None);
+    store
+        .upsert_memory_subgraph(&subgraph)
+        .await
+        .expect("subgraph");
+    ProjectMemory {
+        evidence: evidence.id().clone(),
+        entity: entity.id().clone(),
+        claim: claim.id().clone(),
+        canonical: canonical.id().clone(),
+        subgraph: subgraph.id().clone(),
+        scope,
+    }
+}
+
+fn draft_subgraph(
+    scope: &capsulet_core::MemoryScope,
+    parent: Option<capsulet_core::MemorySubgraphId>,
+) -> capsulet_core::MemorySubgraph {
+    capsulet_core::MemorySubgraph::draft(
+        capsulet_core::MemorySubgraphId::new(unique_id("mem_subgraph")).expect("id"),
+        scope.clone(),
+        parent,
+        "Sales memory",
+        None,
+    )
+    .expect("draft")
+}
+
+fn subgraph_member(
+    memory: &ProjectMemory,
+    subgraph: &capsulet_core::MemorySubgraphId,
+) -> capsulet_core::MemorySubgraphMember {
+    use capsulet_core::{
+        MemoryMemberId, MemoryMemberKind, MemorySubgraphMember, MemorySubgraphMemberId,
+        MemorySubgraphMemberRole,
+    };
+
+    MemorySubgraphMember::new(
+        MemorySubgraphMemberId::new(unique_id("mem_member")).expect("id"),
+        memory.scope.clone(),
+        subgraph.clone(),
+        MemoryMemberKind::Claim,
+        MemoryMemberId::new(memory.claim.as_str()).expect("id"),
+        MemorySubgraphMemberRole::Summary,
+    )
+    .expect("member")
+}
+
+fn subgraph_edge(
+    memory: &ProjectMemory,
+    from: &capsulet_core::MemorySubgraphId,
+    to: &capsulet_core::MemorySubgraphId,
+) -> capsulet_core::SubgraphEdge {
+    use capsulet_core::{MemoryMemberId, MemoryMemberKind, SubgraphEdge, SubgraphEdgeId};
+
+    SubgraphEdge::new(
+        SubgraphEdgeId::new(unique_id("mem_edge")).expect("id"),
+        memory.scope.clone(),
+        "contradicts",
+        from.clone(),
+        to.clone(),
+        MemoryMemberKind::Claim,
+        MemoryMemberId::new(memory.claim.as_str()).expect("id"),
+        MemoryMemberKind::Claim,
+        MemoryMemberId::new(memory.claim.as_str()).expect("id"),
+        vec![memory.claim.clone()],
+        vec![memory.evidence.clone()],
+    )
+    .expect("edge")
+}
+
+/// How many rows of a table carry this id, read past the store so a refused write is
+/// seen to have left nothing behind.
+async fn rows_with_id(table: &str, id: &str) -> i64 {
+    let pool = sqlx::PgPool::connect(&database_url())
+        .await
+        .expect("connect to postgres");
+    let count =
+        sqlx::query_scalar::<_, i64>(&format!("SELECT count(*) FROM {table} WHERE id = $1"))
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .expect("count rows");
+    pool.close().await;
+    count
+}
+
+#[tokio::test]
+async fn memory_contract_listing_applies_scope_before_the_limit() {
+    use capsulet_core::{MemoryContract, MemoryContractId, MemoryScope};
+
+    let store = store().await;
+    let project = unique_id("contract_owner");
+    let contract = |scope: MemoryScope| {
+        MemoryContract::parse_scoped(
+            MemoryContractId::new(unique_id("scope_contract")).expect("id"),
+            scope,
+            "A contract",
+            "entity Project:\n  fields:\n    name: string\n",
+        )
+        .expect("contract")
+    };
+    let owned = contract(MemoryScope::new("default", project.clone()).expect("scope"));
+    store.upsert_memory_contract(&owned).await.expect("saved");
+    // Both written later, so an unscoped listing ordered by recency puts them first.
+    for scope in [
+        MemoryScope::new("default", unique_id("contract_stranger")).expect("scope"),
+        MemoryScope::new("other_tenant", project.clone()).expect("scope"),
+    ] {
+        store
+            .upsert_memory_contract(&contract(scope))
+            .await
+            .expect("saved");
+    }
+
+    let listed = store
+        .list_memory_contracts("default", &project, 1)
+        .await
+        .expect("reads");
+    assert_eq!(listed.len(), 1, "foreign rows must not consume the limit");
+    assert_eq!(listed[0].id(), owned.id());
+}
+
+#[tokio::test]
+async fn a_subgraph_member_cannot_attach_to_another_projects_subgraph() {
+    let store = store().await;
+    let memory = project_memory(&store, "default", &unique_id("member_owner")).await;
+    let stranger = project_memory(&store, "default", &unique_id("member_stranger")).await;
+
+    let foreign = subgraph_member(&memory, &stranger.subgraph);
+    let refused = store
+        .upsert_memory_subgraph_member(&foreign)
+        .await
+        .expect_err("the subgraph belongs to another project");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+    assert_eq!(
+        rows_with_id("memory_subgraph_members", foreign.id().as_str()).await,
+        0,
+        "a refused member leaves no row"
+    );
+
+    store
+        .upsert_memory_subgraph_member(&subgraph_member(&memory, &memory.subgraph))
+        .await
+        .expect("a member of the project's own subgraph");
+    let other_tenant = project_memory(&store, "other_tenant", memory.scope.project_id()).await;
+    let refused = store
+        .upsert_memory_subgraph_member(&subgraph_member(&memory, &other_tenant.subgraph))
+        .await
+        .expect_err("the same project name in another tenant is another project");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+}
+
+#[tokio::test]
+async fn a_subgraph_edge_cannot_reach_another_projects_subgraph() {
+    let store = store().await;
+    let memory = project_memory(&store, "default", &unique_id("edge_owner")).await;
+    let stranger = project_memory(&store, "default", &unique_id("edge_stranger")).await;
+    let second = draft_subgraph(&memory.scope, None);
+    store
+        .upsert_memory_subgraph(&second)
+        .await
+        .expect("a second subgraph");
+
+    for (from, to) in [
+        (&memory.subgraph, &stranger.subgraph),
+        (&stranger.subgraph, &memory.subgraph),
+    ] {
+        let edge = subgraph_edge(&memory, from, to);
+        let refused = store
+            .upsert_memory_subgraph_edge(&edge)
+            .await
+            .expect_err("one end belongs to another project");
+        assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+        assert_eq!(
+            rows_with_id("memory_subgraph_edges", edge.id().as_str()).await,
+            0,
+            "a refused edge leaves no row"
+        );
+    }
+
+    store
+        .upsert_memory_subgraph_edge(&subgraph_edge(&memory, &memory.subgraph, second.id()))
+        .await
+        .expect("an edge between the project's own subgraphs");
+}
+
+#[tokio::test]
+async fn nothing_else_names_another_projects_subgraph() {
+    use capsulet_core::{
+        Confidence, EntityGraphAttachment, EntityGraphAttachmentId, EntityGraphAttachmentType,
+        EntityResolution, EntityResolutionId, EntityResolutionStatus, SummaryTrace, SummaryTraceId,
+    };
+
+    let store = store().await;
+    let memory = project_memory(&store, "default", &unique_id("child_owner")).await;
+    let stranger = project_memory(&store, "default", &unique_id("child_stranger")).await;
+    let foreign = &stranger.subgraph;
+
+    let child = draft_subgraph(&memory.scope, Some(foreign.clone()));
+    let refused = store
+        .upsert_memory_subgraph(&child)
+        .await
+        .expect_err("a child subgraph under another project's subgraph");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+    assert_eq!(
+        rows_with_id("memory_subgraphs", child.id().as_str()).await,
+        0
+    );
+
+    let trace = SummaryTrace::new(
+        SummaryTraceId::new(unique_id("mem_trace")).expect("id"),
+        memory.scope.clone(),
+        foreign.clone(),
+        memory.claim.clone(),
+        Vec::new(),
+        vec![memory.evidence.clone()],
+    )
+    .expect("trace");
+    let refused = store
+        .upsert_memory_summary_trace(&trace)
+        .await
+        .expect_err("a summary trace for another project's subgraph");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+    assert_eq!(
+        rows_with_id("memory_summary_traces", trace.id().as_str()).await,
+        0
+    );
+
+    let resolution = EntityResolution::new(
+        EntityResolutionId::new(unique_id("mem_resolution")).expect("id"),
+        memory.scope.clone(),
+        foreign.clone(),
+        memory.entity.clone(),
+        memory.canonical.clone(),
+        Confidence::new(0.9).expect("confidence"),
+        EntityResolutionStatus::Candidate,
+        vec![memory.evidence.clone()],
+    )
+    .expect("resolution");
+    let refused = store
+        .upsert_memory_entity_resolution(&resolution)
+        .await
+        .expect_err("an entity resolution in another project's subgraph");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+    assert_eq!(
+        rows_with_id("memory_entity_resolutions", resolution.id().as_str()).await,
+        0
+    );
+
+    let attachment = EntityGraphAttachment::new(
+        EntityGraphAttachmentId::new(unique_id("mem_attachment")).expect("id"),
+        memory.scope.clone(),
+        memory.canonical.clone(),
+        foreign.clone(),
+        EntityGraphAttachmentType::Supporting,
+    )
+    .expect("attachment");
+    let refused = store
+        .upsert_memory_entity_graph_attachment(&attachment)
+        .await
+        .expect_err("an attachment to another project's subgraph");
+    assert!(matches!(refused, PostgresStoreError::ScopeMismatch));
+    assert_eq!(
+        rows_with_id("memory_entity_graph_attachments", attachment.id().as_str()).await,
+        0
+    );
+
+    store
+        .upsert_memory_subgraph(&draft_subgraph(
+            &memory.scope,
+            Some(memory.subgraph.clone()),
+        ))
+        .await
+        .expect("a child of the project's own subgraph");
+}
+
+#[tokio::test]
+async fn summary_traces_are_listed_within_their_project() {
+    use capsulet_core::{SummaryTrace, SummaryTraceId};
+
+    let store = store().await;
+    let memory = project_memory(&store, "default", &unique_id("trace_owner")).await;
+    let stranger = project_memory(&store, "default", &unique_id("trace_stranger")).await;
+    let owned = SummaryTrace::new(
+        SummaryTraceId::new(unique_id("mem_trace")).expect("id"),
+        memory.scope.clone(),
+        memory.subgraph.clone(),
+        memory.claim.clone(),
+        Vec::new(),
+        vec![memory.evidence.clone()],
+    )
+    .expect("trace");
+    store
+        .upsert_memory_summary_trace(&owned)
+        .await
+        .expect("saved");
+    // A trace another project wrote against this subgraph before writes were checked.
+    let pool = sqlx::PgPool::connect(&database_url())
+        .await
+        .expect("connect to postgres");
+    sqlx::query(
+        r"
+        INSERT INTO memory_summary_traces (
+            id, tenant_id, project_id, subgraph_id, summary_claim_id, inner_claim_ids, evidence_ids
+        )
+        VALUES ($1, $2, $3, $4, $5, '{}', $6)
+        ",
+    )
+    .bind(unique_id("mem_trace_planted"))
+    .bind(stranger.scope.tenant_id())
+    .bind(stranger.scope.project_id())
+    .bind(memory.subgraph.as_str())
+    .bind(memory.claim.as_str())
+    .bind(vec![stranger.evidence.as_str().to_string()])
+    .execute(&pool)
+    .await
+    .expect("planted");
+    pool.close().await;
+
+    let listed = store
+        .list_memory_summary_traces(
+            &memory.subgraph,
+            &memory.claim,
+            memory.scope.tenant_id(),
+            memory.scope.project_id(),
+        )
+        .await
+        .expect("reads");
+    assert_eq!(
+        listed,
+        vec![owned],
+        "another project's trace cannot support this project's summary"
+    );
+}
+
+#[tokio::test]
+async fn ingestion_run_outputs_are_listed_within_their_project() {
+    use capsulet_core::{
+        Authority, IngestionConnector, IngestionConnectorConfig, IngestionConnectorId,
+        IngestionConnectorKind, IngestionRun, IngestionRunId, IngestionRunOutputRecord,
+        MemoryScope,
+    };
+
+    let store = store().await;
+    let project = unique_id("ingest_owner");
+    let scope = MemoryScope::new("default", project.clone()).expect("scope");
+    let connector = IngestionConnector::new(
+        IngestionConnectorId::new(unique_id("scope_connector")).expect("id"),
+        scope.clone(),
+        "Notes",
+        IngestionConnectorKind::LocalText,
+        IngestionConnectorConfig::local_text(
+            "Atlas notes",
+            "- Atlas ships in August",
+            "text/markdown",
+            None,
+            Authority::High,
+        ),
+        true,
+    )
+    .expect("connector");
+    store
+        .upsert_ingestion_connector(&connector)
+        .await
+        .expect("connector");
+    let run = IngestionRun::queued(
+        IngestionRunId::new(unique_id("scope_ingestion_run")).expect("id"),
+        scope,
+        connector.id().clone(),
+    )
+    .succeeded(1, 1, 1, 1);
+    store.upsert_ingestion_run(&run).await.expect("run");
+    let output =
+        IngestionRunOutputRecord::new(run.id().clone(), "claim", "claim_ingested").expect("output");
+    store
+        .upsert_ingestion_run_output(&output)
+        .await
+        .expect("output");
+
+    assert_eq!(
+        store
+            .list_ingestion_run_outputs(run.id(), "default", &project)
+            .await
+            .expect("reads"),
+        vec![output]
+    );
+    for (tenant, other) in [
+        ("default", unique_id("ingest_stranger")),
+        ("other_tenant", project.clone()),
+    ] {
+        assert!(
+            store
+                .list_ingestion_run_outputs(run.id(), tenant, &other)
+                .await
+                .expect("reads")
+                .is_empty(),
+            "another project lists none of the run's outputs"
+        );
+    }
 }
