@@ -141,7 +141,7 @@ where
     .await?;
     let deleted = state
         .store
-        .delete_automation(&automation_id)
+        .delete_automation(&automation_id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     if !deleted {
@@ -319,7 +319,12 @@ where
     .await?;
     let Some(automation) = state
         .store
-        .set_automation_status(&automation_id, status)
+        .set_automation_status(
+            &automation_id,
+            status,
+            &context.tenant_id,
+            &context.project_id,
+        )
         .await
         .map_err(ApiError::store)?
     else {

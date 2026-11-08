@@ -1453,13 +1453,17 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
     let definition_id = JobDefinitionId::new(id.clone()).map_err(ApiError::validation)?;
-    require_resource_project(
-        &state.store,
-        "job_definitions",
-        definition_id.as_str(),
-        &context,
-    )
-    .await?;
+    // A scoped read: the update below then acts on a definition this project owns,
+    // and ownership never changes once written.
+    if state
+        .store
+        .find_job_definition(&definition_id, &context.tenant_id, &context.project_id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::ResourceNotFound);
+    }
     if state
         .store
         .job_definition_has_active_workflow_runs(&definition_id)
@@ -1496,20 +1500,8 @@ where
         .list_job_definitions(&context.tenant_id, &context.project_id, i64::from(limit))
         .await
         .map_err(ApiError::store)?;
-    let mut scoped = Vec::new();
-    for definition in definitions {
-        if require_resource_project(
-            &state.store,
-            "job_definitions",
-            definition.id().as_str(),
-            &context,
-        )
-        .await
-        .is_ok()
-        {
-            scoped.push(definition);
-        }
-    }
+    // Scoped in the query, before the limit.
+    let scoped = definitions;
 
     Ok(Json(ListJobDefinitionsResponse {
         job_definitions: scoped.iter().map(JobDefinitionResponse::from).collect(),
@@ -1706,17 +1698,7 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
     let workflow = build_workflow(&state, &context, request).await?;
-    // Reject existing foreign ids early; the scoped upsert also rejects collisions atomically.
-    if state
-        .store
-        .find_workflow(workflow.id(), &context.tenant_id, &context.project_id)
-        .await
-        .map_err(ApiError::store)?
-        .is_some()
-    {
-        require_resource_project(&state.store, "workflows", workflow.id().as_str(), &context)
-            .await?;
-    }
+    // A foreign id is refused by the scoped upsert, atomically.
     require_workflow_step_projects(&state.store, &workflow, &context).await?;
     state
         .store
@@ -1776,15 +1758,8 @@ where
         .list_workflows(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
-    let mut scoped = Vec::new();
-    for workflow in workflows {
-        if require_resource_project(&state.store, "workflows", workflow.id().as_str(), &context)
-            .await
-            .is_ok()
-        {
-            scoped.push(workflow);
-        }
-    }
+    // Scoped in the query, before the limit.
+    let scoped = workflows;
     Ok(Json(ListWorkflowsResponse {
         workflows: scoped.iter().map(WorkflowResponse::from).collect(),
     }))
@@ -1915,15 +1890,7 @@ where
         .list_workflows(&context.tenant_id, &context.project_id, 100)
         .await
         .map_err(ApiError::store)?;
-    let mut scoped_workflows = Vec::new();
-    for workflow in workflows {
-        if require_resource_project(&state.store, "workflows", workflow.id().as_str(), &context)
-            .await
-            .is_ok()
-        {
-            scoped_workflows.push(workflow);
-        }
-    }
+    let scoped_workflows = workflows;
     let scoped_automations = state
         .store
         .list_automations(&context.tenant_id, &context.project_id, 100)
@@ -1979,13 +1946,18 @@ async fn require_workflow_step_projects<S: ApiStore>(
     context: &ProjectContext,
 ) -> Result<(), ApiError> {
     for step in workflow.steps() {
-        require_resource_project(
-            store,
-            "job_definitions",
-            step.job_definition_id().as_str(),
-            context,
-        )
-        .await?;
+        if store
+            .find_job_definition(
+                step.job_definition_id(),
+                &context.tenant_id,
+                &context.project_id,
+            )
+            .await
+            .map_err(ApiError::store)?
+            .is_none()
+        {
+            return Err(ApiError::ResourceNotFound);
+        }
     }
     Ok(())
 }
@@ -2382,15 +2354,9 @@ where
     let runs = filter_workflow_runs(runs, &query);
     let mut workflow_runs = Vec::with_capacity(runs.len());
     for run in runs {
-        if require_resource_project(&state.store, "workflow_runs", run.id().as_str(), &context)
-            .await
-            .is_err()
-        {
-            continue;
-        }
         let step_runs = state
             .store
-            .list_workflow_step_runs(run.id())
+            .list_workflow_step_runs(run.id(), &context.tenant_id, &context.project_id)
             .await
             .map_err(ApiError::store)?;
         workflow_runs.push(WorkflowRunResponse::new(&run, &step_runs));
@@ -2466,12 +2432,6 @@ where
 
     let mut job_runs = Vec::new();
     for run in runs {
-        if require_resource_project(&state.store, "job_runs", run.id().as_str(), context)
-            .await
-            .is_err()
-        {
-            continue;
-        }
         job_runs.push(ActivityRunSnapshot {
             id: run.id().as_str().to_string(),
             status: run.status().to_string(),
@@ -2481,15 +2441,9 @@ where
 
     let mut workflow_snapshots = Vec::with_capacity(workflow_runs.len());
     for run in workflow_runs {
-        if require_resource_project(&state.store, "workflow_runs", run.id().as_str(), context)
-            .await
-            .is_err()
-        {
-            continue;
-        }
         let mut step_runs = state
             .store
-            .list_workflow_step_runs(run.id())
+            .list_workflow_step_runs(run.id(), &context.tenant_id, &context.project_id)
             .await
             .map_err(ApiError::store)?
             .iter()
@@ -2512,34 +2466,9 @@ where
     }
     workflow_snapshots.sort_by(|left, right| left.id.cmp(&right.id));
 
-    let mut job_definition_count = 0;
-    for definition in definitions {
-        if require_resource_project(
-            &state.store,
-            "job_definitions",
-            definition.id().as_str(),
-            context,
-        )
-        .await
-        .is_ok()
-        {
-            job_definition_count += 1;
-        }
-    }
-    let mut automation_count = 0;
-    for automation in automations {
-        if require_resource_project(
-            &state.store,
-            "automations",
-            automation.id().as_str(),
-            context,
-        )
-        .await
-        .is_ok()
-        {
-            automation_count += 1;
-        }
-    }
+    // Both lists are scoped in their queries.
+    let job_definition_count = definitions.len();
+    let automation_count = automations.len();
 
     Ok(ActivitySnapshot {
         job_definition_count,
@@ -2561,10 +2490,9 @@ where
 {
     let context = project_context(&headers, &principal)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
-        .find_workflow_run(&id)
+        .find_workflow_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -2572,7 +2500,7 @@ where
     };
     let step_runs = state
         .store
-        .list_workflow_step_runs(&id)
+        .list_workflow_step_runs(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     Ok(Json(WorkflowRunResponse::new(&run, &step_runs)))
@@ -2590,8 +2518,7 @@ where
 {
     let context = project_context(&headers, &principal)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
-    Ok(Json(load_workflow_run_logs(&state, &id).await?))
+    Ok(Json(load_workflow_run_logs(&state, &id, &context).await?))
 }
 
 async fn stream_workflow_run_logs<S, O>(
@@ -2606,10 +2533,9 @@ where
 {
     let context = project_context(&headers, &principal)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     if state
         .store
-        .find_workflow_run(&id)
+        .find_workflow_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()
@@ -2617,9 +2543,10 @@ where
         return Err(ApiError::WorkflowRunNotFound(id.as_str().to_string()));
     }
     let stream_state = state.clone();
+    let stream_context = context.clone();
     let stream = async_stream::stream! {
         loop {
-            match load_workflow_run_logs(&stream_state, &id).await {
+            match load_workflow_run_logs(&stream_state, &id, &stream_context).await {
                 Ok(snapshot) => {
                     let terminal = snapshot.status == "succeeded"
                         || snapshot.status == "failed"
@@ -2653,6 +2580,7 @@ where
 async fn load_workflow_run_logs<S, O>(
     state: &AppState<S, O>,
     id: &WorkflowRunId,
+    context: &ProjectContext,
 ) -> Result<WorkflowRunLogsResponse, ApiError>
 where
     S: ApiStore,
@@ -2660,7 +2588,7 @@ where
 {
     let Some(run) = state
         .store
-        .find_workflow_run(id)
+        .find_workflow_run(id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -2669,7 +2597,7 @@ where
 
     let step_runs = state
         .store
-        .list_workflow_step_runs(id)
+        .list_workflow_step_runs(id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     let mut entries = Vec::with_capacity(step_runs.len());
@@ -2677,12 +2605,12 @@ where
         let (log, object_log_available) = if let Some(job_run_id) = step_run.maybe_job_run_id() {
             let log = state
                 .store
-                .find_run_log(job_run_id)
+                .find_run_log(job_run_id, &context.tenant_id, &context.project_id)
                 .await
                 .map_err(ApiError::store)?;
             let object_log_available = state
                 .store
-                .list_artifacts(job_run_id)
+                .list_artifacts(job_run_id, &context.tenant_id, &context.project_id)
                 .await
                 .map_err(ApiError::store)?
                 .iter()
@@ -2726,10 +2654,9 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
-        .remove_queued_workflow_run(&id)
+        .remove_queued_workflow_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -2743,7 +2670,7 @@ where
     }
     let step_runs = state
         .store
-        .list_workflow_step_runs(&id)
+        .list_workflow_step_runs(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     Ok(Json(WorkflowRunResponse::new(&run, &step_runs)))
@@ -2762,10 +2689,9 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
-        .cancel_running_workflow_run(&id)
+        .cancel_running_workflow_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -2779,7 +2705,7 @@ where
     }
     let step_runs = state
         .store
-        .list_workflow_step_runs(&id)
+        .list_workflow_step_runs(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     Ok(Json(WorkflowRunResponse::new(&run, &step_runs)))
@@ -2798,10 +2724,9 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = WorkflowRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "workflow_runs", id.as_str(), &context).await?;
     let Some(run) = state
         .store
-        .resume_workflow_run(&id)
+        .resume_workflow_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
@@ -2815,7 +2740,7 @@ where
     }
     let step_runs = state
         .store
-        .list_workflow_step_runs(&id)
+        .list_workflow_step_runs(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     Ok(Json(WorkflowRunResponse::new(&run, &step_runs)))
@@ -2849,14 +2774,23 @@ where
             // definition first and a taken id should not leave one behind.
             if state
                 .store
-                .find_run(&run_id)
+                .job_run_exists(&run_id)
                 .await
                 .map_err(ApiError::store)?
-                .is_some()
             {
-                require_resource_project(&state.store, "job_runs", run_id.as_str(), &context)
-                    .await?;
-                return Err(ApiError::RunAlreadyExists(run_id.as_str().to_string()));
+                // Taken here is a conflict. Taken by another project is something this
+                // caller has no way to know, so it reads as nothing being there.
+                let ours = state
+                    .store
+                    .find_run(&run_id, &context.tenant_id, &context.project_id)
+                    .await
+                    .map_err(ApiError::store)?
+                    .is_some();
+                return Err(if ours {
+                    ApiError::RunAlreadyExists(run_id.as_str().to_string())
+                } else {
+                    ApiError::ResourceNotFound
+                });
             }
             run_id
         }
@@ -2877,13 +2811,17 @@ where
                 job_definition_id.as_str().to_string(),
             ));
         }
-        require_resource_project(
-            &state.store,
-            "job_definitions",
-            job_definition_id.as_str(),
-            &context,
-        )
-        .await?;
+        // It exists; whether it is this project's is a scoped read, and another
+        // project's reads as nothing there.
+        if state
+            .store
+            .find_job_definition(&job_definition_id, &context.tenant_id, &context.project_id)
+            .await
+            .map_err(ApiError::store)?
+            .is_none()
+        {
+            return Err(ApiError::ResourceNotFound);
+        }
         (job_definition_id, None)
     };
 
@@ -2911,7 +2849,7 @@ where
     }
     let run = state
         .store
-        .find_run(run.id())
+        .find_run(run.id(), &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .unwrap_or(run);
@@ -3085,19 +3023,10 @@ where
         .list_runs(&context.tenant_id, &context.project_id, i64::from(limit))
         .await
         .map_err(ApiError::store)?;
+    // Scoped in the query, before the limit.
     let runs = filter_job_runs(runs, &query);
-    let mut scoped = Vec::new();
-    for run in runs {
-        if require_resource_project(&state.store, "job_runs", run.id().as_str(), &context)
-            .await
-            .is_ok()
-        {
-            scoped.push(run);
-        }
-    }
-
     Ok(Json(ListRunsResponse {
-        runs: scoped.iter().map(JobRunResponse::from).collect(),
+        runs: runs.iter().map(JobRunResponse::from).collect(),
     }))
 }
 
@@ -3113,8 +3042,12 @@ where
 {
     let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
-    let Some(run) = state.store.find_run(&id).await.map_err(ApiError::store)? else {
+    let Some(run) = state
+        .store
+        .find_run(&id, &context.tenant_id, &context.project_id)
+        .await
+        .map_err(ApiError::store)?
+    else {
         return Err(ApiError::RunNotFound(id.as_str().to_string()));
     };
 
@@ -3133,8 +3066,7 @@ where
 {
     let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
-    Ok(Json(load_run_logs(&state, &id, true).await?))
+    Ok(Json(load_run_logs(&state, &id, &context, true).await?))
 }
 
 async fn stream_run_logs<S, O>(
@@ -3149,10 +3081,9 @@ where
 {
     let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     if state
         .store
-        .find_run(&id)
+        .find_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()
@@ -3160,9 +3091,10 @@ where
         return Err(ApiError::RunNotFound(id.as_str().to_string()));
     }
     let stream_state = state.clone();
+    let stream_context = context.clone();
     let stream = async_stream::stream! {
         loop {
-            let run = match stream_state.store.find_run(&id).await {
+            let run = match stream_state.store.find_run(&id, &stream_context.tenant_id, &stream_context.project_id).await {
                 Ok(Some(run)) => run,
                 Ok(None) => {
                     yield Ok::<_, Infallible>(Event::default().event("error").data("run not found"));
@@ -3173,7 +3105,7 @@ where
                     break;
                 }
             };
-            match load_run_logs(&stream_state, &id, false).await {
+            match load_run_logs(&stream_state, &id, &stream_context, false).await {
                 Ok(snapshot) => match serde_json::to_string(&snapshot) {
                     Ok(data) => yield Ok(Event::default().event("snapshot").data(data)),
                     Err(error) => {
@@ -3201,6 +3133,7 @@ where
 async fn load_run_logs<S, O>(
     state: &AppState<S, O>,
     id: &JobRunId,
+    context: &ProjectContext,
     require_log: bool,
 ) -> Result<JobRunLogsResponse, ApiError>
 where
@@ -3209,7 +3142,7 @@ where
 {
     if state
         .store
-        .find_run(id)
+        .find_run(id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()
@@ -3219,7 +3152,7 @@ where
 
     let log = state
         .store
-        .find_run_log(id)
+        .find_run_log(id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
     if require_log && log.is_none() {
@@ -3228,7 +3161,7 @@ where
 
     let object_log_available = state
         .store
-        .list_artifacts(id)
+        .list_artifacts(id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .iter()
@@ -3254,8 +3187,12 @@ where
     let context = project_context(&headers, &principal)?;
     require_project_role(&context, crate::ProjectRole::Operator)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
-    let Some(run) = state.store.cancel_run(&id).await.map_err(ApiError::store)? else {
+    let Some(run) = state
+        .store
+        .cancel_run(&id, &context.tenant_id, &context.project_id)
+        .await
+        .map_err(ApiError::store)?
+    else {
         return Err(ApiError::RunNotFound(id.as_str().to_string()));
     };
 
@@ -3274,10 +3211,9 @@ where
 {
     let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     if state
         .store
-        .find_run(&id)
+        .find_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()
@@ -3287,7 +3223,7 @@ where
 
     let artifacts = state
         .store
-        .list_artifacts(&id)
+        .list_artifacts(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?;
 
@@ -3309,10 +3245,9 @@ where
     let context = project_context(&headers, &principal)?;
     let id = JobRunId::new(id).map_err(ApiError::validation)?;
     let artifact_id = ArtifactId::new(artifact_id).map_err(ApiError::validation)?;
-    require_resource_project(&state.store, "job_runs", id.as_str(), &context).await?;
     if state
         .store
-        .find_run(&id)
+        .find_run(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
         .is_none()
@@ -3322,7 +3257,7 @@ where
 
     let Some(artifact) = state
         .store
-        .find_artifact(&id, &artifact_id)
+        .find_artifact(&id, &artifact_id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {

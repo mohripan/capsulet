@@ -1,9 +1,7 @@
 use std::fmt::Display;
 
 use async_trait::async_trait;
-use capsulet_application::{
-    AgentRunRecord, JobArtifactRepository, JobRunLogRepository, JobRunRepository,
-};
+use capsulet_application::{AgentRunRecord, JobArtifactRepository, JobRunRepository};
 use capsulet_core::{
     AgentDefinition, AgentId, AgentRunId, ArtifactId, Automation, AutomationId, AutomationTrigger,
     CanonicalEntity, Claim, ClaimConflict, ClaimConflictId, ClaimId, CustomTriggerPlugin, Entity,
@@ -284,6 +282,119 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         project_id: &str,
         limit: i64,
     ) -> Result<Vec<Source>, Self::Error>;
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_source_in_project(
+        &self,
+        id: &SourceId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Source>, Self::Error> {
+        Ok(self.find_memory_source(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_evidence_in_project(
+        &self,
+        id: &EvidenceId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Evidence>, Self::Error> {
+        Ok(self.find_memory_evidence(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_entity_in_project(
+        &self,
+        id: &EntityId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Entity>, Self::Error> {
+        Ok(self.find_memory_entity(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_claim_in_project(
+        &self,
+        id: &ClaimId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Claim>, Self::Error> {
+        Ok(self.find_memory_claim(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_claim_conflict_in_project(
+        &self,
+        id: &ClaimConflictId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<ClaimConflict>, Self::Error> {
+        Ok(self.find_memory_claim_conflict(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_event_in_project(
+        &self,
+        id: &EventId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Event>, Self::Error> {
+        Ok(self.find_memory_event(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_relationship_in_project(
+        &self,
+        id: &RelationshipId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Relationship>, Self::Error> {
+        Ok(self.find_memory_relationship(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_contract_in_project(
+        &self,
+        id: &MemoryContractId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<MemoryContract>, Self::Error> {
+        Ok(self.find_memory_contract(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_subgraph_in_project(
+        &self,
+        id: &MemorySubgraphId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<MemorySubgraph>, Self::Error> {
+        Ok(self.find_memory_subgraph(id).await?.filter(|found| {
+            found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+        }))
+    }
+    /// A lookup within one project: another project's record is not found.
+    async fn find_memory_entity_resolution_in_project(
+        &self,
+        id: &EntityResolutionId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<EntityResolution>, Self::Error> {
+        Ok(self
+            .find_memory_entity_resolution(id)
+            .await?
+            .filter(|found| {
+                found.scope().tenant_id() == tenant_id && found.scope().project_id() == project_id
+            }))
+    }
     async fn find_memory_source(&self, id: &SourceId) -> Result<Option<Source>, Self::Error>;
     async fn upsert_memory_evidence(&self, evidence: &Evidence) -> Result<(), Self::Error>;
     async fn list_memory_evidence(
@@ -594,8 +705,15 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         &self,
         id: &AutomationId,
         status: capsulet_core::AutomationStatus,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<Automation>, Self::Error>;
-    async fn delete_automation(&self, id: &AutomationId) -> Result<bool, Self::Error>;
+    async fn delete_automation(
+        &self,
+        id: &AutomationId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error>;
     async fn list_automation_triggers(
         &self,
         automation_id: &AutomationId,
@@ -636,22 +754,32 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn find_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error>;
     async fn remove_queued_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error>;
     async fn cancel_running_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error>;
     async fn resume_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error>;
     async fn list_workflow_step_runs(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<WorkflowStepRun>, Self::Error>;
     /// Creates a job run owned by a project. Returns whether this call created it,
     /// so a caller that named the id can say it was already taken.
@@ -667,14 +795,39 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         project_id: &str,
         limit: i64,
     ) -> Result<Vec<JobRun>, Self::Error>;
-    async fn find_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error>;
-    async fn find_run_log(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error>;
-    async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error>;
-    async fn list_artifacts(&self, id: &JobRunId) -> Result<Vec<JobArtifact>, Self::Error>;
+    /// Whether any project has a job run with this id. Run ids are unique across
+    /// the installation, so a create needs to know, and must not say whose it is.
+    async fn job_run_exists(&self, id: &JobRunId) -> Result<bool, Self::Error>;
+    async fn find_run(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRun>, Self::Error>;
+    async fn find_run_log(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRunLog>, Self::Error>;
+    async fn cancel_run(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRun>, Self::Error>;
+    async fn list_artifacts(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<JobArtifact>, Self::Error>;
     async fn find_artifact(
         &self,
         run_id: &JobRunId,
         artifact_id: &ArtifactId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<JobArtifact>, Self::Error>;
     async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error>;
 }
@@ -1061,6 +1214,97 @@ impl ApiStore for PostgresStore {
         limit: i64,
     ) -> Result<Vec<Source>, Self::Error> {
         self.list_memory_sources(tenant_id, project_id, limit).await
+    }
+
+    async fn find_memory_source_in_project(
+        &self,
+        id: &SourceId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Source>, Self::Error> {
+        PostgresStore::find_memory_source_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_evidence_in_project(
+        &self,
+        id: &EvidenceId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Evidence>, Self::Error> {
+        PostgresStore::find_memory_evidence_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_entity_in_project(
+        &self,
+        id: &EntityId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Entity>, Self::Error> {
+        PostgresStore::find_memory_entity_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_claim_in_project(
+        &self,
+        id: &ClaimId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Claim>, Self::Error> {
+        PostgresStore::find_memory_claim_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_claim_conflict_in_project(
+        &self,
+        id: &ClaimConflictId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<ClaimConflict>, Self::Error> {
+        PostgresStore::find_memory_claim_conflict_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_event_in_project(
+        &self,
+        id: &EventId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Event>, Self::Error> {
+        PostgresStore::find_memory_event_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_relationship_in_project(
+        &self,
+        id: &RelationshipId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Relationship>, Self::Error> {
+        PostgresStore::find_memory_relationship_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_contract_in_project(
+        &self,
+        id: &MemoryContractId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<MemoryContract>, Self::Error> {
+        PostgresStore::find_memory_contract_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_subgraph_in_project(
+        &self,
+        id: &MemorySubgraphId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<MemorySubgraph>, Self::Error> {
+        PostgresStore::find_memory_subgraph_in_project(self, id, tenant_id, project_id).await
+    }
+
+    async fn find_memory_entity_resolution_in_project(
+        &self,
+        id: &EntityResolutionId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<EntityResolution>, Self::Error> {
+        PostgresStore::find_memory_entity_resolution_in_project(self, id, tenant_id, project_id)
+            .await
     }
 
     async fn find_memory_source(&self, id: &SourceId) -> Result<Option<Source>, Self::Error> {
@@ -1543,12 +1787,19 @@ impl ApiStore for PostgresStore {
         &self,
         id: &AutomationId,
         status: capsulet_core::AutomationStatus,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<Automation>, Self::Error> {
-        self.set_automation_status(id, status).await
+        PostgresStore::set_automation_status(self, id, status, tenant_id, project_id).await
     }
 
-    async fn delete_automation(&self, id: &AutomationId) -> Result<bool, Self::Error> {
-        self.delete_automation(id).await
+    async fn delete_automation(
+        &self,
+        id: &AutomationId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error> {
+        PostgresStore::delete_automation(self, id, tenant_id, project_id).await
     }
 
     async fn list_automation_triggers(
@@ -1621,36 +1872,49 @@ impl ApiStore for PostgresStore {
     async fn find_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
-        self.find_workflow_run(workflow_run_id).await
+        self.find_workflow_run_in_project(workflow_run_id, tenant_id, project_id)
+            .await
     }
 
     async fn remove_queued_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
-        self.remove_queued_workflow_run(workflow_run_id).await
+        PostgresStore::remove_queued_workflow_run(self, workflow_run_id, tenant_id, project_id)
+            .await
     }
 
     async fn cancel_running_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
-        self.cancel_running_workflow_run(workflow_run_id).await
+        PostgresStore::cancel_running_workflow_run(self, workflow_run_id, tenant_id, project_id)
+            .await
     }
 
     async fn resume_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
-        self.resume_workflow_run(workflow_run_id).await
+        PostgresStore::resume_workflow_run(self, workflow_run_id, tenant_id, project_id).await
     }
 
     async fn list_workflow_step_runs(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<WorkflowStepRun>, Self::Error> {
-        self.list_workflow_step_runs(workflow_run_id).await
+        PostgresStore::list_workflow_step_runs(self, workflow_run_id, tenant_id, project_id).await
     }
 
     async fn list_runs(
@@ -1663,28 +1927,59 @@ impl ApiStore for PostgresStore {
             .await
     }
 
-    async fn find_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
-        self.find_by_id(id).await
+    async fn job_run_exists(&self, id: &JobRunId) -> Result<bool, Self::Error> {
+        Ok(self.find_by_id(id).await?.is_some())
     }
 
-    async fn find_run_log(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error> {
-        self.find_log_by_run_id(id).await
+    async fn find_run(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRun>, Self::Error> {
+        self.find_job_run_in_project(id, tenant_id, project_id)
+            .await
     }
 
-    async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
-        self.cancel_run(id).await
+    async fn find_run_log(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRunLog>, Self::Error> {
+        self.find_job_run_log_in_project(id, tenant_id, project_id)
+            .await
     }
 
-    async fn list_artifacts(&self, id: &JobRunId) -> Result<Vec<JobArtifact>, Self::Error> {
-        self.list_artifacts(id).await
+    async fn cancel_run(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRun>, Self::Error> {
+        self.cancel_job_run_in_project(id, tenant_id, project_id)
+            .await
+    }
+
+    async fn list_artifacts(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<JobArtifact>, Self::Error> {
+        self.list_job_artifacts_in_project(id, tenant_id, project_id)
+            .await
     }
 
     async fn find_artifact(
         &self,
         run_id: &JobRunId,
         artifact_id: &ArtifactId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<JobArtifact>, Self::Error> {
-        self.find_artifact(run_id, artifact_id).await
+        self.find_job_artifact_in_project(run_id, artifact_id, tenant_id, project_id)
+            .await
     }
 
     async fn save_artifact(&self, artifact: &JobArtifact) -> Result<(), Self::Error> {

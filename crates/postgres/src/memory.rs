@@ -1522,3 +1522,230 @@ impl TryFromString for CanonicalEntityId {
         Self::new(value).map_err(PostgresStoreError::InvalidPersistedValue)
     }
 }
+
+/// Lookups within one project, for the API: another project's record matches no row.
+impl PostgresStore {
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_source_in_project(
+        &self,
+        id: &SourceId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Source>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, kind, uri, title, authority
+            FROM memory_sources
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_source).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_evidence_in_project(
+        &self,
+        id: &EvidenceId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Evidence>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, source_id, locator, excerpt, observed_at, span_start, span_end, source_content_hash
+            FROM memory_evidence
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_evidence).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_entity_in_project(
+        &self,
+        id: &EntityId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Entity>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, entity_type, name, aliases
+            FROM memory_entities
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_entity).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_claim_in_project(
+        &self,
+        id: &ClaimId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Claim>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, subject_id, predicate, object, evidence_ids,
+                   confidence, authority, status, observed_at, valid_from, valid_until
+            FROM memory_claims
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_claim).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_claim_conflict_in_project(
+        &self,
+        id: &ClaimConflictId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<ClaimConflict>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, subject_id, canonical_entity_id, predicate,
+                   claim_ids, status, reason, preferred_claim_id
+            FROM memory_claim_conflicts
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_claim_conflict).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_event_in_project(
+        &self,
+        id: &EventId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Event>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, event_type, occurred_at, entity_ids, evidence_ids
+            FROM memory_events
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_event).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_relationship_in_project(
+        &self,
+        id: &RelationshipId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<Relationship>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, relationship_type, from_entity_id, to_entity_id, evidence_ids
+            FROM memory_relationships
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_relationship).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_contract_in_project(
+        &self,
+        id: &MemoryContractId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<MemoryContract>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, name, source
+            FROM memory_contracts
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_contract).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_subgraph_in_project(
+        &self,
+        id: &MemorySubgraphId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<MemorySubgraph>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, parent_subgraph_id, name, description, owner_kind,
+                   owner_id, contract_id, summary_claim_id, permissions, status
+            FROM memory_subgraphs
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_subgraph).transpose()
+    }
+
+    /// The same lookup, within one project: another project's record matches no row.
+    pub async fn find_memory_entity_resolution_in_project(
+        &self,
+        id: &EntityResolutionId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<EntityResolution>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, subgraph_id, entity_id, canonical_entity_id,
+                   confidence, status, evidence_ids
+            FROM memory_entity_resolutions
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_entity_resolution).transpose()
+    }
+}

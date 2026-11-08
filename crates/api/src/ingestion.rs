@@ -393,17 +393,12 @@ where
     let id = ClaimId::new(id).map_err(ApiError::validation)?;
     let Some(claim) = state
         .store
-        .find_memory_claim(&id)
+        .find_memory_claim_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    if claim.scope().tenant_id() != context.tenant_id
-        || claim.scope().project_id() != context.project_id
-    {
-        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
-    }
     if claim.status() != ClaimStatus::Candidate {
         return Err(ApiError::validation(format!(
             "claim {} is not awaiting review",

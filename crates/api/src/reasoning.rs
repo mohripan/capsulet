@@ -25,7 +25,6 @@ use crate::{
     auth::Principal,
     error::ApiError,
     http::internal::{ProjectContext, generated_id, project_context, require_project_role},
-    memory::require_scope,
     state::AppState,
     store::ApiStore,
 };
@@ -339,13 +338,12 @@ where
     let id = MemoryContractId::new(id).map_err(ApiError::validation)?;
     let Some(contract) = state
         .store
-        .find_memory_contract(&id)
+        .find_memory_contract_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(contract.scope(), context, id.as_str())?;
     contract
         .compile()
         .map_err(|error| ApiError::validation(error.to_string()))?;

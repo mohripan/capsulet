@@ -533,13 +533,12 @@ where
     let id = SourceId::new(id).map_err(ApiError::validation)?;
     let Some(source) = state
         .store
-        .find_memory_source(&id)
+        .find_memory_source_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(source.scope(), &context, id.as_str())?;
     Ok(Json(SourceResponse::from(&source)))
 }
 
@@ -614,13 +613,12 @@ where
     let id = EvidenceId::new(id).map_err(ApiError::validation)?;
     let Some(evidence) = state
         .store
-        .find_memory_evidence(&id)
+        .find_memory_evidence_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(evidence.scope(), &context, id.as_str())?;
     Ok(Json(EvidenceResponse::from(&evidence)))
 }
 
@@ -694,13 +692,12 @@ where
     let id = EntityId::new(id).map_err(ApiError::validation)?;
     let Some(entity) = state
         .store
-        .find_memory_entity(&id)
+        .find_memory_entity_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(entity.scope(), &context, id.as_str())?;
     Ok(Json(EntityResponse::from(&entity)))
 }
 
@@ -789,13 +786,12 @@ where
     let id = ClaimId::new(id).map_err(ApiError::validation)?;
     let Some(claim) = state
         .store
-        .find_memory_claim(&id)
+        .find_memory_claim_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(claim.scope(), &context, id.as_str())?;
     Ok(Json(ClaimResponse::from(&claim)))
 }
 
@@ -880,13 +876,12 @@ where
     let id = EventId::new(id).map_err(ApiError::validation)?;
     let Some(event) = state
         .store
-        .find_memory_event(&id)
+        .find_memory_event_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(event.scope(), &context, id.as_str())?;
     Ok(Json(EventResponse::from(&event)))
 }
 
@@ -972,13 +967,12 @@ where
     let id = RelationshipId::new(id).map_err(ApiError::validation)?;
     let Some(relationship) = state
         .store
-        .find_memory_relationship(&id)
+        .find_memory_relationship_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(relationship.scope(), &context, id.as_str())?;
     Ok(Json(RelationshipResponse::from(&relationship)))
 }
 
@@ -1059,13 +1053,12 @@ where
     let id = MemoryContractId::new(id).map_err(ApiError::validation)?;
     let Some(contract) = state
         .store
-        .find_memory_contract(&id)
+        .find_memory_contract_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(contract.scope(), &context, id.as_str())?;
     Ok(Json(MemoryContractResponse::new(&contract)?))
 }
 
@@ -1146,13 +1139,12 @@ where
     let id = MemorySubgraphId::new(id).map_err(ApiError::validation)?;
     let Some(subgraph) = state
         .store
-        .find_memory_subgraph(&id)
+        .find_memory_subgraph_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(subgraph.scope(), &context, id.as_str())?;
     Ok(Json(MemorySubgraphResponse::from(&subgraph)))
 }
 
@@ -1177,13 +1169,12 @@ where
         .map_err(ApiError::store)?;
     let Some(subgraph) = state
         .store
-        .find_memory_subgraph(&id)
+        .find_memory_subgraph_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    require_scope(subgraph.scope(), &context, id.as_str())?;
     let activated = subgraph
         .activate(MemorySubgraphActivation::new(
             Some(
@@ -1419,17 +1410,12 @@ where
     let id = EntityResolutionId::new(id).map_err(ApiError::validation)?;
     let Some(resolution) = state
         .store
-        .find_memory_entity_resolution(&id)
+        .find_memory_entity_resolution_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    if resolution.scope().tenant_id() != context.tenant_id
-        || resolution.scope().project_id() != context.project_id
-    {
-        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
-    }
     if resolution.status() != EntityResolutionStatus::Candidate {
         return Err(ApiError::validation(format!(
             "entity resolution {} is not awaiting review",
@@ -1539,17 +1525,12 @@ where
 {
     let context = write_context(headers, principal)?;
     let Some(conflict) = store
-        .find_memory_claim_conflict(&id)
+        .find_memory_claim_conflict_in_project(&id, &context.tenant_id, &context.project_id)
         .await
         .map_err(ApiError::store)?
     else {
         return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
     };
-    if conflict.scope().tenant_id() != context.tenant_id
-        || conflict.scope().project_id() != context.project_id
-    {
-        return Err(ApiError::MemoryNotFound(id.as_str().to_string()));
-    }
     if conflict.status() != ClaimConflictStatus::Candidate {
         return Err(ApiError::validation(format!(
             "claim conflict {} is not awaiting review",

@@ -1868,7 +1868,12 @@ impl ApiStore for FakeStore {
         &self,
         id: &AutomationId,
         status: AutomationStatus,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<Automation>, Self::Error> {
+        if !self.owned_by("automations", id.as_str(), tenant_id, project_id)? {
+            return Ok(None);
+        }
         let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
         let Some(automation) = automations
             .iter_mut()
@@ -1880,7 +1885,15 @@ impl ApiStore for FakeStore {
         Ok(Some(automation.clone()))
     }
 
-    async fn delete_automation(&self, id: &AutomationId) -> Result<bool, Self::Error> {
+    async fn delete_automation(
+        &self,
+        id: &AutomationId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, Self::Error> {
+        if !self.owned_by("automations", id.as_str(), tenant_id, project_id)? {
+            return Ok(false);
+        }
         let mut automations = self.automations.lock().map_err(|error| error.to_string())?;
         let initial_len = automations.len();
         automations.retain(|automation| automation.id().clone() != *id);
@@ -2026,7 +2039,17 @@ impl ApiStore for FakeStore {
     async fn find_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
+        if !self.owned_by(
+            "workflow_runs",
+            workflow_run_id.as_str(),
+            tenant_id,
+            project_id,
+        )? {
+            return Ok(None);
+        }
         Ok(self
             .workflow_runs
             .lock()
@@ -2039,7 +2062,17 @@ impl ApiStore for FakeStore {
     async fn remove_queued_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
+        if !self.owned_by(
+            "workflow_runs",
+            workflow_run_id.as_str(),
+            tenant_id,
+            project_id,
+        )? {
+            return Ok(None);
+        }
         let has_step = self
             .workflow_step_runs
             .lock()
@@ -2062,7 +2095,17 @@ impl ApiStore for FakeStore {
     async fn cancel_running_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
+        if !self.owned_by(
+            "workflow_runs",
+            workflow_run_id.as_str(),
+            tenant_id,
+            project_id,
+        )? {
+            return Ok(None);
+        }
         let mut runs = self
             .workflow_runs
             .lock()
@@ -2100,7 +2143,17 @@ impl ApiStore for FakeStore {
     async fn resume_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, Self::Error> {
+        if !self.owned_by(
+            "workflow_runs",
+            workflow_run_id.as_str(),
+            tenant_id,
+            project_id,
+        )? {
+            return Ok(None);
+        }
         let mut runs = self
             .workflow_runs
             .lock()
@@ -2127,7 +2180,17 @@ impl ApiStore for FakeStore {
     async fn list_workflow_step_runs(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<WorkflowStepRun>, Self::Error> {
+        if !self.owned_by(
+            "workflow_runs",
+            workflow_run_id.as_str(),
+            tenant_id,
+            project_id,
+        )? {
+            return Ok(Vec::new());
+        }
         Ok(self
             .workflow_step_runs
             .lock()
@@ -2153,7 +2216,24 @@ impl ApiStore for FakeStore {
             .collect())
     }
 
-    async fn find_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
+    async fn job_run_exists(&self, id: &JobRunId) -> Result<bool, Self::Error> {
+        Ok(self
+            .runs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .any(|run| run.id() == id))
+    }
+
+    async fn find_run(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRun>, Self::Error> {
+        if !self.owned_by("job_runs", id.as_str(), tenant_id, project_id)? {
+            return Ok(None);
+        }
         Ok(self
             .runs
             .lock()
@@ -2163,7 +2243,15 @@ impl ApiStore for FakeStore {
             .cloned())
     }
 
-    async fn find_run_log(&self, id: &JobRunId) -> Result<Option<JobRunLog>, Self::Error> {
+    async fn find_run_log(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRunLog>, Self::Error> {
+        if !self.owned_by("job_runs", id.as_str(), tenant_id, project_id)? {
+            return Ok(None);
+        }
         Ok(self
             .logs
             .lock()
@@ -2173,7 +2261,15 @@ impl ApiStore for FakeStore {
             .cloned())
     }
 
-    async fn cancel_run(&self, id: &JobRunId) -> Result<Option<JobRun>, Self::Error> {
+    async fn cancel_run(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<JobRun>, Self::Error> {
+        if !self.owned_by("job_runs", id.as_str(), tenant_id, project_id)? {
+            return Ok(None);
+        }
         let mut runs = self.runs.lock().map_err(|error| error.to_string())?;
         let Some(run) = runs.iter_mut().rev().find(|run| run.id() == id) else {
             return Ok(None);
@@ -2185,7 +2281,15 @@ impl ApiStore for FakeStore {
         Ok(Some(run.clone()))
     }
 
-    async fn list_artifacts(&self, id: &JobRunId) -> Result<Vec<JobArtifact>, Self::Error> {
+    async fn list_artifacts(
+        &self,
+        id: &JobRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<JobArtifact>, Self::Error> {
+        if !self.owned_by("job_runs", id.as_str(), tenant_id, project_id)? {
+            return Ok(Vec::new());
+        }
         Ok(self
             .artifacts
             .lock()
@@ -2200,7 +2304,12 @@ impl ApiStore for FakeStore {
         &self,
         run_id: &JobRunId,
         artifact_id: &ArtifactId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<JobArtifact>, Self::Error> {
+        if !self.owned_by("job_runs", run_id.as_str(), tenant_id, project_id)? {
+            return Ok(None);
+        }
         Ok(self
             .artifacts
             .lock()
@@ -2229,6 +2338,28 @@ impl FakeStore {
             .expect("definition mutex")
             .push(id.to_string());
         store
+    }
+
+    /// Whether a project owns a resource, by the same records `resource_project`
+    /// answers from: what has no record belongs to the default project.
+    fn owned_by(
+        &self,
+        resource: &str,
+        id: &str,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, String> {
+        if self.omit_ownership {
+            return Ok(false);
+        }
+        let ownership = self.ownership.lock().map_err(|error| error.to_string())?;
+        let owner = ownership
+            .iter()
+            .find(|ownership| ownership.resource == resource && ownership.id == id)
+            .map_or(("default", "default"), |ownership| {
+                (ownership.tenant_id.as_str(), ownership.project_id.as_str())
+            });
+        Ok(owner == (tenant_id, project_id))
     }
 
     fn ensure_default_projects(&self) {

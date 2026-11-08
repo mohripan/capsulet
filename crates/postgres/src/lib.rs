@@ -26,6 +26,7 @@ mod projects;
 mod repositories;
 mod retention;
 mod rows;
+mod run_scope;
 mod service_accounts;
 mod trigger_events;
 mod worker_store;

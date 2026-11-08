@@ -398,7 +398,35 @@ impl PostgresStore {
         row.as_ref().map(row_to_workflow_run).transpose()
     }
 
-    /// Marks a queued workflow run as removed when no step has started.
+    /// Finds a workflow run the project owns.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when lookup fails or persisted values are invalid.
+    pub async fn find_workflow_run_in_project(
+        &self,
+        workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Option<WorkflowRun>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
+            FROM workflow_runs
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
+            ",
+        )
+        .bind(workflow_run_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.as_ref().map(row_to_workflow_run).transpose()
+    }
+
+    /// Marks a queued workflow run the project owns as removed when no step has
+    /// started. `None` when the project has no such run.
     ///
     /// # Errors
     ///
@@ -406,12 +434,14 @@ impl PostgresStore {
     pub async fn remove_queued_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, PostgresStoreError> {
         let row = sqlx::query(
             r"
             UPDATE workflow_runs
             SET status = 'removed', updated_at = now(), finished_at = now()
-            WHERE id = $1
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
               AND status = 'queued'
               AND NOT EXISTS (
                   SELECT 1 FROM workflow_step_runs WHERE workflow_run_id = workflow_runs.id
@@ -420,6 +450,8 @@ impl PostgresStore {
             ",
         )
         .bind(workflow_run_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -427,10 +459,12 @@ impl PostgresStore {
             return row_to_workflow_run(&row).map(Some);
         }
 
-        self.find_workflow_run(workflow_run_id).await
+        self.find_workflow_run_in_project(workflow_run_id, tenant_id, project_id)
+            .await
     }
 
-    /// Cancels a running workflow run and its active job run.
+    /// Cancels a running workflow run the project owns, and its active job run.
+    /// `None` when the project has no such run.
     ///
     /// # Errors
     ///
@@ -438,6 +472,8 @@ impl PostgresStore {
     pub async fn cancel_running_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, PostgresStoreError> {
         let mut tx = self.pool.begin().await?;
         let active = sqlx::query(
@@ -446,19 +482,23 @@ impl PostgresStore {
             FROM workflow_runs wr
             JOIN workflow_step_runs wsr
               ON wsr.workflow_run_id = wr.id
-            WHERE wr.id = $1
+            WHERE wr.id = $1 AND wr.tenant_id = $2 AND wr.project_id = $3
               AND wr.status = 'running'
               AND wsr.status IN ('queued', 'running')
             FOR UPDATE
             ",
         )
         .bind(workflow_run_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_all(&mut *tx)
         .await?;
 
         if active.is_empty() {
             tx.rollback().await?;
-            return self.find_workflow_run(workflow_run_id).await;
+            return self
+                .find_workflow_run_in_project(workflow_run_id, tenant_id, project_id)
+                .await;
         }
 
         for step in &active {
@@ -490,12 +530,14 @@ impl PostgresStore {
             r"
             UPDATE workflow_runs
             SET status = 'cancelled', updated_at = now(), finished_at = now()
-            WHERE id = $1
+            WHERE id = $1 AND tenant_id = $2 AND project_id = $3
               AND status = 'running'
             RETURNING id, workflow_id, automation_id, input::text AS input, status, current_step_position, created_at::text AS created_at
             ",
         )
         .bind(workflow_run_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_optional(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -503,7 +545,7 @@ impl PostgresStore {
         row.as_ref().map(row_to_workflow_run).transpose()
     }
 
-    /// Lists step runs for one workflow run.
+    /// Lists step runs for one workflow run the project owns.
     ///
     /// # Errors
     ///
@@ -511,23 +553,33 @@ impl PostgresStore {
     pub async fn list_workflow_step_runs(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Vec<WorkflowStepRun>, PostgresStoreError> {
         let rows = sqlx::query(
             r"
-            SELECT id, workflow_run_id, workflow_step_id, job_run_id, position, status
-            FROM workflow_step_runs
-            WHERE workflow_run_id = $1
-            ORDER BY position ASC
+            SELECT steps.id, steps.workflow_run_id, steps.workflow_step_id, steps.job_run_id,
+                   steps.position, steps.status
+            FROM workflow_step_runs steps
+            JOIN workflow_runs runs ON runs.id = steps.workflow_run_id
+            WHERE steps.workflow_run_id = $1 AND runs.tenant_id = $2 AND runs.project_id = $3
+            ORDER BY steps.position ASC
             ",
         )
         .bind(workflow_run_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_all(&self.pool)
         .await?;
 
         rows.iter().map(row_to_workflow_step_run).collect()
     }
 
-    /// Resumes a failed workflow from its persisted successful step checkpoints.
+    /// Resumes a failed workflow run the project owns from its persisted successful
+    /// step checkpoints. `None` when the project has no such run.
+    ///
+    /// The ownership check is the row lock everything after it runs under, so the run
+    /// being resumed is the one that was checked.
     ///
     /// # Errors
     ///
@@ -535,12 +587,17 @@ impl PostgresStore {
     pub async fn resume_workflow_run(
         &self,
         workflow_run_id: &WorkflowRunId,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<WorkflowRun>, PostgresStoreError> {
         let mut tx = self.pool.begin().await?;
         let status = sqlx::query_scalar::<_, String>(
-            "SELECT status FROM workflow_runs WHERE id = $1 FOR UPDATE",
+            "SELECT status FROM workflow_runs \
+             WHERE id = $1 AND tenant_id = $2 AND project_id = $3 FOR UPDATE",
         )
         .bind(workflow_run_id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -550,7 +607,9 @@ impl PostgresStore {
         };
         if !matches!(status.as_str(), "failed" | "timed_out") {
             tx.rollback().await?;
-            return self.find_workflow_run(workflow_run_id).await;
+            return self
+                .find_workflow_run_in_project(workflow_run_id, tenant_id, project_id)
+                .await;
         }
 
         // Skipped step runs carry a NULL job_run_id, so the column must decode as optional.
@@ -613,7 +672,8 @@ impl PostgresStore {
         .await?;
         tx.commit().await?;
 
-        self.find_workflow_run(workflow_run_id).await
+        self.find_workflow_run_in_project(workflow_run_id, tenant_id, project_id)
+            .await
     }
 
     /// Creates workflow runs for enabled interval automations whose fire time is due.

@@ -339,7 +339,8 @@ impl PostgresStore {
         row.as_ref().map(row_to_automation).transpose()
     }
 
-    /// Updates automation enabled/disabled status.
+    /// Enables or disables an automation the project owns. `None` when the project
+    /// has no such automation.
     ///
     /// # Errors
     ///
@@ -348,6 +349,8 @@ impl PostgresStore {
         &self,
         id: &AutomationId,
         status: AutomationStatus,
+        tenant_id: &str,
+        project_id: &str,
     ) -> Result<Option<Automation>, PostgresStoreError> {
         let row = sqlx::query(
             r"
@@ -368,35 +371,66 @@ impl PostgresStore {
                     ELSE NULL
                 END,
                 updated_at = now()
-            WHERE id = $1
+            WHERE id = $1 AND tenant_id = $3 AND project_id = $4
             RETURNING id, name, description, workflow_id, job_input::text AS job_input,
                       status
             ",
         )
         .bind(id.as_str())
         .bind(status.to_string())
+        .bind(tenant_id)
+        .bind(project_id)
         .fetch_optional(&self.pool)
         .await?;
 
         row.as_ref().map(row_to_automation).transpose()
     }
 
-    /// Deletes an automation and its trigger graph.
+    /// Deletes an automation the project owns, and its trigger graph. Returns
+    /// whether there was one to delete.
     ///
     /// # Errors
     ///
     /// Returns [`PostgresStoreError`] when deletion fails.
-    pub async fn delete_automation(&self, id: &AutomationId) -> Result<bool, PostgresStoreError> {
+    pub async fn delete_automation(
+        &self,
+        id: &AutomationId,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<bool, PostgresStoreError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("UPDATE workflow_runs SET automation_id = NULL WHERE automation_id = $1")
-            .bind(id.as_str())
-            .execute(&mut *tx)
-            .await?;
+        // Locked first, so everything below acts on the automation that was checked.
+        let owned = sqlx::query_scalar::<_, i32>(
+            "SELECT 1 FROM automations WHERE id = $1 AND tenant_id = $2 AND project_id = $3 \
+             FOR UPDATE",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if owned.is_none() {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+        sqlx::query(
+            "UPDATE workflow_runs SET automation_id = NULL \
+             WHERE automation_id = $1 AND tenant_id = $2 AND project_id = $3",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .execute(&mut *tx)
+        .await?;
 
-        let result = sqlx::query("DELETE FROM automations WHERE id = $1")
-            .bind(id.as_str())
-            .execute(&mut *tx)
-            .await?;
+        let result = sqlx::query(
+            "DELETE FROM automations WHERE id = $1 AND tenant_id = $2 AND project_id = $3",
+        )
+        .bind(id.as_str())
+        .bind(tenant_id)
+        .bind(project_id)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
 
         Ok(result.rows_affected() > 0)

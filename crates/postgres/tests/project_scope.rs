@@ -10,7 +10,8 @@ mod support;
 use capsulet_core::{
     Automation, AutomationId, AutomationStatus, AutomationTrigger, CustomTriggerPlugin,
     ExecutionPoolName, JobDefinition, JobDefinitionId, JobRun, JobRunId, TriggerKind, TriggerName,
-    WorkflowDefinition, WorkflowId, WorkflowRunId, WorkflowStatus, WorkflowStep, WorkflowStepId,
+    WorkflowDefinition, WorkflowId, WorkflowRunId, WorkflowRunStatus, WorkflowStatus, WorkflowStep,
+    WorkflowStepId,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
 use support::{fixture_id as unique_id, required_database_url as database_url};
@@ -338,7 +339,10 @@ async fn a_workflow_steps_job_run_belongs_to_the_workflows_project() {
 
     store.advance_workflow_runs().await.expect("advances");
 
-    let steps = store.list_workflow_step_runs(&run_id).await.expect("reads");
+    let steps = store
+        .list_workflow_step_runs(&run_id, "default", &project)
+        .await
+        .expect("reads");
     assert_eq!(steps.len(), 1, "the step was started");
     let job_run = steps[0].job_run_id();
     assert_eq!(
@@ -458,4 +462,177 @@ async fn run_listings_apply_scope_before_the_limit() {
         .expect("reads");
     assert_eq!(workflow_runs.len(), 1);
     assert_eq!(workflow_runs[0].id(), &owned_workflow_run);
+}
+
+#[tokio::test]
+async fn another_project_can_neither_read_nor_change_a_run_by_its_id() {
+    let store = store().await;
+    let project = unique_id("run_owner");
+    let foreign = unique_id("run_stranger");
+    let workflow = workflow(&store, &project).await;
+    let run_id = WorkflowRunId::new(unique_id("scoped_wfrun")).expect("id");
+    store
+        .create_workflow_run_in_project(workflow.id(), None, &run_id, "{}", "default", &project)
+        .await
+        .expect("created");
+    store.advance_workflow_runs().await.expect("advances");
+    let steps = store
+        .list_workflow_step_runs(&run_id, "default", &project)
+        .await
+        .expect("reads");
+    let job_run = steps[0].job_run_id().clone();
+
+    // From another project, nothing is there, and nothing it asks for happens.
+    assert!(
+        store
+            .find_workflow_run_in_project(&run_id, "default", &foreign)
+            .await
+            .expect("reads")
+            .is_none()
+    );
+    assert!(
+        store
+            .list_workflow_step_runs(&run_id, "default", &foreign)
+            .await
+            .expect("reads")
+            .is_empty()
+    );
+    assert!(
+        store
+            .cancel_running_workflow_run(&run_id, "default", &foreign)
+            .await
+            .expect("asks")
+            .is_none()
+    );
+    assert!(
+        store
+            .resume_workflow_run(&run_id, "default", &foreign)
+            .await
+            .expect("asks")
+            .is_none()
+    );
+    assert!(
+        store
+            .remove_queued_workflow_run(&run_id, "default", &foreign)
+            .await
+            .expect("asks")
+            .is_none()
+    );
+    assert!(
+        store
+            .find_job_run_in_project(&job_run, "default", &foreign)
+            .await
+            .expect("reads")
+            .is_none()
+    );
+    assert!(
+        store
+            .cancel_job_run_in_project(&job_run, "default", &foreign)
+            .await
+            .expect("asks")
+            .is_none()
+    );
+    assert!(
+        store
+            .find_job_run_log_in_project(&job_run, "default", &foreign)
+            .await
+            .expect("reads")
+            .is_none()
+    );
+    assert!(
+        store
+            .list_job_artifacts_in_project(&job_run, "default", &foreign)
+            .await
+            .expect("reads")
+            .is_empty()
+    );
+
+    // The owner sees it as it was left, and can act on it.
+    let owned = store
+        .find_workflow_run_in_project(&run_id, "default", &project)
+        .await
+        .expect("reads")
+        .expect("the owner sees its run");
+    assert_eq!(owned.status(), WorkflowRunStatus::Running);
+    let job = store
+        .find_job_run_in_project(&job_run, "default", &project)
+        .await
+        .expect("reads")
+        .expect("the owner sees the step's job");
+    assert!(
+        !job.status().is_terminal(),
+        "the stranger's cancel did nothing"
+    );
+    let cancelled = store
+        .cancel_running_workflow_run(&run_id, "default", &project)
+        .await
+        .expect("cancels")
+        .expect("the owner's run");
+    assert_eq!(cancelled.status(), WorkflowRunStatus::Cancelled);
+}
+
+#[tokio::test]
+async fn a_memory_record_is_found_only_in_its_own_project() {
+    use capsulet_core::{Authority, MemoryScope, Source, SourceId};
+
+    let store = store().await;
+    let project = unique_id("memory_owner");
+    let foreign = unique_id("memory_stranger");
+    let source = Source::new(
+        SourceId::new(unique_id("scoped_source")).expect("id"),
+        MemoryScope::new("default", project.clone()).expect("scope"),
+        "executive_update",
+        None,
+        "An update",
+        Authority::High,
+    )
+    .expect("a source");
+    store.upsert_memory_source(&source).await.expect("stored");
+
+    assert!(
+        store
+            .find_memory_source_in_project(source.id(), "default", &project)
+            .await
+            .expect("reads")
+            .is_some()
+    );
+    assert!(
+        store
+            .find_memory_source_in_project(source.id(), "default", &foreign)
+            .await
+            .expect("reads")
+            .is_none(),
+        "another project's record matches no row"
+    );
+
+    every_scoped_memory_lookup_runs(&store, &project).await;
+}
+
+/// Every scoped lookup is a query the database accepts: each table carries its owner,
+/// so none of them can fall back to an unscoped read.
+async fn every_scoped_memory_lookup_runs(store: &PostgresStore, project: &str) {
+    use capsulet_core::{
+        ClaimConflictId, ClaimId, EntityId, EntityResolutionId, EventId, EvidenceId,
+        MemoryContractId, MemorySubgraphId, RelationshipId,
+    };
+
+    macro_rules! absent {
+        ($find:ident, $id:ty) => {
+            let id = <$id>::new(unique_id("nothing_here")).expect("an id");
+            let found = store
+                .$find(&id, "default", project)
+                .await
+                .expect(concat!(stringify!($find), " runs"));
+            assert!(found.is_none(), stringify!($find));
+        };
+    }
+    absent!(find_memory_evidence_in_project, EvidenceId);
+    absent!(find_memory_entity_in_project, EntityId);
+    absent!(find_memory_claim_in_project, ClaimId);
+    absent!(find_memory_claim_conflict_in_project, ClaimConflictId);
+    absent!(find_memory_event_in_project, EventId);
+    absent!(find_memory_relationship_in_project, RelationshipId);
+    absent!(find_memory_contract_in_project, MemoryContractId);
+    absent!(find_memory_subgraph_in_project, MemorySubgraphId);
+    absent!(find_memory_entity_resolution_in_project, EntityResolutionId);
 }
