@@ -1,0 +1,8 @@
+# Every text file is checked out with LF line endings, whatever core.autocrlf says.
+#
+# Git for Windows sets core.autocrlf=true system-wide, which checks text out
+# with CRLF. Several checks compare committed files byte for byte: the OpenAPI
+# artifact against its generation, golden IR digests, and sqlx's checksums of
+# migration files. So a CRLF checkout failed them on Windows while Linux passed.
+# The index already holds LF; this only fixes what a checkout writes.
+* text=auto eol=lf
