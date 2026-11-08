@@ -114,8 +114,6 @@ docker compose up --build
 This starts:
 
 - PostgreSQL on `localhost:55432`
-- MinIO on `localhost:9000`
-- MinIO console on `localhost:9001`
 - Keycloak on `localhost:18080` with realm `capsulet`
 - Capsulet API on `localhost:8080`
 - Capsulet dashboard on `localhost:3000`
@@ -147,21 +145,15 @@ The Compose database URL is:
 postgres://capsulet:capsulet@localhost:55432/capsulet
 ```
 
-The Compose MinIO credentials are:
-
-```text
-endpoint: http://127.0.0.1:9000
-bucket: capsulet-artifacts
-access key: capsulet
-secret key: capsuletpassword
-```
-
-The `minio-init` Compose service creates the `capsulet-artifacts` bucket automatically.
+Compose stores script bundles, large logs and artifacts on the shared `capsulet-objects` volume, in
+filesystem mode. It used MinIO until MinIO stopped publishing community container images on
+2025-10-23, after which a fresh checkout could no longer pull them. To exercise the S3 adapter, point
+the `CAPSULET_OBJECT_STORAGE_*` variables at any S3-compatible store.
 
 To start only the data services for manual local backend work:
 
 ```sh
-docker compose up -d postgres minio minio-init
+docker compose up -d postgres
 ```
 
 The persistence crate embeds migrations from `migrations/` with SQLx. To run the PostgreSQL-backed tests against the local database:

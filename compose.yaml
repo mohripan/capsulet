@@ -17,40 +17,6 @@ services:
       - capsulet-postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
 
-  minio:
-    image: minio/minio:latest
-    container_name: capsulet-minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: capsulet
-      MINIO_ROOT_PASSWORD: capsuletpassword
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - capsulet-minio-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
-
-  minio-init:
-    image: minio/mc:latest
-    container_name: capsulet-minio-init
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        until mc alias set local http://minio:9000 capsulet capsuletpassword; do
-          sleep 2
-        done
-        mc mb --ignore-existing local/capsulet-artifacts
-
   smtp:
     image: axllent/mailpit:v1.20
     container_name: capsulet-smtp
@@ -92,8 +58,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
       keycloak:
         condition: service_started
     environment:
@@ -106,13 +70,11 @@ services:
       CAPSULET_OIDC_JWKS_URL: http://keycloak:8080/realms/capsulet/protocol/openid-connect/certs
       CAPSULET_WEBHOOK_SECRETS: '{"*/*":"capsulet-local-webhook-secret-change-me"}'
       CAPSULET_EXECUTION_POOLS: mini,large
-      CAPSULET_OBJECT_STORAGE_MODE: s3
-      CAPSULET_OBJECT_STORAGE_BUCKET: capsulet-artifacts
-      CAPSULET_OBJECT_STORAGE_ENDPOINT: http://minio:9000
-      CAPSULET_OBJECT_STORAGE_REGION: us-east-1
-      CAPSULET_OBJECT_STORAGE_PATH_STYLE: "true"
-      CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID: capsulet
-      CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY: capsuletpassword
+      # MinIO stopped publishing community images on 2025-10-23, so the local stack
+      # stores objects on a shared volume instead. Point these at any S3-compatible
+      # store to exercise the S3 adapter.
+      CAPSULET_OBJECT_STORAGE_MODE: filesystem
+      CAPSULET_OBJECT_STORAGE_PATH: /capsulet/objects
       # The proposer runs outside the stack: correctness does not depend on it,
       # so it stays a replaceable box the kernel checks rather than a service.
       CAPSULET_OLLAMA_URL: http://host.docker.internal:11434
@@ -121,6 +83,8 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
+    volumes:
+      - capsulet-objects:/capsulet/objects
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 10s
@@ -140,8 +104,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
       api:
         condition: service_healthy
     environment:
@@ -160,13 +122,13 @@ services:
       SMTP_PORT: "1025"
       SMTP_TLS: "false"
       SMTP_FROM: capsulet@example.local
-      CAPSULET_OBJECT_STORAGE_MODE: s3
-      CAPSULET_OBJECT_STORAGE_BUCKET: capsulet-artifacts
-      CAPSULET_OBJECT_STORAGE_ENDPOINT: http://minio:9000
-      CAPSULET_OBJECT_STORAGE_REGION: us-east-1
-      CAPSULET_OBJECT_STORAGE_PATH_STYLE: "true"
-      CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID: capsulet
-      CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY: capsuletpassword
+      # MinIO stopped publishing community images on 2025-10-23, so the local stack
+      # stores objects on a shared volume instead. Point these at any S3-compatible
+      # store to exercise the S3 adapter.
+      CAPSULET_OBJECT_STORAGE_MODE: filesystem
+      CAPSULET_OBJECT_STORAGE_PATH: /capsulet/objects
+    volumes:
+      - capsulet-objects:/capsulet/objects
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/readyz"]
       interval: 10s
@@ -246,23 +208,21 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     environment:
       CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
       CAPSULET_EVALUATOR_ID: evaluator-compose
       CAPSULET_EVALUATOR_POLL_SECONDS: "2"
       CAPSULET_EVALUATOR_HEALTH_ADDR: 0.0.0.0:8083
       CAPSULET_SQL_CONNECTIONS: '{"control":"postgres://capsulet:capsulet@postgres:5432/capsulet"}'
-      CAPSULET_OBJECT_STORAGE_MODE: s3
-      CAPSULET_OBJECT_STORAGE_BUCKET: capsulet-artifacts
-      CAPSULET_OBJECT_STORAGE_ENDPOINT: http://minio:9000
-      CAPSULET_OBJECT_STORAGE_REGION: us-east-1
-      CAPSULET_OBJECT_STORAGE_PATH_STYLE: "true"
-      CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID: capsulet
-      CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY: capsuletpassword
+      # MinIO stopped publishing community images on 2025-10-23, so the local stack
+      # stores objects on a shared volume instead. Point these at any S3-compatible
+      # store to exercise the S3 adapter.
+      CAPSULET_OBJECT_STORAGE_MODE: filesystem
+      CAPSULET_OBJECT_STORAGE_PATH: /capsulet/objects
       CAPSULET_RETENTION_DAYS: "30"
       CAPSULET_AUDIT_RETENTION_DAYS: "365"
+    volumes:
+      - capsulet-objects:/capsulet/objects
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/readyz"]
       interval: 10s
@@ -343,6 +303,6 @@ services:
 
 volumes:
   capsulet-postgres-data:
-  capsulet-minio-data:
+  capsulet-objects:
   capsulet-prometheus-data:
   capsulet-grafana-data:

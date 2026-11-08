@@ -344,3 +344,10 @@ helm template capsulet charts/capsulet \
   --set config.objectStorage.endpoint=http://minio.example:9000 \
   --set config.objectStorage.credentialsSecret.name=capsulet-object-storage
 ```
+
+## Bundled MinIO
+
+`minio.mode=bundled` installs the `minio/minio` and `minio/mc` images. MinIO stopped publishing
+community container images on 2025-10-23, so those images can no longer be pulled by a cluster that
+has not cached them. Until the chart bundles a replacement, set `minio.mode=external` and point
+`config.objectStorage` at an S3-compatible store you operate.

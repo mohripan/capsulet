@@ -117,19 +117,14 @@ For S3-compatible mode, check:
 - `CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID`
 - `CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY`
 
-The bucket must exist before Capsulet writes objects. For the Docker Compose stack, the `minio-init` service creates it automatically. Check the init logs:
+The bucket must exist before Capsulet writes objects. The Docker Compose stack uses filesystem mode on
+the `capsulet-objects` volume, so it has no bucket. Check that volume is mounted into the API, worker
+and evaluator at `CAPSULET_OBJECT_STORAGE_PATH`.
 
-```powershell
-docker compose logs minio-init
-```
-
-To recreate it manually:
-
-```powershell
-docker run --rm --network capsulet_default --entrypoint /bin/sh minio/mc:latest -c "mc alias set local http://minio:9000 capsulet capsuletpassword && mc mb -p local/capsulet-artifacts"
-```
-
-For Helm installs with bundled MinIO, inspect MinIO and the bucket initialization Job:
+For Helm installs with bundled MinIO, inspect MinIO and the bucket initialization Job. The bundled
+`minio/minio` and `minio/mc` images can no longer be pulled on a machine that has not cached them, because
+MinIO stopped publishing community images; use `minio.mode=external` with an S3-compatible store you
+operate:
 
 ```powershell
 kubectl get pods,jobs -n capsulet

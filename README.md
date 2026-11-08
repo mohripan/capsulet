@@ -143,7 +143,7 @@ docker compose ps
 
 Open the dashboard at <http://127.0.0.1:3000> and the API at <http://127.0.0.1:8080>.
 
-The local stack includes PostgreSQL, MinIO, Mailpit, API, worker, graph worker, scheduler, evaluator, and dashboard. Compose waits on dependency health and restarts long-running services after failure. Sign in with the development token `capsulet-local-admin-token-change-me`; replace it before exposing the stack.
+The local stack includes PostgreSQL, Mailpit, API, worker, graph worker, scheduler, evaluator, and dashboard. Objects are stored on a shared volume, because MinIO no longer publishes the community images the stack used. Compose waits on dependency health and restarts long-running services after failure. Sign in with the development token `capsulet-local-admin-token-change-me`; replace it before exposing the stack.
 
 Useful checks:
 
