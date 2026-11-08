@@ -28,6 +28,7 @@ use crate::{
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = CreateMemorySourceRequest)]
 pub(crate) struct CreateSourceRequest {
     id: Option<String>,
     kind: String,
@@ -37,6 +38,7 @@ pub(crate) struct CreateSourceRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = CreateMemoryEvidenceRequest)]
 pub(crate) struct CreateEvidenceRequest {
     id: Option<String>,
     source_id: String,
@@ -46,6 +48,7 @@ pub(crate) struct CreateEvidenceRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = CreateMemoryEntityRequest)]
 pub(crate) struct CreateEntityRequest {
     id: Option<String>,
     entity_type: String,
@@ -55,6 +58,7 @@ pub(crate) struct CreateEntityRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = CreateMemoryClaimRequest)]
 pub(crate) struct CreateClaimRequest {
     id: Option<String>,
     subject_id: String,
@@ -70,6 +74,7 @@ pub(crate) struct CreateClaimRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = CreateMemoryEventRequest)]
 pub(crate) struct CreateEventRequest {
     id: Option<String>,
     event_type: String,
@@ -80,6 +85,7 @@ pub(crate) struct CreateEventRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = CreateMemoryRelationshipRequest)]
 pub(crate) struct CreateRelationshipRequest {
     id: Option<String>,
     relationship_type: String,
@@ -192,6 +198,7 @@ pub(crate) struct CreateSubgraphEdgeRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = MemorySourceResponse)]
 pub(crate) struct SourceResponse {
     id: String,
     tenant_id: String,
@@ -203,6 +210,7 @@ pub(crate) struct SourceResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = MemoryEvidenceResponse)]
 pub(crate) struct EvidenceResponse {
     id: String,
     tenant_id: String,
@@ -214,6 +222,7 @@ pub(crate) struct EvidenceResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = MemoryEntityResponse)]
 pub(crate) struct EntityResponse {
     id: String,
     tenant_id: String,
@@ -224,6 +233,7 @@ pub(crate) struct EntityResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = MemoryClaimResponse)]
 pub(crate) struct ClaimResponse {
     id: String,
     tenant_id: String,
@@ -241,6 +251,7 @@ pub(crate) struct ClaimResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = MemoryEventResponse)]
 pub(crate) struct EventResponse {
     id: String,
     tenant_id: String,
@@ -252,6 +263,7 @@ pub(crate) struct EventResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = MemoryRelationshipResponse)]
 pub(crate) struct RelationshipResponse {
     id: String,
     tenant_id: String,
@@ -407,31 +419,37 @@ pub(crate) struct RetrievalPolicyResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ListMemorySourcesResponse)]
 pub(crate) struct ListSourcesResponse {
     sources: Vec<SourceResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ListMemoryEvidenceResponse)]
 pub(crate) struct ListEvidenceResponse {
     evidence: Vec<EvidenceResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ListMemoryEntitiesResponse)]
 pub(crate) struct ListEntitiesResponse {
     entities: Vec<EntityResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ListMemoryClaimsResponse)]
 pub(crate) struct ListClaimsResponse {
     claims: Vec<ClaimResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ListMemoryEventsResponse)]
 pub(crate) struct ListEventsResponse {
     events: Vec<EventResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ListMemoryRelationshipsResponse)]
 pub(crate) struct ListRelationshipsResponse {
     relationships: Vec<RelationshipResponse>,
 }

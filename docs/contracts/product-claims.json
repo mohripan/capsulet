@@ -3128,7 +3128,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "HTTP API",
-      "statement": "The OpenAPI 3.1 document is generated from typed endpoint metadata and actual Rust wire schemas, exactly matches runtime registration, validates through utoipa, and is checked for deterministic drift.",
+      "statement": "The OpenAPI 3.1 document is generated from typed endpoint metadata that names the Rust wire type of every request and response, has no unresolved references, exactly matches runtime registration, validates through utoipa, and is checked for deterministic drift; real error, webhook, service-account, proposal and kernel-certificate payloads are checked against the components they publish.",
       "public_surfaces": [
         "docs/api.md",
         "crates/api/openapi.json"
@@ -3151,6 +3151,27 @@
           "assertion": "deterministic-artifact",
           "evidence_selectors": [
             "checked_openapi_artifact_should_equal_canonical_generation"
+          ]
+        },
+        {
+          "assertion": "references-resolve",
+          "evidence_selectors": [
+            "every_schema_reference_resolves"
+          ]
+        },
+        {
+          "assertion": "one-type-per-component",
+          "evidence_selectors": [
+            "two_types_cannot_publish_one_component_name"
+          ]
+        },
+        {
+          "assertion": "payloads-match-components",
+          "evidence_selectors": [
+            "an_error_response_is_what_the_error_component_describes",
+            "kernel_certificates_match_the_published_certificate",
+            "a_raw_proposal_matches_its_schema",
+            "a_webhook_reply_matches_its_schema"
           ]
         }
       ],
@@ -3186,6 +3207,48 @@
         {
           "type": "decision",
           "path": "docs/adr/0015-code-generated-openapi-contract.md"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "every_schema_reference_resolves"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "two_types_cannot_publish_one_component_name"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_error_response_is_what_the_error_component_describes"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "kernel_certificates_match_the_published_certificate"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_raw_proposal_matches_its_schema"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_webhook_reply_matches_its_schema"
         }
       ]
     },

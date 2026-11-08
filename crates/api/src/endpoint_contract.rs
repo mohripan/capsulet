@@ -1,6 +1,9 @@
 //! Stable metadata for every public HTTP operation.
 
-use std::{collections::BTreeSet, fmt};
+use std::{borrow::Cow, collections::BTreeSet, fmt};
+
+use utoipa::openapi::{RefOr, Schema};
+use utoipa::{PartialSchema, ToSchema};
 
 /// HTTP methods supported by the public contract registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -299,27 +302,90 @@ impl MediaType {
     }
 }
 
-/// Identifier for a registered Rust wire schema.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SchemaId(&'static str);
+/// The Rust wire type an endpoint reads or writes, by its schema.
+///
+/// An endpoint names a type, never a string: its component name, its schema and
+/// the schemas it refers to all come from the type's `ToSchema` implementation,
+/// so the contract cannot describe a payload the handler does not produce, and a
+/// misspelled schema is a compile error rather than an empty object.
+#[derive(Clone, Copy)]
+pub struct SchemaId {
+    name: fn() -> Cow<'static, str>,
+    schema: fn() -> RefOr<Schema>,
+    dependencies: fn(&mut Vec<(String, RefOr<Schema>)>),
+}
 
 impl SchemaId {
-    const fn new(name: &'static str) -> Self {
-        Self(name)
+    /// The schema of `T`.
+    #[must_use]
+    pub const fn of<T: ToSchema>() -> Self {
+        Self {
+            name: <T as ToSchema>::name,
+            schema: <T as PartialSchema>::schema,
+            dependencies: <T as ToSchema>::schemas,
+        }
     }
 
-    /// Returns the stable component name emitted into `OpenAPI`.
+    /// The stable component name emitted into `OpenAPI`.
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        self.0
+    pub fn name(self) -> Cow<'static, str> {
+        (self.name)()
+    }
+
+    /// The type's own schema.
+    #[must_use]
+    pub fn schema(self) -> RefOr<Schema> {
+        (self.schema)()
+    }
+
+    /// Every component the type's schema refers to, transitively.
+    #[must_use]
+    pub fn dependencies(self) -> Vec<(String, RefOr<Schema>)> {
+        let mut dependencies = Vec::new();
+        (self.dependencies)(&mut dependencies);
+        dependencies
     }
 }
 
-const fn optional_schema(name: Option<&'static str>) -> Option<SchemaId> {
-    match name {
-        Some(name) => Some(SchemaId::new(name)),
-        None => None,
+// Compared and ordered by component name: two handles on one type are the same
+// schema, and two types that claim one name are a conflict `generated_openapi`
+// refuses.
+impl PartialEq for SchemaId {
+    fn eq(&self, other: &Self) -> bool {
+        self.name() == other.name()
     }
+}
+
+impl Eq for SchemaId {}
+
+impl PartialOrd for SchemaId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SchemaId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name().cmp(&other.name())
+    }
+}
+
+impl fmt::Debug for SchemaId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("SchemaId")
+            .field(&self.name())
+            .finish()
+    }
+}
+
+macro_rules! optional_schema {
+    (None) => {
+        None
+    };
+    (Some($type:ty)) => {
+        Some(SchemaId::of::<$type>())
+    };
 }
 
 /// Error response shape shared by public endpoints.
@@ -544,7 +610,7 @@ impl EndpointContract {
 }
 
 macro_rules! endpoint {
-    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:expr, $response:literal, $status:tt) => {
+    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:ident $(($request_type:ty))?, $response:ty, $status:tt) => {
         EndpointContract {
             method: http_method!($method),
             path: $path,
@@ -554,18 +620,18 @@ macro_rules! endpoint {
             project_context: project_context_rule!($project),
             policy: EndpointPolicy::new(required_permission!($scope), ownership_rule!($project)),
             authentication: authentication_mode!($auth),
-            request_schema: optional_schema($request),
-            response_schema: SchemaId::new($response),
+            request_schema: optional_schema!($request $(($request_type))?),
+            response_schema: SchemaId::of::<$response>(),
             error_contract: ErrorContract::Json,
             success_status: response_status!($status),
             response_content_type: MediaType::Json,
         }
     };
-    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:expr, $response:literal, $status:tt, $content:tt) => {
+    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:ident $(($request_type:ty))?, $response:ty, $status:tt, $content:tt) => {
         EndpointContract {
             response_content_type: media_type!($content),
             ..endpoint!(
-                $method, $path, $operation, $scope, $project, $auth, $request, $response, $status
+                $method, $path, $operation, $scope, $project, $auth, $request $(($request_type))?, $response, $status
             )
         }
     };
@@ -580,7 +646,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         false,
         false,
         None,
-        "HealthResponse",
+        crate::models::HealthResponse,
         "200"
     ),
     endpoint!(
@@ -591,7 +657,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         false,
         false,
         None,
-        "HealthResponse",
+        crate::models::HealthResponse,
         "200"
     ),
     endpoint!(
@@ -602,7 +668,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         false,
         false,
         None,
-        "HealthResponse",
+        crate::models::HealthResponse,
         "200"
     ),
     endpoint!(
@@ -613,7 +679,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         false,
         false,
         None,
-        "StringResponse",
+        crate::wire_schemas::StringResponse,
         "200",
         "text/plain"
     ),
@@ -625,7 +691,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         false,
         false,
         None,
-        "OpenApiDocument",
+        crate::wire_schemas::OpenApiDocument,
         "200",
         "application/vnd.oai.openapi+json"
     ),
@@ -636,8 +702,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "public",
         false,
         false,
-        Some("WebhookRequest"),
-        "WebhookResponse",
+        Some(crate::wire_schemas::WebhookRequest),
+        crate::webhooks::WebhookResponse,
         "202"
     ),
     endpoint!(
@@ -648,7 +714,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         false,
         true,
         None,
-        "PrincipalResponse",
+        crate::models::PrincipalResponse,
         "200"
     ),
     endpoint!(
@@ -659,7 +725,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         false,
         true,
         None,
-        "ListProjectsResponse",
+        crate::models::ListProjectsResponse,
         "200"
     ),
     endpoint!(
@@ -670,7 +736,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         path,
         true,
         None,
-        "ListProjectMembershipsResponse",
+        crate::models::ListProjectMembershipsResponse,
         "200"
     ),
     endpoint!(
@@ -680,8 +746,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "project-members:write",
         path,
         true,
-        Some("UpsertProjectMembershipRequest"),
-        "ProjectMembershipResponse",
+        Some(crate::models::UpsertProjectMembershipRequest),
+        crate::models::ProjectMembershipResponse,
         "200"
     ),
     endpoint!(
@@ -692,7 +758,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         path,
         true,
         None,
-        "EmptyResponse",
+        crate::wire_schemas::EmptyResponse,
         "204"
     ),
     endpoint!(
@@ -703,7 +769,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListServiceAccountsResponse",
+        crate::models::ListServiceAccountsResponse,
         "200"
     ),
     endpoint!(
@@ -713,8 +779,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "service-accounts:write",
         true,
         true,
-        Some("CreateServiceAccountRequest"),
-        "CreateServiceAccountResponse",
+        Some(crate::models::CreateServiceAccountRequest),
+        crate::models::CreateServiceAccountResponse,
         "201"
     ),
     endpoint!(
@@ -725,7 +791,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EmptyResponse",
+        crate::wire_schemas::EmptyResponse,
         "204"
     ),
     endpoint!(
@@ -736,7 +802,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListJobDefinitionsResponse",
+        crate::models::ListJobDefinitionsResponse,
         "200"
     ),
     endpoint!(
@@ -746,8 +812,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "jobs:write",
         true,
         true,
-        Some("CreateJobDefinitionRequest"),
-        "JobDefinitionResponse",
+        Some(crate::models::CreateJobDefinitionRequest),
+        crate::models::JobDefinitionResponse,
         "201"
     ),
     endpoint!(
@@ -758,7 +824,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "JobDefinitionResponse",
+        crate::models::JobDefinitionResponse,
         "200"
     ),
     endpoint!(
@@ -768,8 +834,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "jobs:write",
         true,
         true,
-        Some("CreateJobDefinitionRequest"),
-        "JobDefinitionResponse",
+        Some(crate::models::CreateJobDefinitionRequest),
+        crate::models::JobDefinitionResponse,
         "200"
     ),
     endpoint!(
@@ -780,7 +846,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EmptyResponse",
+        crate::wire_schemas::EmptyResponse,
         "204"
     ),
     endpoint!(
@@ -791,7 +857,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "JobDefinitionSourceResponse",
+        crate::models::JobDefinitionSourceResponse,
         "200"
     ),
     endpoint!(
@@ -802,7 +868,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListExecutionPoolsResponse",
+        crate::models::ListExecutionPoolsResponse,
         "200"
     ),
     endpoint!(
@@ -813,7 +879,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListAuditEventsResponse",
+        crate::models::ListAuditEventsResponse,
         "200"
     ),
     endpoint!(
@@ -824,7 +890,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListHostGroupsResponse",
+        crate::models::ListHostGroupsResponse,
         "200"
     ),
     endpoint!(
@@ -835,7 +901,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "TopologyResponse",
+        crate::models::TopologyResponse,
         "200"
     ),
     endpoint!(
@@ -846,7 +912,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListWorkflowsResponse",
+        crate::models::ListWorkflowsResponse,
         "200"
     ),
     endpoint!(
@@ -856,8 +922,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "workflows:write",
         true,
         true,
-        Some("CreateWorkflowRequest"),
-        "WorkflowResponse",
+        Some(crate::models::CreateWorkflowRequest),
+        crate::models::WorkflowResponse,
         "201"
     ),
     endpoint!(
@@ -868,7 +934,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "WorkflowResponse",
+        crate::models::WorkflowResponse,
         "200"
     ),
     endpoint!(
@@ -878,8 +944,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "workflows:write",
         true,
         true,
-        Some("CreateWorkflowRequest"),
-        "WorkflowResponse",
+        Some(crate::models::CreateWorkflowRequest),
+        crate::models::WorkflowResponse,
         "200"
     ),
     endpoint!(
@@ -890,7 +956,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EmptyResponse",
+        crate::wire_schemas::EmptyResponse,
         "204"
     ),
     endpoint!(
@@ -901,7 +967,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "WorkflowEditabilityResponse",
+        crate::models::WorkflowEditabilityResponse,
         "200"
     ),
     endpoint!(
@@ -912,7 +978,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListGraphsResponse",
+        crate::models::ListGraphsResponse,
         "200"
     ),
     endpoint!(
@@ -922,8 +988,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "graphs:write",
         true,
         true,
-        Some("CreateGraphRequest"),
-        "GraphResponse",
+        Some(crate::models::CreateGraphRequest),
+        crate::models::GraphResponse,
         "201"
     ),
     endpoint!(
@@ -934,7 +1000,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "GraphResponse",
+        crate::models::GraphResponse,
         "200"
     ),
     endpoint!(
@@ -945,7 +1011,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListAgentsResponse",
+        crate::models::ListAgentsResponse,
         "200"
     ),
     endpoint!(
@@ -955,8 +1021,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "agents:write",
         true,
         true,
-        Some("CreateAgentRequest"),
-        "AgentResponse",
+        Some(crate::models::CreateAgentRequest),
+        crate::models::AgentResponse,
         "201"
     ),
     endpoint!(
@@ -967,7 +1033,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AgentResponse",
+        crate::models::AgentResponse,
         "200"
     ),
     endpoint!(
@@ -977,8 +1043,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "agents:operate",
         true,
         true,
-        Some("StartAgentRunRequest"),
-        "AgentRunResponse",
+        Some(crate::models::StartAgentRunRequest),
+        crate::models::AgentRunResponse,
         "201"
     ),
     endpoint!(
@@ -989,7 +1055,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListAgentRunsResponse",
+        crate::models::ListAgentRunsResponse,
         "200"
     ),
     endpoint!(
@@ -1000,7 +1066,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AgentRunResponse",
+        crate::models::AgentRunResponse,
         "200"
     ),
     endpoint!(
@@ -1011,7 +1077,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "IrRunEventsResponse",
+        crate::assurance::IrRunEventsResponse,
         "200"
     ),
     endpoint!(
@@ -1022,7 +1088,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AgentRunResponse",
+        crate::models::AgentRunResponse,
         "202"
     ),
     endpoint!(
@@ -1033,7 +1099,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AgentRunBundleResponse",
+        crate::models::AgentRunBundleResponse,
         "200"
     ),
     endpoint!(
@@ -1044,7 +1110,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AgentRunErasureResponse",
+        crate::models::AgentRunErasureResponse,
         "200"
     ),
     endpoint!(
@@ -1054,8 +1120,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "agents:operate",
         true,
         true,
-        Some("DecideAgentRunRequest"),
-        "AgentRunResponse",
+        Some(crate::models::DecideAgentRunRequest),
+        crate::models::AgentRunResponse,
         "202"
     ),
     endpoint!(
@@ -1065,8 +1131,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "reasoning:operate",
         true,
         true,
-        Some("AskRequest"),
-        "CertificateResponse",
+        Some(crate::reasoning::AskRequest),
+        crate::reasoning::AskResponse,
         "200"
     ),
     endpoint!(
@@ -1076,8 +1142,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("RegisterDefinitionRequest"),
-        "RegisterDefinitionResponse",
+        Some(crate::assurance::RegisterDefinitionRequest),
+        crate::assurance::RegisterDefinitionResponse,
         "201"
     ),
     endpoint!(
@@ -1088,7 +1154,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListDefinitionVersionsResponse",
+        crate::assurance::ListDefinitionVersionsResponse,
         "200"
     ),
     endpoint!(
@@ -1099,7 +1165,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "DefinitionVersionResponse",
+        crate::assurance::DefinitionVersionResponse,
         "200"
     ),
     endpoint!(
@@ -1109,8 +1175,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "jobs:run",
         true,
         true,
-        Some("StartIrRunRequest"),
-        "IrRunResponse",
+        Some(crate::assurance::StartIrRunRequest),
+        crate::assurance::IrRunResponse,
         "201"
     ),
     endpoint!(
@@ -1121,7 +1187,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListIrRunsResponse",
+        crate::assurance::ListIrRunsResponse,
         "200"
     ),
     endpoint!(
@@ -1132,7 +1198,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "IrRunResponse",
+        crate::assurance::IrRunResponse,
         "200"
     ),
     endpoint!(
@@ -1143,7 +1209,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "IrRunEventsResponse",
+        crate::assurance::IrRunEventsResponse,
         "200"
     ),
     endpoint!(
@@ -1154,7 +1220,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListAssuranceCertificatesResponse",
+        crate::assurance::ListAssuranceCertificatesResponse,
         "200"
     ),
     endpoint!(
@@ -1165,7 +1231,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AssuranceCertificateResponse",
+        crate::assurance::AssuranceCertificateResponse,
         "200"
     ),
     endpoint!(
@@ -1176,7 +1242,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "CertificateBundleResponse",
+        crate::assurance::CertificateBundleResponse,
         "200"
     ),
     endpoint!(
@@ -1187,7 +1253,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListCertificatesResponse",
+        crate::reasoning::CertificateListResponse,
         "200"
     ),
     endpoint!(
@@ -1198,7 +1264,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListMemorySourcesResponse",
+        crate::memory::ListSourcesResponse,
         "200"
     ),
     endpoint!(
@@ -1208,8 +1274,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemorySourceRequest"),
-        "MemorySourceResponse",
+        Some(crate::memory::CreateSourceRequest),
+        crate::memory::SourceResponse,
         "201"
     ),
     endpoint!(
@@ -1220,7 +1286,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemorySourceResponse",
+        crate::memory::SourceResponse,
         "200"
     ),
     endpoint!(
@@ -1231,7 +1297,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListMemoryEvidenceResponse",
+        crate::memory::ListEvidenceResponse,
         "200"
     ),
     endpoint!(
@@ -1241,8 +1307,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemoryEvidenceRequest"),
-        "MemoryEvidenceResponse",
+        Some(crate::memory::CreateEvidenceRequest),
+        crate::memory::EvidenceResponse,
         "201"
     ),
     endpoint!(
@@ -1253,7 +1319,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemoryEvidenceResponse",
+        crate::memory::EvidenceResponse,
         "200"
     ),
     endpoint!(
@@ -1264,7 +1330,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListMemoryEntitiesResponse",
+        crate::memory::ListEntitiesResponse,
         "200"
     ),
     endpoint!(
@@ -1274,8 +1340,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemoryEntityRequest"),
-        "MemoryEntityResponse",
+        Some(crate::memory::CreateEntityRequest),
+        crate::memory::EntityResponse,
         "201"
     ),
     endpoint!(
@@ -1286,7 +1352,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemoryEntityResponse",
+        crate::memory::EntityResponse,
         "200"
     ),
     endpoint!(
@@ -1297,7 +1363,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListMemoryClaimsResponse",
+        crate::memory::ListClaimsResponse,
         "200"
     ),
     endpoint!(
@@ -1307,8 +1373,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemoryClaimRequest"),
-        "MemoryClaimResponse",
+        Some(crate::memory::CreateClaimRequest),
+        crate::memory::ClaimResponse,
         "201"
     ),
     endpoint!(
@@ -1319,7 +1385,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemoryClaimResponse",
+        crate::memory::ClaimResponse,
         "200"
     ),
     endpoint!(
@@ -1330,7 +1396,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListMemoryEventsResponse",
+        crate::memory::ListEventsResponse,
         "200"
     ),
     endpoint!(
@@ -1340,8 +1406,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemoryEventRequest"),
-        "MemoryEventResponse",
+        Some(crate::memory::CreateEventRequest),
+        crate::memory::EventResponse,
         "201"
     ),
     endpoint!(
@@ -1352,7 +1418,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemoryEventResponse",
+        crate::memory::EventResponse,
         "200"
     ),
     endpoint!(
@@ -1363,7 +1429,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListMemoryRelationshipsResponse",
+        crate::memory::ListRelationshipsResponse,
         "200"
     ),
     endpoint!(
@@ -1373,8 +1439,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemoryRelationshipRequest"),
-        "MemoryRelationshipResponse",
+        Some(crate::memory::CreateRelationshipRequest),
+        crate::memory::RelationshipResponse,
         "201"
     ),
     endpoint!(
@@ -1385,7 +1451,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemoryRelationshipResponse",
+        crate::memory::RelationshipResponse,
         "200"
     ),
     endpoint!(
@@ -1396,7 +1462,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListMemoryContractsResponse",
+        crate::memory::ListMemoryContractsResponse,
         "200"
     ),
     endpoint!(
@@ -1406,8 +1472,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemoryContractRequest"),
-        "MemoryContractResponse",
+        Some(crate::memory::CreateMemoryContractRequest),
+        crate::memory::MemoryContractResponse,
         "201"
     ),
     endpoint!(
@@ -1418,7 +1484,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemoryContractResponse",
+        crate::memory::MemoryContractResponse,
         "200"
     ),
     endpoint!(
@@ -1429,7 +1495,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListMemorySubgraphsResponse",
+        crate::memory::ListMemorySubgraphsResponse,
         "200"
     ),
     endpoint!(
@@ -1439,8 +1505,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemorySubgraphRequest"),
-        "MemorySubgraphResponse",
+        Some(crate::memory::CreateMemorySubgraphRequest),
+        crate::memory::MemorySubgraphResponse,
         "201"
     ),
     endpoint!(
@@ -1451,7 +1517,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "MemorySubgraphResponse",
+        crate::memory::MemorySubgraphResponse,
         "200"
     ),
     endpoint!(
@@ -1461,8 +1527,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("ActivateMemorySubgraphRequest"),
-        "MemorySubgraphResponse",
+        Some(crate::memory::ActivateMemorySubgraphRequest),
+        crate::memory::MemorySubgraphResponse,
         "200"
     ),
     endpoint!(
@@ -1472,8 +1538,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateMemorySubgraphMemberRequest"),
-        "MemorySubgraphMemberResponse",
+        Some(crate::memory::CreateMemorySubgraphMemberRequest),
+        crate::memory::MemorySubgraphMemberResponse,
         "201"
     ),
     endpoint!(
@@ -1484,7 +1550,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListCanonicalEntitiesResponse",
+        crate::memory::ListCanonicalEntitiesResponse,
         "200"
     ),
     endpoint!(
@@ -1494,8 +1560,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateCanonicalEntityRequest"),
-        "CanonicalEntityResponse",
+        Some(crate::memory::CreateCanonicalEntityRequest),
+        crate::memory::CanonicalEntityResponse,
         "201"
     ),
     endpoint!(
@@ -1506,7 +1572,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListEntityResolutionsResponse",
+        crate::memory::ListEntityResolutionsResponse,
         "200"
     ),
     endpoint!(
@@ -1516,8 +1582,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateEntityResolutionRequest"),
-        "EntityResolutionResponse",
+        Some(crate::memory::CreateEntityResolutionRequest),
+        crate::memory::EntityResolutionResponse,
         "201"
     ),
     endpoint!(
@@ -1528,7 +1594,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EntityResolutionResponse",
+        crate::memory::EntityResolutionResponse,
         "200"
     ),
     endpoint!(
@@ -1539,7 +1605,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EntityResolutionResponse",
+        crate::memory::EntityResolutionResponse,
         "200"
     ),
     endpoint!(
@@ -1550,7 +1616,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListClaimConflictsResponse",
+        crate::memory::ListClaimConflictsResponse,
         "200"
     ),
     endpoint!(
@@ -1560,8 +1626,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("ResolveClaimConflictRequest"),
-        "ClaimConflictResponse",
+        Some(crate::memory::ResolveClaimConflictRequest),
+        crate::memory::ClaimConflictResponse,
         "200"
     ),
     endpoint!(
@@ -1572,7 +1638,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ClaimConflictResponse",
+        crate::memory::ClaimConflictResponse,
         "200"
     ),
     endpoint!(
@@ -1582,8 +1648,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateSummaryTraceRequest"),
-        "SummaryTraceResponse",
+        Some(crate::memory::CreateSummaryTraceRequest),
+        crate::memory::SummaryTraceResponse,
         "201"
     ),
     endpoint!(
@@ -1593,8 +1659,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateEntityGraphAttachmentRequest"),
-        "EntityGraphAttachmentResponse",
+        Some(crate::memory::CreateEntityGraphAttachmentRequest),
+        crate::memory::EntityGraphAttachmentResponse,
         "201"
     ),
     endpoint!(
@@ -1604,8 +1670,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "memory:write",
         true,
         true,
-        Some("CreateSubgraphEdgeRequest"),
-        "SubgraphEdgeResponse",
+        Some(crate::memory::CreateSubgraphEdgeRequest),
+        crate::memory::SubgraphEdgeResponse,
         "201"
     ),
     endpoint!(
@@ -1616,7 +1682,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListIngestionConnectorsResponse",
+        crate::ingestion::ListIngestionConnectorsResponse,
         "200"
     ),
     endpoint!(
@@ -1626,8 +1692,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "connectors:write",
         true,
         true,
-        Some("CreateIngestionConnectorRequest"),
-        "IngestionConnectorResponse",
+        Some(crate::ingestion::CreateIngestionConnectorRequest),
+        crate::ingestion::IngestionConnectorResponse,
         "201"
     ),
     endpoint!(
@@ -1638,7 +1704,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "IngestionConnectorResponse",
+        crate::ingestion::IngestionConnectorResponse,
         "200"
     ),
     endpoint!(
@@ -1649,7 +1715,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "IngestionRunWithOutputsResponse",
+        crate::ingestion::IngestionRunWithOutputsResponse,
         "201"
     ),
     endpoint!(
@@ -1660,7 +1726,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListIngestionRunsResponse",
+        crate::ingestion::ListIngestionRunsResponse,
         "200"
     ),
     endpoint!(
@@ -1671,7 +1737,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "IngestionRunWithOutputsResponse",
+        crate::ingestion::IngestionRunWithOutputsResponse,
         "200"
     ),
     endpoint!(
@@ -1682,7 +1748,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListIngestionReviewClaimsResponse",
+        crate::ingestion::ListReviewClaimsResponse,
         "200"
     ),
     endpoint!(
@@ -1693,7 +1759,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ReviewClaimResponse",
+        crate::ingestion::ReviewClaimResponse,
         "200"
     ),
     endpoint!(
@@ -1704,7 +1770,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ReviewClaimResponse",
+        crate::ingestion::ReviewClaimResponse,
         "200"
     ),
     endpoint!(
@@ -1715,7 +1781,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListAutomationsResponse",
+        crate::models::ListAutomationsResponse,
         "200"
     ),
     endpoint!(
@@ -1725,8 +1791,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "automations:write",
         true,
         true,
-        Some("CreateAutomationRequest"),
-        "AutomationResponse",
+        Some(crate::models::CreateAutomationRequest),
+        crate::models::AutomationResponse,
         "201"
     ),
     endpoint!(
@@ -1737,7 +1803,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AutomationResponse",
+        crate::models::AutomationResponse,
         "200"
     ),
     endpoint!(
@@ -1747,8 +1813,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "automations:write",
         true,
         true,
-        Some("CreateAutomationRequest"),
-        "AutomationResponse",
+        Some(crate::models::CreateAutomationRequest),
+        crate::models::AutomationResponse,
         "200"
     ),
     endpoint!(
@@ -1759,7 +1825,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EmptyResponse",
+        crate::wire_schemas::EmptyResponse,
         "204"
     ),
     endpoint!(
@@ -1770,7 +1836,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AutomationResponse",
+        crate::models::AutomationResponse,
         "200"
     ),
     endpoint!(
@@ -1781,7 +1847,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "AutomationResponse",
+        crate::models::AutomationResponse,
         "200"
     ),
     endpoint!(
@@ -1792,7 +1858,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListAutomationTriggersResponse",
+        crate::models::ListAutomationTriggersResponse,
         "200"
     ),
     endpoint!(
@@ -1803,7 +1869,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "WorkflowRunResponse",
+        crate::models::WorkflowRunResponse,
         "201"
     ),
     endpoint!(
@@ -1814,7 +1880,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListTriggerPluginsResponse",
+        crate::models::ListTriggerPluginsResponse,
         "200"
     ),
     endpoint!(
@@ -1824,8 +1890,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "automations:write",
         true,
         true,
-        Some("CreateTriggerPluginRequest"),
-        "TriggerPluginResponse",
+        Some(crate::models::CreateTriggerPluginRequest),
+        crate::models::TriggerPluginResponse,
         "201"
     ),
     endpoint!(
@@ -1836,7 +1902,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "TriggerPluginResponse",
+        crate::models::TriggerPluginResponse,
         "200"
     ),
     endpoint!(
@@ -1847,7 +1913,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListWorkflowRunsResponse",
+        crate::models::ListWorkflowRunsResponse,
         "200"
     ),
     endpoint!(
@@ -1858,7 +1924,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EventStreamResponse",
+        crate::wire_schemas::EventStreamResponse,
         "200",
         "text/event-stream"
     ),
@@ -1870,7 +1936,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "WorkflowRunResponse",
+        crate::models::WorkflowRunResponse,
         "200"
     ),
     endpoint!(
@@ -1881,7 +1947,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "WorkflowRunLogsResponse",
+        crate::models::WorkflowRunLogsResponse,
         "200"
     ),
     endpoint!(
@@ -1892,7 +1958,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EventStreamResponse",
+        crate::wire_schemas::EventStreamResponse,
         "200",
         "text/event-stream"
     ),
@@ -1904,7 +1970,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "WorkflowRunResponse",
+        crate::models::WorkflowRunResponse,
         "200"
     ),
     endpoint!(
@@ -1915,7 +1981,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "WorkflowRunResponse",
+        crate::models::WorkflowRunResponse,
         "200"
     ),
     endpoint!(
@@ -1926,7 +1992,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "WorkflowRunResponse",
+        crate::models::WorkflowRunResponse,
         "200"
     ),
     endpoint!(
@@ -1937,7 +2003,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListRunsResponse",
+        crate::models::ListRunsResponse,
         "200"
     ),
     endpoint!(
@@ -1947,8 +2013,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         "jobs:run",
         true,
         true,
-        Some("CreateRunRequest"),
-        "JobRunResponse",
+        Some(crate::models::CreateRunRequest),
+        crate::models::JobRunResponse,
         "201"
     ),
     endpoint!(
@@ -1959,7 +2025,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "JobRunResponse",
+        crate::models::JobRunResponse,
         "200"
     ),
     endpoint!(
@@ -1970,7 +2036,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "JobRunResponse",
+        crate::models::JobRunResponse,
         "200"
     ),
     endpoint!(
@@ -1981,7 +2047,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "JobRunLogsResponse",
+        crate::models::JobRunLogsResponse,
         "200"
     ),
     endpoint!(
@@ -1992,7 +2058,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "EventStreamResponse",
+        crate::wire_schemas::EventStreamResponse,
         "200",
         "text/event-stream"
     ),
@@ -2004,7 +2070,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "ListArtifactsResponse",
+        crate::models::ListArtifactsResponse,
         "200"
     ),
     endpoint!(
@@ -2015,7 +2081,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         true,
         None,
-        "BinaryResponse",
+        crate::wire_schemas::BinaryResponse,
         "200",
         "application/octet-stream"
     ),

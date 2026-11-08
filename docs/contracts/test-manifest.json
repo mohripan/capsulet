@@ -15,6 +15,30 @@
           "selector": "honors_explicit_scopes_and_expiry"
         },
         {
+          "path": "crates/api/src/openapi.rs",
+          "selector": "a_raw_proposal_matches_its_schema"
+        },
+        {
+          "path": "crates/api/src/openapi.rs",
+          "selector": "a_webhook_reply_matches_its_schema"
+        },
+        {
+          "path": "crates/api/src/openapi.rs",
+          "selector": "an_error_response_is_what_the_error_component_describes"
+        },
+        {
+          "path": "crates/api/src/openapi.rs",
+          "selector": "every_schema_reference_resolves"
+        },
+        {
+          "path": "crates/api/src/openapi.rs",
+          "selector": "kernel_certificates_match_the_published_certificate"
+        },
+        {
+          "path": "crates/api/src/openapi.rs",
+          "selector": "two_types_cannot_publish_one_component_name"
+        },
+        {
           "path": "crates/api/src/tests.rs",
           "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
         },

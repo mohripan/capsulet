@@ -146,6 +146,7 @@ pub(crate) struct ReviewSourceResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ListIngestionReviewClaimsResponse)]
 pub(crate) struct ListReviewClaimsResponse {
     claims: Vec<ReviewClaimResponse>,
 }

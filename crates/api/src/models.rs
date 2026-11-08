@@ -1338,3 +1338,49 @@ const fn status_label(status: JobRunStatus) -> &'static str {
         JobRunStatus::RetryScheduled => "retry_scheduled",
     }
 }
+
+/// Who a request is authenticated as: its role, its projects and its scopes.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PrincipalResponse {
+    pub name: String,
+    pub role: String,
+    pub platform_admin: bool,
+    pub tenant_id: String,
+    pub project_id: String,
+    pub project_memberships: Vec<PrincipalMembershipResponse>,
+    pub scopes: Vec<String>,
+}
+
+/// A project the principal belongs to, and its role there.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PrincipalMembershipResponse {
+    pub tenant_id: String,
+    pub project_id: String,
+    pub role: String,
+}
+
+impl From<&crate::Principal> for PrincipalResponse {
+    fn from(principal: &crate::Principal) -> Self {
+        Self {
+            name: principal.name.to_string(),
+            role: principal.role.as_str().to_string(),
+            platform_admin: principal.platform_admin,
+            tenant_id: principal.tenant_id.to_string(),
+            project_id: principal.project_id.to_string(),
+            project_memberships: principal
+                .project_memberships
+                .iter()
+                .map(|membership| PrincipalMembershipResponse {
+                    tenant_id: membership.tenant_id.to_string(),
+                    project_id: membership.project_id.to_string(),
+                    role: membership.role.as_str().to_string(),
+                })
+                .collect(),
+            scopes: principal
+                .scopes()
+                .iter()
+                .map(|scope| AsRef::<str>::as_ref(scope).to_string())
+                .collect(),
+        }
+    }
+}

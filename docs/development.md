@@ -65,10 +65,16 @@ Use the following workflow for contract changes:
    Add an accepted ADR when the claim establishes a normative product or compatibility decision.
    Regenerate `docs/contracts/product-claims.md` with
    `pwsh ./scripts/render-product-claims.ps1 -OutputPath docs/contracts/product-claims.md`.
-2. Endpoint or wire schema: update `crates/api/src/endpoint_contract.rs` and the matching concrete
-   schema in `crates/api/src/openapi.rs` alongside the runtime handler. Preserve stable
-   `operationId` values unless the versioning policy authorizes a break. Run
-   `cargo run -p capsulet-api --bin export-openapi` and never hand-edit the generated artifact.
+2. Endpoint or wire schema: declare the operation in `crates/api/src/endpoint_contract.rs`, naming
+   the Rust type the handler reads and the one it writes, never a schema name. Derive
+   `utoipa::ToSchema` on those serde types; `#[schema(as = Name)]` keeps a published component name
+   that differs from the Rust one. The document collects each type's schema and every schema it
+   refers to, and refuses two types that claim one name. Only shapes with no serde type in this
+   crate, such as non-JSON bodies or the kernel's certificate, are written out, as types in
+   `crates/api/src/wire_schemas.rs`, and each is checked against real payloads in
+   `crates/api/src/openapi.rs`. Preserve stable `operationId` values unless the versioning policy
+   authorizes a break. Run `cargo run -p capsulet-api --bin export-openapi` and never hand-edit the
+   generated artifact.
 3. Status or verdict: update the Rust source enum first, then
    `docs/contracts/lifecycle-mapping.json`, transitions, owners, and target mappings. Execution
    status and assurance verdict remain separate vocabularies.

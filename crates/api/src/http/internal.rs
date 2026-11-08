@@ -642,20 +642,10 @@ async fn openapi_spec() -> Response {
     }
 }
 
-async fn current_principal(Extension(principal): Extension<Principal>) -> Json<Value> {
-    Json(serde_json::json!({
-        "name": principal.name,
-        "role": principal.role.as_str(),
-        "platform_admin": principal.platform_admin,
-        "tenant_id": principal.tenant_id,
-        "project_id": principal.project_id,
-        "project_memberships": principal.project_memberships.iter().map(|membership| serde_json::json!({
-            "tenant_id": membership.tenant_id,
-            "project_id": membership.project_id,
-            "role": membership.role.as_str(),
-        })).collect::<Vec<_>>(),
-        "scopes": principal.scopes().iter().map(AsRef::as_ref).collect::<Vec<_>>(),
-    }))
+async fn current_principal(
+    Extension(principal): Extension<Principal>,
+) -> Json<crate::models::PrincipalResponse> {
+    Json(crate::models::PrincipalResponse::from(&principal))
 }
 
 async fn list_projects<S, O>(

@@ -231,11 +231,11 @@ fn every_control_plane_operation_should_use_a_concrete_component() {
             .into_iter()
             .chain(std::iter::once(endpoint.response_schema))
         {
-            let name = name.as_str();
-            let schema = &schemas[name];
+            let name = name.name();
+            let schema = &schemas[name.as_ref()];
             assert!(!schema.is_null(), "missing component {name}");
             if !matches!(
-                name,
+                name.as_ref(),
                 "WebhookRequest"
                     | "OpenApiDocument"
                     | "StringResponse"
@@ -270,8 +270,8 @@ fn agent_correctness_memory_and_ingestion_schemas_should_be_concrete() {
             .into_iter()
             .chain(std::iter::once(endpoint.response_schema))
         {
-            let name = name.as_str();
-            let schema = &schemas[name];
+            let name = name.name();
+            let schema = &schemas[name.as_ref()];
             assert!(!schema.is_null(), "missing component {name}");
             assert_ne!(
                 schema["additionalProperties"], true,

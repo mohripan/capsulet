@@ -58,7 +58,8 @@ pub struct AskRequest {
     pub contract_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = CertificateResponse)]
 pub struct AskResponse {
     pub certificate_id: String,
     pub question: String,
@@ -66,24 +67,29 @@ pub struct AskResponse {
     pub model: String,
     pub alphabet_digest: String,
     pub alphabet_size: usize,
+    #[schema(value_type = crate::wire_schemas::KernelCertificate)]
     pub certificate: Certificate,
     /// What the model actually emitted, retained so a rejection can be read
     /// against the proposal that caused it.
+    #[schema(value_type = crate::wire_schemas::RawProposal)]
     pub proposal: RawProposal,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ListCertificatesResponse)]
 pub struct CertificateListResponse {
     pub certificates: Vec<CertificateSummary>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CertificateSummary {
     pub id: String,
     pub question: String,
+    #[schema(value_type = crate::wire_schemas::KernelVerdict)]
     pub verdict: String,
     pub model: String,
     pub alphabet_digest: String,
+    #[schema(value_type = crate::wire_schemas::KernelCertificate)]
     pub certificate: Certificate,
 }
 

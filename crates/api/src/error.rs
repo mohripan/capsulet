@@ -204,8 +204,11 @@ impl IntoResponse for ApiError {
     }
 }
 
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
+/// The body of every error response.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[schema(as = Error)]
+pub(crate) struct ErrorResponse {
+    #[schema(example = "not_found")]
     code: &'static str,
     message: String,
 }

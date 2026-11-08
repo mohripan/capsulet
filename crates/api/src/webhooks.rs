@@ -15,7 +15,7 @@ use capsulet_core::{AutomationId, TriggerKind};
 use capsulet_postgres::TriggerEvent;
 use capsulet_storage::ObjectStore;
 use hmac::{Hmac, KeyInit, Mac};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{ApiStore, error::ApiError, state::AppState};
@@ -73,7 +73,7 @@ pub(crate) async fn ingest<S, O>(
     Path((automation_id, trigger_name)): Path<(String, String)>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<(StatusCode, Json<Value>), ApiError>
+) -> Result<(StatusCode, Json<WebhookResponse>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
@@ -165,9 +165,10 @@ where
         } else {
             StatusCode::OK
         },
-        Json(json!({
-            "accepted": inserted, "event_id": event.id
-        })),
+        Json(WebhookResponse {
+            accepted: inserted,
+            event_id: event.id,
+        }),
     ))
 }
 
@@ -366,4 +367,12 @@ mod tests {
             Some(b"a-production-grade-shared-webhook-secret".as_slice())
         );
     }
+}
+
+/// What a webhook delivery is answered with: whether it was newly accepted
+/// (`202`) or had been accepted before (`200`), and the event it became.
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct WebhookResponse {
+    pub(crate) accepted: bool,
+    pub(crate) event_id: String,
 }

@@ -1,89 +1,47 @@
 //! Deterministic `OpenAPI` generation from the runtime endpoint contract registry.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
 use serde_json::{Map, Value, json};
 use utoipa::openapi::OpenApi;
 
-use crate::endpoint_contract::endpoint_contracts;
+use crate::endpoint_contract::{SchemaId, endpoint_contracts};
 
 const OPENAPI_VERSION: &str = "3.1.0";
-const BASE_SCHEMA_NAMES: &[&str] = &[
-    "Error",
-    "JobRunStatus",
-    "WorkflowStatus",
-    "WorkflowRunStatus",
-    "AutomationStatus",
-    "ProjectResponse",
-    "ProjectMembershipResponse",
-    "ServiceAccountResponse",
-    "JobDefinitionResponse",
-    "JobRunResponse",
-    "WorkflowResponse",
-    "WorkflowRunResponse",
-    "AutomationResponse",
-    "TriggerResponse",
-    "TriggerPluginResponse",
-    "ExecutionPoolResponse",
-    "HostGroupResponse",
-    "AuditEventResponse",
-    "TopologyNodeResponse",
-    "TopologyEdgeResponse",
-    "WorkflowStepResponse",
-    "WorkflowDependencyResponse",
-    "WorkflowStepRunResponse",
-    "WorkflowRunLogEntryResponse",
-    "ArtifactResponse",
-    "GraphNodeRequest",
-    "GraphPortRequest",
-    "GraphHyperedgeRequest",
-    "HyperedgeEndpointRequest",
-    "GraphTransitionPolicyRequest",
-    "GraphNodeResponse",
-    "GraphPortResponse",
-    "GraphHyperedgeResponse",
-    "HyperedgeEndpointResponse",
-    "GraphTransitionPolicyResponse",
-    "AgentBudgetRequest",
-    "AgentBudgetResponse",
-    "KernelVerdict",
-    "Certificate",
-    "Proposition",
-    "DischargedStep",
-    "Residual",
-    "CertificateError",
-    "RawProposal",
-    "CertificateSummary",
-    "IngestionRunOutputsResponse",
-    "ReviewClaimResponse",
-    "ReviewEvidenceResponse",
-    "ReviewSourceResponse",
-    "CreateWorkflowStepRequest",
-    "CreateWorkflowDependencyRequest",
-    "CreateAutomationTriggerRequest",
-    "CompiledMemoryPolicyResponse",
-    "RelationPolicyResponse",
-    "ClaimPolicyResponse",
-    "RetrievalPolicyResponse",
-    "LocalTextConnectorConfigRequest",
-    "LocalTextConnectorConfigResponse",
-];
+
+/// Components published whether or not an operation refers to them: the error
+/// body every operation shares, the status vocabularies of the core domain, and
+/// shapes clients use without reaching them through an operation.
+fn always_published() -> Vec<SchemaId> {
+    vec![
+        SchemaId::of::<crate::error::ErrorResponse>(),
+        SchemaId::of::<crate::wire_schemas::JobRunStatusSchema>(),
+        SchemaId::of::<crate::wire_schemas::WorkflowStatusSchema>(),
+        SchemaId::of::<crate::wire_schemas::WorkflowRunStatusSchema>(),
+        SchemaId::of::<crate::wire_schemas::AutomationStatusSchema>(),
+    ]
+}
 
 /// Builds the public API contract from the same endpoint metadata used at runtime.
 #[must_use]
 /// # Panics
 ///
-/// Panics only if an internally-created path entry is not a JSON object or a
-/// derived Rust schema cannot be serialized. Both conditions are programmer errors.
+/// Panics if an internally-created path entry is not a JSON object, if a Rust
+/// schema cannot be serialized, or if two different wire types claim one
+/// component name. Each is a programmer error, caught by the contract tests.
 pub fn generated_openapi() -> Value {
     let mut paths = Map::new();
-    let mut schema_names = BASE_SCHEMA_NAMES.iter().copied().collect::<BTreeSet<_>>();
+    let mut schemas = BTreeMap::new();
+    for schema in always_published() {
+        publish(&mut schemas, schema);
+    }
 
     for endpoint in endpoint_contracts() {
         if let Some(request_schema) = endpoint.request_schema {
-            schema_names.insert(request_schema.as_str());
+            publish(&mut schemas, request_schema);
         }
-        schema_names.insert(endpoint.response_schema.as_str());
+        publish(&mut schemas, endpoint.response_schema);
 
         let item = paths
             .entry(endpoint.path.to_owned())
@@ -97,10 +55,7 @@ pub fn generated_openapi() -> Value {
         );
     }
 
-    let schemas = schema_names
-        .into_iter()
-        .map(|name| (name.to_owned(), component_schema(name)))
-        .collect::<Map<_, _>>();
+    let schemas = schemas.into_iter().collect::<Map<_, _>>();
 
     json!({
         "openapi": OPENAPI_VERSION,
@@ -153,7 +108,7 @@ fn operation_document(endpoint: &crate::EndpointContract) -> Value {
             "required": true,
             "content": {
                 "application/json": {
-                    "schema": schema_reference(name.as_str())
+                    "schema": schema_reference(&name.name())
                 }
             }
         })
@@ -173,7 +128,7 @@ fn operation_document(endpoint: &crate::EndpointContract) -> Value {
                 "description": "Successful response",
                 "content": {
                     endpoint.response_content_type.as_str(): {
-                        "schema": schema_reference(endpoint.response_schema.as_str())
+                        "schema": schema_reference(&endpoint.response_schema.name())
                     }
                 }
             },
@@ -181,7 +136,7 @@ fn operation_document(endpoint: &crate::EndpointContract) -> Value {
                 "description": "Error response",
                 "content": {
                     "application/json": {
-                        "schema": schema_reference("Error")
+                        "schema": schema_reference(&SchemaId::of::<crate::error::ErrorResponse>().name())
                     }
                 }
             }
@@ -210,7 +165,7 @@ fn operation_document(endpoint: &crate::EndpointContract) -> Value {
     if endpoint.operation_id == "ingestWebhook" {
         operation["responses"]["200"] = json!({
             "description": "Delivery was already accepted",
-            "content": {"application/json": {"schema": schema_reference("WebhookResponse")}}
+            "content": {"application/json": {"schema": schema_reference(&SchemaId::of::<crate::webhooks::WebhookResponse>().name())}}
         });
     }
     operation
@@ -304,282 +259,23 @@ fn query_parameter(name: &str) -> Value {
     json!({"name": name, "in": "query", "required": false, "schema": schema})
 }
 
-fn component_schema(name: &str) -> Value {
-    if let Some(schema) = crate::wire_schemas::schema(name) {
-        return schema;
-    }
-    match name {
-        "Error" => json!({
-            "type": "object",
-            "required": ["code", "message"],
-            "properties": {
-                "code": {"type": "string", "example": "not_found"},
-                "message": {"type": "string"},
-                "details": {"type": ["object", "null"], "additionalProperties": true}
+/// Adds a type's schema and every schema it refers to.
+fn publish(schemas: &mut BTreeMap<String, Value>, schema: SchemaId) {
+    let own = (schema.name().into_owned(), schema.schema());
+    for (name, component) in std::iter::once(own).chain(schema.dependencies()) {
+        let component = serde_json::to_value(component).expect("wire schemas serialize to JSON");
+        match schemas.entry(name) {
+            Entry::Vacant(slot) => {
+                slot.insert(component);
             }
-        }),
-        "HealthResponse" => json!({
-            "type": "object",
-            "required": ["status"],
-            "properties": {"status": {"type": "string", "enum": ["ok", "ready", "not_ready"]}}
-        }),
-        "EmptyResponse" => json!({"type": "object", "maxProperties": 0}),
-        "StringResponse" => json!({"type": "string"}),
-        "EventStreamResponse" => json!({
-            "type": "string",
-            "format": "event-stream",
-            "description": "UTF-8 Server-Sent Events stream. Each data field contains a JSON activity or log event."
-        }),
-        "BinaryResponse" => json!({"type": "string", "format": "binary"}),
-        "OpenApiDocument" => json!({"type": "object", "additionalProperties": true}),
-        "JobRunStatus" => enum_schema(&[
-            "queued",
-            "leased",
-            "running",
-            "succeeded",
-            "failed",
-            "cancelled",
-            "timed_out",
-            "retry_scheduled",
-        ]),
-        "WorkflowStatus" => enum_schema(&["draft", "enabled", "disabled"]),
-        "WorkflowRunStatus" => enum_schema(&[
-            "queued",
-            "running",
-            "removed",
-            "succeeded",
-            "failed",
-            "cancelled",
-            "timed_out",
-            "skipped",
-        ]),
-        "AutomationStatus" => enum_schema(&["enabled", "disabled"]),
-        other if list_component(other).is_some() => {
-            let (property, item) = list_component(other).expect("matched list component");
-            list_schema(property, item)
+            Entry::Occupied(existing) => assert_eq!(
+                existing.get(),
+                &component,
+                "two different wire types claim the component name {}",
+                existing.key()
+            ),
         }
-        other if special_schema(other).is_some() => {
-            special_schema(other).expect("matched special component")
-        }
-        other => json!({
-            "type": "object",
-            "description": format!("{other} payload."),
-            "additionalProperties": true
-        }),
     }
-}
-
-fn list_component(name: &str) -> Option<(&'static str, &'static str)> {
-    Some(match name {
-        "ListProjectsResponse" => ("projects", "ProjectResponse"),
-        "ListProjectMembershipsResponse" => ("memberships", "ProjectMembershipResponse"),
-        "ListServiceAccountsResponse" => ("service_accounts", "ServiceAccountResponse"),
-        "ListJobDefinitionsResponse" => ("job_definitions", "JobDefinitionResponse"),
-        "ListRunsResponse" => ("runs", "JobRunResponse"),
-        "ListExecutionPoolsResponse" => ("execution_pools", "ExecutionPoolResponse"),
-        "ListHostGroupsResponse" => ("host_groups", "HostGroupResponse"),
-        "ListAuditEventsResponse" => ("audit_events", "AuditEventResponse"),
-        "ListWorkflowsResponse" => ("workflows", "WorkflowResponse"),
-        "ListWorkflowRunsResponse" => ("workflow_runs", "WorkflowRunResponse"),
-        "ListAutomationsResponse" => ("automations", "AutomationResponse"),
-        "ListTriggerPluginsResponse" => ("trigger_plugins", "TriggerPluginResponse"),
-        "ListArtifactsResponse" => ("artifacts", "ArtifactResponse"),
-        "ListGraphsResponse" => ("graphs", "GraphResponse"),
-        "ListAgentsResponse" => ("agents", "AgentResponse"),
-        "ListAgentRunsResponse" => ("agent_runs", "AgentRunResponse"),
-        "ListCertificatesResponse" => ("certificates", "CertificateSummary"),
-        "ListMemorySourcesResponse" => ("sources", "MemorySourceResponse"),
-        "ListMemoryEvidenceResponse" => ("evidence", "MemoryEvidenceResponse"),
-        "ListMemoryEntitiesResponse" => ("entities", "MemoryEntityResponse"),
-        "ListMemoryClaimsResponse" => ("claims", "MemoryClaimResponse"),
-        "ListMemoryEventsResponse" => ("events", "MemoryEventResponse"),
-        "ListMemoryRelationshipsResponse" => ("relationships", "MemoryRelationshipResponse"),
-        "ListMemoryContractsResponse" => ("contracts", "MemoryContractResponse"),
-        "ListMemorySubgraphsResponse" => ("subgraphs", "MemorySubgraphResponse"),
-        "ListCanonicalEntitiesResponse" => ("canonical_entities", "CanonicalEntityResponse"),
-        "ListEntityResolutionsResponse" => ("entity_resolutions", "EntityResolutionResponse"),
-        "ListClaimConflictsResponse" => ("conflicts", "ClaimConflictResponse"),
-        "ListIngestionConnectorsResponse" => ("connectors", "IngestionConnectorResponse"),
-        "ListIngestionRunsResponse" => ("runs", "IngestionRunResponse"),
-        "ListIngestionReviewClaimsResponse" => ("claims", "ReviewClaimResponse"),
-        _ => return None,
-    })
-}
-
-fn list_schema(property: &str, item: &str) -> Value {
-    object_schema(
-        &[property],
-        &[(
-            property,
-            json!({"type": "array", "items": schema_reference(item)}),
-        )],
-    )
-}
-
-fn special_schema(name: &str) -> Option<Value> {
-    special_http_schema(name).or_else(|| special_certificate_schema(name))
-}
-
-fn special_http_schema(name: &str) -> Option<Value> {
-    Some(match name {
-        "PrincipalResponse" => object_schema(
-            &[
-                "name",
-                "role",
-                "platform_admin",
-                "tenant_id",
-                "project_id",
-                "project_memberships",
-                "scopes",
-            ],
-            &[
-                ("name", string_schema()),
-                ("role", string_schema()),
-                ("platform_admin", bool_schema()),
-                ("tenant_id", string_schema()),
-                ("project_id", string_schema()),
-                (
-                    "project_memberships",
-                    json!({"type": "array", "items": {
-                        "type": "object",
-                        "required": ["tenant_id", "project_id", "role"],
-                        "properties": {
-                            "tenant_id": {"type": "string"},
-                            "project_id": {"type": "string"},
-                            "role": {"type": "string"}
-                        },
-                        "additionalProperties": false
-                    }}),
-                ),
-                ("scopes", string_array_schema()),
-            ],
-        ),
-        "WebhookRequest" => json!({"type": "object", "additionalProperties": true}),
-        "WebhookResponse" => object_schema(
-            &["accepted", "event_id"],
-            &[("accepted", bool_schema()), ("event_id", string_schema())],
-        ),
-        _ => return None,
-    })
-}
-
-fn special_certificate_schema(name: &str) -> Option<Value> {
-    Some(match name {
-        "KernelVerdict" => enum_schema(&["accepted", "conditional", "rejected"]),
-        "Proposition" => fields(&["subject", "predicate", "object"]),
-        "DischargedStep" => fields(&["rule", "concluded", "detail"]),
-        "Residual" => all_required_schema(&[
-            ("from", string_schema()),
-            ("to", schema_reference("Proposition")),
-            ("rationale", string_schema()),
-            ("evidence_ids", string_array_schema()),
-        ]),
-        "CertificateError" => object_schema(
-            &["code", "message", "repair_owner"],
-            &[
-                ("code", string_schema()),
-                ("message", string_schema()),
-                ("repair_owner", string_schema()),
-                // A fixed-point decimal as text, never a JSON number: the
-                // kernel computes exactly, and a number here would invite a
-                // float back into a pipeline that refuses them.
-                (
-                    "corrected_value",
-                    json!({"type": ["string", "null"], "example": "46"}),
-                ),
-            ],
-        ),
-        "Certificate" => certificate_schema(),
-        "RawProposal" => all_required_schema(&[
-            ("subject", string_schema()),
-            ("predicate", string_schema()),
-            ("object", string_schema()),
-            ("evidence_id", string_schema()),
-            ("quote", string_schema()),
-            ("needs_interpretation", bool_schema()),
-            ("rationale", string_schema()),
-        ]),
-        "CertificateResponse" => all_required_schema(&[
-            ("certificate_id", string_schema()),
-            ("question", string_schema()),
-            ("source_id", string_schema()),
-            ("model", string_schema()),
-            ("alphabet_digest", string_schema()),
-            ("alphabet_size", integer_schema()),
-            ("certificate", schema_reference("Certificate")),
-            ("proposal", schema_reference("RawProposal")),
-        ]),
-        "CertificateSummary" => all_required_schema(&[
-            ("id", string_schema()),
-            ("question", string_schema()),
-            ("verdict", schema_reference("KernelVerdict")),
-            ("model", string_schema()),
-            ("alphabet_digest", string_schema()),
-            ("certificate", schema_reference("Certificate")),
-        ]),
-        _ => return None,
-    })
-}
-
-fn certificate_schema() -> Value {
-    let mut schema = all_required_schema(&[
-        ("verdict", schema_reference("KernelVerdict")),
-        ("goal", schema_reference("Proposition")),
-        ("discharged", array_ref("DischargedStep")),
-        ("residuals", array_ref("Residual")),
-        ("errors", array_ref("CertificateError")),
-        ("replay_digest", string_schema()),
-    ]);
-    schema["description"] = json!(
-        "Current deterministic kernel certificate. `unverified` is not a kernel verdict; it belongs to the future platform assurance layer."
-    );
-    schema["examples"] = json!([
-        {"verdict":"accepted","goal":{"subject":"document","predicate":"states","object":"fact"},"discharged":[{"rule":"cite","concluded":"fact","detail":"literal evidence matched"}],"residuals":[],"errors":[],"replay_digest":"sha256:accepted"},
-        {"verdict":"conditional","goal":{"subject":"document","predicate":"implies","object":"fact"},"discharged":[],"residuals":[{"from":"attributed text","to":{"subject":"document","predicate":"implies","object":"fact"},"rationale":"interpretation required","evidence_ids":["evidence_1"]}],"errors":[],"replay_digest":"sha256:conditional"},
-        {"verdict":"rejected","goal":{"subject":"document","predicate":"states","object":"missing"},"discharged":[],"residuals":[],"errors":[{"code":"quote_mismatch","message":"quote was not found","repair_owner":"proposer"}],"replay_digest":"sha256:rejected"}
-    ]);
-    schema
-}
-
-fn all_required_schema(properties: &[(&str, Value)]) -> Value {
-    let required = properties.iter().map(|(name, _)| *name).collect::<Vec<_>>();
-    object_schema(&required, properties)
-}
-
-fn array_ref(name: &str) -> Value {
-    json!({"type": "array", "items": schema_reference(name)})
-}
-
-fn fields(names: &[&str]) -> Value {
-    let properties = names
-        .iter()
-        .map(|name| (*name, string_schema()))
-        .collect::<Vec<_>>();
-    object_schema(names, &properties)
-}
-
-fn object_schema(required: &[&str], properties: &[(&str, Value)]) -> Value {
-    let properties = properties
-        .iter()
-        .map(|(name, schema)| ((*name).to_owned(), schema.clone()))
-        .collect::<Map<_, _>>();
-    json!({"type": "object", "required": required, "properties": properties, "additionalProperties": false})
-}
-
-fn string_schema() -> Value {
-    json!({"type": "string"})
-}
-fn integer_schema() -> Value {
-    json!({"type": "integer"})
-}
-fn bool_schema() -> Value {
-    json!({"type": "boolean"})
-}
-fn string_array_schema() -> Value {
-    json!({"type": "array", "items": {"type": "string"}})
-}
-fn enum_schema(values: &[&str]) -> Value {
-    json!({"type": "string", "enum": values})
 }
 
 fn humanize(operation_id: &str) -> String {
@@ -591,4 +287,314 @@ fn humanize(operation_id: &str) -> String {
         output.push(character.to_ascii_lowercase());
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use axum::response::IntoResponse;
+    use capsulet_kernel::{
+        Certificate, CertificateError, DischargedStep, Proposition, Quantity, Residual, Verdict,
+    };
+    use serde_json::{Value, json};
+
+    use super::{SchemaId, generated_openapi, publish};
+
+    /// Whether `value` is what `schema` describes, following references into `document`.
+    ///
+    /// Covers what these schemas use: types (including nullable unions), enums,
+    /// required properties, nested objects and arrays, and `oneOf`/`allOf`/`anyOf`.
+    /// A property the schema does not list is drift: the payload carries something
+    /// the contract does not describe. Only an explicitly open object
+    /// (`additionalProperties: true`) may carry fields it does not list.
+    fn conforms(document: &Value, schema: &Value, value: &Value, path: &str) -> Result<(), String> {
+        if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
+            let name = reference.trim_start_matches("#/components/schemas/");
+            let target = &document["components"]["schemas"][name];
+            if target.is_null() {
+                return Err(format!("{path}: {reference} does not resolve"));
+            }
+            return conforms(document, target, value, path);
+        }
+        if let Some(options) = schema.get("oneOf").and_then(Value::as_array) {
+            let matching = options
+                .iter()
+                .filter(|option| conforms(document, option, value, path).is_ok())
+                .count();
+            return if matching == 1 {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{path}: {value} matches {matching} oneOf options, not one"
+                ))
+            };
+        }
+        if let Some(options) = schema.get("anyOf").and_then(Value::as_array) {
+            return if options
+                .iter()
+                .any(|option| conforms(document, option, value, path).is_ok())
+            {
+                Ok(())
+            } else {
+                Err(format!("{path}: {value} matches no anyOf option"))
+            };
+        }
+        if let Some(parts) = schema.get("allOf").and_then(Value::as_array) {
+            for part in parts {
+                conforms(document, part, value, path)?;
+            }
+        }
+        let types = match schema.get("type") {
+            Some(Value::String(single)) => vec![single.as_str()],
+            Some(Value::Array(many)) => many.iter().filter_map(Value::as_str).collect(),
+            _ => Vec::new(),
+        };
+        if !types.is_empty() && !types.iter().any(|kind| is_type(kind, value)) {
+            return Err(format!("{path}: {value} is not {types:?}"));
+        }
+        if let Some(allowed) = schema.get("enum").and_then(Value::as_array)
+            && !allowed.contains(value)
+        {
+            return Err(format!("{path}: {value} is not one of {allowed:?}"));
+        }
+        match value {
+            Value::Object(object) => {
+                for required in schema
+                    .get("required")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    if !object.contains_key(required) {
+                        return Err(format!("{path}.{required}: required but absent"));
+                    }
+                }
+                let properties = schema.get("properties").and_then(Value::as_object);
+                let open = schema.get("additionalProperties") == Some(&Value::Bool(true));
+                for (key, item) in object {
+                    match properties.and_then(|properties| properties.get(key)) {
+                        Some(property) => {
+                            conforms(document, property, item, &format!("{path}.{key}"))?;
+                        }
+                        None if open || properties.is_none() => {}
+                        None => return Err(format!("{path}.{key}: not described by the schema")),
+                    }
+                }
+            }
+            Value::Array(items) => {
+                if let Some(item_schema) = schema.get("items") {
+                    for (index, item) in items.iter().enumerate() {
+                        conforms(document, item_schema, item, &format!("{path}[{index}]"))?;
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn is_type(kind: &str, value: &Value) -> bool {
+        match kind {
+            "string" => value.is_string(),
+            "integer" => value.is_i64() || value.is_u64(),
+            "number" => value.is_number(),
+            "boolean" => value.is_boolean(),
+            "null" => value.is_null(),
+            "object" => value.is_object(),
+            "array" => value.is_array(),
+            _ => false,
+        }
+    }
+
+    /// Asserts a real payload is what the published component `name` describes.
+    fn assert_conforms(name: &str, value: &Value) {
+        let document = generated_openapi();
+        let schema = json!({"$ref": format!("#/components/schemas/{name}")});
+        if let Err(problem) = conforms(&document, &schema, value, name) {
+            panic!(
+                "a real {name} payload does not match its published schema: {problem}\n{value:#}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_schema_reference_resolves() {
+        let document = generated_openapi();
+        let text = serde_json::to_string(&document).expect("serializes");
+        let components = document["components"]["schemas"]
+            .as_object()
+            .expect("components");
+        let dangling = text
+            .split("\"#/components/schemas/")
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next())
+            .filter(|name| !components.contains_key(*name))
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(
+            dangling.is_empty(),
+            "references to missing components: {dangling:?}"
+        );
+    }
+
+    #[test]
+    fn the_checker_refuses_what_a_schema_does_not_describe() {
+        let document = json!({"components": {"schemas": {}}});
+        let schema = json!({"type": "object", "required": ["a"], "properties": {"a": {"type": ["string", "null"]}}});
+        assert!(conforms(&document, &schema, &json!({"a": null}), "x").is_ok());
+        assert!(
+            conforms(&document, &schema, &json!({}), "x").is_err(),
+            "missing required"
+        );
+        assert!(
+            conforms(&document, &schema, &json!({"a": 1}), "x").is_err(),
+            "wrong type"
+        );
+        assert!(
+            conforms(&document, &schema, &json!({"a": "", "b": 1}), "x").is_err(),
+            "undeclared"
+        );
+    }
+
+    #[derive(utoipa::ToSchema)]
+    #[schema(as = Clash)]
+    #[allow(dead_code, reason = "only its schema is used")]
+    struct One {
+        one: String,
+    }
+
+    #[derive(utoipa::ToSchema)]
+    #[schema(as = Clash)]
+    #[allow(dead_code, reason = "only its schema is used")]
+    struct Other {
+        other: bool,
+    }
+
+    #[test]
+    #[should_panic(expected = "two different wire types claim the component name Clash")]
+    fn two_types_cannot_publish_one_component_name() {
+        let mut schemas = BTreeMap::new();
+        publish(&mut schemas, SchemaId::of::<One>());
+        publish(&mut schemas, SchemaId::of::<Other>());
+    }
+
+    #[tokio::test]
+    async fn an_error_response_is_what_the_error_component_describes() {
+        use http_body_util::BodyExt;
+
+        let response = crate::error::ApiError::ResourceNotFound.into_response();
+        let body = response
+            .into_body()
+            .collect()
+            .await
+            .expect("reads the body")
+            .to_bytes();
+        let value: Value = serde_json::from_slice(&body).expect("an error body is JSON");
+        assert_conforms("Error", &value);
+    }
+
+    #[test]
+    fn a_service_account_with_nothing_recorded_yet_matches_its_schema() {
+        let account = crate::models::CreateServiceAccountResponse {
+            id: "sa_1".to_string(),
+            name: "builder".to_string(),
+            tenant_id: "tenant_1".to_string(),
+            project_id: "project_1".to_string(),
+            role: "operator".to_string(),
+            scopes: vec!["jobs:run".to_string()],
+            expires_at: None,
+            revoked_at: None,
+            last_used_at: None,
+            created_at: "2026-11-08T00:00:00Z".to_string(),
+            token: "token".to_string(),
+        };
+        let value = serde_json::to_value(&account).expect("serializes");
+        for nullable in ["expires_at", "revoked_at", "last_used_at"] {
+            assert_eq!(value[nullable], Value::Null, "{nullable} is sent, as null");
+        }
+        assert_conforms("CreateServiceAccountResponse", &value);
+    }
+
+    #[test]
+    fn a_webhook_reply_matches_its_schema() {
+        let reply = crate::webhooks::WebhookResponse {
+            accepted: true,
+            event_id: "evt_1".to_string(),
+        };
+        assert_conforms(
+            "WebhookResponse",
+            &serde_json::to_value(&reply).expect("serializes"),
+        );
+    }
+
+    #[test]
+    fn a_raw_proposal_matches_its_schema() {
+        let proposal = capsulet_proposer::RawProposal {
+            subject: "invoice".to_string(),
+            predicate: "totals".to_string(),
+            object: "46".to_string(),
+            evidence_id: "evidence_1".to_string(),
+            quote: "total: 46".to_string(),
+            needs_interpretation: false,
+            rationale: String::new(),
+        };
+        assert_conforms(
+            "RawProposal",
+            &serde_json::to_value(&proposal).expect("serializes"),
+        );
+    }
+
+    /// The certificate schema is written out by hand, because the kernel crate
+    /// carries no schema derivation. So it is held to real certificates: one
+    /// with every optional field present, and one with none.
+    #[test]
+    fn kernel_certificates_match_the_published_certificate() {
+        let goal = Proposition {
+            subject: "invoice".to_string(),
+            predicate: "totals".to_string(),
+            object: "46".to_string(),
+        };
+        let full = Certificate {
+            verdict: Verdict::Rejected,
+            goal: goal.clone(),
+            discharged: vec![DischargedStep {
+                rule: "cite".to_string(),
+                concluded: "invoice totals 46".to_string(),
+                detail: "literal evidence matched".to_string(),
+            }],
+            residuals: vec![Residual {
+                from: "attributed text".to_string(),
+                to: goal.clone(),
+                rationale: "interpretation required".to_string(),
+                evidence_ids: vec!["evidence_1".to_string()],
+            }],
+            errors: vec![CertificateError {
+                code: "arithmetic_mismatch".to_string(),
+                message: "the total does not add up".to_string(),
+                repair_owner: "proposer".to_string(),
+                corrected_value: Some(Quantity::integer(46)),
+            }],
+            replay_digest: "sha256:full".to_string(),
+            derivation_depth_limit: Some(64),
+        };
+        assert_conforms(
+            "Certificate",
+            &serde_json::to_value(&full).expect("serializes"),
+        );
+
+        let bare = Certificate {
+            verdict: Verdict::Accepted,
+            goal,
+            discharged: Vec::new(),
+            residuals: Vec::new(),
+            errors: Vec::new(),
+            replay_digest: "sha256:bare".to_string(),
+            derivation_depth_limit: None,
+        };
+        assert_conforms(
+            "Certificate",
+            &serde_json::to_value(&bare).expect("serializes"),
+        );
+    }
 }
