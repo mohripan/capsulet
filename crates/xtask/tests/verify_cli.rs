@@ -113,6 +113,30 @@ fn reports_cleanup_failure() {
     assert!(stderr(&result).contains("cleanup failed"));
 }
 
+/// What every test binary in a gate reported reaches the CI job summary.
+#[test]
+fn a_gate_publishes_what_its_test_binaries_reported() {
+    let directory = tempfile::tempdir().expect("temp directory");
+    let summary = directory.path().join("summary.md");
+    let result = xtask()
+        .args(["verify", "--gate", "format"])
+        .env("CAPSULET_VERIFY_TEST_COMMAND", "report")
+        .env("GITHUB_STEP_SUMMARY", &summary)
+        .output()
+        .expect("xtask runs");
+    assert!(result.status.success(), "{}", stderr(&result));
+    assert!(
+        String::from_utf8_lossy(&result.stdout).contains("(1 test binaries, 3 tests passed)"),
+        "{}",
+        String::from_utf8_lossy(&result.stdout)
+    );
+    let table = std::fs::read_to_string(&summary).expect("the job summary was written");
+    assert!(
+        table.contains("| `format` |") && table.contains("| `tests/fake.rs` | 3 | 0 | 1 | 0 |"),
+        "{table}"
+    );
+}
+
 #[test]
 fn cannot_skip_a_required_gate() {
     let result = output(&["verify", "--profile", "full", "--skip", "format"]);

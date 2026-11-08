@@ -101,10 +101,21 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
+      # These gates fail when any database test was skipped, ignored or filtered
+      # out, and the verifier writes every test binary's counts to the job summary
+      # and to test-counts.json, which is kept below as the record that they ran.
       - name: Verify
         run: >
           cargo run -p capsulet-xtask --locked --
           verify --gate postgres --gate migrations --gate chaos
+
+      - name: Keep test counts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-test-counts
+          path: .capsulet/verify/*/test-counts.json
+          if-no-files-found: error
 
   dashboard:
     name: Dashboard

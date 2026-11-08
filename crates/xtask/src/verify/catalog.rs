@@ -38,6 +38,9 @@ pub(crate) struct Gate {
     pub(crate) commands: Vec<CommandSpec>,
     pub(crate) provision: Vec<CommandSpec>,
     pub(crate) teardown: Vec<CommandSpec>,
+    /// Whether every test the gate's commands collect has to run: a binary that
+    /// ran none, or ignored or filtered any, fails the gate. See `counts.rs`.
+    pub(crate) every_test_runs: bool,
 }
 
 fn command(program: &str, arguments: &[&str]) -> CommandSpec {
@@ -75,6 +78,17 @@ fn gate(
         commands,
         provision: Vec::new(),
         teardown: Vec::new(),
+        every_test_runs: false,
+    }
+}
+
+/// A gate whose every collected test has to run, which `verify` checks from the
+/// counts the test binaries report. Used for the database suites, where a test
+/// that could not reach its database must fail rather than pass by skipping.
+fn every_test_must_run(gate: Gate) -> Gate {
+    Gate {
+        every_test_runs: true,
+        ..gate
     }
 }
 
@@ -349,7 +363,7 @@ pub(crate) fn gates() -> Vec<Gate> {
                 in_dashboard(command("npm", &["run", "build"])),
             ],
         ),
-        gate(
+        every_test_must_run(gate(
             "postgres",
             "isolated PostgreSQL integration suite",
             &["cargo", "docker"],
@@ -445,8 +459,8 @@ pub(crate) fn gates() -> Vec<Gate> {
                     ],
                 ),
             ],
-        ),
-        gate(
+        )),
+        every_test_must_run(gate(
             "chaos",
             "an IR run survives the worker dying at every step boundary",
             &["cargo", "docker"],
@@ -463,8 +477,8 @@ pub(crate) fn gates() -> Vec<Gate> {
                     "--locked",
                 ],
             )],
-        ),
-        gate(
+        )),
+        every_test_must_run(gate(
             "migrations",
             "forward migration compatibility",
             &["cargo", "docker"],
@@ -481,7 +495,7 @@ pub(crate) fn gates() -> Vec<Gate> {
                     "--locked",
                 ],
             )],
-        ),
+        )),
         gate(
             "security",
             "Rust/npm/Python dependency and license policy",

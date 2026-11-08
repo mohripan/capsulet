@@ -37,8 +37,11 @@ concurrent verifier commands from merging or overwriting their captured evidence
 
 The current graph is provisional, not the complete M1 release gate. In particular, a green `kind`
 result does not prove a deployment was built, installed, exercised, or uninstalled, and a green
-`compose` result proves only the agent path above. Disposable PostgreSQL containers are isolated from host data, but per-test mutable
-database isolation still needs reconciliation in [#96](https://github.com/mohripan/capsulet/issues/96).
+`compose` result proves only the agent path above. Disposable PostgreSQL containers are isolated from host data, and each database-backed
+test gets a database of its own on them. The `postgres`, `migrations` and `chaos` gates fail when a
+test binary ran nothing, or ignored or filtered out any test. Every run writes each binary's counts
+to `.capsulet/verify/<run>/test-counts.json`; CI keeps that file as an artifact and shows the counts
+in the job summary.
 Container scanning, secret scanning, immutable artifact attestations, release identity, required-job
 aggregation and the clean-checkout rehearsal remain open under
 [the integrity tracker](https://github.com/mohripan/capsulet/issues/104). Do not infer M1 completion

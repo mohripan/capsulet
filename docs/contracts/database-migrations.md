@@ -22,8 +22,11 @@ through the documented intermediate releases.
 For the current pre-release line, the supported sources are an empty database (`v0`) and a database
 already at the current embedded migration set. The checked `v0_empty.sql` fixture is loaded into a
 disposable PostgreSQL 16 database; the suite applies every migration, reruns detection, verifies the
-recorded count/checksums, and proves checksum tampering fails. New supported release snapshots must
-be checked in before the compatibility window expands.
+recorded count/checksums, and proves checksum tampering fails. It also checks that the schema is
+recorded at the newest migration. A migration that creates a table and then fails must leave neither
+the table nor a success record behind, and no migration may opt out of sqlx's transaction with
+`-- no-transaction`. New supported release snapshots must be checked in before the compatibility
+window expands.
 
 ## Backup, restore, and rollback
 

@@ -74,13 +74,17 @@ $env:CAPSULET_TEST_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/
 cargo test -p capsulet-postgres
 ```
 
-The URL names a server, not the database the tests write to. Each database-backed test binary
-creates a database of its own on that server, `test_<package>_<binary>` (for example
-`test_capsulet_graph_worker_agent_runs`), dropping and recreating it the first time the process asks.
-No two binaries share tables, so fixture ids are stable (`tenant_1`, `run_2`), and what a failing run
-left behind stays there to inspect until that binary runs again. The role in the URL must be allowed
+The URL names a server, not the database the tests write to. Each database-backed test creates a
+database of its own on that server, named after its binary and the test with a hash on the end
+(for example `t_agent_runs_a_run_started_over_http_is_executed_by_the_worker_…`). It drops and
+recreates that database the first time the test asks for it. No two tests share tables, so a worker
+in one test cannot lease a run another test queued, and fixture ids stay stable (`tenant_1`,
+`run_2`). Whatever a failing test left behind stays there to inspect until that test runs again. The role in the URL must be allowed
 to create databases; the Compose `capsulet` role and the verifier's disposable server both are.
 Without the variable, a database-backed test fails and says how to run it rather than passing.
+Run through the verifier, the `postgres`, `migrations` and `chaos` gates also fail when a test
+binary ran no tests, or ignored or filtered out any. Each run records every binary's counts in
+`.capsulet/verify/<run>/test-counts.json`, and in the job summary on CI.
 
 ## Erasing a run's payloads
 

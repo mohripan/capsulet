@@ -39,14 +39,18 @@ pub const NOW: i64 = 1_772_000_000_000;
 
 /// A stable name, unique within this test binary.
 ///
-/// Unique within the binary is enough because the binary has a database of its own,
-/// so a worker in one suite can never lease another suite's run.
+/// Each test has a database of its own (see [`required_database_url`]), so these
+/// only need to be distinct within one test; unique within the binary is more than
+/// enough, and keeps the ids readable.
 pub fn fixture_id(prefix: &str) -> String {
     let sequence = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
     format!("{prefix}_{sequence}")
 }
 
-/// This test binary's own database, recreated empty when the process first asks.
+/// The calling test's own database, created empty on its first request.
+///
+/// Ask for it on the test's own thread: a worker thread of a multi-threaded runtime
+/// is refused rather than handed somebody else's database.
 pub fn required_database_url() -> String {
     database::isolated_url(concat!(
         env!("CARGO_PKG_NAME"),

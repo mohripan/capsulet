@@ -1,4 +1,5 @@
 pub(crate) mod catalog;
+mod counts;
 mod postgres;
 pub(crate) mod process;
 
@@ -208,33 +209,10 @@ fn execute(options: &Options) -> Result<(), String> {
     let root = workspace_root();
     let log_directory = log_directory(&root)?;
     let mut passed = Vec::new();
-    for gate in selected {
-        println!("[verify] {:<16} running", gate.name);
-        check_prerequisites(gate)?;
-        let log_path = log_directory.join(format!("{}.log", gate.name));
-        match run_gate(gate, &root, &log_path) {
-            Ok(()) => {}
-            Err(failure) => {
-                // Print the tail before returning. A gate that fails on another
-                // machine and only says "see the log" is a gate whose reason
-                // nobody ever reads: the log is on the runner, and the runner is
-                // gone by the time anybody looks.
-                print_log_tail(&log_path);
-                let reason = match failure {
-                    ProcessFailure::Failed => "failed".to_string(),
-                    ProcessFailure::TimedOut => "timed out".to_string(),
-                    ProcessFailure::Io(error) => error,
-                };
-                return Err(format!(
-                    "{}: {reason} (log: {})",
-                    gate.name,
-                    log_path.display()
-                ));
-            }
-        }
-        println!("[verify] {:<16} passed", gate.name);
-        passed.push(gate.name);
-    }
+    let mut ran = Vec::new();
+    let result = run_selected(&selected, &root, &log_directory, &mut passed, &mut ran);
+    publish_summary(&ran);
+    result?;
     if options.profile == Some(Profile::Fast) {
         print_omitted(&catalog, &selected_names, "end");
     }
@@ -244,6 +222,103 @@ fn execute(options: &Options) -> Result<(), String> {
         passed.join(", ")
     );
     Ok(())
+}
+
+/// Runs the selected gates in order, stopping at the first that fails.
+fn run_selected(
+    selected: &[&Gate],
+    root: &Path,
+    log_directory: &Path,
+    passed: &mut Vec<&'static str>,
+    ran: &mut Vec<counts::GateCounts>,
+) -> Result<(), String> {
+    for gate in selected {
+        println!("[verify] {:<16} running", gate.name);
+        check_prerequisites(gate)?;
+        let log_path = log_directory.join(format!("{}.log", gate.name));
+        let mut commands = Vec::new();
+        let outcome = run_gate(gate, root, &log_path, &mut commands);
+        ran.push(counts::GateCounts {
+            gate: gate.name,
+            passed: outcome.is_ok(),
+            every_test_runs: gate.every_test_runs,
+            commands,
+        });
+        write_counts(log_directory, ran)?;
+        if let Err(failure) = outcome {
+            // Print the tail before returning. A gate that fails on another
+            // machine and only says "see the log" is a gate whose reason
+            // nobody ever reads: the log is on the runner, and the runner is
+            // gone by the time anybody looks.
+            print_log_tail(&log_path);
+            let reason = match failure {
+                ProcessFailure::Failed => "failed".to_string(),
+                ProcessFailure::TimedOut => "timed out".to_string(),
+                ProcessFailure::Io(error) => error,
+            };
+            return Err(format!(
+                "{}: {reason} (log: {})",
+                gate.name,
+                log_path.display()
+            ));
+        }
+        let commands = &ran.last().expect("this gate was recorded").commands;
+        if gate.every_test_runs {
+            counts::require_every_test_ran(gate.name, commands)?;
+        }
+        println!("[verify] {:<16} passed{}", gate.name, tally(commands));
+        passed.push(gate.name);
+    }
+    Ok(())
+}
+
+/// ` (3 binaries, 104 tests)`, or nothing for a gate that ran no tests.
+fn tally(commands: &[counts::CommandCounts]) -> String {
+    let binaries = commands
+        .iter()
+        .map(|command| command.binaries.len())
+        .sum::<usize>();
+    let tests = commands
+        .iter()
+        .flat_map(|command| &command.binaries)
+        .map(|binary| binary.passed)
+        .sum::<u64>();
+    if binaries == 0 {
+        String::new()
+    } else {
+        format!(" ({binaries} test binaries, {tests} tests passed)")
+    }
+}
+
+/// Writes what every gate so far ran, so a run that fails still says what ran.
+fn write_counts(log_directory: &Path, ran: &[counts::GateCounts]) -> Result<(), String> {
+    let path = log_directory.join("test-counts.json");
+    let json = serde_json::to_string_pretty(ran).map_err(|error| error.to_string())?;
+    fs::write(&path, json + "\n")
+        .map_err(|error| format!("could not write {}: {error}", path.display()))
+}
+
+/// Adds the counts to a GitHub Actions job summary when there is one.
+fn publish_summary(ran: &[counts::GateCounts]) {
+    let Some(path) = env::var_os("GITHUB_STEP_SUMMARY") else {
+        return;
+    };
+    if ran.iter().all(|gate| {
+        gate.commands
+            .iter()
+            .all(|command| command.binaries.is_empty())
+    }) {
+        return;
+    }
+    let table = format!("### Tests the verifier ran\n\n{}\n", counts::markdown(ran));
+    let written = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, table.as_bytes()));
+    if let Err(error) = written {
+        eprintln!("[verify] could not write the job summary: {error}");
+    }
 }
 
 /// How much of a failing gate's log to print.
@@ -267,7 +342,12 @@ fn print_log_tail(log_path: &Path) {
     }
 }
 
-fn run_gate(gate: &Gate, root: &Path, log_path: &Path) -> Result<(), ProcessFailure> {
+fn run_gate(
+    gate: &Gate,
+    root: &Path,
+    log_path: &Path,
+    recorded: &mut Vec<counts::CommandCounts>,
+) -> Result<(), ProcessFailure> {
     let _cleanup = CleanupMarker::from_environment();
     let mut fixture = if matches!(gate.name, "postgres" | "migrations" | "chaos") {
         Some(postgres::PostgresFixture::start().map_err(ProcessFailure::Io)?)
@@ -288,7 +368,7 @@ fn run_gate(gate: &Gate, root: &Path, log_path: &Path) -> Result<(), ProcessFail
         }
     }
     let outcome = run_steps(&gate.provision, gate, root, log_path)
-        .and_then(|()| run_steps(&commands, gate, root, log_path));
+        .and_then(|()| run_counted_steps(&commands, gate, root, log_path, recorded));
     let teardown = run_steps(&gate.teardown, gate, root, log_path);
     let database_cleanup = fixture.as_mut().map_or(Ok(()), |database| {
         database.cleanup().map_err(ProcessFailure::Io)
@@ -313,6 +393,33 @@ fn run_steps(
 ) -> Result<(), ProcessFailure> {
     for command in commands {
         run_command(command, gate.timeout_seconds, root, log_path)?;
+    }
+    Ok(())
+}
+
+/// Runs a gate's commands, recording the test summaries each one wrote.
+///
+/// A command's share of the log is what it appended, so its counts are read from
+/// there, and recorded even when it fails.
+fn run_counted_steps(
+    commands: &[catalog::CommandSpec],
+    gate: &Gate,
+    root: &Path,
+    log_path: &Path,
+    recorded: &mut Vec<counts::CommandCounts>,
+) -> Result<(), ProcessFailure> {
+    for command in commands {
+        let start = fs::metadata(log_path).map_or(0, |metadata| metadata.len());
+        let outcome = run_command(command, gate.timeout_seconds, root, log_path);
+        let written = fs::read(log_path).unwrap_or_default();
+        let segment = written
+            .get(usize::try_from(start).unwrap_or(usize::MAX)..)
+            .unwrap_or_default();
+        recorded.push(counts::CommandCounts {
+            command: crate::claims::render_command(command),
+            binaries: counts::parse(&String::from_utf8_lossy(segment)),
+        });
+        outcome?;
     }
     Ok(())
 }
@@ -356,7 +463,7 @@ fn check_prerequisites(gate: &Gate) -> Result<(), String> {
 
 fn effective_commands(gate: &Gate) -> Result<Vec<catalog::CommandSpec>, String> {
     match env::var("CAPSULET_VERIFY_TEST_COMMAND").ok().as_deref() {
-        Some(mode @ ("fail" | "sleep")) => Ok(vec![catalog::CommandSpec {
+        Some(mode @ ("fail" | "sleep" | "report")) => Ok(vec![catalog::CommandSpec {
             program: env::current_exe()
                 .map_err(|error| error.to_string())?
                 .display()

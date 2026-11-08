@@ -8,15 +8,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use capsulet_ir::admission::AdmissionRecord;
 use capsulet_ir::capability::{Capability, CapabilitySet, Grant};
 use capsulet_ir::definition::{AssuranceMode, Definition};
 use capsulet_ir::effect::{Effect, EffectKind, Idempotency, Reversibility};
-use capsulet_ir::value::LengthBounds;
-use capsulet_ir::{
-    Digest, Graph, GraphBuilder, Identifier, Node, NodeKind, OutputPort, RecordedTime,
-    ResourceBudget, ValueSchema, admit,
-};
+use capsulet_ir::{Digest, Graph, GraphBuilder, Node, NodeKind, RecordedTime, ResourceBudget};
 use capsulet_postgres::{PostgresStore, PostgresStoreError, SignalOutcome};
 use capsulet_runtime::effect::{EffectAttempt, EffectContext};
 use capsulet_runtime::event::Wait;
@@ -24,55 +19,14 @@ use capsulet_runtime::wait::{Signal, WaitError};
 use capsulet_runtime::{Epoch, RunEvent, RunState, RunStatus};
 
 mod support;
-use support::{fixture_id as unique_id, required_database_url as database_url};
-
-fn id(value: &str) -> Identifier {
-    Identifier::parse(value).expect("the fixture identifier is valid")
-}
+use support::ir::{admission, definition, id};
+use support::{fixture_id as unique_id, store};
 
 /// A fixed moment these tests measure from. Time is supplied, never read.
 const NOW: i64 = 1_772_000_000_000;
 
 fn at(millis: i64) -> RecordedTime {
     RecordedTime(millis)
-}
-
-fn definition(name: &str) -> Definition {
-    let graph = Graph::new(GraphBuilder {
-        nodes: vec![Node {
-            id: id("prepare"),
-            name: "Prepare".to_string(),
-            kind: NodeKind::PureComputation,
-            inputs: vec![],
-            outputs: vec![OutputPort::new(
-                id("patch"),
-                ValueSchema::Text {
-                    length: LengthBounds::new(0, 1_024),
-                },
-            )],
-            capabilities: vec![],
-            effects: vec![],
-            budget: ResourceBudget::deterministic(1_000),
-            provider: None,
-            sub_workflow: None,
-            parameters: std::collections::BTreeMap::new(),
-        }],
-        ..GraphBuilder::default()
-    })
-    .expect("the fixture graph is valid");
-
-    Definition {
-        schema_version: Definition::current_schema_version(),
-        id: id(name),
-        version: "1".to_string(),
-        name: name.to_string(),
-        assurance: AssuranceMode::Enforce,
-        capabilities: CapabilitySet::empty(),
-        budget: ResourceBudget::deterministic(600_000),
-        graph,
-        boundaries: vec![],
-        contracts: vec![],
-    }
 }
 
 /// A definition whose one node performs a declared effect.
@@ -132,18 +86,6 @@ fn effect_definition(name: &str, idempotency: Idempotency) -> Definition {
         boundaries: vec![],
         contracts: vec![],
     }
-}
-
-fn admission(definition: &Definition) -> AdmissionRecord {
-    admit(definition).expect("the fixture definition is admitted")
-}
-
-async fn store() -> PostgresStore {
-    let store = PostgresStore::connect(&database_url())
-        .await
-        .expect("connect to postgres");
-    store.migrate().await.expect("run migrations");
-    store
 }
 
 /// Ages a lease out, standing in for the worker that held it dying.

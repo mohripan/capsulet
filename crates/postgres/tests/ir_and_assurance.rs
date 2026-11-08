@@ -2,69 +2,17 @@
 //! scoped to a project — enforced by the database, not only by the code above
 //! it.
 
-use capsulet_ir::admission::AdmissionRecord;
-use capsulet_ir::capability::CapabilitySet;
 use capsulet_ir::correctness::certificate::{Certificate, Subject};
 use capsulet_ir::correctness::evidence::EvidenceRef;
 use capsulet_ir::correctness::obligation::{DischargeState, ObligationStatement, RepairOwner};
 use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
 use capsulet_ir::definition::{AssuranceMode, Definition};
-use capsulet_ir::value::LengthBounds;
-use capsulet_ir::{
-    AssuranceVerdict, Digest, Graph, GraphBuilder, Identifier, Identity, Node, NodeKind,
-    Obligation, OutputPort, RecordedTime, ResourceBudget, ValueSchema, admit,
-};
+use capsulet_ir::{AssuranceVerdict, Digest, Identity, Obligation, RecordedTime};
 use capsulet_kernel::workflow::{Assembly, certify};
-use capsulet_postgres::PostgresStore;
 
 mod support;
-use support::{fixture_id as unique_id, required_database_url as database_url};
-
-fn id(value: &str) -> Identifier {
-    Identifier::parse(value).expect("the fixture identifier is valid")
-}
-
-fn definition(name: &str) -> Definition {
-    let graph = Graph::new(GraphBuilder {
-        nodes: vec![Node {
-            id: id("prepare"),
-            name: "Prepare".to_string(),
-            kind: NodeKind::PureComputation,
-            inputs: vec![],
-            outputs: vec![OutputPort::new(
-                id("patch"),
-                ValueSchema::Text {
-                    length: LengthBounds::new(0, 1_024),
-                },
-            )],
-            capabilities: vec![],
-            effects: vec![],
-            budget: ResourceBudget::deterministic(1_000),
-            provider: None,
-            sub_workflow: None,
-            parameters: std::collections::BTreeMap::new(),
-        }],
-        ..GraphBuilder::default()
-    })
-    .expect("the fixture graph is valid");
-
-    Definition {
-        schema_version: Definition::current_schema_version(),
-        id: id(name),
-        version: "1".to_string(),
-        name: name.to_string(),
-        assurance: AssuranceMode::Enforce,
-        capabilities: CapabilitySet::empty(),
-        budget: ResourceBudget::deterministic(600_000),
-        graph,
-        boundaries: vec![],
-        contracts: vec![],
-    }
-}
-
-fn admission(definition: &Definition) -> AdmissionRecord {
-    admit(definition).expect("the fixture definition is admitted")
-}
+use support::ir::{admission, definition, id};
+use support::{fixture_id as unique_id, store};
 
 fn certificate(definition: &Definition, certificate_id: &str, content: &[u8]) -> Certificate {
     let record = admission(definition);
@@ -110,14 +58,6 @@ fn certificate(definition: &Definition, certificate_id: &str, content: &[u8]) ->
         loops: vec![],
     })
     .expect("the certificate seals")
-}
-
-async fn store() -> PostgresStore {
-    let store = PostgresStore::connect(&database_url())
-        .await
-        .expect("connect to postgres");
-    store.migrate().await.expect("run migrations");
-    store
 }
 
 #[tokio::test]

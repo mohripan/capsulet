@@ -14,15 +14,7 @@ use capsulet_core::{
     WorkflowStepId,
 };
 use capsulet_postgres::{PostgresStore, PostgresStoreError};
-use support::{fixture_id as unique_id, required_database_url as database_url};
-
-async fn store() -> PostgresStore {
-    let store = PostgresStore::connect(&database_url())
-        .await
-        .expect("connect to postgres");
-    store.migrate().await.expect("run migrations");
-    store
-}
+use support::{fixture_id as unique_id, required_database_url as database_url, store};
 
 async fn job(store: &PostgresStore, project: &str) -> JobDefinition {
     let job = JobDefinition::new(
