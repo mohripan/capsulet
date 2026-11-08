@@ -353,7 +353,7 @@ dependencies = [
  "hmac 0.13.0",
  "http-body-util",
  "jsonwebtoken",
- "reqwest 0.12.28",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -389,7 +389,7 @@ dependencies = [
  "capsulet-core",
  "clap",
  "clap_complete",
- "reqwest 0.12.28",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -442,7 +442,7 @@ dependencies = [
  "capsulet-runtime",
  "capsulet-storage",
  "http-body-util",
- "reqwest 0.12.28",
+ "reqwest",
  "serde_json",
  "sqlx",
  "thiserror 2.0.20",
@@ -524,7 +524,7 @@ version = "0.1.0"
 dependencies = [
  "capsulet-core",
  "capsulet-kernel",
- "reqwest 0.12.28",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -1579,7 +1579,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.11",
 ]
 
 [[package]]
@@ -2333,7 +2332,7 @@ dependencies = [
  "percent-encoding",
  "quick-xml",
  "rand 0.10.2",
- "reqwest 0.13.4",
+ "reqwest",
  "rustls-pki-types",
  "serde",
  "serde_json",
@@ -2390,7 +2389,7 @@ dependencies = [
  "bytes",
  "http",
  "opentelemetry",
- "reqwest 0.13.4",
+ "reqwest",
 ]
 
 [[package]]
@@ -2405,7 +2404,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
- "reqwest 0.13.4",
+ "reqwest",
  "thiserror 2.0.20",
 ]
 
@@ -2990,44 +2989,6 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reqwest"
-version = "0.12.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
-dependencies = [
- "base64",
- "bytes",
- "futures-core",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-util",
- "js-sys",
- "log",
- "percent-encoding",
- "pin-project-lite",
- "quinn",
- "rustls",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sync_wrapper",
- "tokio",
- "tokio-rustls",
- "tower",
- "tower-http 0.6.11",
- "tower-service",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "webpki-roots 1.0.11",
-]
-
-[[package]]
-name = "reqwest"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
@@ -3052,6 +3013,9 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",

@@ -42,7 +42,8 @@ jobs:
       - name: Verify
         run: >
           cargo run -p capsulet-xtask --locked --
-          verify --gate format --gate lint --gate unit --gate ir --gate replay
+          verify --gate verifier --gate format --gate lint --gate unit --gate ir
+          --gate replay
 
   contracts:
     name: Product contracts

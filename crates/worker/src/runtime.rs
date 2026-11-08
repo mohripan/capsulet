@@ -99,7 +99,6 @@ impl RunnerMode {
 /// Returns an error when required environment variables are missing, database
 /// setup fails, object storage or execution pools cannot be configured, or a
 /// worker tick fails.
-#[allow(clippy::too_many_lines)]
 pub async fn run() -> anyhow::Result<()> {
     observability::init("capsulet-worker")
         .map_err(|error| anyhow!("{error}"))
@@ -138,16 +137,23 @@ pub async fn run() -> anyhow::Result<()> {
 
     let runner_mode =
         env::var("CAPSULET_RUNNER_MODE").unwrap_or_else(|_| DEFAULT_RUNNER_MODE.to_string());
-    let loop_enabled = env_bool("CAPSULET_WORKER_LOOP");
-    let poll_seconds = env::var("CAPSULET_WORKER_POLL_SECONDS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(DEFAULT_POLL_SECONDS);
-    let max_concurrent_runs = env::var("CAPSULET_WORKER_MAX_CONCURRENT_RUNS")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_MAX_CONCURRENT_RUNS);
+    let settings = LoopSettings {
+        store,
+        object_store,
+        pools,
+        worker_id,
+        lease_seconds,
+        poll_seconds: env::var("CAPSULET_WORKER_POLL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_POLL_SECONDS),
+        max_concurrent_runs: env::var("CAPSULET_WORKER_MAX_CONCURRENT_RUNS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_MAX_CONCURRENT_RUNS),
+        loop_enabled: env_bool("CAPSULET_WORKER_LOOP"),
+    };
 
     let runner_mode = parse_runner_mode(&runner_mode)?;
     observability::tracing::info!(
@@ -165,80 +171,66 @@ pub async fn run() -> anyhow::Result<()> {
             let runner = KubernetesRunner::from_default_config(namespace, log_limit_bytes)
                 .await
                 .context("initialize Kubernetes runner")?;
-            start_kubernetes_reconciler(store.clone(), runner.clone(), &worker_id);
-            run_loop(
-                store,
-                object_store,
-                pools,
-                worker_id,
-                lease_seconds,
-                poll_seconds,
-                max_concurrent_runs,
-                loop_enabled,
-                runner,
-            )
-            .await?;
+            start_kubernetes_reconciler(
+                settings.store.clone(),
+                runner.clone(),
+                &settings.worker_id,
+            );
+            settings.drive(runner).await
         }
-        RunnerMode::Stub => {
-            let runner = match env::var("CAPSULET_STUB_RUNNER_RESULT").as_deref() {
-                Ok("failed" | "failure") => StubRunner::failure(),
-                _ => match (
-                    env::var("CAPSULET_STUB_RUNNER_LOGS").ok(),
-                    env::var("CAPSULET_STUB_ARTIFACT_TEXT").ok(),
-                ) {
-                    (Some(logs), Some(artifact)) => {
-                        StubRunner::success_with_logs_and_artifact(logs, artifact)
-                    }
-                    (Some(logs), None) => StubRunner::success_with_logs(logs),
-                    (None, Some(artifact)) => StubRunner::success_with_artifact(artifact),
-                    (None, None) => StubRunner::success(),
-                },
-            };
-            run_loop(
-                store,
-                object_store,
-                pools,
-                worker_id,
-                lease_seconds,
-                poll_seconds,
-                max_concurrent_runs,
-                loop_enabled,
-                runner,
-            )
-            .await?;
-        }
-        RunnerMode::Process => {
-            run_loop(
-                store,
-                object_store,
-                pools,
-                worker_id,
-                lease_seconds,
-                poll_seconds,
-                max_concurrent_runs,
-                loop_enabled,
-                ProcessRunner,
-            )
-            .await?;
-        }
-        RunnerMode::Wasm => {
-            let runner = load_wasm_python_runner()?;
-            run_loop(
-                store,
-                object_store,
-                pools,
-                worker_id,
-                lease_seconds,
-                poll_seconds,
-                max_concurrent_runs,
-                loop_enabled,
-                runner,
-            )
-            .await?;
-        }
+        RunnerMode::Stub => settings.drive(stub_runner_from_env()).await,
+        RunnerMode::Process => settings.drive(ProcessRunner).await,
+        RunnerMode::Wasm => settings.drive(load_wasm_python_runner()?).await,
     }
+}
 
-    Ok(())
+/// Everything the drain loop needs except the runner, which depends on the mode.
+struct LoopSettings {
+    store: PostgresStore,
+    object_store: ConfiguredObjectStore,
+    pools: ExecutionPoolsConfig,
+    worker_id: String,
+    lease_seconds: i64,
+    poll_seconds: u64,
+    max_concurrent_runs: usize,
+    loop_enabled: bool,
+}
+
+impl LoopSettings {
+    async fn drive<R: Runner>(self, runner: R) -> anyhow::Result<()> {
+        run_loop(
+            self.store,
+            self.object_store,
+            self.pools,
+            self.worker_id,
+            self.lease_seconds,
+            self.poll_seconds,
+            self.max_concurrent_runs,
+            self.loop_enabled,
+            runner,
+        )
+        .await
+    }
+}
+
+/// The stub runner the environment asks for: failing, or succeeding with the
+/// logs and artifact text it supplies.
+fn stub_runner_from_env() -> StubRunner {
+    if matches!(
+        env::var("CAPSULET_STUB_RUNNER_RESULT").as_deref(),
+        Ok("failed" | "failure")
+    ) {
+        return StubRunner::failure();
+    }
+    match (
+        env::var("CAPSULET_STUB_RUNNER_LOGS").ok(),
+        env::var("CAPSULET_STUB_ARTIFACT_TEXT").ok(),
+    ) {
+        (Some(logs), Some(artifact)) => StubRunner::success_with_logs_and_artifact(logs, artifact),
+        (Some(logs), None) => StubRunner::success_with_logs(logs),
+        (None, Some(artifact)) => StubRunner::success_with_artifact(artifact),
+        (None, None) => StubRunner::success(),
+    }
 }
 
 fn start_kubernetes_reconciler(store: PostgresStore, runner: KubernetesRunner, worker_id: &str) {

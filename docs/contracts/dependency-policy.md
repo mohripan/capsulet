@@ -3,7 +3,7 @@
 Status: experimental. Required dependency checks run through the named `security` gate:
 
 ```powershell
-cargo run -p capsulet-xtask --locked -- verify --gate lint --gate security
+cargo run -p capsulet-xtask --locked -- verify --gate lint --gate security --gate gate-regressions
 ```
 
 The gate refreshes RustSec/npm/PyPI advisory inputs and records findings in local verification
@@ -47,7 +47,48 @@ Review reachable advisories immediately, automated dependency proposals weekly, 
 exceptions before expiry. Upgrade compatible versions before considering an exception; test
 contracts and builds after upgrades. Do not downgrade supported tooling merely to conceal a finding.
 
-Allowed Rust licenses are declared in `deny.toml`; unknown registries/Git sources are denied.
-The current duplicate-version warnings and full scanner-input/transitive-tool pinning still need
-the policy reconciliation tracked in [#99](https://github.com/mohripan/capsulet/issues/99).
-Do not claim those unfinished requirements are enforced merely because `cargo deny check` exits zero.
+## Licences, sources and duplicate versions
+
+`deny.toml` allows only the licences a dependency uses today. A dependency under any other
+licence fails the gate until someone reads the licence and adds it. Unknown registries and Git
+sources are denied.
+
+A second version of a crate fails `cargo deny check` (`multiple-versions = "deny"`) unless
+`deny.toml` lists it under `[bans] skip` with a reason. The reason says who pulls the version in,
+and what would let it go. Only older versions are listed: the newest is never the one waved
+through. Each entry names an exact version, so an update that brings in a different one fails
+and gets looked at. `every_skipped_duplicate_is_reviewed_and_still_in_the_lockfile` fails when
+an entry has no reason, skips the newest version, or names a version the lockfile no longer
+has.
+
+Before adding an entry, check whether the workspace causes the duplicate, and upgrade if it
+does. On 2026-11-08 `reqwest` 0.12 was the only duplicate the workspace caused, and moving to
+0.13 removed it. The 32 crates still listed are all held back by third-party crates mid-move:
+
+- RustCrypto 0.10 through sqlx
+- `rand` 0.8 and 0.9 through sqlx, governor and OpenTelemetry
+- `syn` 2 through most proc-macro crates
+- `windows-sys` 0.48 and 0.52 through etcetera, winapi-util and ring
+
+`cargo deny check` still prints one warning: it never meets RUSTSEC-2023-0071, because `rsa` is
+reachable only through the uncompiled `sqlx-mysql`. `cargo-audit` reads the lockfile and does
+meet it, and the two ignore lists are held equal on purpose.
+
+## Scanner versions and regression checks
+
+CI installs `cargo-audit` 0.22.2 and `cargo-deny` 0.20.2 by exact version
+(`.github/workflows/supply-chain.yml`), so a scanner release cannot change what passes without a
+commit. `verify doctor` holds a developer machine to those versions as minimums. `pip-audit` is
+pinned to 2.10.1 as above. Bump a pin in a commit of its own, with the gate's result.
+
+The `gate-regressions` gate shows each gate failing on the defect it exists to catch. It runs
+the `lint`, `dashboard` and `security` gates' own commands, under the repository's own
+`deny.toml` and `.cargo/audit.toml`, against four fixtures:
+
+- a crate with a Clippy warning
+- a crashing ESLint configuration
+- an unreviewed duplicate dependency
+- a lockfile with a crate that has a published advisory (RUSTSEC-2021-0003)
+
+Each fixture has a clean twin that must pass the same command. The supply-chain workflow runs
+it after `security`.

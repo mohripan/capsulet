@@ -22,6 +22,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `chaos` | no | yes | IR worker crash recovery at step boundaries | Cargo, Docker |
 | `migrations` | no | yes | Supported forward migrations | Cargo, Docker |
 | `security` | no | yes | Rust/npm/Python dependency and license policy, including expiring exceptions | cargo-audit, cargo-deny, npm, Python |
+| `gate-regressions` | no | yes | The `lint`, `dashboard` and `security` gates' own commands fail on a fixture with a Clippy warning, a crashing ESLint configuration, an unreviewed duplicate dependency and a crate with a published advisory, and pass on a clean one | Cargo with Clippy, cargo-audit, cargo-deny, npm with the dashboard installed |
 | `compose` | no | yes | Compose configuration, then agents run over HTTP through the built stack, with the graph worker killed mid-run. Job, workflow, dashboard and seed checks are still open under [#98](https://github.com/mohripan/capsulet/issues/98) | Docker, PowerShell |
 | `helm` | no | yes | Chart lint and deterministic render | Helm |
 | `kind` | no | yes | Cluster discovery only; install/smoke pending [#102](https://github.com/mohripan/capsulet/issues/102) | Kind, kubectl, Helm, Docker |
@@ -47,5 +48,6 @@ Supported baseline tools are Rust 1.96, Node.js 20/npm 10 or newer compatible re
 3.12 or newer, Docker Engine 27 or newer with Compose v2, Helm 3.18 or newer, Kind 0.30 or newer,
 and a kubectl release compatible with the target cluster. `verify doctor` asks each of these tools,
 plus PowerShell, `cargo-audit` and `cargo-deny`, for its version without changing anything, and
-fails when one is missing or older than the minimum above. kubectl, PowerShell and the scanners
-are only required to run. Each gate separately fails when a declared prerequisite is missing.
+fails when one is missing or older than the minimum above, or than cargo-audit 0.22.2 and
+cargo-deny 0.20.2, the scanner versions CI pins. kubectl and PowerShell are only required to run.
+Each gate separately fails when a declared prerequisite is missing.

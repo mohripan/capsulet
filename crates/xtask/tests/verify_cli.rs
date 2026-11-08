@@ -265,6 +265,98 @@ fn which(tool: &str) -> bool {
         .is_ok_and(|found| found.status.success())
 }
 
+/// A second version of a crate is a reviewed decision.
+///
+/// `cargo deny check` fails on a duplicate nobody listed. This holds the list
+/// itself to account: each entry gives a reason, names a version the lockfile
+/// still has, and is an older version of a crate that really is duplicated, so
+/// the newest version is never the one waved through and a stale entry cannot
+/// quietly cover whatever version arrives next.
+#[test]
+fn every_skipped_duplicate_is_reviewed_and_still_in_the_lockfile() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let deny = std::fs::read_to_string(root.join("deny.toml")).expect("deny.toml");
+    assert!(
+        deny.lines()
+            .any(|line| line.trim() == r#"multiple-versions = "deny""#),
+        "an unreviewed duplicate must fail the gate, not warn"
+    );
+    let lockfile = std::fs::read_to_string(root.join("Cargo.lock")).expect("Cargo.lock");
+    let versions = registry_versions(&lockfile);
+
+    let skips = deny
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("{ crate = \""))
+        .collect::<Vec<_>>();
+    assert!(
+        !skips.is_empty(),
+        "no skip entries were read from deny.toml"
+    );
+    for entry in skips {
+        let (spec, rest) = entry.split_once('"').expect("crate spec");
+        let (name, version) = spec
+            .split_once('@')
+            .unwrap_or_else(|| panic!("`{spec}` must name an exact version"));
+        let reason = rest
+            .split_once("reason = \"")
+            .and_then(|(_, reason)| reason.split_once('"'))
+            .map_or("", |(reason, _)| reason);
+        assert!(
+            reason.len() >= 20,
+            "`{spec}` is skipped without a reason that says who pulls it in"
+        );
+        let known = versions
+            .get(name)
+            .unwrap_or_else(|| panic!("`{spec}` is skipped but `{name}` is not in Cargo.lock"));
+        assert!(
+            known.iter().any(|candidate| candidate == version),
+            "`{spec}` is skipped but Cargo.lock has {name} {known:?}"
+        );
+        assert!(
+            known.len() > 1,
+            "`{spec}` is skipped but {name} is no longer duplicated"
+        );
+        let newest = known
+            .iter()
+            .max_by_key(|candidate| numeric(candidate))
+            .expect("a version");
+        assert_ne!(
+            newest, version,
+            "`{spec}` skips the newest {name}; skip the older versions instead"
+        );
+    }
+}
+
+/// Every version of every registry crate in a lockfile.
+fn registry_versions(lockfile: &str) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut versions = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for package in lockfile.split("[[package]]").skip(1) {
+        let field = |key: &str| {
+            package
+                .lines()
+                .find_map(|line| line.strip_prefix(&format!("{key} = \"")))
+                .and_then(|value| value.strip_suffix('"'))
+        };
+        if let (Some(name), Some(version), Some(_)) =
+            (field("name"), field("version"), field("source"))
+        {
+            versions
+                .entry(name.to_string())
+                .or_default()
+                .push(version.to_string());
+        }
+    }
+    versions
+}
+
+/// A version's numeric components, for ordering releases.
+fn numeric(version: &str) -> Vec<u64> {
+    version
+        .split(['.', '-', '+'])
+        .map_while(|part| part.parse().ok())
+        .collect()
+}
+
 /// Security exceptions must be owned and must expire.
 ///
 /// An advisory silenced in `.cargo/audit.toml` with no entry in the exceptions

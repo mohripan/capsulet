@@ -188,7 +188,11 @@ where
     }
 }
 
-#[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
+#[allow(clippy::missing_panics_doc)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the route table is declarative and kept as one list, so every public route can be read in one place"
+)]
 pub fn router<S, O>(state: AppState<S, O>) -> Router
 where
     S: ApiStore,
@@ -1962,7 +1966,6 @@ async fn require_workflow_step_projects<S: ApiStore>(
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)]
 async fn build_workflow<S, O>(
     state: &AppState<S, O>,
     context: &ProjectContext,
@@ -1985,82 +1988,11 @@ where
     }
     let workflow_id = WorkflowId::new(request.id.unwrap_or_else(|| generated_id("workflow")))
         .map_err(ApiError::validation)?;
-    let dependency_requests = request.dependencies;
     let mut steps = Vec::with_capacity(request.steps.len());
     for (index, step) in request.steps.into_iter().enumerate() {
-        let job_definition_id =
-            JobDefinitionId::new(step.job_definition_id).map_err(ApiError::validation)?;
-        if state
-            .store
-            .find_job_definition(&job_definition_id, &context.tenant_id, &context.project_id)
-            .await
-            .map_err(ApiError::store)?
-            .is_none()
-        {
-            return Err(ApiError::UnknownJobDefinition(
-                job_definition_id.as_str().to_string(),
-            ));
-        }
-        let execution_pool =
-            ExecutionPoolName::new(step.execution_pool).map_err(ApiError::validation)?;
-        if !state.knows_pool(execution_pool.as_str()) {
-            return Err(ApiError::UnknownExecutionPool(
-                execution_pool.as_str().to_string(),
-            ));
-        }
-        let position = i32::try_from(index + 1)
-            .map_err(|_| ApiError::Validation("too many workflow steps".to_string()))?;
-        let timeout_seconds = match step.timeout_seconds {
-            Some(0) => {
-                return Err(ApiError::Validation(
-                    "workflow step timeout_seconds must be greater than zero".to_string(),
-                ));
-            }
-            value => value,
-        };
-        steps.push(
-            WorkflowStep::new(
-                WorkflowStepId::new(
-                    step.id
-                        .unwrap_or_else(|| format!("{}_step_{position}", workflow_id.as_str())),
-                )
-                .map_err(ApiError::validation)?,
-                workflow_id.clone(),
-                position,
-                step.name,
-                job_definition_id,
-                execution_pool,
-            )
-            .with_timeout_seconds(timeout_seconds),
-        );
+        steps.push(build_workflow_step(state, context, &workflow_id, index, step).await?);
     }
-
-    let dependencies = match dependency_requests {
-        Some(dependencies) => dependencies
-            .into_iter()
-            .map(|dependency| {
-                let policy = match dependency.policy.as_deref().unwrap_or("hard") {
-                    "hard" => WorkflowDependencyPolicy::Hard,
-                    "soft" => WorkflowDependencyPolicy::Soft,
-                    "always" => WorkflowDependencyPolicy::Always,
-                    value => {
-                        return Err(ApiError::Validation(format!(
-                            "unsupported workflow dependency policy {value}; expected hard, soft, or always"
-                        )));
-                    }
-                };
-                Ok(WorkflowStepDependency::with_policy(
-                    WorkflowStepId::new(dependency.from_step_id).map_err(ApiError::validation)?,
-                    WorkflowStepId::new(dependency.to_step_id).map_err(ApiError::validation)?,
-                    policy,
-                ))
-            })
-            .collect::<Result<Vec<_>, ApiError>>()?,
-        None => steps
-            .windows(2)
-            .map(|pair| WorkflowStepDependency::new(pair[0].id().clone(), pair[1].id().clone()))
-            .collect(),
-    };
+    let dependencies = workflow_dependencies(request.dependencies, &steps)?;
     if dependencies.len() > MAX_WORKFLOW_DEPENDENCIES {
         return Err(ApiError::Validation(format!(
             "workflow has {} dependencies, maximum is {MAX_WORKFLOW_DEPENDENCIES}",
@@ -2089,6 +2021,98 @@ where
         dependencies,
     )
     .with_deadline_seconds(deadline_seconds))
+}
+
+/// The `index`th step of a workflow, refused unless its job definition is in
+/// the caller's project and its execution pool is one this installation has.
+async fn build_workflow_step<S, O>(
+    state: &AppState<S, O>,
+    context: &ProjectContext,
+    workflow_id: &WorkflowId,
+    index: usize,
+    step: crate::models::CreateWorkflowStepRequest,
+) -> Result<WorkflowStep, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let job_definition_id =
+        JobDefinitionId::new(step.job_definition_id).map_err(ApiError::validation)?;
+    if state
+        .store
+        .find_job_definition(&job_definition_id, &context.tenant_id, &context.project_id)
+        .await
+        .map_err(ApiError::store)?
+        .is_none()
+    {
+        return Err(ApiError::UnknownJobDefinition(
+            job_definition_id.as_str().to_string(),
+        ));
+    }
+    let execution_pool =
+        ExecutionPoolName::new(step.execution_pool).map_err(ApiError::validation)?;
+    if !state.knows_pool(execution_pool.as_str()) {
+        return Err(ApiError::UnknownExecutionPool(
+            execution_pool.as_str().to_string(),
+        ));
+    }
+    let position = i32::try_from(index + 1)
+        .map_err(|_| ApiError::Validation("too many workflow steps".to_string()))?;
+    let timeout_seconds = match step.timeout_seconds {
+        Some(0) => {
+            return Err(ApiError::Validation(
+                "workflow step timeout_seconds must be greater than zero".to_string(),
+            ));
+        }
+        value => value,
+    };
+    Ok(WorkflowStep::new(
+        WorkflowStepId::new(
+            step.id
+                .unwrap_or_else(|| format!("{}_step_{position}", workflow_id.as_str())),
+        )
+        .map_err(ApiError::validation)?,
+        workflow_id.clone(),
+        position,
+        step.name,
+        job_definition_id,
+        execution_pool,
+    )
+    .with_timeout_seconds(timeout_seconds))
+}
+
+/// The dependencies a workflow declares, or, when it declares none, each step
+/// depending on the one before it.
+fn workflow_dependencies(
+    requests: Option<Vec<crate::models::CreateWorkflowDependencyRequest>>,
+    steps: &[WorkflowStep],
+) -> Result<Vec<WorkflowStepDependency>, ApiError> {
+    let Some(requests) = requests else {
+        return Ok(steps
+            .windows(2)
+            .map(|pair| WorkflowStepDependency::new(pair[0].id().clone(), pair[1].id().clone()))
+            .collect());
+    };
+    requests
+        .into_iter()
+        .map(|dependency| {
+            let policy = match dependency.policy.as_deref().unwrap_or("hard") {
+                "hard" => WorkflowDependencyPolicy::Hard,
+                "soft" => WorkflowDependencyPolicy::Soft,
+                "always" => WorkflowDependencyPolicy::Always,
+                value => {
+                    return Err(ApiError::Validation(format!(
+                        "unsupported workflow dependency policy {value}; expected hard, soft, or always"
+                    )));
+                }
+            };
+            Ok(WorkflowStepDependency::with_policy(
+                WorkflowStepId::new(dependency.from_step_id).map_err(ApiError::validation)?,
+                WorkflowStepId::new(dependency.to_step_id).map_err(ApiError::validation)?,
+                policy,
+            ))
+        })
+        .collect()
 }
 
 fn validate_workflow_graph_limits(

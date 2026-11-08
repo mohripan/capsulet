@@ -1243,22 +1243,9 @@ async fn cleanup_cancelled_job(jobs: &Api<Job>, pods: &Api<Pod>, job_name: &str)
 
 /// Renders the Kubernetes Job for an execution.
 #[must_use]
-#[allow(clippy::too_many_lines)]
 pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
     let job_name = kubernetes_job_name(execution.run.id(), execution.run.attempt_count());
-    let run_key = run_label_value(execution.run.id());
-    let mut labels = BTreeMap::new();
-    labels.insert(APP_LABEL.to_string(), "capsulet".to_string());
-    labels.insert(
-        COMPONENT_LABEL.to_string(),
-        component_label_value().to_string(),
-    );
-    labels.insert(RUN_LABEL.to_string(), run_key);
-    labels.insert(
-        ATTEMPT_LABEL.to_string(),
-        execution.run.attempt_count().to_string(),
-    );
-
+    let labels = job_labels(execution);
     Job {
         metadata: ObjectMeta {
             name: Some(job_name),
@@ -1278,115 +1265,133 @@ pub fn build_job(execution: &RunExecution, namespace: &str) -> Job {
                     labels: Some(labels),
                     ..ObjectMeta::default()
                 }),
-                spec: Some(PodSpec {
-                    restart_policy: Some("Never".to_string()),
-                    node_selector: if execution.pool.node_selector.is_empty() {
-                        None
-                    } else {
-                        Some(execution.pool.node_selector.clone())
-                    },
-                    tolerations: if execution.pool.tolerations.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            execution
-                                .pool
-                                .tolerations
-                                .iter()
-                                .map(PoolToleration::to_kubernetes)
-                                .collect(),
-                        )
-                    },
-                    containers: vec![Container {
-                        name: "main".to_string(),
-                        image: Some(execution.definition.runtime_image().to_string()),
-                        command: Some(wrapped_command(
-                            execution.definition.command(),
-                            execution.definition.python_dependencies(),
-                            &execution.input_artifacts,
-                        )),
-                        env: Some(vec![EnvVar {
-                            name: "CAPSULET_INPUT_JSON".to_string(),
-                            value: Some(execution.run.input_json().to_string()),
-                            ..EnvVar::default()
-                        }]),
-                        resources: Some(execution.pool.resources.to_kubernetes()),
-                        security_context: Some(SecurityContext {
-                            allow_privilege_escalation: Some(false),
-                            capabilities: Some(Capabilities {
-                                drop: Some(vec!["ALL".to_string()]),
-                                ..Capabilities::default()
-                            }),
-                            privileged: Some(false),
-                            read_only_root_filesystem: Some(true),
-                            run_as_group: Some(10_001),
-                            run_as_non_root: Some(true),
-                            run_as_user: Some(10_001),
-                            seccomp_profile: Some(SeccompProfile {
-                                type_: "RuntimeDefault".to_string(),
-                                ..SeccompProfile::default()
-                            }),
-                            ..SecurityContext::default()
-                        }),
-                        volume_mounts: Some(vec![
-                            VolumeMount {
-                                name: "capsulet-data".to_string(),
-                                mount_path: "/capsulet".to_string(),
-                                ..VolumeMount::default()
-                            },
-                            VolumeMount {
-                                name: "tmp".to_string(),
-                                mount_path: "/tmp".to_string(),
-                                ..VolumeMount::default()
-                            },
-                        ]),
-                        ..Container::default()
-                    }],
-                    automount_service_account_token: Some(false),
-                    runtime_class_name: execution.pool.runtime_class_name.clone(),
-                    service_account_name: execution.pool.service_account_name.clone(),
-                    enable_service_links: Some(false),
-                    host_ipc: Some(false),
-                    host_network: Some(false),
-                    host_pid: Some(false),
-                    security_context: Some(PodSecurityContext {
-                        fs_group: Some(10_001),
-                        run_as_group: Some(10_001),
-                        run_as_non_root: Some(true),
-                        run_as_user: Some(10_001),
-                        seccomp_profile: Some(SeccompProfile {
-                            type_: "RuntimeDefault".to_string(),
-                            ..SeccompProfile::default()
-                        }),
-                        ..PodSecurityContext::default()
-                    }),
-                    volumes: Some(vec![
-                        Volume {
-                            name: "capsulet-data".to_string(),
-                            empty_dir: Some(EmptyDirVolumeSource {
-                                size_limit: execution
-                                    .pool
-                                    .resources
-                                    .limits
-                                    .get("ephemeral-storage")
-                                    .cloned()
-                                    .map(Quantity),
-                                ..EmptyDirVolumeSource::default()
-                            }),
-                            ..Volume::default()
-                        },
-                        Volume {
-                            name: "tmp".to_string(),
-                            empty_dir: Some(EmptyDirVolumeSource::default()),
-                            ..Volume::default()
-                        },
-                    ]),
-                    ..PodSpec::default()
-                }),
+                spec: Some(job_pod_spec(execution)),
             },
             ..JobSpec::default()
         }),
         ..Job::default()
+    }
+}
+
+/// The labels a run's Job and its pod carry, which is how the runner finds them again.
+fn job_labels(execution: &RunExecution) -> BTreeMap<String, String> {
+    let mut labels = BTreeMap::new();
+    labels.insert(APP_LABEL.to_string(), "capsulet".to_string());
+    labels.insert(
+        COMPONENT_LABEL.to_string(),
+        component_label_value().to_string(),
+    );
+    labels.insert(RUN_LABEL.to_string(), run_label_value(execution.run.id()));
+    labels.insert(
+        ATTEMPT_LABEL.to_string(),
+        execution.run.attempt_count().to_string(),
+    );
+    labels
+}
+
+/// The pod a run's Job starts: placed by its pool, with no host access, no
+/// service-account token, and only the scratch volumes its container mounts.
+fn job_pod_spec(execution: &RunExecution) -> PodSpec {
+    let pool = &execution.pool;
+    PodSpec {
+        restart_policy: Some("Never".to_string()),
+        node_selector: (!pool.node_selector.is_empty()).then(|| pool.node_selector.clone()),
+        tolerations: (!pool.tolerations.is_empty()).then(|| {
+            pool.tolerations
+                .iter()
+                .map(PoolToleration::to_kubernetes)
+                .collect()
+        }),
+        containers: vec![job_container(execution)],
+        automount_service_account_token: Some(false),
+        runtime_class_name: pool.runtime_class_name.clone(),
+        service_account_name: pool.service_account_name.clone(),
+        enable_service_links: Some(false),
+        host_ipc: Some(false),
+        host_network: Some(false),
+        host_pid: Some(false),
+        security_context: Some(PodSecurityContext {
+            fs_group: Some(10_001),
+            run_as_group: Some(10_001),
+            run_as_non_root: Some(true),
+            run_as_user: Some(10_001),
+            seccomp_profile: Some(SeccompProfile {
+                type_: "RuntimeDefault".to_string(),
+                ..SeccompProfile::default()
+            }),
+            ..PodSecurityContext::default()
+        }),
+        volumes: Some(vec![
+            Volume {
+                name: "capsulet-data".to_string(),
+                empty_dir: Some(EmptyDirVolumeSource {
+                    size_limit: pool
+                        .resources
+                        .limits
+                        .get("ephemeral-storage")
+                        .cloned()
+                        .map(Quantity),
+                    ..EmptyDirVolumeSource::default()
+                }),
+                ..Volume::default()
+            },
+            Volume {
+                name: "tmp".to_string(),
+                empty_dir: Some(EmptyDirVolumeSource::default()),
+                ..Volume::default()
+            },
+        ]),
+        ..PodSpec::default()
+    }
+}
+
+/// The run's one container: its image and wrapped command, run unprivileged
+/// as a fixed non-root user on a read-only root filesystem.
+fn job_container(execution: &RunExecution) -> Container {
+    Container {
+        name: "main".to_string(),
+        image: Some(execution.definition.runtime_image().to_string()),
+        command: Some(wrapped_command(
+            execution.definition.command(),
+            execution.definition.python_dependencies(),
+            &execution.input_artifacts,
+        )),
+        env: Some(vec![EnvVar {
+            name: "CAPSULET_INPUT_JSON".to_string(),
+            value: Some(execution.run.input_json().to_string()),
+            ..EnvVar::default()
+        }]),
+        resources: Some(execution.pool.resources.to_kubernetes()),
+        security_context: Some(SecurityContext {
+            allow_privilege_escalation: Some(false),
+            capabilities: Some(Capabilities {
+                drop: Some(vec!["ALL".to_string()]),
+                ..Capabilities::default()
+            }),
+            privileged: Some(false),
+            read_only_root_filesystem: Some(true),
+            run_as_group: Some(10_001),
+            run_as_non_root: Some(true),
+            run_as_user: Some(10_001),
+            seccomp_profile: Some(SeccompProfile {
+                type_: "RuntimeDefault".to_string(),
+                ..SeccompProfile::default()
+            }),
+            ..SecurityContext::default()
+        }),
+        volume_mounts: Some(vec![
+            VolumeMount {
+                name: "capsulet-data".to_string(),
+                mount_path: "/capsulet".to_string(),
+                ..VolumeMount::default()
+            },
+            VolumeMount {
+                name: "tmp".to_string(),
+                mount_path: "/tmp".to_string(),
+                ..VolumeMount::default()
+            },
+        ]),
+        ..Container::default()
     }
 }
 

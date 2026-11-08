@@ -526,6 +526,31 @@ pub(crate) fn gates() -> Vec<Gate> {
                 command("python", &["scripts/audit-python.py"]),
             ],
         ),
+        // The tests are ignored by default because they need these tools; this
+        // gate declares them and runs the tests with `--ignored`, so they never
+        // pass by being skipped.
+        gate(
+            "gate-regressions",
+            "lint, dashboard and security gates fail on a Clippy warning, a crashing ESLint configuration, an unreviewed duplicate and a vulnerable crate",
+            &["cargo", "cargo-audit", "cargo-deny", "npm"],
+            1_200,
+            &[Full],
+            vec![command(
+                "cargo",
+                &[
+                    "test",
+                    "-p",
+                    "capsulet-xtask",
+                    "--test",
+                    "gate_failures",
+                    "--locked",
+                    "--target-dir",
+                    ".capsulet/verify/xtask-tests",
+                    "--",
+                    "--ignored",
+                ],
+            )],
+        ),
         // The stack comes down as teardown, not as a last step: a step is
         // skipped once an earlier one fails, which is exactly when a stack left
         // running gets in the way of the next attempt.

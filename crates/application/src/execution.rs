@@ -9,8 +9,8 @@ use capsulet_core::{
 };
 use capsulet_observability::{self as observability, tracing::Instrument};
 use capsulet_runner::{
-    CancellationCheck, ExecutionPoolsConfig, InputArtifact, RunExecution, RunOutcome, RunReport,
-    Runner,
+    CancellationCheck, ExecutionPoolConfig, ExecutionPoolsConfig, InputArtifact, RunExecution,
+    RunOutcome, RunReport, Runner,
 };
 use capsulet_storage::{ObjectStore, run_object_key};
 use thiserror::Error;
@@ -134,7 +134,6 @@ impl WorkerTickOutcome {
 ///
 /// Returns [`WorkerError`] when persistence, state transition, or execution
 /// fails.
-#[allow(clippy::too_many_lines)]
 pub async fn execute_one_queued_run<S, R, O>(
     store: &S,
     runner: &R,
@@ -185,7 +184,6 @@ where
     .await
 }
 
-#[allow(clippy::too_many_lines)]
 async fn execute_one_queued_run_inner<S, R, O>(
     store: &S,
     runner: &R,
@@ -238,17 +236,7 @@ where
         .await
         .map_err(WorkerError::store)?
         .ok_or_else(|| WorkerError::MissingJobDefinition(run.job_definition_id().to_string()))?;
-    let mut pool = pools
-        .find(run.execution_pool().as_str())
-        .cloned()
-        .ok_or_else(|| WorkerError::MissingExecutionPool(run.execution_pool().to_string()))?;
-    if let Some(timeout_seconds) = store
-        .job_run_timeout_seconds(run.id())
-        .await
-        .map_err(WorkerError::store)?
-    {
-        pool.timeout_seconds = timeout_seconds;
-    }
+    let pool = run_pool(store, pools, &run).await?;
 
     if run.status() != JobRunStatus::Running {
         run.apply(JobRunTransition::StartAttempt)
@@ -288,44 +276,89 @@ where
 
     let mut logs = report.logs.unwrap_or_default();
     if let Some(reason) = &rejection {
-        if !logs.is_empty() && !logs.ends_with('\n') {
-            logs.push('\n');
-        }
-        logs.push_str(reason);
-        logs.push('\n');
+        append_line(&mut logs, reason);
     }
     persist_logs(store, object_store, &run, Some(logs)).await?;
 
-    let (final_status, retry_delay, outcome) = if rejection.is_some() {
+    let disposition = if rejection.is_some() {
         // Retrying cannot help: the job would emit the same rejected artifact again.
         (JobRunStatus::Failed, None, WorkerTickOutcome::RunFailed)
     } else {
-        match report.outcome {
-            RunOutcome::Succeeded => (
-                JobRunStatus::Succeeded,
-                None,
-                WorkerTickOutcome::RunSucceeded,
-            ),
-            RunOutcome::Cancelled => (
-                JobRunStatus::Cancelled,
-                None,
-                WorkerTickOutcome::RunCancelled,
-            ),
-            RunOutcome::Failed => retry_decision(
-                &run,
-                &execution.definition,
-                JobRunStatus::Failed,
-                WorkerTickOutcome::RunFailed,
-            ),
-            RunOutcome::TimedOut => retry_decision(
-                &run,
-                &execution.definition,
-                JobRunStatus::TimedOut,
-                WorkerTickOutcome::RunTimedOut,
-            ),
-        }
+        disposition(&run, &execution.definition, report.outcome)
     };
+    finish_attempt(store, &run, worker_id, disposition).await
+}
 
+/// The execution pool a run is placed in, with the run's own timeout when it has one.
+async fn run_pool<S: WorkerStore>(
+    store: &S,
+    pools: &ExecutionPoolsConfig,
+    run: &JobRun,
+) -> Result<ExecutionPoolConfig, WorkerError> {
+    let mut pool = pools
+        .find(run.execution_pool().as_str())
+        .cloned()
+        .ok_or_else(|| WorkerError::MissingExecutionPool(run.execution_pool().to_string()))?;
+    if let Some(timeout_seconds) = store
+        .job_run_timeout_seconds(run.id())
+        .await
+        .map_err(WorkerError::store)?
+    {
+        pool.timeout_seconds = timeout_seconds;
+    }
+    Ok(pool)
+}
+
+/// Appends `line` to a log, starting it on a line of its own.
+fn append_line(logs: &mut String, line: &str) {
+    if !logs.is_empty() && !logs.ends_with('\n') {
+        logs.push('\n');
+    }
+    logs.push_str(line);
+    logs.push('\n');
+}
+
+/// What a finished attempt becomes: its final status, a retry delay when
+/// another attempt is due, and the tick outcome reported for it.
+type Disposition = (JobRunStatus, Option<u64>, WorkerTickOutcome);
+
+fn disposition(run: &JobRun, definition: &JobDefinition, outcome: RunOutcome) -> Disposition {
+    match outcome {
+        RunOutcome::Succeeded => (
+            JobRunStatus::Succeeded,
+            None,
+            WorkerTickOutcome::RunSucceeded,
+        ),
+        RunOutcome::Cancelled => (
+            JobRunStatus::Cancelled,
+            None,
+            WorkerTickOutcome::RunCancelled,
+        ),
+        RunOutcome::Failed => retry_decision(
+            run,
+            definition,
+            JobRunStatus::Failed,
+            WorkerTickOutcome::RunFailed,
+        ),
+        RunOutcome::TimedOut => retry_decision(
+            run,
+            definition,
+            JobRunStatus::TimedOut,
+            WorkerTickOutcome::RunTimedOut,
+        ),
+    }
+}
+
+/// Records how the attempt ended and advances the workflows waiting on it.
+///
+/// When the attempt is no longer this worker's to finish, the run's stored
+/// status decides what is reported: a run cancelled meanwhile reads as cancelled.
+async fn finish_attempt<S: WorkerStore>(
+    store: &S,
+    run: &JobRun,
+    worker_id: &str,
+    (final_status, retry_delay, outcome): Disposition,
+) -> Result<WorkerTickOutcome, WorkerError> {
     let latest = store
         .finish_running_attempt(
             run.id(),
@@ -340,21 +373,20 @@ where
         .advance_workflow_runs_for_job_run(run.id())
         .await
         .map_err(WorkerError::store)?;
-    if latest.is_none() {
-        return Ok(
-            match store
-                .find_run(run.id())
-                .await
-                .map_err(WorkerError::store)?
-                .map(|latest| latest.status())
-            {
-                Some(JobRunStatus::Cancelled) => WorkerTickOutcome::RunCancelled,
-                _ => outcome,
-            },
-        );
+    if latest.is_some() {
+        return Ok(outcome);
     }
-
-    Ok(outcome)
+    Ok(
+        match store
+            .find_run(run.id())
+            .await
+            .map_err(WorkerError::store)?
+            .map(|latest| latest.status())
+        {
+            Some(JobRunStatus::Cancelled) => WorkerTickOutcome::RunCancelled,
+            _ => outcome,
+        },
+    )
 }
 
 async fn load_upstream_artifacts<S, O>(

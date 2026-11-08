@@ -23,28 +23,44 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.96.0"
+          # gate-regressions shows the lint gate failing on a Clippy warning.
+          components: clippy
 
-      - name: Install cargo-audit
-        uses: taiki-e/install-action@cargo-audit
-
-      - name: Install cargo-deny
-        uses: taiki-e/install-action@cargo-deny
+      # Pinned, so a scanner release cannot change what passes without a
+      # commit that says so. `verify doctor` holds a developer machine to the
+      # same versions as minimums.
+      - name: Install scanners
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit@0.22.2,cargo-deny@0.20.2
 
       - name: Install Node.js
         uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
 
       - name: Install Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      # One gate, so CI and a developer machine check the same things against
-      # the same exceptions. Those live in .cargo/audit.toml and deny.toml, each
-      # with an owner and a review date.
+      # gate-regressions runs the dashboard's own ESLint against a crashing
+      # configuration, so the dashboard's dependencies have to be installed.
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      # One gate graph, so CI and a developer machine check the same things
+      # against the same exceptions. Those live in docs/contracts/
+      # security-exceptions.json, .cargo/audit.toml and deny.toml, each owned
+      # and expiring. gate-regressions shows the lint, dashboard and security
+      # gates failing on the defects they exist to catch.
       - name: Verify
-        run: cargo run -p capsulet-xtask --locked -- verify --gate security
+        run: >
+          cargo run -p capsulet-xtask --locked --
+          verify --gate security --gate gate-regressions
 
   images:
     runs-on: ubuntu-latest

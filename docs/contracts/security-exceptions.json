@@ -38,8 +38,8 @@
       ],
       "scope": "unmaintained-parser",
       "owner": "platform",
-      "rationale": "Unmaintained parser reached through serde_yaml, which reads only the execution pool configuration an operator writes; the advisory reports no exploitable defect.",
-      "compensating_control": "Never parse YAML from a request or a run with it. New vulnerability findings are not covered by this maintenance exception, and serde_yaml should be replaced before it expires.",
+      "rationale": "Unmaintained parser reached through serde_yaml, which capsulet-runner and capsulet-worker use to read the execution pool configuration an operator writes, and which kube-client uses to read kubeconfig; the advisory reports no exploitable defect.",
+      "compensating_control": "Never parse YAML from a request or a run with it. New vulnerability findings are not covered by this maintenance exception. Replacing serde_yaml in the workspace alone would not remove it while kube-client depends on it, so review kube's YAML dependency before this expires.",
       "issue": "https://github.com/mohripan/capsulet/issues/99",
       "expires": "2027-03-01"
     }

@@ -113,8 +113,7 @@ fn list_gates(format: Option<&str>) -> Result<(), String> {
 
 /// The tools the gates use and the oldest release of each the documentation
 /// supports (`docs/contracts/verification-matrix.md`). A tool with no minimum is
-/// only required to run: kubectl has to match its cluster, not a release of ours,
-/// and the scanners are pinned by what their advisory databases need.
+/// only required to run: kubectl has to match its cluster, not a release of ours.
 const SUPPORTED_TOOLS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("cargo", "cargo", &["--version"], Some("1.96")),
     ("docker", "docker", &["--version"], Some("27")),
@@ -130,8 +129,9 @@ const SUPPORTED_TOOLS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("helm", "helm", &["version", "--short"], Some("3.18")),
     ("kind", "kind", &["--version"], Some("0.30")),
     ("kubectl", "kubectl", &["version", "--client"], None),
-    ("cargo-audit", "cargo-audit", &["--version"], None),
-    ("cargo-deny", "cargo-deny", &["--version"], None),
+    // The versions CI pins in .github/workflows/supply-chain.yml.
+    ("cargo-audit", "cargo-audit", &["--version"], Some("0.22.2")),
+    ("cargo-deny", "cargo-deny", &["--version"], Some("0.20.2")),
 ];
 
 /// Reports every tool's version against its supported minimum, changing nothing.

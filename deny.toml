@@ -10,6 +10,8 @@ ignore = [
 ]
 
 [licenses]
+# Only licences a dependency actually uses. A new licence fails the gate until
+# someone reads it and adds it here.
 version = 2
 allow = [
   "Apache-2.0",
@@ -19,17 +21,61 @@ allow = [
   "CDLA-Permissive-2.0",
   "ISC",
   "MIT",
-  "MPL-2.0",
   "Unicode-3.0",
-  "Unicode-DFS-2016",
   "Zlib",
 ]
 confidence-threshold = 0.8
 
 [bans]
-multiple-versions = "warn"
+# A second version of a crate is a decision, not an accident. Each older version
+# below has been looked at: who pulls it in, and what would let it go. A new
+# duplicate fails `cargo deny check` until it is either removed or added here
+# with its reason, and crates/xtask/tests/dependency_security.rs fails when an
+# entry names a version the lockfile no longer has. Upgrade before adding one:
+# docs/contracts/dependency-policy.md.
+multiple-versions = "deny"
 wildcards = "allow"
 highlight = "all"
+skip = [
+  { crate = "block-buffer@0.10.4", reason = "RustCrypto 0.10 generation via digest 0.10 (sqlx, crc-fast); the workspace is on 0.11. Clears when sqlx moves to digest 0.11" },
+  { crate = "crypto-common@0.1.7", reason = "RustCrypto 0.10 generation via digest 0.10 (sqlx, crc-fast); the workspace is on 0.11. Clears when sqlx moves to digest 0.11" },
+  { crate = "digest@0.10.7", reason = "sqlx-postgres (hmac, md-5, sha2) and crc-fast use digest 0.10; the workspace and object_store use 0.11. Clears when sqlx moves to digest 0.11" },
+  { crate = "cpufeatures@0.2.17", reason = "via sha2 0.10 in sqlx; sha2 0.11 and chacha20 use 0.3. Clears with sqlx's RustCrypto upgrade" },
+  { crate = "hmac@0.12.1", reason = "sqlx-postgres (SCRAM) and hkdf use hmac 0.12; capsulet-api's webhook signatures use 0.13. Clears when sqlx moves to digest 0.11" },
+  { crate = "sha2@0.10.9", reason = "sqlx-core, sqlx-macros-core and sqlx-postgres use sha2 0.10; the workspace uses 0.11. Clears when sqlx moves to digest 0.11" },
+  { crate = "md-5@0.10.6", reason = "sqlx-postgres (MD5 auth) uses md-5 0.10; object_store uses 0.11. Clears when sqlx moves to digest 0.11" },
+  { crate = "hashbrown@0.14.5", reason = "via dashmap 6 (governor's rate limiter state); indexmap uses 0.17" },
+  { crate = "hashbrown@0.15.5", reason = "via sqlx-core and hashlink; indexmap uses 0.17" },
+  { crate = "hashbrown@0.16.1", reason = "via governor and metrics-util; indexmap uses 0.17" },
+  { crate = "foldhash@0.1.5", reason = "hasher of hashbrown 0.15 (sqlx-core); hashbrown 0.16 uses 0.2" },
+  { crate = "getrandom@0.2.17", reason = "via ring, jsonwebtoken and rand_core 0.6 (sqlx); uuid and rand 0.10 use 0.4" },
+  { crate = "getrandom@0.3.4", reason = "via governor, rand_core 0.9 and tempfile (dev); uuid and rand 0.10 use 0.4" },
+  { crate = "r-efi@5.3.0", reason = "UEFI bindings of getrandom 0.3; getrandom 0.4 uses 6. Never built for these targets" },
+  { crate = "rand@0.8.8", reason = "via sqlx-postgres and phf_generator (cron); object_store uses rand 0.10" },
+  { crate = "rand@0.9.5", reason = "via governor, metrics-util and opentelemetry_sdk; object_store uses rand 0.10" },
+  { crate = "rand_chacha@0.3.1", reason = "generator of rand 0.8 (sqlx-postgres, cron)" },
+  { crate = "rand_core@0.6.4", reason = "core of rand 0.8 (sqlx-postgres, cron)" },
+  { crate = "rand_core@0.9.5", reason = "core of rand 0.9 (governor, metrics-util, opentelemetry_sdk)" },
+  { crate = "syn@2.0.119", reason = "most proc-macro crates (sqlx, utoipa, tracing, prost, zerocopy) are still on syn 2 while serde, tokio and thiserror 2 moved to 3. Clears as the ecosystem moves" },
+  { crate = "itertools@0.14.0", reason = "via prost-derive (OpenTelemetry's protobuf); object_store uses 0.15" },
+  { crate = "phf@0.11.3", reason = "via cron 0.17's parser tables; chrono-tz uses 0.12" },
+  { crate = "phf_shared@0.11.3", reason = "via phf 0.11 (cron 0.17); chrono-tz uses 0.12" },
+  { crate = "thiserror@1.0.69", reason = "via forwarded-header-value (tower_governor's client-IP extraction); everything else uses thiserror 2" },
+  { crate = "thiserror-impl@1.0.69", reason = "derive of thiserror 1 (forwarded-header-value, tower_governor)" },
+  { crate = "tower-http@0.6.11", reason = "kube-client and reqwest 0.13 use tower-http 0.6; capsulet-api uses 0.7" },
+  { crate = "untrusted@0.7.1", reason = "via aws-lc-rs, jsonwebtoken's crypto backend; ring and rustls-webpki use 0.9" },
+  { crate = "redox_syscall@0.5.18", reason = "Redox-only, via parking_lot_core; libredox uses 0.9. Never built for these targets" },
+  { crate = "windows-sys@0.48.0", reason = "Windows bindings via etcetera (sqlx) and winapi-util; tokio and most crates use 0.61" },
+  { crate = "windows-sys@0.52.0", reason = "Windows bindings via ring; tokio and most crates use 0.61" },
+  { crate = "windows-targets@0.48.5", reason = "import libraries for windows-sys 0.48 (etcetera, winapi-util)" },
+  { crate = "windows_aarch64_gnullvm@0.48.5", reason = "import library for windows-sys 0.48 (etcetera, winapi-util)" },
+  { crate = "windows_aarch64_msvc@0.48.5", reason = "import library for windows-sys 0.48 (etcetera, winapi-util)" },
+  { crate = "windows_i686_gnu@0.48.5", reason = "import library for windows-sys 0.48 (etcetera, winapi-util)" },
+  { crate = "windows_i686_msvc@0.48.5", reason = "import library for windows-sys 0.48 (etcetera, winapi-util)" },
+  { crate = "windows_x86_64_gnu@0.48.5", reason = "import library for windows-sys 0.48 (etcetera, winapi-util)" },
+  { crate = "windows_x86_64_gnullvm@0.48.5", reason = "import library for windows-sys 0.48 (etcetera, winapi-util)" },
+  { crate = "windows_x86_64_msvc@0.48.5", reason = "import library for windows-sys 0.48 (etcetera, winapi-util)" },
+]
 
 [sources]
 unknown-registry = "deny"
