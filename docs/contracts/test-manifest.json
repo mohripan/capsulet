@@ -36,6 +36,10 @@
         },
         {
           "path": "crates/api/src/openapi.rs",
+          "selector": "published_list_limits_are_the_ones_handlers_apply"
+        },
+        {
+          "path": "crates/api/src/openapi.rs",
           "selector": "two_types_cannot_publish_one_component_name"
         },
         {

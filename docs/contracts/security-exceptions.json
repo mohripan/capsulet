@@ -16,20 +16,6 @@
       "expires": "2027-03-01"
     },
     {
-      "id": "RUSTSEC-2024-0436",
-      "ecosystem": "rust",
-      "package": "paste",
-      "versions": [
-        "1.0.15"
-      ],
-      "scope": "unmaintained-macro",
-      "owner": "platform",
-      "rationale": "Unmaintained macro reached through utoipa-axum; the advisory reports no exploitable defect.",
-      "compensating_control": "Monitor upstream replacement; new vulnerability findings are not covered by this maintenance exception.",
-      "issue": "https://github.com/mohripan/capsulet/issues/99",
-      "expires": "2027-03-01"
-    },
-    {
       "id": "RUSTSEC-2024-0449",
       "ecosystem": "rust",
       "package": "unsafe-libyaml",

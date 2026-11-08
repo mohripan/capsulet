@@ -12,7 +12,7 @@ use capsulet_core::{
 use capsulet_postgres::{ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::{error::ApiError, http::json_from_string};
 
@@ -372,8 +372,11 @@ pub struct CreateTriggerPluginRequest {
     pub config_schema: Option<Value>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct ListRunsQuery {
+    /// How many to return. Values outside 1 to 500 are clamped into that range.
+    #[param(minimum = 1, maximum = 500, default = 50)]
     pub(crate) limit: Option<u16>,
     pub(crate) start_at: Option<String>,
     pub(crate) end_at: Option<String>,
@@ -381,6 +384,10 @@ pub(crate) struct ListRunsQuery {
     pub(crate) state: Option<String>,
     pub(crate) sort: Option<String>,
     pub(crate) direction: Option<String>,
+}
+
+impl ListRunsQuery {
+    pub(crate) const DEFAULT_LIMIT: u16 = 50;
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -390,8 +397,11 @@ pub struct CreateWorkflowDependencyRequest {
     pub policy: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct ListWorkflowRunsQuery {
+    /// How many to return. Values outside 1 to 500 are clamped into that range.
+    #[param(minimum = 1, maximum = 500, default = 100)]
     pub(crate) limit: Option<u16>,
     pub(crate) start_at: Option<String>,
     pub(crate) end_at: Option<String>,
@@ -401,10 +411,24 @@ pub(crate) struct ListWorkflowRunsQuery {
     pub(crate) direction: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+impl ListWorkflowRunsQuery {
+    pub(crate) const DEFAULT_LIMIT: u16 = 100;
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct ListJobDefinitionsQuery {
+    /// How many to return. Values outside 1 to 500 are clamped into that range.
+    #[param(minimum = 1, maximum = 500, default = 100)]
     pub(crate) limit: Option<u16>,
 }
+
+impl ListJobDefinitionsQuery {
+    pub(crate) const DEFAULT_LIMIT: u16 = 100;
+}
+
+/// The most any listing returns; a larger `limit` is clamped to it.
+pub(crate) const LIST_LIMIT_MAX: u16 = 500;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ListRunsResponse {

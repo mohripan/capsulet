@@ -103,8 +103,10 @@ pub(crate) struct ListIngestionRunsResponse {
     runs: Vec<IngestionRunResponse>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct ReviewClaimsQuery {
+    /// Only those with this status.
     status: Option<String>,
 }
 

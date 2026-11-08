@@ -7531,6 +7531,7 @@
             }
           },
           {
+            "description": "Only those with this status.",
             "in": "query",
             "name": "status",
             "required": false,
@@ -8352,11 +8353,14 @@
             }
           },
           {
+            "description": "How many to return. Values outside 1 to 500 are clamped into that range.",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
-              "maximum": 1000,
+              "default": 100,
+              "format": "int32",
+              "maximum": 500,
               "minimum": 1,
               "type": "integer"
             }
@@ -8773,11 +8777,14 @@
             }
           },
           {
+            "description": "How many to return. Values outside 1 to 500 are clamped into that range.",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
-              "maximum": 1000,
+              "default": 50,
+              "format": "int32",
+              "maximum": 500,
               "minimum": 1,
               "type": "integer"
             }
@@ -9732,6 +9739,7 @@
             }
           },
           {
+            "description": "Only those with this status.",
             "in": "query",
             "name": "status",
             "required": false,
@@ -10428,6 +10436,7 @@
             }
           },
           {
+            "description": "Only those with this status.",
             "in": "query",
             "name": "status",
             "required": false,
@@ -12983,11 +12992,14 @@
             }
           },
           {
+            "description": "How many to return. Values outside 1 to 500 are clamped into that range.",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
-              "maximum": 1000,
+              "default": 100,
+              "format": "int32",
+              "maximum": 500,
               "minimum": 1,
               "type": "integer"
             }

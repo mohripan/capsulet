@@ -147,13 +147,17 @@ pub(crate) struct CreateEntityResolutionRequest {
     evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct ListEntityResolutionsQuery {
+    /// Only those with this status.
     status: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct ListClaimConflictsQuery {
+    /// Only those with this status.
     status: Option<String>,
 }
 

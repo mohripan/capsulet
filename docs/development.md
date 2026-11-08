@@ -66,8 +66,12 @@ Use the following workflow for contract changes:
    Regenerate `docs/contracts/product-claims.md` with
    `pwsh ./scripts/render-product-claims.ps1 -OutputPath docs/contracts/product-claims.md`.
 2. Endpoint or wire schema: declare the operation in `crates/api/src/endpoint_contract.rs`, naming
-   the Rust type the handler reads and the one it writes, never a schema name. Derive
-   `utoipa::ToSchema` on those serde types; `#[schema(as = Name)]` keeps a published component name
+   the Rust type the handler reads, the one it writes and, with `query = Type`, the query it
+   deserializes, never a schema name or a parameter list. Register its handler in
+   `crates/api/src/http/internal.rs` with `.operation("operationId", handler)`: the method, the path
+   and whether it needs authentication come from the contract, and the router refuses to start
+   with an operation unregistered. Derive `utoipa::ToSchema` on the body types and
+   `utoipa::IntoParams` on the query type; `#[schema(as = Name)]` keeps a published component name
    that differs from the Rust one. The document collects each type's schema and every schema it
    refers to, and refuses two types that claim one name. Only shapes with no serde type in this
    crate, such as non-JSON bodies or the kernel's certificate, are written out, as types in

@@ -3128,7 +3128,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "HTTP API",
-      "statement": "The OpenAPI 3.1 document is generated from typed endpoint metadata that names the Rust wire type of every request and response, has no unresolved references, exactly matches runtime registration, validates through utoipa, and is checked for deterministic drift; real error, webhook, service-account, proposal and kernel-certificate payloads are checked against the components they publish.",
+      "statement": "The OpenAPI 3.1 document is generated from typed endpoint metadata that names the Rust wire type of every request, response and query, has no unresolved references, exactly matches runtime registration, validates through utoipa, and is checked for deterministic drift; real error, webhook, service-account, proposal and kernel-certificate payloads are checked against the components they publish, and published list limits are the ones handlers apply.",
       "public_surfaces": [
         "docs/api.md",
         "crates/api/openapi.json"
@@ -3172,6 +3172,12 @@
             "kernel_certificates_match_the_published_certificate",
             "a_raw_proposal_matches_its_schema",
             "a_webhook_reply_matches_its_schema"
+          ]
+        },
+        {
+          "assertion": "query-limits-match-handlers",
+          "evidence_selectors": [
+            "published_list_limits_are_the_ones_handlers_apply"
           ]
         }
       ],
@@ -3249,6 +3255,13 @@
           "gate": "unit",
           "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_webhook_reply_matches_its_schema"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "published_list_limits_are_the_ones_handlers_apply"
         }
       ]
     },

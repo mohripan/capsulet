@@ -2,8 +2,9 @@
 
 use std::{borrow::Cow, collections::BTreeSet, fmt};
 
+use utoipa::openapi::path::{Parameter, ParameterIn};
 use utoipa::openapi::{RefOr, Schema};
-use utoipa::{PartialSchema, ToSchema};
+use utoipa::{IntoParams, PartialSchema, ToSchema};
 
 /// HTTP methods supported by the public contract registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -379,6 +380,59 @@ impl fmt::Debug for SchemaId {
     }
 }
 
+/// The query parameters an endpoint reads, by the Rust type its handler deserializes.
+///
+/// Like [`SchemaId`], a handle on a type, never a list kept beside it: the names,
+/// types, bounds and descriptions published come from the type's `IntoParams`.
+#[derive(Clone, Copy)]
+pub struct ParamsId {
+    parameters: fn() -> Vec<Parameter>,
+}
+
+impl ParamsId {
+    /// The query parameters of `T`.
+    #[must_use]
+    pub const fn of<T: IntoParams>() -> Self {
+        Self {
+            parameters: query_parameters::<T>,
+        }
+    }
+
+    /// Every query parameter, in field order.
+    #[must_use]
+    pub fn parameters(self) -> Vec<Parameter> {
+        (self.parameters)()
+    }
+
+    fn names(self) -> Vec<String> {
+        self.parameters()
+            .into_iter()
+            .map(|parameter| parameter.name)
+            .collect()
+    }
+}
+
+fn query_parameters<T: IntoParams>() -> Vec<Parameter> {
+    T::into_params(|| Some(ParameterIn::Query))
+}
+
+impl PartialEq for ParamsId {
+    fn eq(&self, other: &Self) -> bool {
+        self.names() == other.names()
+    }
+}
+
+impl Eq for ParamsId {}
+
+impl fmt::Debug for ParamsId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("ParamsId")
+            .field(&self.names())
+            .finish()
+    }
+}
+
 macro_rules! optional_schema {
     (None) => {
         None
@@ -407,6 +461,7 @@ pub struct EndpointContract {
     pub authentication: AuthenticationMode,
     pub request_schema: Option<SchemaId>,
     pub response_schema: SchemaId,
+    pub query: Option<ParamsId>,
     pub error_contract: ErrorContract,
     pub success_status: ResponseStatus,
     pub response_content_type: MediaType,
@@ -622,9 +677,18 @@ macro_rules! endpoint {
             authentication: authentication_mode!($auth),
             request_schema: optional_schema!($request $(($request_type))?),
             response_schema: SchemaId::of::<$response>(),
+            query: None,
             error_contract: ErrorContract::Json,
             success_status: response_status!($status),
             response_content_type: MediaType::Json,
+        }
+    };
+    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:ident $(($request_type:ty))?, $response:ty, $status:tt, query = $query:ty) => {
+        EndpointContract {
+            query: Some(ParamsId::of::<$query>()),
+            ..endpoint!(
+                $method, $path, $operation, $scope, $project, $auth, $request $(($request_type))?, $response, $status
+            )
         }
     };
     ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:ident $(($request_type:ty))?, $response:ty, $status:tt, $content:tt) => {
@@ -803,7 +867,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         None,
         crate::models::ListJobDefinitionsResponse,
-        "200"
+        "200",
+        query = crate::models::ListJobDefinitionsQuery
     ),
     endpoint!(
         "POST",
@@ -1573,7 +1638,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         None,
         crate::memory::ListEntityResolutionsResponse,
-        "200"
+        "200",
+        query = crate::memory::ListEntityResolutionsQuery
     ),
     endpoint!(
         "POST",
@@ -1617,7 +1683,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         None,
         crate::memory::ListClaimConflictsResponse,
-        "200"
+        "200",
+        query = crate::memory::ListClaimConflictsQuery
     ),
     endpoint!(
         "POST",
@@ -1749,7 +1816,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         None,
         crate::ingestion::ListReviewClaimsResponse,
-        "200"
+        "200",
+        query = crate::ingestion::ReviewClaimsQuery
     ),
     endpoint!(
         "POST",
@@ -1914,7 +1982,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         None,
         crate::models::ListWorkflowRunsResponse,
-        "200"
+        "200",
+        query = crate::models::ListWorkflowRunsQuery
     ),
     endpoint!(
         "GET",
@@ -2004,7 +2073,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         None,
         crate::models::ListRunsResponse,
-        "200"
+        "200",
+        query = crate::models::ListRunsQuery
     ),
     endpoint!(
         "POST",

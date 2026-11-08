@@ -200,32 +200,9 @@ fn operation_parameters(endpoint: &crate::EndpointContract) -> Vec<Value> {
         "description": "Optional caller-supplied request correlation identifier.",
         "schema": {"type": "string"}
     }));
-    if endpoint.method == crate::HttpMethod::Get
-        && matches!(endpoint.path, "/v1/jobs/runs" | "/v1/workflow-runs")
-    {
-        for name in [
-            "limit",
-            "start_at",
-            "end_at",
-            "q",
-            "state",
-            "sort",
-            "direction",
-        ] {
-            parameters.push(query_parameter(name));
-        }
-    } else if endpoint.method == crate::HttpMethod::Get && endpoint.path == "/v1/job-definitions" {
-        parameters.push(query_parameter("limit"));
-    }
-    if endpoint.method == crate::HttpMethod::Get
-        && matches!(
-            endpoint.path,
-            "/v1/memory/entity-resolutions"
-                | "/v1/memory/conflicts"
-                | "/v1/ingestion/review/claims"
-        )
-    {
-        parameters.push(query_parameter("status"));
+    // The query an endpoint reads is the type its handler deserializes.
+    for parameter in endpoint.query.iter().flat_map(|query| query.parameters()) {
+        parameters.push(serde_json::to_value(parameter).expect("query parameters serialize"));
     }
     if endpoint.path == "/v1/webhooks/{automation_id}/{trigger_name}" {
         for (name, required) in [
@@ -248,15 +225,6 @@ fn operation_parameters(endpoint: &crate::EndpointContract) -> Vec<Value> {
 
 fn schema_reference(name: &str) -> Value {
     json!({"$ref": format!("#/components/schemas/{name}")})
-}
-
-fn query_parameter(name: &str) -> Value {
-    let schema = if name == "limit" {
-        json!({"type": "integer", "minimum": 1, "maximum": 1000})
-    } else {
-        json!({"type": "string"})
-    };
-    json!({"name": name, "in": "query", "required": false, "schema": schema})
 }
 
 /// Adds a type's schema and every schema it refers to.
@@ -543,6 +511,40 @@ mod tests {
             "RawProposal",
             &serde_json::to_value(&proposal).expect("serializes"),
         );
+    }
+
+    /// A listing's published `limit` is what its handler clamps to and falls back on.
+    #[test]
+    fn published_list_limits_are_the_ones_handlers_apply() {
+        use crate::models::{
+            LIST_LIMIT_MAX, ListJobDefinitionsQuery, ListRunsQuery, ListWorkflowRunsQuery,
+        };
+
+        let document = generated_openapi();
+        for (method, path, default) in [
+            ("get", "/v1/jobs/runs", ListRunsQuery::DEFAULT_LIMIT),
+            (
+                "get",
+                "/v1/workflow-runs",
+                ListWorkflowRunsQuery::DEFAULT_LIMIT,
+            ),
+            (
+                "get",
+                "/v1/job-definitions",
+                ListJobDefinitionsQuery::DEFAULT_LIMIT,
+            ),
+        ] {
+            let limit = document["paths"][path][method]["parameters"]
+                .as_array()
+                .expect("parameters")
+                .iter()
+                .find(|parameter| parameter["name"] == "limit")
+                .unwrap_or_else(|| panic!("{path} publishes no limit"));
+            assert_eq!(limit["in"], "query", "{path}");
+            assert_eq!(limit["schema"]["maximum"], json!(LIST_LIMIT_MAX), "{path}");
+            assert_eq!(limit["schema"]["minimum"], json!(1), "{path}");
+            assert_eq!(limit["schema"]["default"], json!(default), "{path}");
+        }
     }
 
     /// The certificate schema is written out by hand, because the kernel crate
