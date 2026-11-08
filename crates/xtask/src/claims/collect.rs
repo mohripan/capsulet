@@ -389,18 +389,21 @@ fn node(root: &Path, command: &CommandSpec) -> Result<Vec<Collected>, String> {
         |_| "--test-reporter=junit".to_string(),
         |existing| format!("{existing} --test-reporter=junit"),
     );
+    let directory = working_directory(root, command);
     let text = output(
         Command::new(platform_program(&command.program))
             .args(&command.arguments)
             .envs(&command.environment)
             .env("NODE_OPTIONS", options)
-            .current_dir(working_directory(root, command)),
+            .current_dir(&directory),
         &format!("`{}`", render_command(command)),
     )?;
     parse_junit(&text)
         .into_iter()
         .map(|case| {
-            let source = relative(root, Path::new(&case.file))?;
+            let path = junit_file(&directory, &case)?;
+            let source = relative(root, &path)
+                .map_err(|error| format!("{} is not in the workspace: {error}", path.display()))?;
             Ok(Collected::file(
                 &source,
                 &case.name,
@@ -409,6 +412,26 @@ fn node(root: &Path, command: &CommandSpec) -> Result<Vec<Collected>, String> {
             ))
         })
         .collect()
+}
+
+/// The file a `junit` case names, resolved against the directory the suite ran in.
+///
+/// Node writes the `file` attribute from Node 24. Earlier releases leave it out,
+/// and a test cannot then be told apart from one of the same name in another
+/// file, so that is an error that says which Node to use rather than a guess.
+pub(crate) fn junit_file(directory: &Path, case: &JunitCase) -> Result<PathBuf, String> {
+    if case.file.is_empty() {
+        return Err(format!(
+            "Node's junit reporter did not say which file `{}` is in; it does from Node 24, which this gate needs",
+            case.name
+        ));
+    }
+    let path = Path::new(&case.file);
+    Ok(if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        directory.join(path)
+    })
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -537,8 +560,8 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        CargoInvocation, Collected, JunitCase, discover_arguments, parse_junit, parse_libtest_list,
-        test_targets,
+        CargoInvocation, Collected, JunitCase, discover_arguments, junit_file, parse_junit,
+        parse_libtest_list, test_targets,
     };
 
     #[test]
@@ -633,6 +656,28 @@ mod tests {
             discover_arguments(&["tests", "check_*.py"]),
             ("tests".to_string(), "check_*.py".to_string(), String::new())
         );
+    }
+
+    #[test]
+    fn a_junit_file_is_resolved_against_the_suite_directory_and_never_guessed() {
+        let case = |file: &str| JunitCase {
+            suite: "helpers".to_string(),
+            name: "formats sizes".to_string(),
+            file: file.to_string(),
+            skipped: false,
+        };
+        let directory = Path::new("/work/dashboard");
+        assert_eq!(
+            junit_file(directory, &case("tests/api.test.ts")).expect("relative"),
+            directory.join("tests/api.test.ts")
+        );
+        let absolute = std::env::current_dir().expect("cwd").join("a.test.ts");
+        assert_eq!(
+            junit_file(directory, &case(&absolute.display().to_string())).expect("absolute"),
+            absolute
+        );
+        let missing = junit_file(directory, &case("")).expect_err("Node 22 omits the file");
+        assert!(missing.contains("from Node 24"), "{missing}");
     }
 
     #[test]

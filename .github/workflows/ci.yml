@@ -65,10 +65,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Node 24 or newer: claims-evidence reads which file each dashboard test is
+      # in from Node's junit reporter, which only writes it from Node 24.
       - name: Install Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 

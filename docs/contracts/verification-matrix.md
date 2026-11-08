@@ -15,7 +15,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `api-contracts` | yes | yes | Runtime/OpenAPI equality and drift | Cargo |
 | `authorization` | yes | yes | Executed HTTP role/scope matrix and generated policy drift | Cargo |
 | `claims` | yes | yes | Claims, lifecycle, and public surfaces | PowerShell |
-| `claims-evidence` | yes | yes | Every claim's test evidence is collected, and not ignored or skipped, by the gate command it names; `docs/contracts/test-manifest.json` matches that collection | Cargo, Python, npm, PowerShell |
+| `claims-evidence` | yes | yes | Every claim's test evidence is collected, and not ignored or skipped, by the gate command it names; `docs/contracts/test-manifest.json` matches that collection | Cargo, Python, Node.js 24+ with npm, PowerShell |
 | `sdk` | yes | yes | Python and dashboard transports | Python, npm |
 | `dashboard` | no | yes | ESLint and production build | npm |
 | `postgres` | no | yes | Isolated persistence integration | Cargo, Docker |
