@@ -34,6 +34,9 @@ use crate::runtime::{Progress, WorkerError};
 /// How many distinct model names metrics label before the rest share one label.
 const MODEL_LABEL_LIMIT: usize = 32;
 
+/// The most of a definition-supplied string that telemetry carries, in bytes.
+const MAX_SUPPLIED_TEXT: usize = 128;
+
 static MODEL_LABELS: BoundedLabel = BoundedLabel::new(MODEL_LABEL_LIMIT);
 
 /// The node kinds the agent executor runs. Anything else is labelled `other`, because
@@ -246,6 +249,9 @@ impl ModelCall {
         temperature_milli: Option<u32>,
         max_tokens: Option<u32>,
     ) -> Self {
+        // A model name is whatever the agent's definition says, so it is held to a
+        // length before it becomes a span name, an attribute or a label.
+        let model = bounded(model);
         let span = tracing::info_span!(
             "gen_ai.client",
             otel.name = %format!("{operation} {model}"),
@@ -464,5 +470,34 @@ fn model_error_summary(error: &ModelError) -> String {
     match error {
         ModelError::Rejected { status, .. } => format!("refused with status {status}"),
         ModelError::Unreachable(_) | ModelError::Malformed(_) => error.to_string(),
+    }
+}
+
+/// At most [`MAX_SUPPLIED_TEXT`] bytes of `value`, cut on a character boundary.
+fn bounded(value: &str) -> &str {
+    if value.len() <= MAX_SUPPLIED_TEXT {
+        return value;
+    }
+    let mut end = MAX_SUPPLIED_TEXT;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    &value[..end]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_SUPPLIED_TEXT, bounded};
+
+    #[test]
+    fn supplied_text_is_cut_to_a_bound_on_a_character_boundary() {
+        assert_eq!(bounded("small-model"), "small-model");
+        let long = "m".repeat(10_000);
+        assert_eq!(bounded(&long).len(), MAX_SUPPLIED_TEXT);
+        // Two-byte characters, so the bound falls inside one.
+        let wide = "é".repeat(100);
+        let cut = bounded(&wide);
+        assert!(cut.len() <= MAX_SUPPLIED_TEXT);
+        assert!(cut.chars().all(|each| each == 'é'));
     }
 }

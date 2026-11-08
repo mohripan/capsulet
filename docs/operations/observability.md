@@ -147,6 +147,10 @@ conventions' opt-in content attributes (`gen_ai.input.messages`, `gen_ai.output.
 `crates/graph-worker/tests/agent_runs.rs` search every exported span for the text a run was given and
 produced.
 
+Some attribute values come from a tenant's definition rather than from Capsulet. Node, effect and
+region ids are identifiers, so their length and characters are already restricted. A model name is
+free text, so it is cut to 128 bytes before it becomes a span name, an attribute or a metric label.
+
 ### Changing the conventions
 
 Moving the pin is a deliberate change: `crates/observability/src/genai.rs`, the attribute names in
