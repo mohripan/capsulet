@@ -120,6 +120,26 @@
         ],
         "type": "object"
       },
+      "AgentRunErasureResponse": {
+        "description": "What erasing an agent run's payloads did.",
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/AgentRunResponse",
+            "description": "The run as it reads now."
+          },
+          "values_erased": {
+            "description": "How many stored values this request erased. Zero when an earlier request\nalready had, which makes asking again harmless.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "values_erased",
+          "run"
+        ],
+        "type": "object"
+      },
       "AgentRunResponse": {
         "properties": {
           "agent_id": {
@@ -5173,6 +5193,75 @@
           "project_admin"
         ],
         "x-capsulet-required-scope": "agents:operate",
+        "x-capsulet-resource": "agents",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/agent-runs/{id}/erase": {
+      "post": {
+        "operationId": "eraseAgentRunPayloads",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunErasureResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "erase agent run payloads",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:write",
         "x-capsulet-resource": "agents",
         "x-capsulet-stability": "experimental"
       }

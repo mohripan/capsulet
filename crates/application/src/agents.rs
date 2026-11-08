@@ -26,6 +26,8 @@ pub struct AgentRunExecution {
     pub detail: Option<String>,
     /// What the run is suspended on, when it is.
     pub waiting_on: Option<String>,
+    /// When what the run was given and produced was erased, if it was.
+    pub payloads_erased_at: Option<String>,
     pub usage: AgentRunUsage,
 }
 

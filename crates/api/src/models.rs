@@ -628,7 +628,20 @@ pub(crate) struct AgentRunExecutionResponse {
     pub(crate) detail: Option<String>,
     /// What the run is suspended on, when it is.
     pub(crate) waiting_on: Option<String>,
+    /// When what the run was given and produced was erased, if it was. An erased
+    /// run's `state` is empty and its log still lists every event, by digest.
+    pub(crate) payloads_erased_at: Option<String>,
     pub(crate) usage: AgentRunUsageResponse,
+}
+
+/// What erasing an agent run's payloads did.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AgentRunErasureResponse {
+    /// How many stored values this request erased. Zero when an earlier request
+    /// already had, which makes asking again harmless.
+    pub(crate) values_erased: u64,
+    /// The run as it reads now.
+    pub(crate) run: AgentRunResponse,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -995,6 +1008,7 @@ impl AgentRunResponse {
                     definition_digest: execution.definition_digest.clone(),
                     detail: execution.detail.clone(),
                     waiting_on: execution.waiting_on.clone(),
+                    payloads_erased_at: execution.payloads_erased_at.clone(),
                     usage: AgentRunUsageResponse {
                         tokens: execution.usage.tokens,
                         cost_micro_units: execution.usage.cost_micro_units,

@@ -88,6 +88,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | `CAP-AGENT-005` | implemented | capability | What a model reports spending counts against a run as soon as it is known, and usage nobody measured is counted as unknown rather than as zero. |
 | `CAP-AGENT-006` | implemented | capability | An agent cannot propose a memory claim that is active, cannot run a job its project does not own, and cannot be read, started or cancelled from another project. |
 | `CAP-AGENT-007` | implemented | limitation | A graph where a model chooses the next node cannot run and is refused at run start; agent runs execute in observe mode, so a finished run is unverified; and retrieval is lexical, finding shared words and nothing about meaning. |
+| `CAP-AGENT-008` | implemented | capability | A project admin can erase what a finished agent run was given and produced, its stored inputs and outputs, the values those name and its starting state, while its event log, definition and certificates stay whole; erasure is refused while the run, or another run of the project holding the same content, has not ended, and asking again erases nothing more. |
 | `CAP-GRAPH-001` | implemented | capability | Capsulet returns a deterministic static order for valid acyclic typed agent graph definitions. |
 
 ## HTTP API

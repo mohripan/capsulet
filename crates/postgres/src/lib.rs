@@ -32,7 +32,9 @@ mod worker_store;
 mod workflow_runs;
 mod workflows;
 
-pub use agent_runs::{AgentRunStart, MAX_IR_RUN_VALUE_BYTES};
+pub use agent_runs::{
+    AgentRunStart, MAX_ERASED_VALUES, MAX_IR_RUN_VALUE_BYTES, PayloadErasure, StoredValue,
+};
 pub use artifacts::UpstreamArtifact;
 pub use assurance::{EvidenceLocation, StoredCertificate};
 pub use audit::{AuditEvent, AuditScope, NewAuditEvent};

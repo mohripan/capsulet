@@ -12,7 +12,7 @@ use capsulet_ir::agent::HUMAN_REVIEWER;
 use capsulet_ir::definition::Definition;
 use capsulet_ir::id::Identifier;
 use capsulet_ir_adapters::from_agent;
-use capsulet_postgres::{AgentRunStart, MAX_IR_RUN_VALUE_BYTES};
+use capsulet_postgres::{AgentRunStart, MAX_IR_RUN_VALUE_BYTES, PayloadErasure};
 use capsulet_runtime::Signal;
 use capsulet_runtime::values::check_value;
 use capsulet_storage::ObjectStore;
@@ -24,9 +24,10 @@ use crate::{
     error::ApiError,
     http::{generated_id, internal::ProjectContext, project_context, require_resource_project},
     models::{
-        AgentResponse, AgentRunResponse, CreateAgentRequest, CreateGraphRequest,
-        DecideAgentRunRequest, GraphResponse, ListAgentRunsResponse, ListAgentsResponse,
-        ListGraphsResponse, StartAgentRunRequest, termination_policy_from_conditions,
+        AgentResponse, AgentRunErasureResponse, AgentRunResponse, CreateAgentRequest,
+        CreateGraphRequest, DecideAgentRunRequest, GraphResponse, ListAgentRunsResponse,
+        ListAgentsResponse, ListGraphsResponse, StartAgentRunRequest,
+        termination_policy_from_conditions,
     },
     state::AppState,
     store::ApiStore,
@@ -391,6 +392,54 @@ where
         .await
         .map_err(ApiError::store)?;
     Ok((StatusCode::ACCEPTED, Json(AgentRunResponse::new(&run)?)))
+}
+
+/// Erases what a finished run was given and produced, keeping the record that it ran.
+///
+/// The run's stored inputs and outputs, everything those name in turn, and the copy
+/// of its starting state are erased; its log, definition and anything certified about
+/// it stay, so the decisions it took can still be replayed. A run that has not ended
+/// is refused, because it may still read what it was given; cancel it first. Asking
+/// again is harmless and erases nothing more.
+pub(crate) async fn erase_agent_run_payloads<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<AgentRunErasureResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    let id = AgentRunId::new(id).map_err(ApiError::validation)?;
+    let by = identity_of(&principal)?;
+    let outcome = state
+        .store
+        .erase_agent_run_payloads(&id, &context.tenant_id, &context.project_id, by.as_str())
+        .await
+        .map_err(ApiError::store)?;
+    let values_erased = match outcome {
+        None => return Err(ApiError::ResourceNotFound),
+        Some(PayloadErasure::Erased { values }) => values,
+        Some(PayloadErasure::AlreadyErased) => 0,
+        Some(PayloadErasure::StillRunning | PayloadErasure::NotDurable) => {
+            return Err(ApiError::AgentRunStateConflict(id.as_str().to_string()));
+        }
+        // The run named is this project's, so naming it tells the caller nothing
+        // they could not list for themselves.
+        Some(PayloadErasure::InUse { run }) => {
+            return Err(ApiError::AgentRunPayloadsInUse {
+                run: id.as_str().to_string(),
+                other: run,
+            });
+        }
+    };
+    let run = find_run(&state.store, &id, &context).await?;
+    Ok(Json(AgentRunErasureResponse {
+        values_erased,
+        run: AgentRunResponse::new(&run)?,
+    }))
 }
 
 /// Answers the gate a run is waiting at.

@@ -935,6 +935,10 @@
         },
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_run_that_has_not_ended_cannot_have_its_payloads_erased"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
           "selector": "a_safety_check_stops_the_run"
         },
         {
@@ -960,6 +964,14 @@
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",
           "selector": "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "erasing_a_finished_run_removes_what_it_held_and_keeps_its_record"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "erasing_is_refused_while_a_live_run_holds_the_same_content"
         },
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",
@@ -1442,6 +1454,57 @@
           "path": "crates/graph-worker/tests/agent_runs.rs",
           "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
           "selector": "a_planner_agent_is_refused_at_the_start_by_name"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AGENT-008",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
+      "statement": "A project admin can erase what a finished agent run was given and produced, its stored inputs and outputs, the values those name and its starting state, while its event log, definition and certificates stay whole; erasure is refused while the run, or another run of the project holding the same content, has not ended, and asking again erases nothing more.",
+      "public_surfaces": [
+        "docs/api.md",
+        "docs/persistence.md"
+      ],
+      "verification": [
+        {
+          "assertion": "erases-payloads-keeps-record",
+          "evidence_selectors": [
+            "erasing_a_finished_run_removes_what_it_held_and_keeps_its_record"
+          ]
+        },
+        {
+          "assertion": "refuses-unfinished-run",
+          "evidence_selectors": [
+            "a_run_that_has_not_ended_cannot_have_its_payloads_erased"
+          ]
+        },
+        {
+          "assertion": "refuses-shared-live-content",
+          "evidence_selectors": [
+            "erasing_is_refused_while_a_live_run_holds_the_same_content"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_run_that_has_not_ended_cannot_have_its_payloads_erased"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "erasing_a_finished_run_removes_what_it_held_and_keeps_its_record"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "erasing_is_refused_while_a_live_run_holds_the_same_content"
         }
       ]
     },

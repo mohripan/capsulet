@@ -1027,6 +1027,17 @@ const ENDPOINTS: &[EndpointContract] = &[
     ),
     endpoint!(
         "POST",
+        "/v1/agent-runs/{id}/erase",
+        "eraseAgentRunPayloads",
+        "agents:write",
+        true,
+        true,
+        None,
+        "AgentRunErasureResponse",
+        "200"
+    ),
+    endpoint!(
+        "POST",
         "/v1/agent-runs/{id}/decisions",
         "decideAgentRun",
         "agents:operate",

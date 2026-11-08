@@ -210,6 +210,11 @@
     "ownership": "selected_project"
   },
   {
+    "operation_id": "eraseAgentRunPayloads",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
     "operation_id": "askReasoning",
     "minimum_role": "operator",
     "ownership": "selected_project"

@@ -1096,6 +1096,8 @@ export type AgentRun = {
     definition_digest: string;
     detail: string | null;
     waiting_on: string | null;
+    /** When what the run was given and produced was erased, if it was. */
+    payloads_erased_at?: string | null;
     usage: AgentRunUsage;
   } | null;
 };

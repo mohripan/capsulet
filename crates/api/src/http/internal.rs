@@ -273,6 +273,10 @@ where
         )
         .route_operations(&["cancelAgentRun"], post(crate::graphs::cancel_agent_run))
         .route_operations(&["decideAgentRun"], post(crate::graphs::decide_agent_run))
+        .route_operations(
+            &["eraseAgentRunPayloads"],
+            post(crate::graphs::erase_agent_run_payloads),
+        )
         .route_operations(&["askReasoning"], post(crate::reasoning::ask))
         .route_operations(
             &["listCertificates"],

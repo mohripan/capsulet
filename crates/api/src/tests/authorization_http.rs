@@ -360,6 +360,10 @@ authorization_operation!(authorization_get_agent_run, "getAgentRun");
 authorization_operation!(authorization_get_agent_run_events, "getAgentRunEvents");
 authorization_operation!(authorization_cancel_agent_run, "cancelAgentRun");
 authorization_operation!(authorization_decide_agent_run, "decideAgentRun");
+authorization_operation!(
+    authorization_erase_agent_run_payloads,
+    "eraseAgentRunPayloads"
+);
 authorization_operation!(authorization_ask_reasoning, "askReasoning");
 authorization_operation!(authorization_register_ir_definition, "registerIrDefinition");
 authorization_operation!(authorization_list_ir_definitions, "listIrDefinitions");

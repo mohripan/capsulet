@@ -254,6 +254,17 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
+    /// Erases what a finished agent run was given and produced. `None` when the
+    /// project has no such run.
+    async fn erase_agent_run_payloads(
+        &self,
+        _id: &AgentRunId,
+        _tenant_id: &str,
+        _project_id: &str,
+        _by: &str,
+    ) -> Result<Option<capsulet_postgres::PayloadErasure>, Self::Error> {
+        Ok(None)
+    }
     async fn list_agent_runs(
         &self,
         tenant_id: &str,
@@ -1001,6 +1012,17 @@ impl ApiStore for PostgresStore {
         PostgresStore::deliver_ir_run_signal(self, tenant_id, project_id, run_id, signal)
             .await
             .map(|_| ())
+    }
+
+    async fn erase_agent_run_payloads(
+        &self,
+        id: &AgentRunId,
+        tenant_id: &str,
+        project_id: &str,
+        by: &str,
+    ) -> Result<Option<capsulet_postgres::PayloadErasure>, Self::Error> {
+        self.erase_agent_run_payloads_in_project(id, tenant_id, project_id, by)
+            .await
     }
 
     async fn list_agent_runs(

@@ -30,7 +30,7 @@ use capsulet_ir::loop_region::FailureKind;
 use capsulet_ir::node::Node;
 use capsulet_observability::genai;
 use capsulet_observability::tracing::Instrument;
-use capsulet_postgres::{MAX_IR_RUN_VALUE_BYTES, PostgresStore, PostgresStoreError};
+use capsulet_postgres::{MAX_IR_RUN_VALUE_BYTES, PostgresStore, PostgresStoreError, StoredValue};
 use capsulet_runtime::event::{ControlValue, NodeUsage};
 use capsulet_runtime::values::check_value;
 use serde_json::{Value, json};
@@ -46,6 +46,8 @@ use crate::telemetry::{self, ModelCall};
 const DEFAULT_TOP_K: usize = 5;
 /// How many of a project's newest claims a lexical search looks through.
 const CLAIM_SEARCH_WINDOW: i64 = 500;
+/// The most of a provider's error message a failure detail keeps, in bytes.
+const MAX_PROVIDER_MESSAGE: usize = 512;
 /// How often a job node looks to see whether its job has finished.
 const JOB_POLL: Duration = Duration::from_millis(500);
 
@@ -217,17 +219,28 @@ impl AgentExecutor {
         project: &str,
         digest: &Digest,
     ) -> Result<Value, Failure> {
-        let stored = self
+        let stored = match self
             .store
-            .get_ir_run_value(tenant, project, digest)
+            .read_ir_run_value(tenant, project, digest)
             .await
             .map_err(|error| Failure::storage(&error))?
-            .ok_or_else(|| {
-                Failure::new(
+        {
+            Some(StoredValue::Present(content)) => content,
+            // Somebody asked for these bytes not to be held any more. Saying so is
+            // the difference between a run that lost data and one that was told to.
+            Some(StoredValue::Erased) => {
+                return Err(Failure::new(
+                    FailureKind::MissingEvidence,
+                    format!("the value for {digest} was erased on request"),
+                ));
+            }
+            None => {
+                return Err(Failure::new(
                     FailureKind::StaleReference,
                     format!("no value is stored for {digest} in this project"),
-                )
-            })?;
+                ));
+            }
+        };
         serde_json::from_str(&stored).map_err(|error| {
             Failure::new(
                 FailureKind::StaleReference,
@@ -1037,15 +1050,36 @@ fn model_failure(provider: &str, model: &str, error: &ModelError) -> Failure {
         }
         ModelError::Malformed(_) => FailureKind::SchemaMismatch,
     };
+    // A provider's error body is recorded as it was sent, but not all of it: the
+    // detail lives in the run's log, which an erasure does not rewrite.
+    let said = match error {
+        ModelError::Rejected { status, body } => format!(
+            "refused with status {status}: {}",
+            cut(body, MAX_PROVIDER_MESSAGE)
+        ),
+        ModelError::Unreachable(_) | ModelError::Malformed(_) => error.to_string(),
+    };
     Failure {
         kind,
-        detail: format!("{provider} model `{model}`: {error}"),
+        detail: format!("{provider} model `{model}`: {said}"),
         usage: Some(Box::new(NodeUsage {
             provider: Some(provider.to_string()),
             model: Some(model.to_string()),
             ..NodeUsage::default()
         })),
     }
+}
+
+/// At most `limit` bytes of `text`, cut on a character boundary.
+fn cut(text: &str, limit: usize) -> &str {
+    if text.len() <= limit {
+        return text;
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }
 
 /// Collapses runs of whitespace and trims. The same text in always comes out the same.

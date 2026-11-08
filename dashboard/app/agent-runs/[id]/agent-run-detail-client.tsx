@@ -135,6 +135,12 @@ export default function AgentRunDetailClient({ id }: { id: string }) {
                   <strong>{run.execution.waiting_on}</strong>
                 </>
               ) : null}
+              {run.execution?.payloads_erased_at ? (
+                <>
+                  <span>Payloads erased</span>
+                  <strong>{run.execution.payloads_erased_at}</strong>
+                </>
+              ) : null}
               <span>Definition</span>
               <strong className="mono">{run.execution?.definition_digest ?? "None: this run predates agent execution."}</strong>
             </div>
@@ -144,7 +150,11 @@ export default function AgentRunDetailClient({ id }: { id: string }) {
         {run ? (
           <section className="panel span7">
             <PanelTitle icon={Bot} title="State" action="Latest" />
-            <pre className="terminal logBlock">{JSON.stringify(run.state, null, 2)}</pre>
+            {run.execution?.payloads_erased_at ? (
+              <div className="emptyState">Erased on request. The event log below still records every step, by digest.</div>
+            ) : (
+              <pre className="terminal logBlock">{JSON.stringify(run.state, null, 2)}</pre>
+            )}
           </section>
         ) : null}
 

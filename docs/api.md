@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -138,6 +138,7 @@ The generated router inventory currently exposes:
 | `GET` | `/v1/agent-runs/{id}/events` | Read a run's event log |
 | `POST` | `/v1/agent-runs/{id}/cancel` | Ask a run to stop at its next safe point |
 | `POST` | `/v1/agent-runs/{id}/decisions` | Approve or refuse at the gate a run is waiting on |
+| `POST` | `/v1/agent-runs/{id}/erase` | Erase what a finished run was given and produced, keeping its record (`agents:write`) |
 | `GET`, `POST` | `/v1/workflows` | List or create workflow DAGs |
 | `GET`, `PUT`, `DELETE` | `/v1/workflows/{id}` | Read, replace, or delete a workflow DAG |
 | `GET`, `POST` | `/v1/automations` | List or create automations |
@@ -412,6 +413,20 @@ Budgets are enforced from the log. `max_steps` bounds iterations, `max_seconds` 
 `max_tokens` and `max_cost_micros` count what models report, as soon as they report it. Usage nobody
 measured appears as `unmeasured` rather than as zero, so a non-zero `unmeasured` means the totals are a
 lower bound. A local model has no price, so its cost is never counted.
+
+`POST /v1/agent-runs/{id}/erase` erases what a finished run was given and produced: its stored inputs
+and outputs, every stored value those name in turn (an embedding's vector, a retrieved claim's text),
+and the copies of its starting state. It needs `agents:write`, which only a project admin holds, and is
+audited like every other write. The answer is `200` with `values_erased` and the run as it now reads:
+`state` is `{}` and `execution.payloads_erased_at` says when. Asking again answers `200` with
+`values_erased: 0`.
+
+It is refused with `409 agent_run_state_conflict` while the run has not ended, because it may still read
+what it was given (cancel it first), and for a run from before agent runs executed. Stored values are
+shared by content within a project, so it is refused with `409 agent_run_payloads_in_use`, naming the run,
+when a run that has not ended holds some of the same bytes; nothing is erased then.
+
+What is kept, and why, is in [persistence](persistence.md#erasing-a-runs-payloads).
 
 ## Current correctness certificate API
 
