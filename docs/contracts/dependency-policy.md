@@ -25,9 +25,11 @@ secret-scanning and supply-chain deliverables tracked in [#101](https://github.c
   `security-exceptions.json`; expiry is enforced on the date itself. The JSON schema documents
   the format and the Rust checker rejects missing/unknown fields and invalid dates.
 
-The current npm exception expires **2026-10-25** and is tracked in
-[#118](https://github.com/mohripan/capsulet/issues/118). The raw npm audit still reports its
-findings. Policy success never means the scanner reported zero vulnerabilities.
+No npm exception is registered. The braces exception tracked in
+[#118](https://github.com/mohripan/capsulet/issues/118) was retired once a patched version
+resolved, and on 2026-11-08 the full `npm audit --audit-level=high`, development dependencies
+included, passed with only moderate findings. Policy success never means the scanner reported
+zero vulnerabilities.
 
 ## Tooling, artifacts and updates
 
