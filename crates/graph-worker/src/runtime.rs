@@ -25,6 +25,7 @@ use capsulet_ir::digest::Digest;
 use capsulet_ir::id::Identifier;
 use capsulet_ir::loop_region::{InvariantOutcome, IterationRecord, LoopBudget};
 use capsulet_ir::region::RegionKind;
+use capsulet_observability::tracing::{Instrument, Span};
 use capsulet_postgres::{IrRunRecord, PostgresStore, PostgresStoreError, SignalOutcome};
 use capsulet_runtime::effect::{EffectAttempt, EffectContext};
 use capsulet_runtime::failure::{self, Compensation};
@@ -37,6 +38,7 @@ use crate::execute::{
     CompensationRequest, EffectOutcome, EffectRequest, Executor, NodeOutcome, NodeRequest,
     resolve_inputs,
 };
+use crate::telemetry;
 
 /// How the worker is configured.
 #[derive(Debug, Clone)]
@@ -156,8 +158,20 @@ impl GraphWorker {
             return Ok(Progress::NothingToDo);
         };
 
-        let definition = self.definition_for(&lease).await?;
-        let outcome = self.advance_leased(&lease, &definition).await;
+        let span = telemetry::lease_span(&lease, &self.config.worker_id);
+        let definition = match self.definition_for(&lease).instrument(span.clone()).await {
+            Ok(definition) => definition,
+            Err(error) => {
+                let outcome = Err(error);
+                telemetry::finish_lease(&span, &outcome);
+                return outcome;
+            }
+        };
+        let outcome = self
+            .advance_leased(&lease, &definition, &span)
+            .instrument(span.clone())
+            .await;
+        telemetry::finish_lease(&span, &outcome);
 
         // A lease is given back whatever happened, so a run that is waiting or
         // has ended does not sit under a dead lease until it expires. Losing
@@ -181,9 +195,11 @@ impl GraphWorker {
         &self,
         lease: &IrRunRecord,
         definition: &Definition,
+        span: &Span,
     ) -> Result<Progress, WorkerError> {
         for _ in 0..self.config.steps_per_lease {
             let state = self.fold(lease).await?;
+            telemetry::record_state(span, &state);
             let now = self.clock.now();
 
             // A signal that arrived while the run was suspended is answered
@@ -365,12 +381,12 @@ impl GraphWorker {
 
         // Started is written before the work, so a crash inside it leaves a
         // node that started and never finished rather than no trace at all.
-        if !self
-            .append(lease, &RunEvent::NodeStarted { node: node.clone() }, now)
+        let Some(started_at) = self
+            .append_recorded(lease, &RunEvent::NodeStarted { node: node.clone() }, now)
             .await?
-        {
+        else {
             return Ok(false);
-        }
+        };
 
         let iteration = definition.graph.region_of_node(node).and_then(|region| {
             matches!(region.kind, RegionKind::Loop { .. })
@@ -378,25 +394,29 @@ impl GraphWorker {
         });
         let inputs = resolve_inputs(definition, state, declared);
         let previous_outputs = state.previous_outputs_of(node);
+        let span = telemetry::node_span(declared, iteration, Some(started_at));
         let Some(outcome) = self
             .while_holding_lease(
                 lease,
-                self.executor.run_node(NodeRequest {
-                    tenant: &lease.tenant_id,
-                    project: &lease.project_id,
-                    run: &lease.id,
-                    definition,
-                    node: declared,
-                    iteration,
-                    inputs: &inputs,
-                    previous_outputs: &previous_outputs,
-                    approved_by: state.approved_by(node),
-                }),
+                self.executor
+                    .run_node(NodeRequest {
+                        tenant: &lease.tenant_id,
+                        project: &lease.project_id,
+                        run: &lease.id,
+                        definition,
+                        node: declared,
+                        iteration,
+                        inputs: &inputs,
+                        previous_outputs: &previous_outputs,
+                        approved_by: state.approved_by(node),
+                    })
+                    .instrument(span.clone()),
             )
             .await?
         else {
             return Ok(false);
         };
+        telemetry::finish_node(&span, declared, &outcome);
 
         let at = self.clock.now();
         let (event, usage) = match outcome {
@@ -440,7 +460,11 @@ impl GraphWorker {
         {
             return Ok(false);
         }
-        self.append(lease, &event, at).await
+        let Some(finished_at) = self.append_recorded(lease, &event, at).await? else {
+            return Ok(false);
+        };
+        telemetry::record_finished_at(&span, finished_at);
+        Ok(true)
     }
 
     /// Runs some work while keeping the lease alive.
@@ -506,15 +530,24 @@ impl GraphWorker {
         recovered: Option<EffectAttempt>,
         now: RecordedTime,
     ) -> Result<bool, WorkerError> {
-        let declared = definition
-            .graph
-            .node(node)
-            .and_then(|declared| declared.effects.iter().find(|each| &each.id == effect))
+        let declared_node =
+            definition
+                .graph
+                .node(node)
+                .ok_or_else(|| WorkerError::Inconsistent {
+                    run: lease.id.clone(),
+                    reason: format!("`{node}` is not in the definition"),
+                })?;
+        let declared = declared_node
+            .effects
+            .iter()
+            .find(|each| &each.id == effect)
             .ok_or_else(|| WorkerError::Inconsistent {
                 run: lease.id.clone(),
                 reason: format!("`{effect}` is not declared on `{node}`"),
             })?;
 
+        let is_recovery = recovered.is_some();
         let claim = match recovered {
             Some(recovered) => recovered,
             None => EffectAttempt::claim(
@@ -546,34 +579,35 @@ impl GraphWorker {
         // Claim, then perform. The gap between them is the only window in which
         // a crash leaves a question, and the claim is what makes the question
         // answerable.
-        if !self.append(lease, &claim.claimed(), now).await? {
+        let span = telemetry::effect_span(declared_node, effect, claim.attempt(), is_recovery);
+        let Some(claimed_at) = self.append_recorded(lease, &claim.claimed(), now).await? else {
             return Ok(false);
-        }
+        };
+        telemetry::record_claimed_at(&span, claimed_at);
 
-        let inputs = definition
-            .graph
-            .node(node)
-            .map(|declared| resolve_inputs(definition, state, declared))
-            .unwrap_or_default();
+        let inputs = resolve_inputs(definition, state, declared_node);
         let Some(outcome) = self
             .while_holding_lease(
                 lease,
-                self.executor.perform_effect(EffectRequest {
-                    tenant: &lease.tenant_id,
-                    project: &lease.project_id,
-                    run: &lease.id,
-                    definition,
-                    node,
-                    effect: declared,
-                    attempt: claim.attempt(),
-                    key: claim.key(),
-                    inputs: &inputs,
-                }),
+                self.executor
+                    .perform_effect(EffectRequest {
+                        tenant: &lease.tenant_id,
+                        project: &lease.project_id,
+                        run: &lease.id,
+                        definition,
+                        node,
+                        effect: declared,
+                        attempt: claim.attempt(),
+                        key: claim.key(),
+                        inputs: &inputs,
+                    })
+                    .instrument(span.clone()),
             )
             .await?
         else {
             return Ok(false);
         };
+        telemetry::finish_effect(&span, declared_node, &outcome);
 
         self.record_effect_outcome(lease, node, &claim, outcome)
             .await

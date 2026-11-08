@@ -94,6 +94,7 @@ fn minimal_start(run: &AgentRunRecord) -> capsulet_postgres::AgentRunStart<'_> {
         definition: minimal_definition(),
         admission: minimal_admission(),
         inputs: no_inputs(),
+        trace_parent: None,
         at: capsulet_ir::correctness::evidence::RecordedTime(0),
     }
 }

@@ -143,6 +143,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
 | `CAP-OBSERVABILITY-001` | experimental | capability | Services expose health, readiness, Prometheus metrics, structured logs, and starter dashboards and alerts for current execution paths. |
+| `CAP-OBSERVABILITY-002` | experimental | capability | Agent runs export OpenTelemetry traces whose model, retrieval and tool spans follow the generative-AI semantic conventions of release 1.41.0: every lease of a run, on any worker, continues the trace of the request that started it; node attempts, model calls, retrievals and effects carry run, node, attempt and log-position identifiers, token usage only where a provider reported it, and failures by kind; no prompt, completion, retrieved text, input value or failure detail is exported, metric labels come from closed sets, and a collector that is down does not change how a run ends. |
 
 ## Offline certificate replay
 

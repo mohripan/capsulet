@@ -39,6 +39,9 @@ pub struct IrRunRecord {
     pub epoch: Epoch,
     pub lease_owner: Option<String>,
     pub next_position: u64,
+    /// The W3C `traceparent` of the request that started the run, so a worker's
+    /// spans continue its trace. Read only by telemetry.
+    pub trace_parent: Option<String>,
 }
 
 impl PostgresStore {
@@ -69,6 +72,7 @@ impl PostgresStore {
             run_id,
             definition_digest,
             mode,
+            None,
             at,
         )
         .await?;
@@ -224,7 +228,7 @@ impl PostgresStore {
         let row = sqlx::query(
             r"
             SELECT tenant_id, project_id, id, definition_digest, status, epoch,
-                   lease_owner, next_position
+                   lease_owner, next_position, trace_parent
             FROM ir_runs
             WHERE tenant_id = $1 AND project_id = $2 AND id = $3
             ",
@@ -252,7 +256,7 @@ impl PostgresStore {
         let rows = sqlx::query(
             r"
             SELECT tenant_id, project_id, id, definition_digest, status, epoch,
-                   lease_owner, next_position
+                   lease_owner, next_position, trace_parent
             FROM ir_runs
             WHERE tenant_id = $1 AND project_id = $2
             ORDER BY created_at DESC, id
@@ -335,7 +339,8 @@ impl PostgresStore {
               AND ir_runs.id = candidate.id
             RETURNING ir_runs.tenant_id, ir_runs.project_id, ir_runs.id,
                       ir_runs.definition_digest, ir_runs.status, ir_runs.epoch,
-                      ir_runs.lease_owner, ir_runs.next_position
+                      ir_runs.lease_owner, ir_runs.next_position,
+                      ir_runs.trace_parent
             ",
         )
         .bind(worker_id)
@@ -437,6 +442,10 @@ impl PostgresStore {
 }
 
 /// Writes a run and its admission event inside a caller's transaction.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "each is a column of the row or the event, and a struct would only rename them"
+)]
 pub(crate) async fn insert_run_and_admission(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     tenant_id: &str,
@@ -444,18 +453,20 @@ pub(crate) async fn insert_run_and_admission(
     run_id: &str,
     definition_digest: &Digest,
     mode: AssuranceMode,
+    trace_parent: Option<&str>,
     at: RecordedTime,
 ) -> Result<(), PostgresStoreError> {
     sqlx::query(
         r"
-        INSERT INTO ir_runs (tenant_id, project_id, id, definition_digest)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO ir_runs (tenant_id, project_id, id, definition_digest, trace_parent)
+        VALUES ($1, $2, $3, $4, $5)
         ",
     )
     .bind(tenant_id)
     .bind(project_id)
     .bind(run_id)
     .bind(definition_digest.to_string())
+    .bind(trace_parent)
     .execute(&mut **transaction)
     .await?;
 
@@ -531,6 +542,7 @@ fn row_to_run(row: &sqlx::postgres::PgRow) -> Result<IrRunRecord, PostgresStoreE
         lease_owner: row.get("lease_owner"),
         next_position: u64::try_from(next_position)
             .map_err(|_| PostgresStoreError::Overflow("log position"))?,
+        trace_parent: row.get("trace_parent"),
     })
 }
 

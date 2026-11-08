@@ -381,6 +381,7 @@ impl ApiStore for FakeStore {
             epoch: Epoch(0),
             lease_owner: None,
             next_position: 1,
+            trace_parent: None,
         };
         self.ir_runs
             .lock()

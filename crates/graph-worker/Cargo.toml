@@ -33,6 +33,7 @@ tokio.workspace = true
 [dev-dependencies]
 capsulet-api = { path = "../api" }
 capsulet-kernel = { path = "../kernel" }
+capsulet-observability = { path = "../observability", features = ["testing"] }
 capsulet-storage = { path = "../storage" }
 http-body-util.workspace = true
 tower.workspace = true

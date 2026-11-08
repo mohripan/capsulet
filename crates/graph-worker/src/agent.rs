@@ -28,6 +28,8 @@ use capsulet_ir::digest::Digest;
 use capsulet_ir::graph::Combine;
 use capsulet_ir::loop_region::FailureKind;
 use capsulet_ir::node::Node;
+use capsulet_observability::genai;
+use capsulet_observability::tracing::Instrument;
 use capsulet_postgres::{MAX_IR_RUN_VALUE_BYTES, PostgresStore, PostgresStoreError};
 use capsulet_runtime::event::{ControlValue, NodeUsage};
 use capsulet_runtime::values::check_value;
@@ -38,6 +40,7 @@ use crate::execute::{
     ResolvedInput,
 };
 use crate::model::{ModelClient, ModelError, ModelRequest};
+use crate::telemetry::{self, ModelCall};
 
 /// The default number of claims a retriever returns.
 const DEFAULT_TOP_K: usize = 5;
@@ -479,18 +482,25 @@ impl AgentExecutor {
         let (client, model) = self.model_for(request.node)?;
         let inputs = self.load_inputs(request).await?;
         let prompt = first_text(request.node, &inputs)?;
-        let outcome = client
-            .complete(&ModelRequest {
-                model: model.clone(),
-                prompt,
-                temperature_milli: parameter_number(request.node, "temperature_milli")
-                    .and_then(|value| u32::try_from(value).ok()),
-                max_tokens: parameter_number(request.node, "max_tokens")
-                    .and_then(|value| u32::try_from(value).ok()),
-                timeout: Duration::from_millis(request.node.budget.wall_ms),
-            })
-            .await
-            .map_err(|error| model_failure(&client.name(), &model, &error))?;
+        let asked = ModelRequest {
+            model: model.clone(),
+            prompt,
+            temperature_milli: parameter_number(request.node, "temperature_milli")
+                .and_then(|value| u32::try_from(value).ok()),
+            max_tokens: parameter_number(request.node, "max_tokens")
+                .and_then(|value| u32::try_from(value).ok()),
+            timeout: Duration::from_millis(request.node.budget.wall_ms),
+        };
+        let call = ModelCall::start(
+            genai::TEXT_COMPLETION,
+            &client.name(),
+            &model,
+            asked.temperature_milli,
+            asked.max_tokens,
+        );
+        let answered = client.complete(&asked).instrument(call.span()).await;
+        call.finish(answered.as_ref().map(|completion| &completion.usage));
+        let outcome = answered.map_err(|error| model_failure(&client.name(), &model, &error))?;
         self.finish(request, &json!(outcome.text), Some(outcome.usage))
             .await
     }
@@ -500,10 +510,13 @@ impl AgentExecutor {
         let inputs = self.load_inputs(request).await?;
         let text = first_text(request.node, &inputs)?;
         let timeout = Duration::from_millis(request.node.budget.wall_ms);
-        let outcome = client
+        let call = ModelCall::start(genai::EMBEDDINGS, &client.name(), &model, None, None);
+        let answered = client
             .embed(&model, &text, timeout)
-            .await
-            .map_err(|error| model_failure(&client.name(), &model, &error))?;
+            .instrument(call.span())
+            .await;
+        call.finish(answered.as_ref().map(|embedding| &embedding.usage));
+        let outcome = answered.map_err(|error| model_failure(&client.name(), &model, &error))?;
         // A vector is floating point, which has no canonical encoding, so it is stored
         // and the graph moves its digest. That is what the port's schema says.
         let digest = self
@@ -540,6 +553,22 @@ impl AgentExecutor {
     /// under review is not offered, because a run acting on it would launder a
     /// candidate into a fact.
     async fn search_claims(
+        &self,
+        tenant: &str,
+        project: &str,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<Value>, Failure> {
+        let span = telemetry::retrieval_span(limit, CLAIM_SEARCH_WINDOW);
+        let found = self
+            .rank_claims(tenant, project, query, limit)
+            .instrument(span.clone())
+            .await;
+        telemetry::finish_retrieval(&span, found.as_ref().ok().map(Vec::len));
+        found
+    }
+
+    async fn rank_claims(
         &self,
         tenant: &str,
         project: &str,

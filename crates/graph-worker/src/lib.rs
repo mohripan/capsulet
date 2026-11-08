@@ -15,6 +15,7 @@ pub mod execute;
 pub mod model;
 pub mod runtime;
 pub mod service;
+mod telemetry;
 
 pub use agent::AgentExecutor;
 pub use clock::{Clock, SystemClock};

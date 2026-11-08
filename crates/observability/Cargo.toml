@@ -17,5 +17,9 @@ tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 uuid = { version = "1.23.3", features = ["v4"] }
 
+[features]
+# Captures spans in memory for tests. Not for a deployed binary.
+testing = ["opentelemetry_sdk/testing"]
+
 [lints]
 workspace = true

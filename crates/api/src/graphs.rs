@@ -240,6 +240,9 @@ where
         state_json,
         execution: None,
     };
+    // The run outlives this request and is advanced by whichever worker leases it,
+    // so the request's trace context travels with the run for their spans to join.
+    let trace_parent = capsulet_observability::current_trace_parent();
     state
         .store
         .start_agent_run(
@@ -248,6 +251,7 @@ where
                 definition: &adapted.definition,
                 admission: &admission,
                 inputs: &inputs,
+                trace_parent: trace_parent.as_deref(),
                 at: recorded_now(),
             },
             &context.tenant_id,

@@ -13,7 +13,7 @@ Append-only SQLx migrations under `migrations/` define:
 - compatibility `workflow_definitions`, `workflow_steps`, `workflow_step_dependencies`, `workflow_runs`, and `workflow_step_runs`;
 - `automations`, `automation_triggers`, `custom_trigger_plugins`, durable trigger events/evaluations, audit events, and retention-cleanup markers.
 
-An agent run links to the IR run executing it. Its status, state version, usage and final state are read from that run's append-only log and from `ir_run_values`, which holds the bytes behind the log's digests, scoped to a project. The `status` and `state_json` columns on `agent_runs` hold what the run was created with. `agent_state_snapshots` and `agent_trace_events` hold history from before agent runs executed.
+An agent run links to the IR run executing it. Its status, state version, usage and final state are read from that run's append-only log and from `ir_run_values`, which holds the bytes behind the log's digests, scoped to a project. The `status` and `state_json` columns on `agent_runs` hold what the run was created with. `agent_state_snapshots` and `agent_trace_events` hold history from before agent runs executed. An IR run also keeps the W3C `traceparent` of the request that started it in `ir_runs.trace_parent`, so the leases that advance it join that request's trace; nothing reads it except telemetry, and it is empty when tracing was off.
 
 Job run rows carry cancellation/retry fields, lease owner/expiry, and heartbeat timestamps. Workflow-run removal is represented explicitly so operational history can be hidden without silently deleting unrelated definitions.
 

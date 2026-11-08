@@ -39,6 +39,9 @@ pub struct AgentRunStart<'a> {
     pub admission: &'a AdmissionRecord,
     /// Each input value by name, encoded as JSON text.
     pub inputs: &'a BTreeMap<String, String>,
+    /// The trace the start request is part of, as a W3C `traceparent`, for the
+    /// worker's spans to continue. `None` when nothing is being traced.
+    pub trace_parent: Option<&'a str>,
     pub at: RecordedTime,
 }
 
@@ -153,6 +156,7 @@ impl PostgresStore {
             run_id,
             &digest,
             start.definition.assurance,
+            start.trace_parent,
             start.at,
         )
         .await?;
