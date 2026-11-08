@@ -102,12 +102,9 @@ impl OllamaClient {
             .json(body)
             .send()
             .await
-            .map_err(|error| ModelError::Unreachable(error.to_string()))?;
+            .map_err(unreachable)?;
         let status = response.status();
-        let text = response
-            .text()
-            .await
-            .map_err(|error| ModelError::Unreachable(error.to_string()))?;
+        let text = response.text().await.map_err(unreachable)?;
         if !status.is_success() {
             return Err(ModelError::Rejected {
                 status: status.as_u16(),
@@ -119,6 +116,26 @@ impl OllamaClient {
         let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         Ok((parsed, elapsed))
     }
+}
+
+/// A transport failure, said without the endpoint's URL.
+///
+/// The URL is the operator's configuration: an internal host name, a path, anything in
+/// a query string. What this error becomes is a node's failure detail, which the
+/// project's users read, so it says how the request failed and not where it was going.
+/// (Credentials in the URL's user part never appear either way: the client moves them
+/// into a header before sending.) The causes are kept, because "connection refused" is
+/// what makes the failure actionable.
+fn unreachable(error: reqwest::Error) -> ModelError {
+    let error = error.without_url();
+    let mut described = error.to_string();
+    let mut cause = std::error::Error::source(&error);
+    while let Some(each) = cause {
+        described.push_str(": ");
+        described.push_str(&each.to_string());
+        cause = each.source();
+    }
+    ModelError::Unreachable(described)
 }
 
 #[async_trait]
@@ -196,5 +213,39 @@ impl OllamaClient {
             cost_micro_units: None,
             latency_ms: Some(elapsed),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::{ModelClient, ModelError, ModelRequest, OllamaClient};
+
+    #[tokio::test]
+    async fn an_unreachable_endpoint_is_reported_without_its_address() {
+        // Port 1 on loopback refuses at once, so the request fails in transport.
+        let client = OllamaClient::new("http://operator:hunter2-secret@127.0.0.1:1");
+        let error = client
+            .complete(&ModelRequest {
+                model: "m".to_string(),
+                prompt: "p".to_string(),
+                temperature_milli: None,
+                max_tokens: None,
+                timeout: Duration::from_secs(5),
+            })
+            .await
+            .expect_err("nothing listens there");
+        let ModelError::Unreachable(described) = &error else {
+            panic!("a transport failure: {error:?}");
+        };
+        assert!(!described.contains("hunter2-secret"), "{described}");
+        assert!(!described.contains("operator:"), "{described}");
+        assert!(!described.contains("127.0.0.1:1/api"), "{described}");
+        assert!(!described.contains("/api/generate"), "{described}");
+        assert!(
+            described.starts_with("error sending request"),
+            "{described}"
+        );
     }
 }
