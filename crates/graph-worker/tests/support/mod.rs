@@ -557,6 +557,7 @@ pub async fn seeded_run(
             &run_id,
             &digest,
             AssuranceMode::Enforce,
+            None,
             RecordedTime(NOW),
         )
         .await

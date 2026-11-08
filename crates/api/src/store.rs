@@ -341,6 +341,10 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     /// Enqueues rather than starts: the run is written with its admission
     /// event and no lease, and the graph worker picks it up. Nothing in the API
     /// advances a run, and a contract test refuses the code that would.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "each is a column of the run or its admission event"
+    )]
     async fn create_ir_run(
         &self,
         _tenant_id: &str,
@@ -348,6 +352,7 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         _run_id: &str,
         _definition_digest: &Digest,
         _mode: AssuranceMode,
+        _trace_parent: Option<&str>,
         _at: RecordedTime,
     ) -> Result<Option<IrRunRecord>, Self::Error> {
         Ok(None)
@@ -1117,11 +1122,20 @@ impl ApiStore for PostgresStore {
         run_id: &str,
         definition_digest: &Digest,
         mode: AssuranceMode,
+        trace_parent: Option<&str>,
         at: RecordedTime,
     ) -> Result<Option<IrRunRecord>, Self::Error> {
-        self.create_ir_run(tenant_id, project_id, run_id, definition_digest, mode, at)
-            .await
-            .map(Some)
+        self.create_ir_run(
+            tenant_id,
+            project_id,
+            run_id,
+            definition_digest,
+            mode,
+            trace_parent,
+            at,
+        )
+        .await
+        .map(Some)
     }
 
     async fn get_ir_run(

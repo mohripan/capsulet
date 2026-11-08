@@ -175,6 +175,7 @@ async fn run(store: &PostgresStore) -> (String, String, String, Digest) {
             &run_id,
             &digest,
             AssuranceMode::Enforce,
+            None,
             at(1_772_000_000_000),
         )
         .await
@@ -575,6 +576,7 @@ async fn two_workers_leasing_at_once_take_different_runs() {
                 &run_id,
                 &digest,
                 AssuranceMode::Enforce,
+                None,
                 at(1_772_000_000_000 + index),
             )
             .await
@@ -861,6 +863,7 @@ async fn effect_run(
             &run_id,
             &digest,
             AssuranceMode::Enforce,
+            None,
             at(1_772_000_000_000),
         )
         .await

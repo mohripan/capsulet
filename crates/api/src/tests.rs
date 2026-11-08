@@ -368,6 +368,7 @@ impl ApiStore for FakeStore {
         run_id: &str,
         definition_digest: &capsulet_ir::Digest,
         mode: capsulet_ir::definition::AssuranceMode,
+        trace_parent: Option<&str>,
         at: capsulet_ir::RecordedTime,
     ) -> Result<Option<IrRunRecord>, Self::Error> {
         // Mirrors the real store: the run and its admission event are written
@@ -381,7 +382,7 @@ impl ApiStore for FakeStore {
             epoch: Epoch(0),
             lease_owner: None,
             next_position: 1,
-            trace_parent: None,
+            trace_parent: trace_parent.map(str::to_owned),
         };
         self.ir_runs
             .lock()
@@ -6158,4 +6159,95 @@ async fn request_metrics_and_spans_name_the_route_template_not_the_path() {
     assert!(spans.iter().any(|span| {
         span.name == "http.request" && span.attribute("http.route") == Some("unmatched")
     }));
+}
+
+#[tokio::test]
+async fn a_request_carrying_a_traceparent_joins_the_callers_trace() {
+    const CALLER_TRACE: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
+    let capture = capsulet_observability::testing::TraceCapture::start();
+    let app = test_app(FakeStore::default());
+    for traceparent in [
+        format!("00-{CALLER_TRACE}-00f067aa0ba902b7-01"),
+        "not a traceparent".to_string(),
+    ] {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/agent-runs/run_traceparent")
+                    .header("traceparent", traceparent)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+    }
+
+    let requests: Vec<_> = capture
+        .spans()
+        .into_iter()
+        .filter(|span| span.name == "http.request")
+        .collect();
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests.iter().any(|span| span.trace_id == CALLER_TRACE
+            && span.parent_span_id.as_deref() == Some("00f067aa0ba902b7")),
+        "the request continues the caller's trace: {requests:?}"
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|span| span.trace_id != CALLER_TRACE && span.parent_span_id.is_none()),
+        "a malformed header starts a trace of its own: {requests:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_ir_run_remembers_the_trace_of_the_request_that_started_it() {
+    const CALLER_TRACE: &str = "0af7651916cd43dd8448eb211c80319c";
+    let capture = capsulet_observability::testing::TraceCapture::start();
+    let store = FakeStore::default();
+    let app = authenticated_app(store.clone());
+    let registration = app
+        .clone()
+        .oneshot(admin_request(
+            Method::POST,
+            "/v1/ir/definitions",
+            Some(json!({
+                "definition": ir_definition_body(capsulet_ir::definition::AssuranceMode::Enforce)
+            })),
+        ))
+        .await
+        .expect("response");
+    let digest = response_json(registration).await["digest"]
+        .as_str()
+        .expect("a digest")
+        .to_string();
+    let mut request = admin_request(
+        Method::POST,
+        "/v1/ir/runs",
+        Some(json!({ "definition_digest": digest, "id": "ir_run_traced" })),
+    );
+    request.headers_mut().insert(
+        "traceparent",
+        axum::http::HeaderValue::from_str(&format!("00-{CALLER_TRACE}-b7ad6b7169203331-01"))
+            .expect("a header value"),
+    );
+    let started = app.oneshot(request).await.expect("response");
+    assert_eq!(started.status(), axum::http::StatusCode::CREATED);
+    drop(capture);
+
+    let runs = store.ir_runs.lock().expect("not poisoned");
+    let run = runs
+        .iter()
+        .find(|run| run.id == "ir_run_traced")
+        .expect("the run was stored");
+    let parent = run
+        .trace_parent
+        .as_deref()
+        .expect("the run carries a traceparent");
+    assert_eq!(
+        parent.split('-').nth(1),
+        Some(CALLER_TRACE),
+        "the workers' spans will continue the caller's trace: {parent}"
+    );
 }

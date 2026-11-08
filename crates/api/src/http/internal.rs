@@ -590,6 +590,17 @@ async fn request_context(mut request: Request, next: Next) -> Response {
         http.status_code = observability::tracing::field::Empty,
         duration.ms = observability::tracing::field::Empty,
     );
+    // A caller that is already tracing hands its context over in `traceparent`, and
+    // this request joins that trace. Only the W3C header is read, and a malformed one
+    // is ignored. A parent-based sampler follows the caller's sampled flag, so a
+    // client can ask for its own requests to be traced; it cannot see anything by it.
+    observability::continue_trace(
+        &span,
+        request
+            .headers()
+            .get("traceparent")
+            .and_then(|value| value.to_str().ok()),
+    );
     async move {
         let started = Instant::now();
         let mut response = next.run(request).await;

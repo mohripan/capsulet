@@ -51,10 +51,17 @@ impl PostgresStore {
     /// would be a run whose log does not fold, and there is no reason to let
     /// that state exist even briefly.
     ///
+    /// `trace_parent` is the W3C `traceparent` of the request that asked for the
+    /// run, so the workers' spans join its trace; `None` when nothing is traced.
+    ///
     /// # Errors
     ///
     /// Returns [`PostgresStoreError`] when the run id is already taken, the
     /// definition version is not stored, or the write fails.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "each is a column of the run or its admission event"
+    )]
     pub async fn create_ir_run(
         &self,
         tenant_id: &str,
@@ -62,6 +69,7 @@ impl PostgresStore {
         run_id: &str,
         definition_digest: &Digest,
         mode: AssuranceMode,
+        trace_parent: Option<&str>,
         at: RecordedTime,
     ) -> Result<IrRunRecord, PostgresStoreError> {
         let mut transaction = self.pool.begin().await?;
@@ -72,7 +80,7 @@ impl PostgresStore {
             run_id,
             definition_digest,
             mode,
-            None,
+            trace_parent,
             at,
         )
         .await?;

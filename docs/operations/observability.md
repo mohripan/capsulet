@@ -96,10 +96,15 @@ the last release of the main conventions repository that carries those pages. Ev
 resource carries `capsulet.telemetry.genai_semconv=1.41.0`, so a backend can tell which revision the
 attribute names follow.
 
-An agent run outlives the request that started it and is advanced by whichever graph worker leases
-it. The run therefore records that request's W3C `traceparent` (`ir_runs.trace_parent`, nothing else
-from the request), and every lease continues that trace. One run is one trace however many leases and
-workers carry it:
+A request that carries a W3C `traceparent` header joins the caller's trace; a malformed one is ignored
+and the request starts a trace of its own. Only that header is read, not `tracestate` or baggage. A
+parent-based sampler follows the caller's sampled flag, so a client can ask for its own requests to be
+traced; that shows it nothing, since traces go to the operator's collector.
+
+A run outlives the request that started it and is advanced by whichever graph worker leases it. The
+run therefore records that request's `traceparent` (`ir_runs.trace_parent`, nothing else from the
+request), whether it was started as an agent run or through the IR run API, and every lease continues
+that trace. One run is one trace however many leases and workers carry it:
 
 ```text
 http.request                          POST /v1/agents/{id}/runs
@@ -158,9 +163,7 @@ Moving the pin is a deliberate change: `crates/observability/src/genai.rs`, the 
 commit, and a renamed attribute is listed here as breaking for dashboards that query it. `capsulet.*`
 attributes are only ever added; one is removed or renamed only with a note here.
 
-Not yet traced: the API does not adopt an incoming `traceparent` header, so each request starts its
-own trace; runs started through the IR run API rather than as agent runs do not record trace context,
-so their leases are traced separately; and the graph worker's metrics are Prometheus only, not OTLP.
+The graph worker's metrics are Prometheus only, not OTLP.
 
 ### Other service spans
 

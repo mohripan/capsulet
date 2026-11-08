@@ -489,6 +489,8 @@ where
         return Err(ApiError::RunAlreadyExists(run_id));
     }
 
+    // The run outlives this request, so its trace context travels with the run.
+    let trace_parent = capsulet_observability::current_trace_parent();
     let record = state
         .store
         .create_ir_run(
@@ -497,6 +499,7 @@ where
             &run_id,
             &digest,
             definition.assurance,
+            trace_parent.as_deref(),
             recorded_now(),
         )
         .await
