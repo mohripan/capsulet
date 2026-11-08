@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
+<!-- capsulet-claims: CAP-AGENT-009, CAP-JOB-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Troubleshooting
 
 This guide covers common failures in the current experimental local Capsulet setup.
@@ -228,3 +228,30 @@ If the runs page shows an API error, check:
 - the API and dashboard are in the expected namespace when using in-cluster service names
 
 The dashboard does not require browser CORS configuration because browser requests go to the same-origin proxy.
+
+## An Agent Run Did Something Unexpected
+
+Export the run as a bundle and read it on any machine, with no database, network or cluster:
+
+```sh
+curl -fsS -X POST \
+  -H "authorization: Bearer $CAPSULET_TOKEN" \
+  -H "x-capsulet-project-id: $CAPSULET_PROJECT" \
+  "$CAPSULET_API/v1/agent-runs/$RUN_ID/debug-bundle" > run.json
+cargo run -p capsulet-replay --locked -- run.json
+```
+
+`capsulet-replay` checks the bundle against its digest, folds the log again, and prints what the run
+did: each node's attempts and failures, each effect and how it came out, what spent its budget, why it
+ended, and what it was in the middle of if it was interrupted. It exits `0` when the log supports what
+the installation reported, `1` when it does not, and `2` when the bundle cannot be read or does not match
+its digest.
+
+It also says how far an offline reader can go. The fold, the status and the spend are reproduced. Node
+work is not: a model call can answer differently each time it is asked, a retrieval read the project's
+memory as it stood then, an effect acted on the world, and even a deterministic node needs its input
+values, which a bundle never carries. When the run was traced, the bundle's `trace_id` finds its spans in
+your tracing backend.
+
+The fixtures in `crates/replay/tests/fixtures` are bundles from real runs that succeeded, failed, were
+interrupted mid-call, and ran out of budget.

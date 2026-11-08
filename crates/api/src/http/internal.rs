@@ -277,6 +277,10 @@ where
             &["eraseAgentRunPayloads"],
             post(crate::graphs::erase_agent_run_payloads),
         )
+        .route_operations(
+            &["exportAgentRunBundle"],
+            post(crate::graphs::export_agent_run_bundle),
+        )
         .route_operations(&["askReasoning"], post(crate::reasoning::ask))
         .route_operations(
             &["listCertificates"],

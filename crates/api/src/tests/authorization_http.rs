@@ -364,6 +364,10 @@ authorization_operation!(
     authorization_erase_agent_run_payloads,
     "eraseAgentRunPayloads"
 );
+authorization_operation!(
+    authorization_export_agent_run_bundle,
+    "exportAgentRunBundle"
+);
 authorization_operation!(authorization_ask_reasoning, "askReasoning");
 authorization_operation!(authorization_register_ir_definition, "registerIrDefinition");
 authorization_operation!(authorization_list_ir_definitions, "listIrDefinitions");

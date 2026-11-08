@@ -1027,6 +1027,17 @@ const ENDPOINTS: &[EndpointContract] = &[
     ),
     endpoint!(
         "POST",
+        "/v1/agent-runs/{id}/debug-bundle",
+        "exportAgentRunBundle",
+        "agents:read",
+        true,
+        true,
+        None,
+        "AgentRunBundleResponse",
+        "200"
+    ),
+    endpoint!(
+        "POST",
         "/v1/agent-runs/{id}/erase",
         "eraseAgentRunPayloads",
         "agents:write",

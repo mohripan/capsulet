@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-IAM-001, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -138,6 +138,7 @@ The generated router inventory currently exposes:
 | `GET` | `/v1/agent-runs/{id}/events` | Read a run's event log |
 | `POST` | `/v1/agent-runs/{id}/cancel` | Ask a run to stop at its next safe point |
 | `POST` | `/v1/agent-runs/{id}/decisions` | Approve or refuse at the gate a run is waiting on |
+| `POST` | `/v1/agent-runs/{id}/debug-bundle` | Export a digest-checked bundle of a run's definition and log, with none of its content |
 | `POST` | `/v1/agent-runs/{id}/erase` | Erase what a finished run was given and produced, keeping its record (`agents:write`) |
 | `GET`, `POST` | `/v1/workflows` | List or create workflow DAGs |
 | `GET`, `PUT`, `DELETE` | `/v1/workflows/{id}` | Read, replace, or delete a workflow DAG |
@@ -427,6 +428,15 @@ shared by content within a project, so it is refused with `409 agent_run_payload
 when a run that has not ended holds some of the same bytes; nothing is erased then.
 
 What is kept, and why, is in [persistence](persistence.md#erasing-a-runs-payloads).
+
+`POST /v1/agent-runs/{id}/debug-bundle` packs a run for somebody to look at elsewhere, and needs only
+`agents:read`. It is a `POST` so the export is audited like a write, though it changes nothing. The answer
+is `{kind, bundle_version, digest, body}`: `body` is the bundle as JSON text and `digest` is the SHA-256
+of exactly those bytes. The bundle holds the definition version the run executed, its whole event log,
+what this installation reports about it, and its trace id when it was traced. It holds none of the
+values the run was given or produced (the log names those by digest), not the state it was started
+with, and no credentials or configuration. Read one offline with `capsulet-replay`; see
+[troubleshooting](troubleshooting.md#an-agent-run-did-something-unexpected).
 
 ## Current correctness certificate API
 

@@ -27,8 +27,9 @@ use capsulet_graph_worker::{
 use capsulet_ir::digest::Digest;
 use capsulet_observability::testing::{CapturedSpan, FailingExport, TraceCapture};
 use capsulet_postgres::PostgresStore;
-use capsulet_runtime::RunEvent;
+use capsulet_runtime::bundle::{Rework, RunBundle, SealedRunBundle, explain};
 use capsulet_runtime::event::NodeUsage;
+use capsulet_runtime::{RunEvent, RunStatus};
 use capsulet_storage::FilesystemObjectStore;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -1994,4 +1995,185 @@ async fn erasing_is_refused_while_a_live_run_holds_the_same_content() {
         .post(&format!("/v1/agent-runs/{finished}/erase"), json!({}))
         .await;
     assert_eq!(status, StatusCode::OK, "once it has ended: {body}");
+}
+
+// ---- debug bundles
+//
+// Each of these exports a bundle over HTTP and reads it the way `capsulet-replay`
+// does, offline. With `CAPSULET_WRITE_BUNDLE_FIXTURES` set they also write it to
+// `crates/replay/tests/fixtures`, which is where the replay suite's fixtures come
+// from: real runs, regenerated rather than written by hand.
+
+/// A model that never answers, standing in for a worker that died mid-call.
+struct SilentModel;
+
+#[async_trait]
+impl ModelClient for SilentModel {
+    fn name(&self) -> String {
+        "silent".to_string()
+    }
+
+    async fn complete(&self, _request: &ModelRequest) -> Result<Completion, ModelError> {
+        std::future::pending().await
+    }
+
+    async fn embed(
+        &self,
+        _model: &str,
+        _text: &str,
+        _timeout: Duration,
+    ) -> Result<Embedding, ModelError> {
+        std::future::pending().await
+    }
+}
+
+async fn bundle_of(stack: &Stack, id: &str, fixture: &str) -> (SealedRunBundle, RunBundle) {
+    let (status, body) = stack
+        .post(&format!("/v1/agent-runs/{id}/debug-bundle"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let sealed: SealedRunBundle = serde_json::from_value(body).expect("a sealed bundle");
+    let bundle = sealed.open().expect("the bundle matches its digest");
+    if std::env::var_os("CAPSULET_WRITE_BUNDLE_FIXTURES").is_some() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../replay/tests/fixtures")
+            .join(format!("run-{fixture}.json"));
+        let text = serde_json::to_string_pretty(&sealed).expect("encodes");
+        std::fs::write(path, text + "\n").expect("the fixture is written");
+    }
+    (sealed, bundle)
+}
+
+#[tokio::test]
+async fn a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content() {
+    const QUERY: &str = "bundle-question-5150";
+    const ANSWER: &str = "bundle-answer-5151";
+    let stack = Stack::new(Some(ScriptedModel::answering(&[ANSWER]))).await;
+    let agent = answering_agent(&stack).await;
+    let id = stack
+        .start(&agent, json!({ "query": QUERY, "answer": "" }))
+        .await;
+    stack.run_to_rest().await;
+
+    let (sealed, bundle) = bundle_of(&stack, &id, "succeeded").await;
+    let explained = explain(&bundle);
+    assert!(explained.agrees(), "{explained:?}");
+    assert_eq!(explained.status, Ok(RunStatus::Completed));
+    assert!(explained.definition_matches);
+    assert_eq!(explained.spent.tokens, 10);
+    assert!(explained.unfinished.is_empty());
+    let model = explained
+        .nodes
+        .iter()
+        .find(|node| node.kind == "llm")
+        .expect("the model node");
+    assert_eq!(
+        (model.attempts, model.finished, model.rework),
+        (1, 1, Rework::Model)
+    );
+    assert!(
+        !sealed.body.contains(QUERY) && !sealed.body.contains(ANSWER),
+        "a bundle names what a run was given and produced by digest, never by content"
+    );
+
+    let mut tampered = sealed.clone();
+    tampered.body = tampered.body.replacen("completed", "cancelled", 1);
+    assert!(
+        tampered.open().is_err(),
+        "a changed body no longer matches its digest"
+    );
+}
+
+#[tokio::test]
+async fn a_bundle_explains_a_run_that_failed() {
+    let stack = Stack::new(None).await;
+    let agent = answering_agent(&stack).await;
+    let id = stack
+        .start(&agent, json!({ "query": "why?", "answer": "" }))
+        .await;
+    stack.run_to_rest().await;
+
+    let (_, bundle) = bundle_of(&stack, &id, "failed").await;
+    let explained = explain(&bundle);
+    assert!(explained.agrees(), "{explained:?}");
+    assert_eq!(explained.status, Ok(RunStatus::Failed));
+    assert!(
+        explained
+            .ended_because
+            .as_deref()
+            .is_some_and(|reason| reason.contains("verifier_unavailable")),
+        "{explained:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_bundle_explains_a_run_interrupted_mid_call() {
+    let stack = Stack::new(None).await;
+    let agent = answering_agent(&stack).await;
+    let id = stack
+        .start(&agent, json!({ "query": "why?", "answer": "" }))
+        .await;
+    // The worker is dropped while it waits on the model, as a crash would leave it.
+    let worker = stack.worker_using(Some(Arc::new(SilentModel)), 256);
+    assert!(
+        tokio::time::timeout(Duration::from_secs(3), worker.advance_one())
+            .await
+            .is_err(),
+        "the model never answers"
+    );
+
+    let (_, bundle) = bundle_of(&stack, &id, "interrupted").await;
+    let explained = explain(&bundle);
+    assert!(explained.agrees(), "{explained:?}");
+    assert_eq!(explained.status, Ok(RunStatus::Running));
+    let doing: Vec<String> = explained
+        .unfinished
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    let model = explained
+        .nodes
+        .iter()
+        .find(|node| node.kind == "llm")
+        .expect("the model node");
+    assert_eq!(
+        doing,
+        vec![model.node.to_string()],
+        "it was in the model call"
+    );
+    assert_eq!((model.attempts, model.finished), (1, 0));
+}
+
+#[tokio::test]
+async fn a_bundle_explains_a_run_that_ran_out_of_budget() {
+    let stack = Stack::new(Some(ScriptedModel::answering(&["one", "two", "three"]))).await;
+    let agent = stack
+        .agent(
+            answering_graph(&json!({ "rule.contains": "never" })),
+            json!({ "max_steps": 2, "max_tokens": 10_000, "max_seconds": 300, "max_cost_micros": 1_000 }),
+            &["validator_pass"],
+        )
+        .await;
+    let id = stack
+        .start(&agent, json!({ "query": "why?", "answer": "" }))
+        .await;
+    stack.run_to_rest().await;
+
+    let (_, bundle) = bundle_of(&stack, &id, "budget-exhausted").await;
+    let explained = explain(&bundle);
+    assert!(explained.agrees(), "{explained:?}");
+    assert_eq!(explained.status, Ok(RunStatus::Failed));
+    assert!(
+        explained
+            .ended_because
+            .as_deref()
+            .is_some_and(|reason| reason.contains("iterations budget ran out")),
+        "{explained:?}"
+    );
+    let model = explained
+        .nodes
+        .iter()
+        .find(|node| node.kind == "llm")
+        .expect("the model node");
+    assert_eq!(model.finished, 2, "one call each time round, twice");
 }

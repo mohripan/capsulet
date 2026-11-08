@@ -51,6 +51,7 @@ without membership or lacking action permission returns `403`. Webhooks require 
 | `getAgentRun` | GET | `/v1/agent-runs/{id}` | `agents:read` | selected_project | allow | allow | allow |
 | `getAgentRunEvents` | GET | `/v1/agent-runs/{id}/events` | `agents:read` | selected_project | allow | allow | allow |
 | `cancelAgentRun` | POST | `/v1/agent-runs/{id}/cancel` | `agents:operate` | selected_project | deny | allow | allow |
+| `exportAgentRunBundle` | POST | `/v1/agent-runs/{id}/debug-bundle` | `agents:read` | selected_project | allow | allow | allow |
 | `eraseAgentRunPayloads` | POST | `/v1/agent-runs/{id}/erase` | `agents:write` | selected_project | deny | deny | allow |
 | `decideAgentRun` | POST | `/v1/agent-runs/{id}/decisions` | `agents:operate` | selected_project | deny | allow | allow |
 | `askReasoning` | POST | `/v1/reasoning/ask` | `reasoning:operate` | selected_project | deny | allow | allow |

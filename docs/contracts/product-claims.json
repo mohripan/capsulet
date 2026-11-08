@@ -895,6 +895,22 @@
       "tests": [
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_bundle_explains_a_run_interrupted_mid_call"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_bundle_explains_a_run_that_failed"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_bundle_explains_a_run_that_ran_out_of_budget"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
           "selector": "a_collector_that_is_down_changes_nothing_about_how_a_run_ends"
         },
         {
@@ -997,6 +1013,35 @@
         {
           "path": "crates/graph-worker/tests/execution.rs",
           "selector": "a_node_slower_than_its_lease_is_not_run_twice"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+      "tests": [
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_bundle_whose_body_was_changed_is_not_believed"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_report_the_log_does_not_support_is_a_disagreement"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_run_interrupted_mid_call_says_what_it_was_doing"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_run_that_failed_says_why_offline"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_run_that_ran_out_of_budget_says_which_budget"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_run_that_succeeded_is_explained_offline"
         }
       ]
     }
@@ -1505,6 +1550,109 @@
           "path": "crates/graph-worker/tests/agent_runs.rs",
           "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
           "selector": "erasing_is_refused_while_a_live_run_holds_the_same_content"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AGENT-009",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
+      "statement": "An agent run can be exported as a digest-checked bundle of its definition, its whole log and what the installation reports, carrying none of the values it was given or produced, and capsulet-replay reads one with no database or network: it refuses a changed bundle, re-folds the log, says when the log does not support the report, and explains a run that succeeded, failed, was interrupted mid-call or ran out of budget, naming which steps cannot be reproduced offline.",
+      "public_surfaces": [
+        "docs/api.md",
+        "docs/troubleshooting.md"
+      ],
+      "verification": [
+        {
+          "assertion": "export-carries-no-content",
+          "evidence_selectors": [
+            "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
+          ]
+        },
+        {
+          "assertion": "digest-checked",
+          "evidence_selectors": [
+            "a_bundle_whose_body_was_changed_is_not_believed",
+            "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
+          ]
+        },
+        {
+          "assertion": "report-checked-against-log",
+          "evidence_selectors": [
+            "a_report_the_log_does_not_support_is_a_disagreement"
+          ]
+        },
+        {
+          "assertion": "four-outcomes-explained-offline",
+          "evidence_selectors": [
+            "a_run_that_succeeded_is_explained_offline",
+            "a_run_that_failed_says_why_offline",
+            "a_run_interrupted_mid_call_says_what_it_was_doing",
+            "a_run_that_ran_out_of_budget_says_which_budget"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_bundle_explains_a_run_interrupted_mid_call"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_bundle_explains_a_run_that_failed"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_bundle_explains_a_run_that_ran_out_of_budget"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "selector": "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "selector": "a_bundle_whose_body_was_changed_is_not_believed"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "selector": "a_report_the_log_does_not_support_is_a_disagreement"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "selector": "a_run_interrupted_mid_call_says_what_it_was_doing"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "selector": "a_run_that_failed_says_why_offline"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "selector": "a_run_that_ran_out_of_budget_says_which_budget"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "selector": "a_run_that_succeeded_is_explained_offline"
         }
       ]
     },

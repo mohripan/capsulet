@@ -634,6 +634,20 @@ pub(crate) struct AgentRunExecutionResponse {
     pub(crate) usage: AgentRunUsageResponse,
 }
 
+/// A run packed to be understood elsewhere, with nothing it was given or produced.
+///
+/// `body` is the bundle as JSON text and `digest` is the digest of exactly those
+/// bytes, so a reader checks it before believing anything inside. `capsulet-replay`
+/// reads one offline.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AgentRunBundleResponse {
+    /// Always `capsulet.agent_run_bundle`.
+    pub(crate) kind: String,
+    pub(crate) bundle_version: u32,
+    pub(crate) digest: String,
+    pub(crate) body: String,
+}
+
 /// What erasing an agent run's payloads did.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AgentRunErasureResponse {

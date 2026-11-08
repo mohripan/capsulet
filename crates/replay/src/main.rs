@@ -1,10 +1,18 @@
-//! `capsulet-replay` — check a certificate against the evidence it cites.
+//! `capsulet-replay` — check a certificate against the evidence it cites, or
+//! explain a run from its bundle.
 //!
 //! Usage: `capsulet-replay <bundle.json>`
 //!
-//! Exits 0 when the certificate still justifies its recorded verdict, 1 when it
-//! does not, and 2 when the bundle cannot be read at all. The distinction
-//! matters to a script: "this certificate is wrong" and "I could not open the
+//! A certificate bundle: exits 0 when the certificate still justifies its recorded
+//! verdict, 1 when it does not, and 2 when the bundle cannot be read at all.
+//!
+//! A run bundle (`POST /v1/agent-runs/{id}/debug-bundle`): checks its digest, folds
+//! its log again, and says what the run did, why it ended, and which of its steps a
+//! reader could reproduce without the installation. Exits 0 when the log supports
+//! what the installation reported, 1 when it does not, and 2 when the bundle cannot
+//! be read or does not match its digest.
+//!
+//! The distinction matters to a script: "this is wrong" and "I could not open the
 //! file" are different problems.
 //!
 //! This program reads one file and prints to standard output. It opens no
@@ -18,6 +26,9 @@ use std::process::ExitCode;
 
 use capsulet_kernel::bundle::Bundle;
 use capsulet_kernel::replay::{ReplayFinding, ReplayNote, ReplayOutcome, replay};
+use capsulet_runtime::bundle::{
+    Explanation, RUN_BUNDLE_KIND, Rework, RunBundle, SealedRunBundle, explain,
+};
 
 fn main() -> ExitCode {
     let mut arguments = std::env::args_os().skip(1);
@@ -33,6 +44,19 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    // A run bundle says so; anything else is read as a certificate bundle, as before.
+    if let Ok(sealed) = serde_json::from_slice::<SealedRunBundle>(&bytes)
+        && sealed.kind == RUN_BUNDLE_KIND
+    {
+        return match sealed.open() {
+            Ok(bundle) => report_run(&bundle, &explain(&bundle)),
+            Err(error) => {
+                eprintln!("{}: {error}", path.display());
+                ExitCode::from(2)
+            }
+        };
+    }
 
     let bundle = match Bundle::read(&bytes) {
         Ok(bundle) => bundle,
@@ -153,5 +177,143 @@ fn describe_note(note: &ReplayNote) -> String {
             "this certificate pins no evidence and names no verifier, so nothing was re-checked"
                 .to_string()
         }
+    }
+}
+
+/// Says what a run did, from its bundle alone.
+fn report_run(bundle: &RunBundle, explanation: &Explanation) -> ExitCode {
+    println!(
+        "run {} of agent {}, in {}/{}",
+        bundle.run_id, bundle.agent_id, bundle.tenant_id, bundle.project_id
+    );
+    println!(
+        "trace: {}",
+        bundle
+            .trace_id
+            .as_deref()
+            .unwrap_or("none; the run was not traced")
+    );
+    match &explanation.status {
+        Ok(status) => println!(
+            "log: {} events, folding to `{}`",
+            bundle.events.len(),
+            status.as_str()
+        ),
+        Err(reason) => println!(
+            "log: {} events that do not fold: {reason}",
+            bundle.events.len()
+        ),
+    }
+    println!(
+        "definition: {}",
+        if explanation.definition_matches {
+            "the version the run was admitted with"
+        } else {
+            "NOT the version the run was admitted with"
+        }
+    );
+    let spent = &explanation.spent;
+    println!(
+        "spent: {} tokens, {} cost micro-units, {} effects, {} unmeasured",
+        spent.tokens, spent.cost_micro_units, spent.effects, spent.unmeasured
+    );
+    if let Some(reason) = &explanation.ended_because {
+        println!("ended because: {reason}");
+    }
+    if let Some(wait) = &explanation.waiting_on {
+        println!("waiting on: {wait}");
+    }
+    if !explanation.unfinished.is_empty() {
+        let doing: Vec<&str> = explanation
+            .unfinished
+            .iter()
+            .map(capsulet_ir::Identifier::as_str)
+            .collect();
+        println!("interrupted while running: {}", doing.join(", "));
+    }
+
+    print_steps(explanation);
+    print_offline(bundle, explanation);
+
+    if explanation.agrees() {
+        println!("agrees: the log supports what was reported");
+        ExitCode::SUCCESS
+    } else {
+        println!("disagrees:");
+        for disagreement in &explanation.disagreements {
+            println!("  {disagreement}");
+        }
+        ExitCode::FAILURE
+    }
+}
+
+/// Each node's attempts, and each effect's.
+fn print_steps(explanation: &Explanation) {
+    println!("nodes:");
+    for node in &explanation.nodes {
+        let failures = if node.failures.is_empty() {
+            String::new()
+        } else {
+            format!(", failed with {}", node.failures.join(", "))
+        };
+        println!(
+            "  {} ({}): {} started, {} finished{failures}; {}",
+            node.node,
+            node.kind,
+            node.attempts,
+            node.finished,
+            node.rework.as_str()
+        );
+    }
+    if !explanation.effects.is_empty() {
+        println!("effects:");
+        for effect in &explanation.effects {
+            println!(
+                "  {} on {}: {} attempts, {}",
+                effect.effect, effect.node, effect.attempts, effect.outcome
+            );
+        }
+    }
+}
+
+/// What a reader without the installation can and cannot do again.
+fn print_offline(bundle: &RunBundle, explanation: &Explanation) {
+    println!("offline:");
+    println!("  reproduced here: the fold of every event, the status, and the spend");
+    let needing = |rework: Rework| -> Vec<&str> {
+        explanation
+            .nodes
+            .iter()
+            .filter(|node| node.rework == rework && node.attempts > 0)
+            .map(|node| node.node.as_str())
+            .collect()
+    };
+    for (rework, why) in [
+        (
+            Rework::Model,
+            "a model, which can answer differently each time",
+        ),
+        (Rework::Memory, "the project's memory as it stood then"),
+        (Rework::Effect, "the world it acted on"),
+        (
+            Rework::FromInputs,
+            "only their input values, which a bundle never carries",
+        ),
+    ] {
+        let nodes = needing(rework);
+        if !nodes.is_empty() {
+            println!("  not reproduced, needing {why}: {}", nodes.join(", "));
+        }
+    }
+    println!(
+        "  left out of this bundle: {}",
+        if bundle.excluded.is_empty() {
+            "nothing".to_string()
+        } else {
+            bundle.excluded.join("; ")
+        }
+    );
+    if bundle.payloads_erased {
+        println!("  this run's payloads had been erased when it was packed");
     }
 }

@@ -16,6 +16,7 @@
 //! Purity is enforced by `tests/purity.rs` rather than trusted, exactly as in
 //! [`capsulet_ir`].
 
+pub mod bundle;
 pub mod certify;
 pub mod decide;
 pub mod effect;

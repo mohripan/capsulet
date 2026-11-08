@@ -120,6 +120,33 @@
         ],
         "type": "object"
       },
+      "AgentRunBundleResponse": {
+        "description": "A run packed to be understood elsewhere, with nothing it was given or produced.\n\n`body` is the bundle as JSON text and `digest` is the digest of exactly those\nbytes, so a reader checks it before believing anything inside. `capsulet-replay`\nreads one offline.",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "bundle_version": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "Always `capsulet.agent_run_bundle`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "bundle_version",
+          "digest",
+          "body"
+        ],
+        "type": "object"
+      },
       "AgentRunErasureResponse": {
         "description": "What erasing an agent run's payloads did.",
         "properties": {
@@ -5113,6 +5140,77 @@
           "project_admin"
         ],
         "x-capsulet-required-scope": "agents:operate",
+        "x-capsulet-resource": "agents",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/agent-runs/{id}/debug-bundle": {
+      "post": {
+        "operationId": "exportAgentRunBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunBundleResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "export agent run bundle",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:read",
         "x-capsulet-resource": "agents",
         "x-capsulet-stability": "experimental"
       }

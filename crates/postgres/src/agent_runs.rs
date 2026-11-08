@@ -846,42 +846,11 @@ fn status_of(state: &RunState) -> AgentRunStatus {
 }
 
 fn describe_failure(failure: &RunFailure) -> String {
-    match failure {
-        RunFailure::Node {
-            node,
-            failure,
-            detail,
-        } => format!("node `{node}` failed with {}: {detail}", failure.as_str()),
-        RunFailure::EffectUncertain { node, effect } => format!(
-            "nobody can say whether effect `{effect}` on `{node}` happened, so the run stopped \
-             rather than guess"
-        ),
-        RunFailure::BudgetExhausted { resource } => format!("the {resource} budget ran out"),
-        RunFailure::ControlMissing { node, port, .. } => {
-            format!("`{node}` reported nothing on `{port}`, which the loop has to read")
-        }
-        RunFailure::LoopStopped { reason, .. } => match reason {
-            capsulet_ir::loop_region::StopReason::BudgetExhausted { budget } => {
-                format!("the {} budget ran out", budget.as_str())
-            }
-            other => format!("the loop stopped: {}", other.as_str()),
-        },
-        RunFailure::GateRejected { node, by, .. } => {
-            format!("`{by}` refused at the gate on `{node}`")
-        }
-    }
+    failure.describe()
 }
 
 fn describe_wait(wait: &capsulet_runtime::Wait) -> String {
-    match wait {
-        capsulet_runtime::Wait::Timer { until } => {
-            format!("a timer due at {}", until.epoch_millis())
-        }
-        capsulet_runtime::Wait::Event { name } => format!("the event `{name}`"),
-        capsulet_runtime::Wait::HumanGate { node, obligation } => {
-            format!("a decision from `{obligation}` on `{node}`")
-        }
-    }
+    wait.describe()
 }
 
 #[cfg(test)]

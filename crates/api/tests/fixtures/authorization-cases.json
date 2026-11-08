@@ -215,6 +215,11 @@
     "ownership": "selected_project"
   },
   {
+    "operation_id": "exportAgentRunBundle",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
     "operation_id": "askReasoning",
     "minimum_role": "operator",
     "ownership": "selected_project"

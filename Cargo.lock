@@ -537,6 +537,8 @@ version = "0.1.0"
 dependencies = [
  "capsulet-ir",
  "capsulet-kernel",
+ "capsulet-runtime",
+ "serde_json",
 ]
 
 [[package]]

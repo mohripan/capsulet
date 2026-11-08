@@ -13,8 +13,9 @@ use capsulet_ir::definition::Definition;
 use capsulet_ir::id::Identifier;
 use capsulet_ir_adapters::from_agent;
 use capsulet_postgres::{AgentRunStart, MAX_IR_RUN_VALUE_BYTES, PayloadErasure};
-use capsulet_runtime::Signal;
+use capsulet_runtime::bundle::{ReportedRun, RunBundle};
 use capsulet_runtime::values::check_value;
+use capsulet_runtime::{RunState, Signal};
 use capsulet_storage::ObjectStore;
 use serde_json::{Value, to_string};
 
@@ -24,9 +25,9 @@ use crate::{
     error::ApiError,
     http::{generated_id, internal::ProjectContext, project_context, require_resource_project},
     models::{
-        AgentResponse, AgentRunErasureResponse, AgentRunResponse, CreateAgentRequest,
-        CreateGraphRequest, DecideAgentRunRequest, GraphResponse, ListAgentRunsResponse,
-        ListAgentsResponse, ListGraphsResponse, StartAgentRunRequest,
+        AgentResponse, AgentRunBundleResponse, AgentRunErasureResponse, AgentRunResponse,
+        CreateAgentRequest, CreateGraphRequest, DecideAgentRunRequest, GraphResponse,
+        ListAgentRunsResponse, ListAgentsResponse, ListGraphsResponse, StartAgentRunRequest,
         termination_policy_from_conditions,
     },
     state::AppState,
@@ -392,6 +393,96 @@ where
         .await
         .map_err(ApiError::store)?;
     Ok((StatusCode::ACCEPTED, Json(AgentRunResponse::new(&run)?)))
+}
+
+/// Packs a run for somebody to look at elsewhere.
+///
+/// The definition it executed, its whole log, and what this installation reports
+/// about it, sealed under a digest. What the run was given and produced is left out:
+/// the log names those by digest only. A `POST`, so the export is audited like every
+/// other write, though it changes nothing.
+pub(crate) async fn export_agent_run_bundle<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<AgentRunBundleResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    let id = AgentRunId::new(id).map_err(ApiError::validation)?;
+    let run = find_run(&state.store, &id, &context).await?;
+    // A run from before agent runs executed has no definition or log to pack.
+    let Some(execution) = &run.execution else {
+        return Err(ApiError::AgentRunStateConflict(id.as_str().to_string()));
+    };
+    let definition = state
+        .store
+        .get_ir_definition_version(
+            &context.tenant_id,
+            &context.project_id,
+            &execution.definition_digest,
+        )
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::IrDefinitionNotFound(execution.definition_digest.clone()))?
+        .definition()
+        .map_err(|error| ApiError::store(error.to_string()))?;
+    let events = state
+        .store
+        .load_ir_run_events(
+            &context.tenant_id,
+            &context.project_id,
+            &execution.ir_run_id,
+        )
+        .await
+        .map_err(ApiError::store)?;
+    let folded = RunState::fold(&events).map_err(|error| ApiError::store(error.to_string()))?;
+    let trace_id = state
+        .store
+        .get_ir_run(
+            &context.tenant_id,
+            &context.project_id,
+            &execution.ir_run_id,
+        )
+        .await
+        .map_err(ApiError::store)?
+        .and_then(|ir_run| ir_run.trace_parent)
+        .and_then(|parent| parent.split('-').nth(1).map(str::to_string));
+
+    let bundle = RunBundle {
+        run_id: run.id.as_str().to_string(),
+        agent_id: run.agent_id.as_str().to_string(),
+        tenant_id: context.tenant_id.clone(),
+        project_id: context.project_id.clone(),
+        reported: ReportedRun {
+            status: folded.status().as_str().to_string(),
+            tokens: execution.usage.tokens,
+            cost_micro_units: execution.usage.cost_micro_units,
+            effects: execution.usage.effects,
+            unmeasured: execution.usage.unmeasured,
+        },
+        definition,
+        events,
+        trace_id,
+        payloads_erased: execution.payloads_erased_at.is_some(),
+        excluded: vec![
+            "the values the run was given and produced, which the log names by digest".to_string(),
+            "the state the run was started with".to_string(),
+            "credentials and the installation's configuration".to_string(),
+        ],
+    };
+    let sealed = bundle
+        .seal()
+        .map_err(|error| ApiError::store(error.to_string()))?;
+    Ok(Json(AgentRunBundleResponse {
+        kind: sealed.kind,
+        bundle_version: sealed.bundle_version,
+        digest: sealed.digest,
+        body: sealed.body,
+    }))
 }
 
 /// Erases what a finished run was given and produced, keeping the record that it ran.

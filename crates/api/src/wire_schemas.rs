@@ -141,6 +141,7 @@ fn schema_chunk_4(name: &str) -> Option<Value> {
         "AgentBudgetResponse" => serialize::<crate::models::AgentBudgetResponse>(),
         "AgentRunResponse" => serialize::<crate::models::AgentRunResponse>(),
         "AgentRunErasureResponse" => serialize::<crate::models::AgentRunErasureResponse>(),
+        "AgentRunBundleResponse" => serialize::<crate::models::AgentRunBundleResponse>(),
         "AuditEventResponse" => serialize::<crate::models::AuditEventResponse>(),
         "ListAuditEventsResponse" => serialize::<crate::models::ListAuditEventsResponse>(),
         "WorkflowDependencyResponse" => serialize::<crate::models::WorkflowDependencyResponse>(),

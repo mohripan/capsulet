@@ -99,6 +99,22 @@ pub enum Wait {
     },
 }
 
+impl Wait {
+    /// What the run is waiting for, in words.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Timer { until } => {
+                format!("a timer due at {}", until.epoch_millis())
+            }
+            Self::Event { name } => format!("the event `{name}`"),
+            Self::HumanGate { node, obligation } => {
+                format!("a decision from `{obligation}` on `{node}`")
+            }
+        }
+    }
+}
+
 /// What one piece of work consumed, as far as anybody measured.
 ///
 /// Every figure is optional, because a provider that reports no token count has
@@ -188,6 +204,38 @@ pub enum RunFailure {
         region: Identifier,
         reason: StopReason,
     },
+}
+
+impl RunFailure {
+    /// Why the run ended, in words. The same words wherever a run is described,
+    /// from a live installation or from a bundle read offline.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Node {
+                node,
+                failure,
+                detail,
+            } => format!("node `{node}` failed with {}: {detail}", failure.as_str()),
+            Self::EffectUncertain { node, effect } => format!(
+                "nobody can say whether effect `{effect}` on `{node}` happened, so the run stopped \
+                 rather than guess"
+            ),
+            Self::BudgetExhausted { resource } => format!("the {resource} budget ran out"),
+            Self::ControlMissing { node, port, .. } => {
+                format!("`{node}` reported nothing on `{port}`, which the loop has to read")
+            }
+            Self::LoopStopped { reason, .. } => match reason {
+                StopReason::BudgetExhausted { budget } => {
+                    format!("the {} budget ran out", budget.as_str())
+                }
+                other => format!("the loop stopped: {}", other.as_str()),
+            },
+            Self::GateRejected { node, by, .. } => {
+                format!("`{by}` refused at the gate on `{node}`")
+            }
+        }
+    }
 }
 
 /// One thing that happened.
