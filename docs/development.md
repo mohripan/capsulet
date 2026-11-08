@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-JOB-001, CAP-WORKFLOW-001, CAP-IAM-001, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-JOB-001, CAP-JOB-002, CAP-JOB-003, CAP-JOB-004, CAP-JOB-005, CAP-JOB-006, CAP-JOB-007, CAP-JOB-008, CAP-JOB-009, CAP-WORKFLOW-001, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-008, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
 # Development
 
 This guide covers development of Capsulet's three layers: the implemented compatibility workflow
@@ -57,6 +57,11 @@ Use the following workflow for contract changes:
 
 1. Product claim: edit `docs/contracts/product-claims.json`, add the claim marker to every declared
    public surface, and attach executable test evidence for implemented capabilities/guarantees.
+   Test evidence names the verifier gate that runs it and that gate's exact command, as
+   `verify --list --format json` spells it (PowerShell as `pwsh`, a working directory as
+   `cd <dir> && `). Then run `cargo run -p capsulet-xtask --locked -- claims collect`, which builds
+   and lists each cited command's tests and rewrites `docs/contracts/test-manifest.json`; a test
+   that is not collected, or is collected but ignored or skipped, is refused.
    Add an accepted ADR when the claim establishes a normative product or compatibility decision.
    Regenerate `docs/contracts/product-claims.md` with
    `pwsh ./scripts/render-product-claims.ps1 -OutputPath docs/contracts/product-claims.md`.

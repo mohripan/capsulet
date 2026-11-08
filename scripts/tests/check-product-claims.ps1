@@ -1,5 +1,41 @@
+# -List prints each case as `name: test` without running any of them, the way a
+# libtest binary answers `--list`. `capsulet-xtask claims collect` asks this
+# script that question when a claim cites one of its cases as evidence.
+param([switch]$List)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+$invalidCases = @(
+    @{ File = "duplicate-ids.json"; Message = "duplicate claim ID" },
+    @{ File = "unknown-maturity.json"; Message = "invalid maturity" },
+    @{ File = "unknown-kind.json"; Message = "invalid kind" },
+    @{ File = "missing-file.json"; Message = "referenced path does not exist" },
+    @{ File = "missing-evidence.json"; Message = "requires executable test evidence" },
+    @{ File = "invalid-selector.json"; Message = "test selector was not found" },
+    @{ File = "unmarked-surface.json"; Message = "missing claim marker" },
+    @{ File = "unregistered-surface.json"; Message = "unregistered public surface" },
+    @{ File = "missing-accepted-adr.json"; Message = "requires evidence from an accepted ADR" },
+    @{ File = "implemented-guarantee-without-test.json"; Message = "requires executable test evidence" },
+    @{ File = "compound-claim-partial-evidence.json"; Message = "verification assertion 'adapter-kubernetes' has no executable test evidence" },
+    @{ File = "selector-not-executed.json"; Message = "test selector was not executed" },
+    @{ File = "command-does-not-select-test.json"; Message = "evidence command was not collected" },
+    @{ File = "test-evidence-without-gate.json"; Message = "does not name the gate that runs it" }
+)
+$invalidLifecycleCases = @(
+    @{ File = "collapsed-execution-assurance.json"; Message = "execution and assurance vocabularies overlap" },
+    @{ File = "undocumented-persisted-status.json"; Message = "status inventory differs from source enum" },
+    @{ File = "invalid-transition-reference.json"; Message = "transition references unknown status" }
+)
+$caseNames = @("valid registry", "public surfaces use current product language") +
+    @($invalidCases | ForEach-Object { $_.File }) +
+    @($invalidLifecycleCases | ForEach-Object { $_.File }) +
+    @("new dashboard page requires registration", "stale generated Markdown",
+        "rendered claim sections are in ordinal order", "non-ASCII claims survive rendering")
+if ($List) {
+    foreach ($name in $caseNames) { Write-Output "${name}: test" }
+    return
+}
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $checker = Join-Path $repositoryRoot "scripts\check-product-claims.ps1"
@@ -67,22 +103,6 @@ foreach ($surface in $mainRegistry.public_surfaces) {
     }
 }
 
-$invalidCases = @(
-    @{ File = "duplicate-ids.json"; Message = "duplicate claim ID" },
-    @{ File = "unknown-maturity.json"; Message = "invalid maturity" },
-    @{ File = "unknown-kind.json"; Message = "invalid kind" },
-    @{ File = "missing-file.json"; Message = "referenced path does not exist" },
-    @{ File = "missing-evidence.json"; Message = "requires executable test evidence" },
-    @{ File = "invalid-selector.json"; Message = "test selector was not found" },
-    @{ File = "unmarked-surface.json"; Message = "missing claim marker" },
-    @{ File = "unregistered-surface.json"; Message = "unregistered public surface" },
-    @{ File = "missing-accepted-adr.json"; Message = "requires evidence from an accepted ADR" },
-    @{ File = "implemented-guarantee-without-test.json"; Message = "requires executable test evidence" },
-    @{ File = "compound-claim-partial-evidence.json"; Message = "verification assertion 'adapter-kubernetes' has no executable test evidence" },
-    @{ File = "selector-not-executed.json"; Message = "test selector was not executed" },
-    @{ File = "command-does-not-select-test.json"; Message = "evidence command was not collected" }
-)
-
 foreach ($case in $invalidCases) {
     Assert-Check -Name $case.File `
         -Registry (Join-Path $fixtures "invalid-claims\$($case.File)") `
@@ -90,11 +110,6 @@ foreach ($case in $invalidCases) {
         -ExpectedMessage $case.Message
 }
 
-$invalidLifecycleCases = @(
-    @{ File = "collapsed-execution-assurance.json"; Message = "execution and assurance vocabularies overlap" },
-    @{ File = "undocumented-persisted-status.json"; Message = "status inventory differs from source enum" },
-    @{ File = "invalid-transition-reference.json"; Message = "transition references unknown status" }
-)
 foreach ($case in $invalidLifecycleCases) {
     Assert-Check -Name $case.File `
         -Registry (Join-Path $fixtures "valid-claims.json") `
@@ -186,4 +201,4 @@ if ($failures.Count -gt 0) {
 }
 
 Remove-Item -LiteralPath $renderedForOrder -Force -ErrorAction SilentlyContinue
-Write-Host "Product claim contract tests passed ($($invalidCases.Count + $invalidLifecycleCases.Count + 5) cases)."
+Write-Host "Product claim contract tests passed ($($caseNames.Count) cases)."

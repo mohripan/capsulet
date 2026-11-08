@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-008, CAP-MEMORY-001, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-PERSISTENCE-001 -->
+<!-- capsulet-claims: CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-008, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-PERSISTENCE-001 -->
 # Persistence
 
 Capsulet uses PostgreSQL as its durable agent execution-graph control-plane store and work queue. Filesystem or S3-compatible object storage holds script, full-log, and artifact bytes for deterministic tool/job execution. The later memory graph should add separate claim/entity/event/evidence tables rather than overloading execution graph tables.

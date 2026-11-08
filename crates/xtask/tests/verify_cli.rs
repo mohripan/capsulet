@@ -177,6 +177,38 @@ fn lists_the_executable_gate_graph_as_json() {
     }
 }
 
+/// The Compose stack is torn down by the gate's teardown, which runs after a
+/// failure, and not by a last step, which a failure skips.
+#[test]
+fn the_compose_stack_is_torn_down_even_when_the_smoke_fails() {
+    let result = output(&["verify", "--list", "--format", "json"]);
+    assert!(result.status.success(), "{}", stderr(&result));
+    let graph: serde_json::Value = serde_json::from_slice(&result.stdout).expect("gate graph");
+    let compose = graph
+        .as_array()
+        .expect("gates")
+        .iter()
+        .find(|gate| gate["name"] == "compose")
+        .expect("compose gate");
+    let down = serde_json::json!(["compose", "down"]);
+    assert!(
+        compose["teardown"]
+            .as_array()
+            .expect("teardown")
+            .iter()
+            .any(|step| step["program"] == "docker" && step["arguments"] == down),
+        "{compose}"
+    );
+    assert!(
+        !compose["commands"]
+            .as_array()
+            .expect("commands")
+            .iter()
+            .any(|step| step["arguments"] == down),
+        "a `down` among the steps is skipped by the failure it should clean up after"
+    );
+}
+
 /// A prerequisite probe that guesses `--version` for every tool reports
 /// installed tools as missing. `helm` and `kubectl` reject that flag outright,
 /// so the doctor would tell an operator to install what they already have and
@@ -188,12 +220,39 @@ fn version_probes_use_the_flag_each_tool_actually_accepts() {
 
     for tool in ["helm", "kubectl"] {
         if which(tool) {
+            // `old` is a fair answer for an installed release below the
+            // supported minimum; `missing` never is.
             assert!(
-                report.contains(&format!("ok      {tool}")),
+                report.contains(&format!("ok      {tool}"))
+                    || report.contains(&format!("old     {tool}")),
                 "`{tool}` is installed, so the doctor must not report it missing:
 {report}"
             );
         }
+    }
+}
+
+/// The doctor holds each tool to the minimum the documentation supports, and
+/// says so for every tool it reports.
+#[test]
+fn the_doctor_states_the_minimum_it_holds_each_tool_to() {
+    let output = output(&["verify", "doctor"]);
+    let report = String::from_utf8_lossy(&output.stdout).into_owned();
+    for (tool, minimum) in [
+        ("cargo", "1.96"),
+        ("node", "20"),
+        ("python", "3.12"),
+        ("helm", "3.18"),
+        ("kind", "0.30"),
+    ] {
+        let line = report
+            .lines()
+            .find(|line| line.split_whitespace().nth(1) == Some(tool))
+            .unwrap_or_else(|| panic!("no line for {tool}:\n{report}"));
+        assert!(
+            line.starts_with("missing") || line.contains(&format!("(needs {minimum} or newer)")),
+            "{line}"
+        );
     }
 }
 

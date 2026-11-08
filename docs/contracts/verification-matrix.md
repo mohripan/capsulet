@@ -15,6 +15,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `api-contracts` | yes | yes | Runtime/OpenAPI equality and drift | Cargo |
 | `authorization` | yes | yes | Executed HTTP role/scope matrix and generated policy drift | Cargo |
 | `claims` | yes | yes | Claims, lifecycle, and public surfaces | PowerShell |
+| `claims-evidence` | yes | yes | Every claim's test evidence is collected, and not ignored or skipped, by the gate command it names; `docs/contracts/test-manifest.json` matches that collection | Cargo, Python, npm, PowerShell |
 | `sdk` | yes | yes | Python and dashboard transports | Python, npm |
 | `dashboard` | no | yes | ESLint and production build | npm |
 | `postgres` | no | yes | Isolated persistence integration | Cargo, Docker |
@@ -44,6 +45,7 @@ from the current `full` summary.
 
 Supported baseline tools are Rust 1.96, Node.js 20/npm 10 or newer compatible releases, Python
 3.12 or newer, Docker Engine 27 or newer with Compose v2, Helm 3.18 or newer, Kind 0.30 or newer,
-and a kubectl release compatible with the target cluster. `verify doctor` performs read-only
-availability probes for its listed tools; it does not yet validate all minimum versions or every
-gate-specific scanner. Each gate separately fails when a declared prerequisite is missing.
+and a kubectl release compatible with the target cluster. `verify doctor` asks each of these tools,
+plus PowerShell, `cargo-audit` and `cargo-deny`, for its version without changing anything, and
+fails when one is missing or older than the minimum above. kubectl, PowerShell and the scanners
+are only required to run. Each gate separately fails when a declared prerequisite is missing.

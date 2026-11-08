@@ -140,3 +140,27 @@ inconsistencies, move client transports toward generation, add dashboard lint an
 gates, and document environment-specific full-workspace/database verification. A dedicated agent
 worker is not present; the current queued agent surface remains orchestration metadata and must not
 be described as autonomous agent execution.
+
+## Since M0
+
+This report records M0 as it closed and is not rewritten. Three things it says have since changed:
+
+- Agent runs now execute. Since 2026-11-08 the graph worker runs them on the durable path
+  ([ADR 0019](../adr/0019-agent-runs-execute-on-the-durable-path.md)); the paragraph above describes
+  the M0 tree.
+- The compound job, automation, IAM and governed-memory claims were split into statements that
+  each stand on their own evidence. On 2026-11-08 the registry held 93 claims (79 implemented, 13
+  experimental, 1 planned) across 61 discovered public surfaces. The 13 experimental claims are
+  the parts no gate yet shows: the process, WASI Python and cluster Kubernetes job runners, cron
+  firing, SQL read-only enforcement, isolated trigger plugins and OIDC among them.
+  `pwsh ./scripts/check-product-claims.ps1` prints the current totals.
+- The evidence commands listed above were per-crate commands that no gate ran, checked against a
+  list in the registry that copied the evidence it was meant to check. Test evidence now names the
+  verifier gate and the exact gate command that runs it. `cargo run -p capsulet-xtask --locked --
+  claims collect` builds and lists each cited command's tests and writes what they collect to
+  [`test-manifest.json`](test-manifest.json): on 2026-11-08, 211 cited tests from 19 commands in the
+  `unit`, `ir`, `replay`, `api-contracts`, `authorization`, `claims`, `sdk`, `postgres`, `chaos` and
+  `wasm-python` gates. The `claims-evidence` gate fails when a cited test is not collected, is
+  ignored or skipped, or the manifest is stale. Collection proves a gate would run a test, not
+  that the test asserts anything. The WASI Python test, for one, passes without running where no
+  runtime is configured.

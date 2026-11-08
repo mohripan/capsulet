@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "public_surfaces": [
+    { "path": "AGENTS.md", "category": "root-docs", "marker_required": false }
+  ],
+  "test_manifest": [
+    { "gate": "fixture", "command": "fixture-only", "tests": [{ "path": "AGENTS.md", "selector": "lean-ctx" }] }
+  ],
+  "claims": [
+    {
+      "id": "CAP-TEST-001",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Test",
+      "statement": "Evidence that does not say which gate runs it cannot be held to that gate.",
+      "public_surfaces": ["AGENTS.md"],
+      "verification": [
+        { "assertion": "names-its-gate", "evidence_selectors": ["lean-ctx"] }
+      ],
+      "evidence": [
+        { "type": "test", "path": "AGENTS.md", "command": "fixture-only", "selector": "lean-ctx" }
+      ]
+    }
+  ]
+}

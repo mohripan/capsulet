@@ -292,6 +292,29 @@ pub(crate) fn gates() -> Vec<Gate> {
                 ),
             ],
         ),
+        // Builds and lists the tests of every gate command a claim cites, so it
+        // is as slow as a cold `unit` build. It needs no database: listing a
+        // test does not run it.
+        gate(
+            "claims-evidence",
+            "claim evidence is collected by the gate command it names",
+            &["cargo", "python", "npm", powershell],
+            2_400,
+            &[Fast, Full],
+            vec![command(
+                "cargo",
+                &[
+                    "run",
+                    "-p",
+                    "capsulet-xtask",
+                    "--locked",
+                    "--",
+                    "claims",
+                    "collect",
+                    "--check",
+                ],
+            )],
+        ),
         gate(
             "sdk",
             "Python and dashboard transport contracts",
@@ -503,21 +526,26 @@ pub(crate) fn gates() -> Vec<Gate> {
                 command("python", &["scripts/audit-python.py"]),
             ],
         ),
-        gate(
-            "compose",
-            "Compose configuration, and agents run through the real stack with a worker killed",
-            &["docker"],
-            1_800,
-            &[Full],
-            vec![
-                command("docker", &["compose", "config", "--quiet"]),
-                command(
-                    powershell,
-                    &["-NoProfile", "-File", "scripts/agent-smoke.ps1"],
-                ),
-                command("docker", &["compose", "down"]),
-            ],
-        ),
+        // The stack comes down as teardown, not as a last step: a step is
+        // skipped once an earlier one fails, which is exactly when a stack left
+        // running gets in the way of the next attempt.
+        Gate {
+            teardown: vec![command("docker", &["compose", "down"])],
+            ..gate(
+                "compose",
+                "Compose configuration, and agents run through the real stack with a worker killed",
+                &["docker"],
+                1_800,
+                &[Full],
+                vec![
+                    command("docker", &["compose", "config", "--quiet"]),
+                    command(
+                        powershell,
+                        &["-NoProfile", "-File", "scripts/agent-smoke.ps1"],
+                    ),
+                ],
+            )
+        },
         gate(
             "helm",
             "Helm lint and render",

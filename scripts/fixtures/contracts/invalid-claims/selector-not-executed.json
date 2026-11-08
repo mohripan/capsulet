@@ -4,7 +4,7 @@
     { "path": "AGENTS.md", "category": "root-docs", "marker_required": false }
   ],
   "test_manifest": [
-    { "command": "fixture-only", "tests": [{ "path": "AGENTS.md", "selector": "Agent Instructions" }] }
+    { "gate": "fixture", "command": "fixture-only", "tests": [{ "path": "AGENTS.md", "selector": "Agent Instructions" }] }
   ],
   "claims": [
     {
@@ -18,7 +18,7 @@
         { "assertion": "selector-executed", "evidence_selectors": ["lean-ctx"] }
       ],
       "evidence": [
-        { "type": "test", "path": "AGENTS.md", "command": "fixture-only", "selector": "lean-ctx" }
+        { "type": "test", "path": "AGENTS.md", "gate": "fixture", "command": "fixture-only", "selector": "lean-ctx" }
       ]
     }
   ]

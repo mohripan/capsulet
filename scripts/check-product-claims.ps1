@@ -2,7 +2,8 @@ param(
     [string]$RegistryPath = (Join-Path $PSScriptRoot "..\docs\contracts\product-claims.json"),
     [string]$GeneratedPath,
     [string]$LifecyclePath,
-    [string]$PublicSurfacesPath
+    [string]$PublicSurfacesPath,
+    [string]$TestManifestPath
 )
 
 Set-StrictMode -Version Latest
@@ -16,6 +17,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $defaultRegistry = (Join-Path $repositoryRoot "docs\contracts\product-claims.json")
 $defaultLifecycle = (Join-Path $repositoryRoot "docs\contracts\lifecycle-mapping.json")
 $defaultPublicSurfaces = (Join-Path $repositoryRoot "docs\contracts\public-surfaces.json")
+$defaultTestManifest = (Join-Path $repositoryRoot "docs\contracts\test-manifest.json")
 $schemaPath = Join-Path $repositoryRoot "docs\contracts\product-claims.schema.json"
 $registryFullPath = (Resolve-Path -LiteralPath $RegistryPath).Path
 $raw = [System.IO.File]::ReadAllText($registryFullPath, [System.Text.UTF8Encoding]::new($false))
@@ -32,11 +34,40 @@ if ($registry.schema_version -ne 1) { throw "unsupported product claim schema_ve
 $validKinds = @("positioning", "capability", "guarantee", "limitation", "compatibility")
 $validMaturities = @("implemented", "experimental", "planned")
 $surfacePaths = @($registry.public_surfaces | ForEach-Object { $_.path })
-$testManifest = if ($registry.PSObject.Properties.Name.Contains("test_manifest")) {
-    @($registry.test_manifest)
+# What each gate command collects. For the repository's registry this is
+# docs/contracts/test-manifest.json, which `capsulet-xtask claims collect`
+# generates by asking each command which tests it runs, and which it checks
+# again in the `claims-evidence` gate. The registry used to carry a hand-written
+# copy of its own evidence here; a copy cannot disagree with what it copies, so
+# the repository's registry may no longer embed one. Fixtures still do, because
+# they exercise this script's rules and not the repository's tests.
+$generateManifest = "cargo run -p capsulet-xtask --locked -- claims collect"
+if ($registry.PSObject.Properties.Name.Contains("test_manifest")) {
+    if ($registryFullPath -eq $defaultRegistry) {
+        throw "product-claims.json must not carry its own test_manifest; docs/contracts/test-manifest.json is generated from what the gates collect ($generateManifest)"
+    }
+    $testManifest = @($registry.test_manifest)
 }
 else {
-    @()
+    if (-not $TestManifestPath -and $registryFullPath -eq $defaultRegistry) {
+        $TestManifestPath = $defaultTestManifest
+    }
+    $testManifest = @()
+    if ($TestManifestPath) {
+        if (-not (Test-Path -LiteralPath $TestManifestPath -PathType Leaf)) {
+            throw "the collected test manifest is missing; run $generateManifest"
+        }
+        $manifestRaw = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $TestManifestPath).Path, [System.Text.UTF8Encoding]::new($false))
+        $manifestDocument = $manifestRaw | ConvertFrom-Json
+        if ($manifestDocument.schema_version -ne 1) {
+            throw "unsupported test manifest schema_version '$($manifestDocument.schema_version)'"
+        }
+        $manifestSchemaPath = Join-Path $repositoryRoot "docs\contracts\test-manifest.schema.json"
+        if ($testJson -and -not ($manifestRaw | Test-Json -SchemaFile $manifestSchemaPath -ErrorAction SilentlyContinue)) {
+            throw "the collected test manifest does not satisfy test-manifest.schema.json"
+        }
+        $testManifest = @($manifestDocument.commands)
+    }
 }
 
 $duplicateSurface = $surfacePaths | Group-Object | Where-Object Count -gt 1 | Select-Object -First 1
@@ -46,7 +77,12 @@ $claimIds = @($registry.claims | ForEach-Object { $_.id })
 $duplicateId = $claimIds | Group-Object | Where-Object Count -gt 1 | Select-Object -First 1
 if ($duplicateId) { throw "duplicate claim ID '$($duplicateId.Name)'" }
 
-$duplicateCommand = $testManifest | Group-Object command | Where-Object Count -gt 1 | Select-Object -First 1
+foreach ($entry in $testManifest) {
+    if (-not $entry.PSObject.Properties.Name.Contains("gate") -or -not $entry.gate) {
+        throw "collected evidence command '$($entry.command)' does not name its gate"
+    }
+}
+$duplicateCommand = $testManifest | Group-Object { "$($_.gate) :: $($_.command)" } | Where-Object Count -gt 1 | Select-Object -First 1
 if ($duplicateCommand) { throw "duplicate collected evidence command '$($duplicateCommand.Name)'" }
 
 foreach ($claim in $registry.claims) {
@@ -94,13 +130,18 @@ foreach ($claim in $registry.claims) {
             if (-not $evidence.PSObject.Properties.Name.Contains("selector") -or -not $evidence.selector) {
                 throw "test evidence for '$($claim.id)' is missing selector"
             }
+            if (-not $evidence.PSObject.Properties.Name.Contains("gate") -or -not $evidence.gate) {
+                throw "test evidence for '$($claim.id)' does not name the gate that runs it"
+            }
             $evidenceContent = [System.IO.File]::ReadAllText($evidencePath, [System.Text.UTF8Encoding]::new($false))
             if (-not $evidenceContent.Contains([string]$evidence.selector)) {
                 throw "test selector was not found for '$($claim.id)' in $($evidence.path): $($evidence.selector)"
             }
-            $collectedCommand = @($testManifest | Where-Object command -CEQ ([string]$evidence.command))
+            $collectedCommand = @($testManifest | Where-Object {
+                $_.gate -ceq [string]$evidence.gate -and $_.command -ceq [string]$evidence.command
+            })
             if ($collectedCommand.Count -eq 0) {
-                throw "evidence command was not collected for '$($claim.id)': $($evidence.command)"
+                throw "evidence command was not collected for '$($claim.id)' by gate '$($evidence.gate)': $($evidence.command)"
             }
             $collectedTest = @($collectedCommand[0].tests | Where-Object {
                 $_.path -CEQ ([string]$evidence.path) -and $_.selector -CEQ ([string]$evidence.selector)

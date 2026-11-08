@@ -307,753 +307,6 @@
       "marker_required": true
     }
   ],
-  "test_manifest": [
-    {
-      "command": "cargo test -p capsulet-kernel --locked",
-      "tests": [
-        {
-          "path": "crates/kernel/src/tests.rs",
-          "selector": "accepts_a_citation_that_re_derives_and_states_its_proposition"
-        },
-        {
-          "path": "crates/kernel/tests/depth.rs",
-          "selector": "a_derivation_far_past_the_bound_is_still_only_a_rejection"
-        },
-        {
-          "path": "crates/kernel/tests/depth.rs",
-          "selector": "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "composition_does_not_change_what_a_document_says"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "an_excerpt_longer_than_the_bound_is_not_a_citation"
-        },
-        {
-          "path": "crates/kernel/tests/interpretation.rs",
-          "selector": "a_reading_without_a_rationale_is_refused"
-        },
-        {
-          "path": "crates/kernel/tests/interpretation.rs",
-          "selector": "the_residual_names_the_premise_the_conclusion_and_the_evidence"
-        },
-        {
-          "path": "crates/kernel/tests/interpretation.rs",
-          "selector": "a_reading_never_reaches_accepted_however_authoritative_the_source"
-        },
-        {
-          "path": "crates/kernel/tests/arithmetic.rs",
-          "selector": "the_classic_float_sum_is_exact_here"
-        },
-        {
-          "path": "crates/kernel/tests/arithmetic.rs",
-          "selector": "neighbouring_values_are_distinguished_at_any_magnitude"
-        },
-        {
-          "path": "crates/kernel/tests/arithmetic.rs",
-          "selector": "a_result_that_would_not_be_exact_is_refused_rather_than_rounded"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "a_proposal_from_an_unknown_major_is_unreadable_not_malformed"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "a_proposal_always_serializes_its_schema_version"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "a_versionless_proposal_reads_as_v1_and_replays"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "a_proposals_schema_is_checked_before_its_shape"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "a_malformed_v1_proposal_is_not_an_unknown_schema"
-        },
-        {
-          "path": "crates/kernel/tests/totality.rs",
-          "selector": "every_derivation_shape_reaches_a_verdict"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "a_decision_recorded_under_other_rules_says_so"
-        },
-        {
-          "path": "crates/kernel/src/tests.rs",
-          "selector": "a_bare_citation_attributes_and_does_not_reach_the_goal"
-        },
-        {
-          "path": "crates/kernel/src/tests.rs",
-          "selector": "a_goal_is_compared_field_by_field_rather_than_by_its_rendering"
-        },
-        {
-          "path": "crates/kernel/src/tests.rs",
-          "selector": "a_proposal_cannot_lower_the_policy_floor"
-        },
-        {
-          "path": "crates/kernel/src/tests.rs",
-          "selector": "a_snapshot_document_without_a_floor_rebuilds_at_the_lowest"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_term_is_not_found_inside_a_longer_word"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_number_is_not_found_inside_a_longer_number"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "scripts_written_without_spaces_still_match_inside_a_sentence"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "case_is_folded_rather_than_lowercased"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "typographic_quotes_and_dashes_are_their_plain_forms"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "an_invisible_character_does_not_hide_a_word"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "the_unicode_tables_a_citation_is_judged_by_are_pinned"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_declared_phrasing_states_the_relation"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_negated_statement_is_not_the_statement"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "reversed_roles_are_not_the_statement"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_different_relation_between_the_same_terms_is_not_the_statement"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_hedged_conditional_or_questioned_statement_is_not_the_statement"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_relation_with_no_declared_phrasing_is_only_mentioned"
-        },
-        {
-          "path": "crates/kernel/tests/statement_corpus.rs",
-          "selector": "a_doubt_the_cue_list_does_not_know_still_states_the_relation"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_contract_s_phrasings_and_cues_judge_a_citation"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_number_written_another_way_is_grounded_as_money_with_a_default"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_date_written_another_way_is_grounded_as_a_value"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "grouped_scaled_numbers_are_compared_exactly"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "an_ambiguous_numeric_date_names_both_readings"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_shared_currency_symbol_is_never_assumed_to_be_us_dollars"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "typed_values_do_not_ground_prefixes_or_invalid_lexemes"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "typed_value_policies_are_pinned_and_replayed_offline"
-        },
-        {
-          "path": "crates/kernel/tests/replay.rs",
-          "selector": "legacy_phrasebook_documents_still_encode_byte_for_byte"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "another_name_for_the_entity_is_found_when_a_reviewer_confirmed_it"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "the_step_names_the_review_it_relied_on"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "without_a_confirmed_name_the_other_name_is_not_found"
-        },
-        {
-          "path": "crates/kernel/tests/grounding.rs",
-          "selector": "a_typed_object_has_no_other_names"
-        },
-        {
-          "path": "crates/kernel/tests/statement_corpus.rs",
-          "selector": "no_case_a_reader_marks_not_stated_reaches_accepted"
-        },
-        {
-          "path": "crates/kernel/tests/statement_corpus.rs",
-          "selector": "the_share_of_stated_cases_that_reach_accepted_is_what_was_recorded"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-core --test typed_hypergraph --locked",
-      "tests": [
-        {
-          "path": "crates/core/tests/typed_hypergraph.rs",
-          "selector": "graph_definition_returns_deterministic_static_order"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-application --test agents --locked",
-      "tests": [
-        {
-          "path": "crates/application/tests/agents.rs",
-          "selector": "agent_service_starts_queued_run_with_initial_state"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-core --test memory_core --locked",
-      "tests": [
-        {
-          "path": "crates/core/tests/memory_core.rs",
-          "selector": "claim_new_rejects_claim_without_evidence"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-worker --locked",
-      "tests": [
-        {
-          "path": "crates/worker/src/tests.rs",
-          "selector": "renews_lease_while_runner_is_active"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies",
-      "tests": [
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "creates_and_returns_workflow_dag_dependencies"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering",
-      "tests": [
-        {
-          "path": "crates/api/src/webhooks.rs",
-          "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens",
-      "tests": [
-        {
-          "path": "crates/api/src/auth.rs",
-          "selector": "authenticates_configured_roles_without_exposing_tokens"
-        }
-      ]
-    },
-    {
-      "command": "npm test --prefix dashboard",
-      "tests": [
-        {
-          "path": "dashboard/tests/api.test.ts",
-          "selector": "calls nested memory subgraph endpoints"
-        }
-      ]
-    },
-    {
-      "command": "python -m unittest discover -s sdk/python/tests -v",
-      "tests": [
-        {
-          "path": "sdk/python/tests/test_workflow.py",
-          "selector": "test_infers_dependency_and_compiles_artifact_path"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-application --test execution_contracts --locked",
-      "tests": [
-        {
-          "path": "crates/application/tests/execution_contracts.rs",
-          "selector": "worker_tick_outcome_has_stable_metric_names"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-api --test openapi_contract --locked",
-      "tests": [
-        {
-          "path": "crates/api/tests/openapi_contract.rs",
-          "selector": "generated_openapi_should_match_every_runtime_endpoint"
-        },
-        {
-          "path": "crates/api/tests/openapi_contract.rs",
-          "selector": "generated_document_should_round_trip_through_utoipa"
-        },
-        {
-          "path": "crates/api/tests/openapi_contract.rs",
-          "selector": "checked_openapi_artifact_should_equal_canonical_generation"
-        },
-        {
-          "path": "crates/api/tests/openapi_contract.rs",
-          "selector": "create_service_account_response_should_match_its_generated_wire_schema"
-        }
-      ]
-    },
-    {
-      "command": "pwsh ./scripts/tests/check-product-claims.ps1",
-      "tests": [
-        {
-          "path": "scripts/tests/check-product-claims.ps1",
-          "selector": "invalidLifecycleCases"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-ir --locked",
-      "tests": [
-        {
-          "path": "crates/ir/tests/canonical.rs",
-          "selector": "presentation_does_not_change_a_digest"
-        },
-        {
-          "path": "crates/ir/tests/canonical.rs",
-          "selector": "floating_point_is_refused_before_any_digest"
-        },
-        {
-          "path": "crates/ir/tests/trust.rs",
-          "selector": "combining_values_yields_the_weakest_relevant_trust"
-        },
-        {
-          "path": "crates/ir/tests/admission.rs",
-          "selector": "observe_mode_does_not_switch_admission_off"
-        },
-        {
-          "path": "crates/ir/tests/admission.rs",
-          "selector": "admission_always_reaches_a_decision"
-        },
-        {
-          "path": "crates/ir/tests/loops.rs",
-          "selector": "a_loop_without_an_iteration_bound_is_refused"
-        },
-        {
-          "path": "crates/ir/tests/loops.rs",
-          "selector": "exhausting_a_budget_is_never_completion"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "an_absent_certificate_is_unverified_and_never_satisfies_a_minimum"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "verify_reports_a_verdict_and_blocks_nothing"
-        },
-        {
-          "path": "crates/ir/tests/correctness.rs",
-          "selector": "a_verdict_the_obligations_do_not_justify_is_refused"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "observe_never_reaches_accepted_however_well_the_run_went"
-        },
-        {
-          "path": "crates/ir/tests/purity.rs",
-          "selector": "the_dependency_closure_stays_offline"
-        },
-        {
-          "path": "crates/ir/tests/trust.rs",
-          "selector": "a_record_naming_a_certificate_that_does_not_exist_is_refused"
-        },
-        {
-          "path": "crates/ir/tests/trust.rs",
-          "selector": "the_verdict_and_residual_count_come_from_the_certificate"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_for"
-        },
-        {
-          "path": "crates/ir/tests/trust.rs",
-          "selector": "an_obligation_attributed_to_another_contract_does_not_cover_this_one"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_policy_wide_required_contract_is_enforced"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_residual_on_another_contract_does_not_deny_this_boundary"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_failure_anywhere_denies_however_well_this_contract_went"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_required_verifier_that_ran_and_failed_does_not_satisfy_the_requirement"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_required_verifier_at_the_wrong_version_does_not_satisfy_the_requirement"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_required_verifier_from_the_wrong_environment_does_not_satisfy_the_requirement"
-        },
-        {
-          "path": "crates/ir/tests/verdict_rule.rs",
-          "selector": "the_verdict_rule_this_build_applies_is_the_one_the_archive_was_sealed_under"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_certificate_older_than_the_boundary_allows_does_not_cross"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_revoked_certificate_does_not_cross_however_well_formed_it_is"
-        },
-        {
-          "path": "crates/ir/tests/assurance.rs",
-          "selector": "a_certificate_with_nothing_to_date_it_by_is_not_fresh"
-        },
-        {
-          "path": "crates/ir/tests/policy_is_read.rs",
-          "selector": "every_field_of_an_assurance_policy_is_accounted_for"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-replay --locked",
-      "tests": [
-        {
-          "path": "crates/replay/tests/cli.rs",
-          "selector": "a_complete_bundle_replays_to_its_recorded_verdict"
-        },
-        {
-          "path": "crates/replay/tests/cli.rs",
-          "selector": "one_tampered_byte_makes_the_binary_exit_non_zero_and_say_why"
-        },
-        {
-          "path": "crates/replay/tests/cli.rs",
-          "selector": "the_replay_binary_cannot_reach_a_network_or_a_database"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-ir-adapters --locked",
-      "tests": [
-        {
-          "path": "crates/ir-adapters/tests/differential.rs",
-          "selector": "a_workflow_translates_and_is_admitted"
-        },
-        {
-          "path": "crates/ir-adapters/tests/differential.rs",
-          "selector": "a_dependency_cycle_the_current_model_rejects_is_also_refused_by_admission"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-graph-worker --locked --test chaos",
-      "tests": [
-        {
-          "path": "crates/graph-worker/tests/chaos.rs",
-          "selector": "a_run_survives_the_worker_dying_at_every_step_boundary"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-graph-worker --locked --test worker",
-      "tests": [
-        {
-          "path": "crates/graph-worker/tests/worker.rs",
-          "selector": "a_cancelled_run_undoes_what_it_published_before_it_stops"
-        },
-        {
-          "path": "crates/graph-worker/tests/worker.rs",
-          "selector": "a_non_idempotent_effect_left_in_doubt_stops_the_run"
-        },
-        {
-          "path": "crates/graph-worker/tests/worker.rs",
-          "selector": "a_worker_that_lost_its_lease_stops_instead_of_writing"
-        },
-        {
-          "path": "crates/graph-worker/tests/worker.rs",
-          "selector": "an_effect_is_claimed_before_it_is_performed_and_finalized_after"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-postgres --locked --test ir_runs",
-      "tests": [
-        {
-          "path": "crates/postgres/tests/ir_runs.rs",
-          "selector": "an_expired_lease_is_reclaimable_and_the_old_owner_is_fenced_out"
-        },
-        {
-          "path": "crates/postgres/tests/ir_runs.rs",
-          "selector": "the_stored_status_is_what_folding_the_log_says_it_is"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-runtime --locked",
-      "tests": [
-        {
-          "path": "crates/runtime/tests/decide.rs",
-          "selector": "folding_the_same_log_twice_gives_the_same_state"
-        },
-        {
-          "path": "crates/runtime/tests/failure.rs",
-          "selector": "cancellation_stops_at_the_next_safe_point_and_not_inside_an_effect"
-        },
-        {
-          "path": "crates/runtime/tests/loops.rs",
-          "selector": "a_measure_that_moved_the_wrong_way_is_non_progress_at_once"
-        },
-        {
-          "path": "crates/runtime/tests/loops.rs",
-          "selector": "an_iteration_that_started_and_crashed_still_spent_an_iteration"
-        },
-        {
-          "path": "crates/runtime/tests/agent_execution.rs",
-          "selector": "what_a_node_consumed_counts_as_soon_as_it_is_recorded"
-        },
-        {
-          "path": "crates/runtime/src/values.rs",
-          "selector": "what_a_log_records_of_a_violation_never_quotes_the_value"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-api --locked --lib",
-      "tests": [
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_run_of_a_definition_nobody_registered_is_refused"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-graph-worker --locked --test loops",
-      "tests": [
-        {
-          "path": "crates/graph-worker/tests/loops.rs",
-          "selector": "a_node_after_a_loop_waits_for_the_loop_rather_than_for_one_iteration"
-        },
-        {
-          "path": "crates/graph-worker/tests/loops.rs",
-          "selector": "a_restart_mid_loop_neither_repeats_an_iteration_nor_loses_one"
-        },
-        {
-          "path": "crates/graph-worker/tests/loops.rs",
-          "selector": "the_worker_runs_a_loop_until_its_condition_goes_false"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
-      "tests": [
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_bundle_explains_a_run_interrupted_mid_call"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_bundle_explains_a_run_that_failed"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_bundle_explains_a_run_that_ran_out_of_budget"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_collector_that_is_down_changes_nothing_about_how_a_run_ends"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_failed_check_goes_round_again_carrying_what_the_last_attempt_left"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_job_in_another_project_is_refused_rather_than_run"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_job_node_runs_its_job_once_and_reports_how_it_came_out"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_model_repeating_itself_is_stopped_for_going_nowhere"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_model_that_reports_no_usage_is_counted_as_unknown"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_planner_agent_is_refused_at_the_start_by_name"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_run_is_one_trace_from_its_request_through_every_lease_on_every_worker"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_run_started_over_http_is_executed_by_the_worker"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_run_that_has_not_ended_cannot_have_its_payloads_erased"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_safety_check_stops_the_run"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_worker_stopping_after_every_step_changes_nothing"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "an_agent_can_only_propose_a_claim_never_activate_one"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "an_effect_is_a_tool_span_and_a_refused_one_says_why_only_by_kind"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "another_project_can_see_none_of_it"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "approving_at_a_gate_waives_the_failure_and_the_run_finishes"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "erasing_a_finished_run_removes_what_it_held_and_keeps_its_record"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "payloads_past_retention_are_erased_and_newer_ones_kept"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "refusing_at_a_gate_stops_the_run"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "running_out_of_iterations_stops_a_run_rather_than_succeeding_it"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "running_out_of_tokens_stops_a_run_part_way_through"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "the_metrics_a_run_records_have_labels_from_closed_sets"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-graph-worker --locked --test execution",
-      "tests": [
-        {
-          "path": "crates/graph-worker/tests/execution.rs",
-          "selector": "a_node_slower_than_its_lease_is_not_run_twice"
-        }
-      ]
-    },
-    {
-      "command": "cargo test -p capsulet-replay --locked --test run_bundles",
-      "tests": [
-        {
-          "path": "crates/replay/tests/run_bundles.rs",
-          "selector": "a_bundle_whose_body_was_changed_is_not_believed"
-        },
-        {
-          "path": "crates/replay/tests/run_bundles.rs",
-          "selector": "a_report_the_log_does_not_support_is_a_disagreement"
-        },
-        {
-          "path": "crates/replay/tests/run_bundles.rs",
-          "selector": "a_run_interrupted_mid_call_says_what_it_was_doing"
-        },
-        {
-          "path": "crates/replay/tests/run_bundles.rs",
-          "selector": "a_run_that_failed_says_why_offline"
-        },
-        {
-          "path": "crates/replay/tests/run_bundles.rs",
-          "selector": "a_run_that_ran_out_of_budget_says_which_budget"
-        },
-        {
-          "path": "crates/replay/tests/run_bundles.rs",
-          "selector": "a_run_that_succeeded_is_explained_offline"
-        }
-      ]
-    }
-  ],
   "claims": [
     {
       "id": "CAP-PRODUCT-001",
@@ -1109,7 +362,8 @@
         {
           "type": "test",
           "path": "crates/kernel/src/tests.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "accepts_a_citation_that_re_derives_and_states_its_proposition"
         }
       ]
@@ -1158,7 +412,8 @@
         {
           "type": "test",
           "path": "crates/core/tests/typed_hypergraph.rs",
-          "command": "cargo test -p capsulet-core --test typed_hypergraph --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "graph_definition_returns_deterministic_static_order"
         }
       ]
@@ -1186,13 +441,15 @@
         {
           "type": "test",
           "path": "crates/application/tests/agents.rs",
-          "command": "cargo test -p capsulet-application --test agents --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "agent_service_starts_queued_run_with_initial_state"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_run_started_over_http_is_executed_by_the_worker"
         }
       ]
@@ -1219,25 +476,29 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_run_started_over_http_is_executed_by_the_worker"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_worker_stopping_after_every_step_changes_nothing"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_job_node_runs_its_job_once_and_reports_how_it_came_out"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/execution.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test execution",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test execution --locked",
           "selector": "a_node_slower_than_its_lease_is_not_run_twice"
         }
       ],
@@ -1311,31 +572,36 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_failed_check_goes_round_again_carrying_what_the_last_attempt_left"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "running_out_of_iterations_stops_a_run_rather_than_succeeding_it"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "running_out_of_tokens_stops_a_run_part_way_through"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_model_repeating_itself_is_stopped_for_going_nowhere"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_safety_check_stops_the_run"
         }
       ]
@@ -1378,19 +644,22 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "approving_at_a_gate_waives_the_failure_and_the_run_finishes"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "refusing_at_a_gate_stops_the_run"
         }
       ]
@@ -1425,12 +694,14 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_model_that_reports_no_usage_is_counted_as_unknown"
         },
         {
           "type": "test",
           "path": "crates/runtime/tests/agent_execution.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-runtime --locked",
           "selector": "what_a_node_consumed_counts_as_soon_as_it_is_recorded"
         }
@@ -1472,19 +743,22 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "an_agent_can_only_propose_a_claim_never_activate_one"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_job_in_another_project_is_refused_rather_than_run"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "another_project_can_see_none_of_it"
         }
       ]
@@ -1505,7 +779,8 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_planner_agent_is_refused_at_the_start_by_name"
         }
       ]
@@ -1558,36 +833,42 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_run_that_has_not_ended_cannot_have_its_payloads_erased"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "erasing_a_finished_run_removes_what_it_held_and_keeps_its_record"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "payloads_past_retention_are_erased_and_newer_ones_kept"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
         },
         {
           "type": "test",
           "path": "crates/runtime/src/values.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-runtime --locked",
           "selector": "what_a_log_records_of_a_violation_never_quotes_the_value"
         }
@@ -1637,61 +918,71 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_bundle_explains_a_run_interrupted_mid_call"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_bundle_explains_a_run_that_failed"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_bundle_explains_a_run_that_ran_out_of_budget"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
         },
         {
           "type": "test",
           "path": "crates/replay/tests/run_bundles.rs",
-          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_bundle_whose_body_was_changed_is_not_believed"
         },
         {
           "type": "test",
           "path": "crates/replay/tests/run_bundles.rs",
-          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_report_the_log_does_not_support_is_a_disagreement"
         },
         {
           "type": "test",
           "path": "crates/replay/tests/run_bundles.rs",
-          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_run_interrupted_mid_call_says_what_it_was_doing"
         },
         {
           "type": "test",
           "path": "crates/replay/tests/run_bundles.rs",
-          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_run_that_failed_says_why_offline"
         },
         {
           "type": "test",
           "path": "crates/replay/tests/run_bundles.rs",
-          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_run_that_ran_out_of_budget_says_which_budget"
         },
         {
           "type": "test",
           "path": "crates/replay/tests/run_bundles.rs",
-          "command": "cargo test -p capsulet-replay --locked --test run_bundles",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_run_that_succeeded_is_explained_offline"
         }
       ]
@@ -1699,9 +990,9 @@
     {
       "id": "CAP-MEMORY-001",
       "kind": "capability",
-      "maturity": "experimental",
+      "maturity": "implemented",
       "area": "Governed memory",
-      "statement": "Governed memory models sources, evidence, entities, claims, conflicts, contracts, ingestion review, nested subgraphs, and provenance as a major subsystem.",
+      "statement": "A memory claim cannot be created without evidence, and an evidence excerpt must be exactly the bytes at its span in the version of the source it cites.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -1720,21 +1011,858 @@
         "dashboard/app/memory/traces/page.tsx",
         "dashboard/app/page.tsx"
       ],
+      "verification": [
+        {
+          "assertion": "evidence-required",
+          "evidence_selectors": [
+            "claim_new_rejects_claim_without_evidence"
+          ]
+        },
+        {
+          "assertion": "excerpt-re-derives",
+          "evidence_selectors": [
+            "accepts_an_excerpt_that_re_derives_from_its_source",
+            "rejects_an_excerpt_that_is_not_the_bytes_at_the_span"
+          ]
+        },
+        {
+          "assertion": "span-bound-to-version",
+          "evidence_selectors": [
+            "rejects_a_span_taken_from_a_different_version_of_the_source"
+          ]
+        }
+      ],
       "evidence": [
         {
           "type": "test",
           "path": "crates/core/tests/memory_core.rs",
-          "command": "cargo test -p capsulet-core --test memory_core --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "claim_new_rejects_claim_without_evidence"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/src/domain/memory.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "accepts_an_excerpt_that_re_derives_from_its_source"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/src/domain/memory.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "rejects_an_excerpt_that_is_not_the_bytes_at_the_span"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/src/domain/memory.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "rejects_a_span_taken_from_a_different_version_of_the_source"
+        }
+      ]
+    },
+    {
+      "id": "CAP-MEMORY-002",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Governed memory",
+      "statement": "Sources and claims are created, listed and read over the API, are stored with their evidence, and a stored memory record is found only in its own project.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/persistence.md",
+        "dashboard/README.md",
+        "dashboard/app/memory/layout.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/memory/page.tsx",
+        "dashboard/app/memory/contracts/page.tsx",
+        "dashboard/app/memory/edges/page.tsx",
+        "dashboard/app/memory/entities/page.tsx",
+        "dashboard/app/memory/ingestion/page.tsx",
+        "dashboard/app/memory/subgraphs/page.tsx",
+        "dashboard/app/memory/traces/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "api-round-trip",
+          "evidence_selectors": [
+            "creates_lists_and_reads_claim_memory"
+          ]
+        },
+        {
+          "assertion": "stored-with-evidence",
+          "evidence_selectors": [
+            "saves_and_lists_memory_claims_when_database_is_available"
+          ]
+        },
+        {
+          "assertion": "found-only-in-project",
+          "evidence_selectors": [
+            "a_memory_record_is_found_only_in_its_own_project"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "creates_lists_and_reads_claim_memory"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/postgres_integration.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
+          "selector": "saves_and_lists_memory_claims_when_database_is_available"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "a_memory_record_is_found_only_in_its_own_project"
+        }
+      ]
+    },
+    {
+      "id": "CAP-MEMORY-003",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Governed memory",
+      "statement": "Conflicting active claims can coexist, and approving a claim that conflicts with an active one opens a conflict for review that can be resolved or dismissed.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/persistence.md",
+        "dashboard/README.md",
+        "dashboard/app/memory/layout.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/memory/page.tsx",
+        "dashboard/app/memory/contracts/page.tsx",
+        "dashboard/app/memory/edges/page.tsx",
+        "dashboard/app/memory/entities/page.tsx",
+        "dashboard/app/memory/ingestion/page.tsx",
+        "dashboard/app/memory/subgraphs/page.tsx",
+        "dashboard/app/memory/traces/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "conflicts-coexist",
+          "evidence_selectors": [
+            "active_conflicting_claims_can_coexist"
+          ]
+        },
+        {
+          "assertion": "conflict-review",
+          "evidence_selectors": [
+            "approving_claim_detects_and_reviews_conflicting_active_claims"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/core/tests/memory_core.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "active_conflicting_claims_can_coexist"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "approving_claim_detects_and_reviews_conflicting_active_claims"
+        }
+      ]
+    },
+    {
+      "id": "CAP-MEMORY-004",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Governed memory",
+      "statement": "Entity resolution candidates are confirmed or rejected in a review queue, and confirming one requires evidence.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/persistence.md",
+        "dashboard/README.md",
+        "dashboard/app/memory/layout.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/memory/page.tsx",
+        "dashboard/app/memory/contracts/page.tsx",
+        "dashboard/app/memory/edges/page.tsx",
+        "dashboard/app/memory/entities/page.tsx",
+        "dashboard/app/memory/ingestion/page.tsx",
+        "dashboard/app/memory/subgraphs/page.tsx",
+        "dashboard/app/memory/traces/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "resolution-queue",
+          "evidence_selectors": [
+            "entity_resolution_queue_confirms_and_rejects_candidates"
+          ]
+        },
+        {
+          "assertion": "confirmation-needs-evidence",
+          "evidence_selectors": [
+            "confirmed_entity_resolution_requires_evidence"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "entity_resolution_queue_confirms_and_rejects_candidates"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/tests/nested_memory_graphs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "confirmed_entity_resolution_requires_evidence"
+        }
+      ]
+    },
+    {
+      "id": "CAP-MEMORY-005",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Governed memory",
+      "statement": "Memory contracts written in the contract language compile to runtime policy, every bundled example compiles, and contracts are stored and read over the API.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/persistence.md",
+        "dashboard/README.md",
+        "dashboard/app/memory/layout.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/memory/page.tsx",
+        "dashboard/app/memory/contracts/page.tsx",
+        "dashboard/app/memory/edges/page.tsx",
+        "dashboard/app/memory/entities/page.tsx",
+        "dashboard/app/memory/ingestion/page.tsx",
+        "dashboard/app/memory/subgraphs/page.tsx",
+        "dashboard/app/memory/traces/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "contracts-compile",
+          "evidence_selectors": [
+            "memory_contract_parses_and_compiles_runtime_policy",
+            "bundled_memory_contract_examples_compile"
+          ]
+        },
+        {
+          "assertion": "contracts-over-api",
+          "evidence_selectors": [
+            "creates_lists_and_reads_memory_contract"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/core/tests/memory_contract_dsl.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "memory_contract_parses_and_compiles_runtime_policy"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/tests/memory_contract_dsl.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "bundled_memory_contract_examples_compile"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "creates_lists_and_reads_memory_contract"
+        }
+      ]
+    },
+    {
+      "id": "CAP-MEMORY-006",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Governed memory",
+      "statement": "Local text ingestion produces evidence and candidate claims, and an ingestion review queue approves or rejects each candidate.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/persistence.md",
+        "dashboard/README.md",
+        "dashboard/app/memory/layout.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/memory/page.tsx",
+        "dashboard/app/memory/contracts/page.tsx",
+        "dashboard/app/memory/edges/page.tsx",
+        "dashboard/app/memory/entities/page.tsx",
+        "dashboard/app/memory/ingestion/page.tsx",
+        "dashboard/app/memory/subgraphs/page.tsx",
+        "dashboard/app/memory/traces/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "ingestion-produces-candidates",
+          "evidence_selectors": [
+            "local_text_ingestion_creates_evidence_and_candidate_claims"
+          ]
+        },
+        {
+          "assertion": "review-queue",
+          "evidence_selectors": [
+            "ingestion_review_queue_approves_and_rejects_candidate_claims"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/core/tests/ingestion.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "local_text_ingestion_creates_evidence_and_candidate_claims"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "ingestion_review_queue_approves_and_rejects_candidate_claims"
+        }
+      ]
+    },
+    {
+      "id": "CAP-MEMORY-007",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Governed memory",
+      "statement": "A nested memory subgraph activates only when its required invariants hold, and a summary claim in it needs a summary trace that names inner claims and evidence.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/persistence.md",
+        "dashboard/README.md",
+        "dashboard/app/memory/layout.tsx",
+        "dashboard/app/memory/memory-ui.tsx",
+        "dashboard/app/memory/page.tsx",
+        "dashboard/app/memory/contracts/page.tsx",
+        "dashboard/app/memory/edges/page.tsx",
+        "dashboard/app/memory/entities/page.tsx",
+        "dashboard/app/memory/ingestion/page.tsx",
+        "dashboard/app/memory/subgraphs/page.tsx",
+        "dashboard/app/memory/traces/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "activation-invariants",
+          "evidence_selectors": [
+            "memory_subgraph_activate_sets_active_status_when_required_invariants_exist",
+            "creates_and_activates_nested_memory_graph"
+          ]
+        },
+        {
+          "assertion": "summary-needs-trace",
+          "evidence_selectors": [
+            "memory_subgraph_activate_requires_summary_trace_for_summary_claim",
+            "summary_trace_rejects_empty_inner_claims_and_evidence"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/core/tests/nested_memory_graphs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "memory_subgraph_activate_sets_active_status_when_required_invariants_exist"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "creates_and_activates_nested_memory_graph"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/tests/nested_memory_graphs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "memory_subgraph_activate_requires_summary_trace_for_summary_claim"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/tests/nested_memory_graphs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "summary_trace_rejects_empty_inner_claims_and_evidence"
         }
       ]
     },
     {
       "id": "CAP-JOB-001",
       "kind": "capability",
+      "maturity": "implemented",
+      "area": "Jobs and runners",
+      "statement": "The job worker renews a job run's lease for as long as its runner is still working.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "verification": [
+        {
+          "assertion": "lease-renewed-while-running",
+          "evidence_selectors": [
+            "renews_lease_while_runner_is_active"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/worker/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "renews_lease_while_runner_is_active"
+        }
+      ]
+    },
+    {
+      "id": "CAP-JOB-002",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Jobs and runners",
+      "statement": "PostgreSQL leases a queued job run to one worker at a time, and an execution pool's concurrency limit caps how many of its runs are leased at once.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "verification": [
+        {
+          "assertion": "one-lease-per-run",
+          "evidence_selectors": [
+            "lease_query_does_not_hand_out_same_run_twice_when_database_is_available"
+          ]
+        },
+        {
+          "assertion": "pool-limit-holds",
+          "evidence_selectors": [
+            "pool_limit_prevents_concurrent_leases_when_database_is_available"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/postgres_integration.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
+          "selector": "lease_query_does_not_hand_out_same_run_twice_when_database_is_available"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/postgres_integration.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
+          "selector": "pool_limit_prevents_concurrent_leases_when_database_is_available"
+        }
+      ]
+    },
+    {
+      "id": "CAP-JOB-003",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Jobs and runners",
+      "statement": "The stub runner completes a job run, fails it, or schedules a retry when attempts remain.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "verification": [
+        {
+          "assertion": "stub-succeeds",
+          "evidence_selectors": [
+            "stub_success_runner_completes_run"
+          ]
+        },
+        {
+          "assertion": "stub-fails",
+          "evidence_selectors": [
+            "stub_failure_runner_fails_run"
+          ]
+        },
+        {
+          "assertion": "stub-retries",
+          "evidence_selectors": [
+            "stub_failure_runner_schedules_retry_when_attempts_remain"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/worker/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "stub_success_runner_completes_run"
+        },
+        {
+          "type": "test",
+          "path": "crates/worker/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "stub_failure_runner_fails_run"
+        },
+        {
+          "type": "test",
+          "path": "crates/worker/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "stub_failure_runner_schedules_retry_when_attempts_remain"
+        }
+      ]
+    },
+    {
+      "id": "CAP-JOB-004",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Jobs and runners",
+      "statement": "A job run's logs are stored with it, and logs larger than the inline limit are kept as a log artifact instead.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "verification": [
+        {
+          "assertion": "logs-stored",
+          "evidence_selectors": [
+            "saves_and_finds_job_run_logs_when_database_is_available"
+          ]
+        },
+        {
+          "assertion": "large-logs-offloaded",
+          "evidence_selectors": [
+            "offloads_large_logs_as_artifact"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/postgres_integration.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
+          "selector": "saves_and_finds_job_run_logs_when_database_is_available"
+        },
+        {
+          "type": "test",
+          "path": "crates/worker/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "offloads_large_logs_as_artifact"
+        }
+      ]
+    },
+    {
+      "id": "CAP-JOB-005",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Jobs and runners",
+      "statement": "Artifacts a runner reports are stored with their run and are not visible from another run.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "verification": [
+        {
+          "assertion": "artifacts-stored",
+          "evidence_selectors": [
+            "stores_runner_artifacts"
+          ]
+        },
+        {
+          "assertion": "artifacts-per-run",
+          "evidence_selectors": [
+            "saves_lists_and_finds_artifacts_when_database_is_available"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/worker/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "stores_runner_artifacts"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/postgres_integration.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
+          "selector": "saves_lists_and_finds_artifacts_when_database_is_available"
+        }
+      ]
+    },
+    {
+      "id": "CAP-JOB-006",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Jobs and runners",
+      "statement": "The Kubernetes runner renders a job run as a Kubernetes Job that runs as non-root on a read-only root filesystem, without privilege escalation, host networking or a mounted service-account token, within its execution pool's runtime class, node selector and resource limits, carrying its input artifacts and run labels.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "verification": [
+        {
+          "assertion": "restricted-job",
+          "evidence_selectors": [
+            "renders_job_metadata_and_container"
+          ]
+        },
+        {
+          "assertion": "input-artifacts",
+          "evidence_selectors": [
+            "renders_input_artifacts_in_kubernetes_wrapper"
+          ]
+        },
+        {
+          "assertion": "run-labels",
+          "evidence_selectors": [
+            "renders_run_label_on_job_and_pod_template"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/runner/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "renders_job_metadata_and_container"
+        },
+        {
+          "type": "test",
+          "path": "crates/runner/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "renders_input_artifacts_in_kubernetes_wrapper"
+        },
+        {
+          "type": "test",
+          "path": "crates/runner/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "renders_run_label_on_job_and_pod_template"
+        }
+      ]
+    },
+    {
+      "id": "CAP-JOB-007",
+      "kind": "capability",
       "maturity": "experimental",
       "area": "Jobs and runners",
-      "statement": "The job worker leases queued work, renews ownership, executes through stub, process, WASI Python, or Kubernetes adapters, and stores logs and artifacts.",
+      "statement": "A job can execute as a local process. Only the Compose agent smoke exercises this path; no test runs it or its limits.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/runner/src/lib.rs"
+        },
+        {
+          "type": "source",
+          "path": "scripts/agent-smoke.ps1"
+        }
+      ]
+    },
+    {
+      "id": "CAP-JOB-008",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Jobs and runners",
+      "statement": "A job can execute a Python script under WASI and collect its artifacts. Its test runs only in the `wasm-python` gate, which is in no profile, and passes without running anything where no WASI Python runtime is configured.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -1763,9 +1891,48 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/worker/src/tests.rs",
-          "command": "cargo test -p capsulet-worker --locked",
-          "selector": "renews_lease_while_runner_is_active"
+          "path": "crates/runner/tests/wasm_python_runner.rs",
+          "gate": "wasm-python",
+          "command": "cargo test -p capsulet-runner --test wasm_python_runner --locked -- --nocapture",
+          "selector": "wasm_python_runner_executes_script_and_collects_artifact"
+        }
+      ]
+    },
+    {
+      "id": "CAP-JOB-009",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Jobs and runners",
+      "statement": "A job can execute as a Job on a Kubernetes cluster. No gate creates one: the `kind` gate only discovers clusters.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/dashboard-streaming.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/local-kubernetes-runner.md",
+        "docs/minikube-smoke.md",
+        "docs/operations.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/operations/observability.md",
+        "docs/troubleshooting.md",
+        "docs/worker-runner.md",
+        "dashboard/README.md",
+        "dashboard/app/artifacts/page.tsx",
+        "dashboard/app/execution-pools/page.tsx",
+        "dashboard/app/job-definitions/page.tsx",
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/runs/[id]/run-detail-client.tsx",
+        "dashboard/app/runs/page.tsx",
+        "dashboard/app/runs/runs-client.tsx",
+        "examples/send-email/README.md",
+        "charts/capsulet/values.yaml"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/runner/src/lib.rs"
         }
       ]
     },
@@ -1799,7 +1966,8 @@
         {
           "type": "test",
           "path": "crates/api/src/tests.rs",
-          "command": "cargo test -p capsulet-api --locked creates_and_returns_workflow_dag_dependencies",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "creates_and_returns_workflow_dag_dependencies"
         },
         {
@@ -1811,9 +1979,251 @@
     {
       "id": "CAP-AUTOMATION-001",
       "kind": "capability",
+      "maturity": "implemented",
+      "area": "Automations",
+      "statement": "A signed webhook delivery is accepted only with a timestamp-bound HMAC bound to its automation, trigger and delivery; a changed body or timestamp, a replay against another trigger, and a replay under a fresh delivery ID are refused.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "tampering-refused",
+          "evidence_selectors": [
+            "verifies_timestamp_bound_hmac_and_rejects_tampering"
+          ]
+        },
+        {
+          "assertion": "replay-across-triggers-refused",
+          "evidence_selectors": [
+            "rejects_replay_against_another_automation_or_trigger"
+          ]
+        },
+        {
+          "assertion": "replay-with-new-delivery-refused",
+          "evidence_selectors": [
+            "rejects_replay_with_a_fresh_delivery_or_correlation_id"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/webhooks.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/webhooks.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "rejects_replay_against_another_automation_or_trigger"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/webhooks.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "rejects_replay_with_a_fresh_delivery_or_correlation_id"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AUTOMATION-002",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Automations",
+      "statement": "An automation can be triggered manually, including while it is disabled, and a manual trigger is refused when the workflow queue is overloaded.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "manual-trigger",
+          "evidence_selectors": [
+            "disabled_automation_can_still_be_triggered_manually"
+          ]
+        },
+        {
+          "assertion": "overload-refused",
+          "evidence_selectors": [
+            "rejects_manual_automation_trigger_when_workflow_queue_is_overloaded"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "disabled_automation_can_still_be_triggered_manually"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "rejects_manual_automation_trigger_when_workflow_queue_is_overloaded"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AUTOMATION-003",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Automations",
+      "statement": "A due interval schedule creates exactly one compatibility workflow run for its automation, owned by the automation's project.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "one-run-per-due-schedule",
+          "evidence_selectors": [
+            "due_schedule_trigger_creates_workflow_run_when_database_is_available"
+          ]
+        },
+        {
+          "assertion": "run-owned-by-project",
+          "evidence_selectors": [
+            "a_workflow_run_is_created_with_its_owner_or_not_at_all"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/postgres_integration.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
+          "selector": "due_schedule_trigger_creates_workflow_run_when_database_is_available"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "a_workflow_run_is_created_with_its_owner_or_not_at_all"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AUTOMATION-004",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Automations",
+      "statement": "A SQL trigger's query must be a single SELECT or WITH statement.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "single-read-statement",
+          "evidence_selectors": [
+            "rejects_multiple_or_mutating_sql_statements"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/evaluator/src/sql_trigger.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "rejects_multiple_or_mutating_sql_statements"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AUTOMATION-005",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Automations",
+      "statement": "An automation cannot use a trigger plugin that belongs to another project.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "plugin-scoped",
+          "evidence_selectors": [
+            "an_automation_cannot_use_another_projects_plugin"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "an_automation_cannot_use_another_projects_plugin"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AUTOMATION-006",
+      "kind": "capability",
       "maturity": "experimental",
       "area": "Automations",
-      "statement": "Automations can consume manual, cron, read-only SQL, signed webhook, and isolated custom-plugin triggers to create compatibility workflow runs.",
+      "statement": "Cron schedules fire automations. Cron expressions are parsed and stored, but no test fires one.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -1830,19 +2240,434 @@
       ],
       "evidence": [
         {
-          "type": "test",
-          "path": "crates/api/src/webhooks.rs",
-          "command": "cargo test -p capsulet-api --locked verifies_timestamp_bound_hmac_and_rejects_tampering",
-          "selector": "verifies_timestamp_bound_hmac_and_rejects_tampering"
+          "type": "source",
+          "path": "crates/evaluator/src/schedule.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AUTOMATION-007",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Automations",
+      "statement": "A SQL trigger's query runs in a read-only transaction under a statement timeout. No test shows either holding.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/evaluator/src/sql_trigger.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-AUTOMATION-008",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Automations",
+      "statement": "Custom trigger plugins run isolated through the Kubernetes runner. Their output parsing and claim exclusivity are tested; the isolated run is not.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/operations/observability.md",
+        "docs/persistence.md",
+        "docs/security.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/automations/page.tsx",
+        "dashboard/app/trigger-plugins/page.tsx"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/evaluator/src/custom_trigger.rs"
         }
       ]
     },
     {
       "id": "CAP-IAM-001",
       "kind": "capability",
+      "maturity": "implemented",
+      "area": "Identity and IAM",
+      "statement": "Protected routes require a valid bearer token, and a configured token carries its role and any explicit scopes, expires, and never appears in debug output.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "verification": [
+        {
+          "assertion": "bearer-required",
+          "evidence_selectors": [
+            "protected_routes_require_a_valid_bearer_token"
+          ]
+        },
+        {
+          "assertion": "token-roles-hidden",
+          "evidence_selectors": [
+            "authenticates_configured_roles_without_exposing_tokens"
+          ]
+        },
+        {
+          "assertion": "scopes-and-expiry",
+          "evidence_selectors": [
+            "honors_explicit_scopes_and_expiry"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "protected_routes_require_a_valid_bearer_token"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/auth.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "authenticates_configured_roles_without_exposing_tokens"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/auth.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "honors_explicit_scopes_and_expiry"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IAM-002",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Identity and IAM",
+      "statement": "Roles and scopes are enforced on every reviewed public operation, for anonymous, user and service-account callers.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "verification": [
+        {
+          "assertion": "every-operation-executed",
+          "evidence_selectors": [
+            "authorization_executes_every_reviewed_public_operation"
+          ]
+        },
+        {
+          "assertion": "role-boundary",
+          "evidence_selectors": [
+            "viewer_cannot_submit_work_but_operator_can"
+          ]
+        },
+        {
+          "assertion": "scope-boundary",
+          "evidence_selectors": [
+            "scoped_token_can_only_use_declared_permissions"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests/authorization_http.rs",
+          "gate": "authorization",
+          "command": "cargo test -p capsulet-api --lib authorization_ --locked",
+          "selector": "authorization_executes_every_reviewed_public_operation"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "viewer_cannot_submit_work_but_operator_can"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "scoped_token_can_only_use_declared_permissions"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IAM-003",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Identity and IAM",
+      "statement": "A request acts in the project it selects, a principal cannot select a project it is not a member of, and a run is read and changed only within its own project.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "verification": [
+        {
+          "assertion": "selected-project",
+          "evidence_selectors": [
+            "job_definitions_are_scoped_to_selected_project"
+          ]
+        },
+        {
+          "assertion": "membership-required",
+          "evidence_selectors": [
+            "principal_cannot_select_project_without_membership"
+          ]
+        },
+        {
+          "assertion": "run-scoped-in-query",
+          "evidence_selectors": [
+            "another_project_can_neither_read_nor_change_a_run_by_its_id"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "job_definitions_are_scoped_to_selected_project"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "principal_cannot_select_project_without_membership"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/project_scope.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test project_scope --locked",
+          "selector": "another_project_can_neither_read_nor_change_a_run_by_its_id"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IAM-004",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Identity and IAM",
+      "statement": "Project administrators manage project memberships, and a user never inherits the membership of a service account with the same name.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "verification": [
+        {
+          "assertion": "admin-manages-memberships",
+          "evidence_selectors": [
+            "project_admin_can_manage_project_memberships"
+          ]
+        },
+        {
+          "assertion": "principal-kinds-separate",
+          "evidence_selectors": [
+            "authorization_user_does_not_inherit_a_same_named_service_accounts_membership"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "project_admin_can_manage_project_memberships"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests/authorization_http.rs",
+          "gate": "authorization",
+          "command": "cargo test -p capsulet-api --lib authorization_ --locked",
+          "selector": "authorization_user_does_not_inherit_a_same_named_service_accounts_membership"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IAM-005",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Identity and IAM",
+      "statement": "Service accounts authenticate by token hash, are listed and revoked only within their own project, stop authenticating once revoked, and never inherit a same-named user's membership.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "verification": [
+        {
+          "assertion": "scoped-and-revocable",
+          "evidence_selectors": [
+            "service_accounts_are_listed_and_revoked_only_in_their_own_project"
+          ]
+        },
+        {
+          "assertion": "no-inherited-membership",
+          "evidence_selectors": [
+            "authorization_service_account_does_not_inherit_a_same_named_users_membership"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/postgres_integration.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
+          "selector": "service_accounts_are_listed_and_revoked_only_in_their_own_project"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests/authorization_http.rs",
+          "gate": "authorization",
+          "command": "cargo test -p capsulet-api --lib authorization_ --locked",
+          "selector": "authorization_service_account_does_not_inherit_a_same_named_users_membership"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IAM-006",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Identity and IAM",
+      "statement": "Mutations are recorded as durable audit events in the project the write selected, and an audit listing excludes other projects and tenants before it applies its limit.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "verification": [
+        {
+          "assertion": "audit-follows-project",
+          "evidence_selectors": [
+            "authorization_audit_events_follow_the_writes_selected_project"
+          ]
+        },
+        {
+          "assertion": "audit-scoped-before-limit",
+          "evidence_selectors": [
+            "audit_listing_excludes_foreign_projects_and_tenants_before_limit"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests/authorization_http.rs",
+          "gate": "authorization",
+          "command": "cargo test -p capsulet-api --lib authorization_ --locked",
+          "selector": "authorization_audit_events_follow_the_writes_selected_project"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/postgres_integration.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
+          "selector": "audit_listing_excludes_foreign_projects_and_tenants_before_limit"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IAM-007",
+      "kind": "capability",
       "maturity": "experimental",
       "area": "Identity and IAM",
-      "statement": "Bearer and OIDC authentication, roles/scopes, project selection, memberships, service accounts, and durable mutation audits exist, with known ownership inconsistencies on newer resources.",
+      "statement": "OIDC bearer tokens are validated against the configured issuer and audience. No test authenticates an OIDC token.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -1862,10 +2687,42 @@
       ],
       "evidence": [
         {
-          "type": "test",
-          "path": "crates/api/src/auth.rs",
-          "command": "cargo test -p capsulet-api --locked authenticates_configured_roles_without_exposing_tokens",
-          "selector": "authenticates_configured_roles_without_exposing_tokens"
+          "type": "source",
+          "path": "crates/api/src/auth.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-IAM-008",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Identity and IAM",
+      "statement": "Two memory paths are not yet scoped in the query: memory contracts are listed across every project and filtered after the listing limit, and a subgraph member or edge is not checked against its parent subgraph's project.",
+      "public_surfaces": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/installation.md",
+        "docs/operations/backup-restore-dr.md",
+        "docs/security.md",
+        "docs/security/secrets-rotation.md",
+        "docs/troubleshooting.md",
+        "dashboard/README.md",
+        "dashboard/app/login/page.tsx",
+        "dashboard/app/security/page.tsx",
+        "charts/capsulet/values.yaml",
+        "charts/capsulet/values.schema.json"
+      ],
+      "evidence": [
+        {
+          "type": "source",
+          "path": "crates/postgres/src/memory.rs"
+        },
+        {
+          "type": "source",
+          "path": "crates/api/src/memory.rs"
         }
       ]
     },
@@ -1947,8 +2804,9 @@
         {
           "type": "test",
           "path": "dashboard/tests/api.test.ts",
-          "command": "npm test --prefix dashboard",
-          "selector": "calls nested memory subgraph endpoints"
+          "gate": "sdk",
+          "command": "cd dashboard && npm test",
+          "selector": "calls nested memory subgraph endpoints with backend JSON fields"
         }
       ]
     },
@@ -1988,7 +2846,8 @@
         {
           "type": "test",
           "path": "sdk/python/tests/test_workflow.py",
-          "command": "python -m unittest discover -s sdk/python/tests -v",
+          "gate": "sdk",
+          "command": "python -m unittest discover -s sdk/python/tests -p test_*.py",
           "selector": "test_infers_dependency_and_compiles_artifact_path"
         },
         {
@@ -2022,7 +2881,8 @@
         {
           "type": "test",
           "path": "crates/application/tests/execution_contracts.rs",
-          "command": "cargo test -p capsulet-application --test execution_contracts --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "worker_tick_outcome_has_stable_metric_names"
         }
       ]
@@ -2075,31 +2935,36 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_collector_that_is_down_changes_nothing_about_how_a_run_ends"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_run_is_one_trace_from_its_request_through_every_lease_on_every_worker"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "an_effect_is_a_tool_span_and_a_refused_one_says_why_only_by_kind"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/agent_runs.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test agent_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "the_metrics_a_run_records_have_labels_from_closed_sets"
         }
       ]
@@ -2197,24 +3062,28 @@
         {
           "type": "test",
           "path": "crates/api/tests/openapi_contract.rs",
+          "gate": "api-contracts",
           "command": "cargo test -p capsulet-api --test openapi_contract --locked",
           "selector": "generated_openapi_should_match_every_runtime_endpoint"
         },
         {
           "type": "test",
           "path": "crates/api/tests/openapi_contract.rs",
+          "gate": "api-contracts",
           "command": "cargo test -p capsulet-api --test openapi_contract --locked",
           "selector": "generated_document_should_round_trip_through_utoipa"
         },
         {
           "type": "test",
           "path": "crates/api/tests/openapi_contract.rs",
+          "gate": "api-contracts",
           "command": "cargo test -p capsulet-api --test openapi_contract --locked",
           "selector": "checked_openapi_artifact_should_equal_canonical_generation"
         },
         {
           "type": "test",
           "path": "crates/api/tests/openapi_contract.rs",
+          "gate": "api-contracts",
           "command": "cargo test -p capsulet-api --test openapi_contract --locked",
           "selector": "create_service_account_response_should_match_its_generated_wire_schema"
         },
@@ -2239,8 +3108,23 @@
         {
           "type": "test",
           "path": "scripts/tests/check-product-claims.ps1",
-          "command": "pwsh ./scripts/tests/check-product-claims.ps1",
-          "selector": "invalidLifecycleCases"
+          "gate": "claims",
+          "command": "pwsh -NoProfile -File scripts/tests/check-product-claims.ps1",
+          "selector": "collapsed-execution-assurance.json"
+        },
+        {
+          "type": "test",
+          "path": "scripts/tests/check-product-claims.ps1",
+          "gate": "claims",
+          "command": "pwsh -NoProfile -File scripts/tests/check-product-claims.ps1",
+          "selector": "undocumented-persisted-status.json"
+        },
+        {
+          "type": "test",
+          "path": "scripts/tests/check-product-claims.ps1",
+          "gate": "claims",
+          "command": "pwsh -NoProfile -File scripts/tests/check-product-claims.ps1",
+          "selector": "invalid-transition-reference.json"
         },
         {
           "type": "decision",
@@ -2276,12 +3160,14 @@
         {
           "type": "test",
           "path": "crates/ir/tests/canonical.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "presentation_does_not_change_a_digest"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/canonical.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "floating_point_is_refused_before_any_digest"
         }
@@ -2321,18 +3207,21 @@
         {
           "type": "test",
           "path": "crates/ir/tests/trust.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_record_naming_a_certificate_that_does_not_exist_is_refused"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/trust.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "the_verdict_and_residual_count_come_from_the_certificate"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/trust.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "combining_values_yields_the_weakest_relevant_trust"
         }
@@ -2389,18 +3278,21 @@
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_for"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/trust.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "an_obligation_attributed_to_another_contract_does_not_cover_this_one"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_policy_wide_required_contract_is_enforced"
         }
@@ -2440,18 +3332,21 @@
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_residual_on_another_contract_does_not_deny_this_boundary"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_failure_anywhere_denies_however_well_this_contract_went"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_contract_the_certificate_says_nothing_about_is_unverified_not_accepted"
         }
@@ -2486,18 +3381,21 @@
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_required_verifier_that_ran_and_failed_does_not_satisfy_the_requirement"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_required_verifier_at_the_wrong_version_does_not_satisfy_the_requirement"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_required_verifier_from_the_wrong_environment_does_not_satisfy_the_requirement"
         }
@@ -2517,6 +3415,7 @@
         {
           "type": "test",
           "path": "crates/ir/tests/verdict_rule.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "the_verdict_rule_this_build_applies_is_the_one_the_archive_was_sealed_under"
         }
@@ -2556,18 +3455,21 @@
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_certificate_older_than_the_boundary_allows_does_not_cross"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_revoked_certificate_does_not_cross_however_well_formed_it_is"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_certificate_with_nothing_to_date_it_by_is_not_fresh"
         }
@@ -2595,6 +3497,7 @@
         {
           "type": "test",
           "path": "crates/ir/tests/policy_is_read.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "every_field_of_an_assurance_policy_is_accounted_for"
         }
@@ -2634,19 +3537,22 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/depth.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_derivation_far_past_the_bound_is_still_only_a_rejection"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/depth.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "the_kernel_does_not_rely_on_the_transport_to_bound_depth"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/totality.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "every_derivation_shape_reaches_a_verdict"
         }
       ]
@@ -2665,25 +3571,29 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "another_name_for_the_entity_is_found_when_a_reviewer_confirmed_it"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "the_step_names_the_review_it_relied_on"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "without_a_confirmed_name_the_other_name_is_not_found"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_typed_object_has_no_other_names"
         }
       ],
@@ -2774,55 +3684,64 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "composition_does_not_change_what_a_document_says"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "an_excerpt_longer_than_the_bound_is_not_a_citation"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_term_is_not_found_inside_a_longer_word"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_number_is_not_found_inside_a_longer_number"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "scripts_written_without_spaces_still_match_inside_a_sentence"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "case_is_folded_rather_than_lowercased"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "typographic_quotes_and_dashes_are_their_plain_forms"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "an_invisible_character_does_not_hide_a_word"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "the_unicode_tables_a_citation_is_judged_by_are_pinned"
         }
       ]
@@ -2861,19 +3780,22 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/interpretation.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_reading_without_a_rationale_is_refused"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/interpretation.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "the_residual_names_the_premise_the_conclusion_and_the_evidence"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/interpretation.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_reading_never_reaches_accepted_however_authoritative_the_source"
         }
       ]
@@ -2912,19 +3834,22 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/arithmetic.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "the_classic_float_sum_is_exact_here"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/arithmetic.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "neighbouring_values_are_distinguished_at_any_magnitude"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/arithmetic.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_result_that_would_not_be_exact_is_refused_rather_than_rounded"
         }
       ]
@@ -2970,31 +3895,36 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_proposal_always_serializes_its_schema_version"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_versionless_proposal_reads_as_v1_and_replays"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_proposal_from_an_unknown_major_is_unreadable_not_malformed"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_proposals_schema_is_checked_before_its_shape"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_malformed_v1_proposal_is_not_an_unknown_schema"
         }
       ]
@@ -3047,43 +3977,50 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_declared_phrasing_states_the_relation"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_negated_statement_is_not_the_statement"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "reversed_roles_are_not_the_statement"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_different_relation_between_the_same_terms_is_not_the_statement"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_hedged_conditional_or_questioned_statement_is_not_the_statement"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_relation_with_no_declared_phrasing_is_only_mentioned"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_contract_s_phrasings_and_cues_judge_a_citation"
         }
       ]
@@ -3116,13 +4053,15 @@
         {
           "type": "test",
           "path": "crates/kernel/src/tests.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_bare_citation_attributes_and_does_not_reach_the_goal"
         },
         {
           "type": "test",
           "path": "crates/kernel/src/tests.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_goal_is_compared_field_by_field_rather_than_by_its_rendering"
         }
       ]
@@ -3155,13 +4094,15 @@
         {
           "type": "test",
           "path": "crates/kernel/src/tests.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_proposal_cannot_lower_the_policy_floor"
         },
         {
           "type": "test",
           "path": "crates/kernel/src/tests.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_snapshot_document_without_a_floor_rebuilds_at_the_lowest"
         }
       ]
@@ -3180,7 +4121,8 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/statement_corpus.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_doubt_the_cue_list_does_not_know_still_states_the_relation"
         },
         {
@@ -3235,49 +4177,57 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_number_written_another_way_is_grounded_as_money_with_a_default"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_date_written_another_way_is_grounded_as_a_value"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "grouped_scaled_numbers_are_compared_exactly"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "an_ambiguous_numeric_date_names_both_readings"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_shared_currency_symbol_is_never_assumed_to_be_us_dollars"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/grounding.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "typed_values_do_not_ground_prefixes_or_invalid_lexemes"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "typed_value_policies_are_pinned_and_replayed_offline"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "legacy_phrasebook_documents_still_encode_byte_for_byte"
         }
       ]
@@ -3310,13 +4260,15 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/statement_corpus.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "no_case_a_reader_marks_not_stated_reaches_accepted"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/statement_corpus.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "the_share_of_stated_cases_that_reach_accepted_is_what_was_recorded"
         }
       ]
@@ -3349,12 +4301,14 @@
         {
           "type": "test",
           "path": "crates/ir/tests/admission.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "observe_mode_does_not_switch_admission_off"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/admission.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "admission_always_reaches_a_decision"
         }
@@ -3388,12 +4342,14 @@
         {
           "type": "test",
           "path": "crates/ir/tests/loops.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_loop_without_an_iteration_bound_is_refused"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/loops.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "exhausting_a_budget_is_never_completion"
         }
@@ -3427,12 +4383,14 @@
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "an_absent_certificate_is_unverified_and_never_satisfies_a_minimum"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "verify_reports_a_verdict_and_blocks_nothing"
         }
@@ -3466,12 +4424,14 @@
         {
           "type": "test",
           "path": "crates/ir/tests/correctness.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "a_verdict_the_obligations_do_not_justify_is_refused"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/assurance.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "observe_never_reaches_accepted_however_well_the_run_went"
         }
@@ -3505,12 +4465,14 @@
         {
           "type": "test",
           "path": "crates/replay/tests/cli.rs",
+          "gate": "replay",
           "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_complete_bundle_replays_to_its_recorded_verdict"
         },
         {
           "type": "test",
           "path": "crates/replay/tests/cli.rs",
+          "gate": "replay",
           "command": "cargo test -p capsulet-replay --locked",
           "selector": "one_tampered_byte_makes_the_binary_exit_non_zero_and_say_why"
         }
@@ -3544,12 +4506,14 @@
         {
           "type": "test",
           "path": "crates/replay/tests/cli.rs",
+          "gate": "replay",
           "command": "cargo test -p capsulet-replay --locked",
           "selector": "the_replay_binary_cannot_reach_a_network_or_a_database"
         },
         {
           "type": "test",
           "path": "crates/ir/tests/purity.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir --locked",
           "selector": "the_dependency_closure_stays_offline"
         }
@@ -3589,19 +4553,22 @@
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "inputs_that_are_present_and_unreadable_are_not_reported_as_missing"
         },
         {
           "type": "test",
           "path": "crates/kernel/tests/replay.rs",
-          "command": "cargo test -p capsulet-kernel --locked",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_decision_recorded_under_other_rules_says_so"
         }
       ]
@@ -3634,12 +4601,14 @@
         {
           "type": "test",
           "path": "crates/ir-adapters/tests/differential.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir-adapters --locked",
           "selector": "a_workflow_translates_and_is_admitted"
         },
         {
           "type": "test",
           "path": "crates/ir-adapters/tests/differential.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-ir-adapters --locked",
           "selector": "a_dependency_cycle_the_current_model_rejects_is_also_refused_by_admission"
         }
@@ -3673,13 +4642,15 @@
         {
           "type": "test",
           "path": "crates/runtime/tests/decide.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-runtime --locked",
           "selector": "folding_the_same_log_twice_gives_the_same_state"
         },
         {
           "type": "test",
           "path": "crates/postgres/tests/ir_runs.rs",
-          "command": "cargo test -p capsulet-postgres --locked --test ir_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test ir_runs --locked",
           "selector": "the_stored_status_is_what_folding_the_log_says_it_is"
         }
       ]
@@ -3707,13 +4678,15 @@
         {
           "type": "test",
           "path": "crates/postgres/tests/ir_runs.rs",
-          "command": "cargo test -p capsulet-postgres --locked --test ir_runs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test ir_runs --locked",
           "selector": "an_expired_lease_is_reclaimable_and_the_old_owner_is_fenced_out"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/worker.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test worker --locked",
           "selector": "a_worker_that_lost_its_lease_stops_instead_of_writing"
         }
       ]
@@ -3746,13 +4719,15 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/worker.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test worker --locked",
           "selector": "an_effect_is_claimed_before_it_is_performed_and_finalized_after"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/worker.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test worker --locked",
           "selector": "a_non_idempotent_effect_left_in_doubt_stops_the_run"
         }
       ]
@@ -3779,7 +4754,8 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/chaos.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test chaos",
+          "gate": "chaos",
+          "command": "cargo test -p capsulet-graph-worker --test chaos --locked",
           "selector": "a_run_survives_the_worker_dying_at_every_step_boundary"
         }
       ]
@@ -3812,12 +4788,14 @@
         {
           "type": "test",
           "path": "crates/runtime/tests/loops.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-runtime --locked",
           "selector": "an_iteration_that_started_and_crashed_still_spent_an_iteration"
         },
         {
           "type": "test",
           "path": "crates/runtime/tests/loops.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-runtime --locked",
           "selector": "a_measure_that_moved_the_wrong_way_is_non_progress_at_once"
         }
@@ -3851,13 +4829,15 @@
         {
           "type": "test",
           "path": "crates/runtime/tests/failure.rs",
+          "gate": "ir",
           "command": "cargo test -p capsulet-runtime --locked",
           "selector": "cancellation_stops_at_the_next_safe_point_and_not_inside_an_effect"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/worker.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test worker",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test worker --locked",
           "selector": "a_cancelled_run_undoes_what_it_published_before_it_stops"
         }
       ]
@@ -3890,13 +4870,15 @@
         {
           "type": "test",
           "path": "crates/api/src/tests.rs",
-          "command": "cargo test -p capsulet-api --locked --lib",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
         },
         {
           "type": "test",
           "path": "crates/api/src/tests.rs",
-          "command": "cargo test -p capsulet-api --locked --lib",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_run_of_a_definition_nobody_registered_is_refused"
         }
       ]
@@ -3935,19 +4917,22 @@
         {
           "type": "test",
           "path": "crates/graph-worker/tests/loops.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test loops",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test loops --locked",
           "selector": "the_worker_runs_a_loop_until_its_condition_goes_false"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/loops.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test loops",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test loops --locked",
           "selector": "a_restart_mid_loop_neither_repeats_an_iteration_nor_loses_one"
         },
         {
           "type": "test",
           "path": "crates/graph-worker/tests/loops.rs",
-          "command": "cargo test -p capsulet-graph-worker --locked --test loops",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test loops --locked",
           "selector": "a_node_after_a_loop_waits_for_the_loop_rather_than_for_one_iteration"
         }
       ]

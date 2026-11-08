@@ -24,7 +24,14 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-AUTOMATION-001` | experimental | capability | Automations can consume manual, cron, read-only SQL, signed webhook, and isolated custom-plugin triggers to create compatibility workflow runs. |
+| `CAP-AUTOMATION-006` | experimental | capability | Cron schedules fire automations. Cron expressions are parsed and stored, but no test fires one. |
+| `CAP-AUTOMATION-007` | experimental | capability | A SQL trigger's query runs in a read-only transaction under a statement timeout. No test shows either holding. |
+| `CAP-AUTOMATION-008` | experimental | capability | Custom trigger plugins run isolated through the Kubernetes runner. Their output parsing and claim exclusivity are tested; the isolated run is not. |
+| `CAP-AUTOMATION-001` | implemented | capability | A signed webhook delivery is accepted only with a timestamp-bound HMAC bound to its automation, trigger and delivery; a changed body or timestamp, a replay against another trigger, and a replay under a fresh delivery ID are refused. |
+| `CAP-AUTOMATION-002` | implemented | capability | An automation can be triggered manually, including while it is disabled, and a manual trigger is refused when the workflow queue is overloaded. |
+| `CAP-AUTOMATION-003` | implemented | capability | A due interval schedule creates exactly one compatibility workflow run for its automation, owned by the automation's project. |
+| `CAP-AUTOMATION-004` | implemented | capability | A SQL trigger's query must be a single SELECT or WITH statement. |
+| `CAP-AUTOMATION-005` | implemented | capability | An automation cannot use a trigger plugin that belongs to another project. |
 
 ## Correctness kernel
 
@@ -75,7 +82,13 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-MEMORY-001` | experimental | capability | Governed memory models sources, evidence, entities, claims, conflicts, contracts, ingestion review, nested subgraphs, and provenance as a major subsystem. |
+| `CAP-MEMORY-001` | implemented | capability | A memory claim cannot be created without evidence, and an evidence excerpt must be exactly the bytes at its span in the version of the source it cites. |
+| `CAP-MEMORY-002` | implemented | capability | Sources and claims are created, listed and read over the API, are stored with their evidence, and a stored memory record is found only in its own project. |
+| `CAP-MEMORY-003` | implemented | capability | Conflicting active claims can coexist, and approving a claim that conflicts with an active one opens a conflict for review that can be resolved or dismissed. |
+| `CAP-MEMORY-004` | implemented | capability | Entity resolution candidates are confirmed or rejected in a review queue, and confirming one requires evidence. |
+| `CAP-MEMORY-005` | implemented | capability | Memory contracts written in the contract language compile to runtime policy, every bundled example compiles, and contracts are stored and read over the API. |
+| `CAP-MEMORY-006` | implemented | capability | Local text ingestion produces evidence and candidate claims, and an ingestion review queue approves or rejects each candidate. |
+| `CAP-MEMORY-007` | implemented | capability | A nested memory subgraph activates only when its required invariants hold, and a summary claim in it needs a summary trace that names inner claims and evidence. |
 
 ## Graphs and agents
 
@@ -114,13 +127,28 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-IAM-001` | experimental | capability | Bearer and OIDC authentication, roles/scopes, project selection, memberships, service accounts, and durable mutation audits exist, with known ownership inconsistencies on newer resources. |
+| `CAP-IAM-007` | experimental | capability | OIDC bearer tokens are validated against the configured issuer and audience. No test authenticates an OIDC token. |
+| `CAP-IAM-001` | implemented | capability | Protected routes require a valid bearer token, and a configured token carries its role and any explicit scopes, expires, and never appears in debug output. |
+| `CAP-IAM-002` | implemented | capability | Roles and scopes are enforced on every reviewed public operation, for anonymous, user and service-account callers. |
+| `CAP-IAM-003` | implemented | capability | A request acts in the project it selects, a principal cannot select a project it is not a member of, and a run is read and changed only within its own project. |
+| `CAP-IAM-004` | implemented | capability | Project administrators manage project memberships, and a user never inherits the membership of a service account with the same name. |
+| `CAP-IAM-005` | implemented | capability | Service accounts authenticate by token hash, are listed and revoked only within their own project, stop authenticating once revoked, and never inherit a same-named user's membership. |
+| `CAP-IAM-006` | implemented | capability | Mutations are recorded as durable audit events in the project the write selected, and an audit listing excludes other projects and tenants before it applies its limit. |
+| `CAP-IAM-008` | implemented | limitation | Two memory paths are not yet scoped in the query: memory contracts are listed across every project and filtered after the listing limit, and a subgraph member or edge is not checked against its parent subgraph's project. |
 
 ## Jobs and runners
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-JOB-001` | experimental | capability | The job worker leases queued work, renews ownership, executes through stub, process, WASI Python, or Kubernetes adapters, and stores logs and artifacts. |
+| `CAP-JOB-007` | experimental | capability | A job can execute as a local process. Only the Compose agent smoke exercises this path; no test runs it or its limits. |
+| `CAP-JOB-008` | experimental | capability | A job can execute a Python script under WASI and collect its artifacts. Its test runs only in the `wasm-python` gate, which is in no profile, and passes without running anything where no WASI Python runtime is configured. |
+| `CAP-JOB-009` | experimental | capability | A job can execute as a Job on a Kubernetes cluster. No gate creates one: the `kind` gate only discovers clusters. |
+| `CAP-JOB-001` | implemented | capability | The job worker renews a job run's lease for as long as its runner is still working. |
+| `CAP-JOB-002` | implemented | capability | PostgreSQL leases a queued job run to one worker at a time, and an execution pool's concurrency limit caps how many of its runs are leased at once. |
+| `CAP-JOB-003` | implemented | capability | The stub runner completes a job run, fails it, or schedules a retry when attempts remain. |
+| `CAP-JOB-004` | implemented | capability | A job run's logs are stored with it, and logs larger than the inline limit are kept as a log artifact instead. |
+| `CAP-JOB-005` | implemented | capability | Artifacts a runner reports are stored with their run and are not visible from another run. |
+| `CAP-JOB-006` | implemented | capability | The Kubernetes runner renders a job run as a Kubernetes Job that runs as non-root on a read-only root filesystem, without privilege escalation, host networking or a mounted service-account token, within its execution pool's runtime class, node selector and resource limits, carrying its input artifacts and run labels. |
 
 ## Lifecycle and assurance
 

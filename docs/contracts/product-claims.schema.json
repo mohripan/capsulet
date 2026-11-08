@@ -27,9 +27,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["command", "tests"],
+        "required": ["gate", "command", "tests"],
         "additionalProperties": false,
         "properties": {
+          "gate": { "type": "string", "minLength": 1 },
           "command": { "type": "string", "minLength": 1 },
           "tests": {
             "type": "array",
@@ -75,13 +76,14 @@
               "properties": {
                 "type": { "enum": ["decision", "specification", "source", "test"] },
                 "path": { "type": "string", "minLength": 1 },
+                "gate": { "type": "string", "minLength": 1 },
                 "command": { "type": "string", "minLength": 1 },
                 "selector": { "type": "string", "minLength": 1 }
               },
               "allOf": [
                 {
                   "if": { "properties": { "type": { "const": "test" } } },
-                  "then": { "required": ["command", "selector"] }
+                  "then": { "required": ["gate", "command", "selector"] }
                 }
               ]
             }

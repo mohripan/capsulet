@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-IAM-001, CAP-PERSISTENCE-001, CAP-SECURITY-001, CAP-HELM-001 -->
+<!-- capsulet-claims: CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-008, CAP-PERSISTENCE-001, CAP-SECURITY-001, CAP-HELM-001 -->
 # Secrets and Rotation
 
 Production deployments should use an external secret manager rather than static plaintext values in Helm values.

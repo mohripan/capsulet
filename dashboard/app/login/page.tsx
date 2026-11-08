@@ -88,4 +88,4 @@ export default function LoginPage() {
     </main>
   );
 }
-// capsulet-claims: CAP-IAM-001, CAP-DASHBOARD-001
+// capsulet-claims: CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-008, CAP-DASHBOARD-001

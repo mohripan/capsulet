@@ -1,6 +1,6 @@
-mod catalog;
+pub(crate) mod catalog;
 mod postgres;
-mod process;
+pub(crate) mod process;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -111,31 +111,81 @@ fn list_gates(format: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-fn doctor() -> Result<(), String> {
-    let tools = [
-        "cargo",
+/// The tools the gates use and the oldest release of each the documentation
+/// supports (`docs/contracts/verification-matrix.md`). A tool with no minimum is
+/// only required to run: kubectl has to match its cluster, not a release of ours,
+/// and the scanners are pinned by what their advisory databases need.
+const SUPPORTED_TOOLS: &[(&str, &str, &[&str], Option<&str>)] = &[
+    ("cargo", "cargo", &["--version"], Some("1.96")),
+    ("docker", "docker", &["--version"], Some("27")),
+    (
+        "docker compose",
         "docker",
-        "node",
-        "npm",
-        "python",
-        "helm",
-        "kind",
-        "kubectl",
-        "cargo-audit",
-    ];
-    let mut missing = Vec::new();
-    for tool in tools {
-        if process::is_available(tool) {
-            println!("ok      {tool}");
-        } else {
-            println!("missing {tool}");
-            missing.push(tool);
+        &["compose", "version"],
+        Some("2"),
+    ),
+    ("node", "node", &["--version"], Some("20")),
+    ("npm", "npm", &["--version"], Some("10")),
+    ("python", "python", &["--version"], Some("3.12")),
+    ("helm", "helm", &["version", "--short"], Some("3.18")),
+    ("kind", "kind", &["--version"], Some("0.30")),
+    ("kubectl", "kubectl", &["version", "--client"], None),
+    ("cargo-audit", "cargo-audit", &["--version"], None),
+    ("cargo-deny", "cargo-deny", &["--version"], None),
+];
+
+/// Reports every tool's version against its supported minimum, changing nothing.
+fn doctor() -> Result<(), String> {
+    let powershell = if cfg!(windows) { "powershell" } else { "pwsh" };
+    let powershell_probe = process::version_arguments(powershell);
+    let tools = SUPPORTED_TOOLS.iter().copied().chain(std::iter::once((
+        powershell,
+        powershell,
+        powershell_probe.as_slice(),
+        None,
+    )));
+    let mut problems = Vec::new();
+    for (label, program, arguments, minimum) in tools {
+        let Some(report) = process::version_report(program, arguments) else {
+            println!("missing {label}");
+            problems.push(format!("{label} is missing"));
+            continue;
+        };
+        let found = process::parse_version(&report);
+        let shown = found.as_ref().map_or_else(
+            || "unknown version".to_string(),
+            |version| {
+                version
+                    .iter()
+                    .map(u64::to_string)
+                    .collect::<Vec<_>>()
+                    .join(".")
+            },
+        );
+        let Some(minimum) = minimum else {
+            println!("ok      {label:<15} {shown}");
+            continue;
+        };
+        let required = process::parse_version(&format!("{minimum}.0"))
+            .expect("supported minimums are dotted versions");
+        match found {
+            Some(version) if process::meets_minimum(&version, &required) => {
+                println!("ok      {label:<15} {shown} (needs {minimum} or newer)");
+            }
+            Some(_) => {
+                println!("old     {label:<15} {shown} (needs {minimum} or newer)");
+                problems.push(format!("{label} {shown} is older than {minimum}"));
+            }
+            None => {
+                println!("unknown {label:<15} (needs {minimum} or newer)");
+                problems.push(format!("{label} did not report a version"));
+            }
         }
     }
-    if missing.is_empty() {
+    if problems.is_empty() {
         Ok(())
     } else {
-        Err(format!("missing prerequisites: {}", missing.join(", ")))
+        Err(format!("unsupported toolchain: {}", problems.join("; ")))
     }
 }
 
@@ -332,7 +382,7 @@ fn print_omitted(catalog: &[Gate], selected: &BTreeSet<&str>, position: &str) {
     );
 }
 
-fn workspace_root() -> PathBuf {
+pub(crate) fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)

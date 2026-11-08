@@ -4,7 +4,7 @@
     { "path": "AGENTS.md", "category": "root-docs", "marker_required": false }
   ],
   "test_manifest": [
-    { "command": "fixture-only", "tests": [{ "path": "AGENTS.md", "selector": "Agent Instructions" }] }
+    { "gate": "fixture", "command": "fixture-only", "tests": [{ "path": "AGENTS.md", "selector": "Agent Instructions" }] }
   ],
   "claims": [
     {
@@ -19,7 +19,7 @@
         { "assertion": "adapter-kubernetes", "evidence_selectors": [] }
       ],
       "evidence": [
-        { "type": "test", "path": "AGENTS.md", "command": "fixture-only", "selector": "Agent Instructions" }
+        { "type": "test", "path": "AGENTS.md", "gate": "fixture", "command": "fixture-only", "selector": "Agent Instructions" }
       ]
     }
   ]
