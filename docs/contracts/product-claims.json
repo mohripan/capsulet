@@ -87,6 +87,11 @@
       "marker_required": true
     },
     {
+      "path": "docs/security/supply-chain.md",
+      "category": "security",
+      "marker_required": true
+    },
+    {
       "path": "docs/troubleshooting.md",
       "category": "operations",
       "marker_required": true
@@ -3089,6 +3094,34 @@
         {
           "type": "source",
           "path": "crates/runner/src/internal.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-SUPPLY-001",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Supply chain",
+      "statement": "Each published image is built once and pushed by digest; that digest alone is scanned, attested with SLSA build provenance and an SBOM, and signed keylessly, and it is tagged only after its signature and both attestations verify. Pull requests build and scan the same images without any credential that could publish, sign or attest.",
+      "public_surfaces": [
+        "docs/security/supply-chain.md"
+      ],
+      "evidence": [
+        {
+          "type": "specification",
+          "path": "docs/security/supply-chain.md"
+        },
+        {
+          "type": "source",
+          "path": ".github/workflows/image-release.yml"
+        },
+        {
+          "type": "source",
+          "path": ".github/workflows/release.yml"
+        },
+        {
+          "type": "source",
+          "path": "crates/xtask/src/supply_chain.rs"
         }
       ]
     },

@@ -104,12 +104,19 @@ A version outside `[compatibility] api` is refused. Widening that range is a del
 
 1. On a clean `main`, run `release set <version> --write` and open a pull request with the result
    alone.
-2. Once it merges and every required gate passes, tag the merge commit `v<version>`.
+2. Once it merges and every required gate passes, tag the merge commit `v<version>` and push the
+   tag.
 
-Building each image once, scanning it, signing its digest and publishing SBOMs and provenance for
-the tag is the supply-chain work tracked in
-[#101](https://github.com/mohripan/capsulet/issues/101). Until it lands, the images CI pushes
-from `main` are tagged with the branch and commit only, and no version tag is pushed.
+`release.yml` then publishes the release:
+- It builds every image once and pushes it by digest.
+- It scans, attests, signs and verifies each digest, and only then tags it `<version>`.
+- It pushes the chart to `oci://ghcr.io/mohripan/charts`, attested and signed.
+- It writes the attested `release-manifest.json`.
+
+A tag that does not match `release.toml`'s version fails before anything is tagged. Each push to
+`main` runs the same pipeline, tagging the images `main` and `sha-<commit>`, with no version and
+no chart push. The [supply chain](../security/supply-chain.md) describes each step, and how to
+verify a published image yourself.
 
 Checkpoint tags such as `engineering-integrity/task-04-postgres` mark implementation history, not
 product releases.

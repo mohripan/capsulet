@@ -35,7 +35,8 @@
           "ecosystem": {
             "enum": [
               "npm",
-              "rust"
+              "rust",
+              "secret"
             ]
           },
           "package": {
@@ -54,7 +55,8 @@
             "enum": [
               "development-only",
               "uncompiled-optional",
-              "unmaintained-macro", "unmaintained-parser"
+              "unmaintained-macro", "unmaintained-parser",
+              "test-fixture"
             ]
           },
           "owner": {

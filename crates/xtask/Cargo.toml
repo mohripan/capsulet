@@ -17,6 +17,8 @@ semver = "1"
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
+# The release manifest records each artifact's SHA-256.
+sha2.workspace = true
 # release.toml and the Cargo, Python and lock manifests it is checked against.
 toml.workspace = true
 

@@ -687,12 +687,16 @@ fn dockerfiles(root: &Path, release: &Release, files: &[String], findings: &mut 
 /// Every image under the release's registry, and every link to this product's
 /// repository, in a tracked file must be the one `release.toml` names.
 fn references(root: &Path, release: &Release, files: &[String], findings: &mut Findings) {
-    let images: BTreeSet<String> = release
+    let mut images: BTreeSet<String> = release
         .images
         .components
         .values()
         .map(|component| release.image(component))
         .collect();
+    // The chart's OCI repository, and the chart in it.
+    let chart = release.chart_repository();
+    images.insert(format!("{chart}/{}", release.product.name));
+    images.insert(chart);
     let registry = format!("{}/", release.images.registry);
     let namespace = format!("{registry}{}/", release.images.namespace);
     let source = release

@@ -125,6 +125,30 @@ fn build_all(
     Ok(())
 }
 
+/// `release inspect <component> <reference>`: an image already built, by CI
+/// or by hand, carries the labels this checkout's release identity gives the
+/// component and runs as a non-root user. The image must be in the local Docker
+/// store, as one CI just built or pulled by digest is.
+pub(super) fn inspect_reference(
+    root: &Path,
+    release: &Release,
+    component: &str,
+    reference: &str,
+) -> Result<(), String> {
+    let identity = BuildIdentity::current(root)?;
+    let entry = plan(release, &identity)
+        .into_iter()
+        .find(|entry| entry.component == component)
+        .ok_or_else(|| format!("{component} is not a component in release.toml"))?;
+    inspect(reference, &entry, release, &identity)?;
+    println!(
+        "[release] {reference} carries the {component} labels of {} at {} and runs as a non-root \
+         user",
+        identity.version, identity.revision
+    );
+    Ok(())
+}
+
 /// The image must say what it is, where it came from and when, and must not
 /// run as root.
 fn inspect(

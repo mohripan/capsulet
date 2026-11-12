@@ -224,6 +224,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-RUNTIME-006` | implemented | capability | Cancellation stops a run at a point where no effect is in flight, and a reversible effect that happened is undone before the run ends. |
 
+## Supply chain
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-SUPPLY-001` | experimental | capability | Each published image is built once and pushed by digest; that digest alone is scanned, attested with SLSA build provenance and an SBOM, and signed keylessly, and it is tagged only after its signature and both attestations verify. Pull requests build and scan the same images without any credential that could publish, sign or attest. |
+
 ## Verified computation IR
 
 | ID | Maturity | Kind | Claim |

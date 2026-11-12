@@ -629,6 +629,47 @@ pub(crate) fn gates() -> Vec<Gate> {
             )],
         ),
         gate(
+            "supply-chain-contract",
+            "Workflows pin every action by SHA, never privilege pull requests, build each image \
+             once, and scan, attest, sign and verify its digest before tagging it; base images \
+             are pinned by digest",
+            &["cargo", "git"],
+            300,
+            &[Fast, Full],
+            vec![command(
+                "cargo",
+                &[
+                    "run",
+                    "-p",
+                    "capsulet-xtask",
+                    "--locked",
+                    "--",
+                    "supply-chain",
+                    "check",
+                ],
+            )],
+        ),
+        gate(
+            "secrets",
+            "gitleaks over the whole Git history; every finding a registered, unexpired test \
+             fixture",
+            &["cargo", "docker", "git"],
+            900,
+            &[Full],
+            vec![command(
+                "cargo",
+                &[
+                    "run",
+                    "-p",
+                    "capsulet-xtask",
+                    "--locked",
+                    "--",
+                    "security",
+                    "secrets",
+                ],
+            )],
+        ),
+        gate(
             "containers",
             "Every component image built from release.toml's plan, its labels and non-root user \
              checked, then removed",

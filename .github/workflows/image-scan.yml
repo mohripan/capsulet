@@ -1,0 +1,123 @@
+name: Image scan
+
+# One component's image for a pull request: built once into the local Docker
+# store, checked against release.toml, scanned, and described by an SBOM.
+# Nothing is pushed or signed. A pull request's code runs here, so this
+# workflow gets read access and a code-scanning upload, and no credential.
+# image-release.yml publishes the same build on main.
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        type: string
+        required: true
+      image:
+        type: string
+        required: true
+      dockerfile:
+        type: string
+        required: true
+      context:
+        type: string
+        required: true
+      target:
+        type: string
+        required: true
+      build_args:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: build and scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      LOCAL_IMAGE: capsulet-scan/${{ inputs.component }}:${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build the image once
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          target: ${{ inputs.target }}
+          build-args: ${{ inputs.build_args }}
+          tags: ${{ env.LOCAL_IMAGE }}
+          load: true
+          provenance: false
+          sbom: false
+
+      - name: Check its release labels and user
+        run: cargo run --quiet -p capsulet-xtask --locked -- release inspect "${{ inputs.component }}" "$LOCAL_IMAGE"
+
+      # Two scans, because reporting and gating want different thresholds. This
+      # one reports every finding, fixed or not, to code scanning and never
+      # fails: hiding an advisory nobody can fix yet would be worse than not
+      # gating on it.
+      - name: Report image vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOCAL_IMAGE }}
+          format: sarif
+          output: trivy-${{ inputs.component }}.sarif
+          exit-code: "0"
+
+      # This one fails the build under the checked-in policy in trivy.yaml.
+      - name: Gate on fixable vulnerabilities, secrets and misconfigurations
+        id: gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOCAL_IMAGE }}
+          trivy-config: trivy.yaml
+
+      - name: Upload the scan to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-${{ inputs.component }}.sarif
+          category: image-${{ inputs.component }}
+
+      - name: Generate the image SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.LOCAL_IMAGE }}
+          format: cyclonedx-json
+          output-file: sbom-${{ inputs.component }}.cdx.json
+          artifact-name: sbom-${{ inputs.component }}.cdx.json
+
+      - name: Summarise the scan
+        if: always()
+        env:
+          GATE: ${{ steps.gate.outcome }}
+        run: |
+          {
+            echo "### ${{ inputs.component }} (pull request build, not published)"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Image | \`${{ inputs.image }}\`, built once as \`$LOCAL_IMAGE\` |"
+            echo "| Scanner | $(trivy --version 2>/dev/null | head -1 || echo 'trivy did not run') |"
+            echo "| Policy | \`trivy.yaml\`: a fixable HIGH or CRITICAL vulnerability, a secret or a HIGH misconfiguration fails the build |"
+            echo "| Gate | $GATE |"
+          } >> "$GITHUB_STEP_SUMMARY"

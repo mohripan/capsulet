@@ -16,6 +16,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `authorization` | yes | yes | Executed HTTP role/scope matrix and generated policy drift | Cargo |
 | `claims` | yes | yes | Claims, lifecycle, and public surfaces | PowerShell |
 | `release` | yes | yes | `release.toml` against every crate, the Python SDK, the dashboard, the chart, OpenAPI, Compose and the Dockerfiles, and every image and repository reference in tracked files ([release process](release-process.md)) | Cargo, Git |
+| `supply-chain-contract` | yes | yes | Every workflow pins its actions by SHA, gives pull request code no write permission, builds each image once, and scans, attests, signs and verifies the pushed digest before tagging it; base images are pinned by digest and refreshed by Dependabot ([supply chain](../security/supply-chain.md)) | Cargo, Git |
 | `claims-evidence` | yes | yes | Every claim's test evidence is collected, and not ignored or skipped, by the gate command it names; `docs/contracts/test-manifest.json` matches that collection | Cargo, Python, Node.js 24+ with npm, PowerShell |
 | `sdk` | yes | yes | Python and dashboard transports | Python, npm |
 | `dashboard` | no | yes | ESLint and production build | npm |
@@ -23,6 +24,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `chaos` | no | yes | IR worker crash recovery at step boundaries | Cargo, Docker |
 | `migrations` | no | yes | Supported forward migrations | Cargo, Docker |
 | `security` | no | yes | Rust/npm/Python dependency and license policy, including expiring exceptions | cargo-audit, cargo-deny, npm, Python |
+| `secrets` | no | yes | gitleaks, pinned by digest, over the whole Git history; every finding must be a registered, unexpired test fixture ([supply chain](../security/supply-chain.md)) | Cargo, Docker, Git |
 | `gate-regressions` | no | yes | The `lint`, `dashboard` and `security` gates' own commands fail on a fixture with a Clippy warning, a crashing ESLint configuration, an unreviewed duplicate dependency and a crate with a published advisory, and pass on a clean one | Cargo with Clippy, cargo-audit, cargo-deny, npm with the dashboard installed |
 | `compose` | no | yes | On a stack of its own (every service built and healthy, seeded alike twice): Compose configuration, agents run over HTTP with the graph worker killed mid-run, and a job leaves logs and a downloadable artifact; reseeding afterwards must leave the fixture as it was | Docker, PowerShell |
 | `dashboard-e2e` | no | yes | On a stack of its own, seeded the same way: Playwright as admin, operator, viewer and service account, including the project-isolation flows for artifacts, memory review, agents and audit events; reseeding afterwards must leave the fixture as it was | Docker, npm |
@@ -46,7 +48,7 @@ test gets a database of its own on them. The `postgres`, `migrations` and `chaos
 test binary ran nothing, or ignored or filtered out any test. Every run writes each binary's counts
 to `.capsulet/verify/<run>/test-counts.json`; CI keeps that file as an artifact and shows the counts
 in the job summary.
-Container scanning, secret scanning, immutable artifact attestations, required-job aggregation and the clean-checkout rehearsal remain open under
+Required-job aggregation and the clean-checkout rehearsal remain open under
 [the integrity tracker](https://github.com/mohripan/capsulet/issues/104). Do not infer M1 completion
 from the current `full` summary.
 

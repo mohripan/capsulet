@@ -1,5 +1,11 @@
 name: Supply Chain
 
+# The unprivileged half of the supply chain, run for every pull request and on
+# main: dependency policy, secret scanning over the whole history, and, for a
+# pull request, every image built and scanned without being published. Nothing
+# here can push, sign or attest: the workflow holds read access and a
+# code-scanning upload. release.yml publishes, and only from main and tags.
+
 on:
   push:
     branches: [main]
@@ -8,41 +14,38 @@ on:
 
 permissions:
   contents: read
-  packages: write
-  id-token: write
-  security-events: write
 
 jobs:
   rust-security:
+    name: dependency policy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
+      # gate-regressions shows the lint gate failing on a Clippy warning.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.96.0"
-          # gate-regressions shows the lint gate failing on a Clippy warning.
-          components: clippy
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component clippy
+          rustup default 1.96.0
 
       # Pinned, so a scanner release cannot change what passes without a
       # commit that says so. `verify doctor` holds a developer machine to the
       # same versions as minimums.
       - name: Install scanners
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-audit@0.22.2,cargo-deny@0.20.2
 
       - name: Install Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
       - name: Install Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
@@ -62,128 +65,70 @@ jobs:
           cargo run -p capsulet-xtask --locked --
           verify --gate security --gate gate-regressions
 
+  secrets:
+    name: secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      # The whole history, because a secret removed from the tree is still in
+      # every clone of the commit that added it.
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate secrets
+
   # The image matrix is release.toml's, through the plan the `containers`
   # gate builds too: each component's image name, Dockerfile, target and the
   # build arguments its OCI labels come from. A matrix written here would be a
   # second definition of the images that drifts from the first.
   image-plan:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.96.0"
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Plan the images
         id: plan
         run: echo "matrix=$(cargo run --quiet -p capsulet-xtask --locked -- release images --plan)" >> "$GITHUB_OUTPUT"
 
+  # On main, release.yml builds each image once and publishes that build; a
+  # second build here would be a different artifact from the one released.
   images:
     name: image (${{ matrix.component }})
+    if: github.event_name == 'pull_request'
     needs: image-plan
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.image-plan.outputs.matrix) }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Tags only. The labels are the Dockerfile's, from the plan's build
-      # arguments: this action's would say the version is the branch name.
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ matrix.image }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha
-
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          target: ${{ matrix.target }}
-          build-args: ${{ matrix.build_args }}
-          tags: ${{ steps.meta.outputs.tags }}
-          load: true
-
-      # Two scans, because reporting and gating want different thresholds.
-      # This one reports everything, fixed or not, and never fails: hiding an
-      # advisory nobody can fix yet would be worse than not gating on it.
-      - name: Report image vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
-          format: sarif
-          output: trivy-${{ matrix.component }}.sarif
-          exit-code: "0"
-
-      # And this one fails the build, under the checked-in policy in
-      # trivy.yaml: a fixable HIGH or CRITICAL is a defect one rebuild away
-      # from being gone, so it is worth stopping for.
-      - name: Gate on fixable image vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
-          trivy-config: trivy.yaml
-
-      - name: Upload Trivy SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: trivy-${{ matrix.component }}.sarif
-
-      - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
-          format: cyclonedx-json
-          output-file: sbom-${{ matrix.component }}.cyclonedx.json
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-${{ matrix.component }}
-          path: sbom-${{ matrix.component }}.cyclonedx.json
-
-      - name: Login to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          target: ${{ matrix.target }}
-          build-args: ${{ matrix.build_args }}
-          tags: ${{ steps.meta.outputs.tags }}
-          push: true
-
-      - name: Install cosign
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: sigstore/cosign-installer@v3
-
-      - name: Sign image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: cosign sign --yes ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/image-scan.yml
+    with:
+      component: ${{ matrix.component }}
+      image: ${{ matrix.image }}
+      dockerfile: ${{ matrix.dockerfile }}
+      context: ${{ matrix.context }}
+      target: ${{ matrix.target }}
+      build_args: ${{ matrix.build_args }}

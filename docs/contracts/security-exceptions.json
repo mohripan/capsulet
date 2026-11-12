@@ -42,6 +42,23 @@
       "compensating_control": "Never parse YAML from a request or a run with it. New vulnerability findings are not covered by this maintenance exception. Replacing serde_yaml in the workspace alone would not remove it while kube-client depends on it, so review kube's YAML dependency before this expires.",
       "issue": "https://github.com/mohripan/capsulet/issues/99",
       "expires": "2027-03-01"
+    },
+    {
+      "id": "SECRET-2026-0001",
+      "ecosystem": "secret",
+      "package": "crates/api/src/auth.rs",
+      "versions": [
+        "9dc3d5076d5409cf488cfa0801378649e4567299:crates/api/src/auth.rs:generic-api-key:149",
+        "9dc3d5076d5409cf488cfa0801378649e4567299:crates/api/src/auth.rs:generic-api-key:165",
+        "d8b5452f2592a1b860c828aeb6b8b3ab80160d3d:crates/api/src/auth.rs:generic-api-key:448",
+        "d8b5452f2592a1b860c828aeb6b8b3ab80160d3d:crates/api/src/auth.rs:generic-api-key:459"
+      ],
+      "scope": "test-fixture",
+      "owner": "platform",
+      "rationale": "Unit-test bearer tokens (0123456789abcdef0123456789abcdef and its rotation) that AuthConfig's tests parse and authenticate; they were never credentials for any deployment. The fingerprints name the two commits that added them, so this entry covers those occurrences and nothing a later commit adds.",
+      "compensating_control": "The secrets gate scans the whole history in CI and fails on any finding that is not one of these fingerprints, or when one of them stops being found. Deployed tokens are generated per stack or per install and never committed.",
+      "issue": "https://github.com/mohripan/capsulet/issues/101",
+      "expires": "2027-05-12"
     }
   ]
 }

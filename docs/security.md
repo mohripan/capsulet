@@ -19,6 +19,9 @@ No local credential is checked in: `cargo run -p capsulet-xtask -- stack up` gen
 all, and `stack down` deletes them (see [test identities](development/test-identities.md)).
 Disable the temporary admin before any shared environment.
 
+How each published image is built once, scanned, attested, signed and verified by digest, and
+how to verify one yourself, is in the [supply chain](security/supply-chain.md).
+
 ## Authorization model
 
 Roles are ordered:

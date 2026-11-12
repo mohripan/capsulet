@@ -1,0 +1,240 @@
+name: Image release
+
+# One component's image, published. It is built and pushed exactly once, by
+# digest and with no tag; every later step names that digest and nothing else:
+#
+#   build -> pull it back and check its labels and user -> scan -> SBOM ->
+#   provenance and SBOM attestations -> keyless signature -> verify all three
+#   -> only then tag the verified digest.
+#
+# A scan or a verification that fails leaves an untagged, unsigned digest that
+# nothing points at. Only release.yml calls this, from main and from version
+# tags, never from a pull request.
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        type: string
+        required: true
+      image:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      dockerfile:
+        type: string
+        required: true
+      context:
+        type: string
+        required: true
+      target:
+        type: string
+        required: true
+      build_args:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: build, scan, attest, sign and tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    env:
+      IMAGE: ${{ inputs.image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image once, by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          target: ${{ inputs.target }}
+          build-args: ${{ inputs.build_args }}
+          outputs: type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=true
+          provenance: false
+          sbom: false
+
+      - name: Pull the pushed digest and check its release labels and user
+        env:
+          REFERENCE: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
+        run: |
+          docker pull "$REFERENCE"
+          cargo run --quiet -p capsulet-xtask --locked -- release inspect "${{ inputs.component }}" "$REFERENCE"
+
+      # Two scans, because reporting and gating want different thresholds; see
+      # image-scan.yml. Both read the pushed digest.
+      - name: Report image vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-${{ inputs.component }}.sarif
+          exit-code: "0"
+
+      - name: Gate on fixable vulnerabilities, secrets and misconfigurations
+        id: gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
+          trivy-config: trivy.yaml
+
+      - name: Upload the scan to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-${{ inputs.component }}.sarif
+          category: image-${{ inputs.component }}
+
+      - name: Generate the image SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom-${{ inputs.component }}.cdx.json
+          artifact-name: sbom-${{ inputs.component }}.cdx.json
+
+      # SLSA provenance: this repository, this commit, this workflow, the runner
+      # that built it, the event and its inputs, and the digest it describes.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ inputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest the SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ inputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-${{ inputs.component }}.cdx.json
+          push-to-registry: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Sign the digest
+        run: cosign sign --yes "${{ inputs.image }}@${{ steps.build.outputs.digest }}"
+
+      # The signature must come from this workflow at this ref, issued to
+      # GitHub Actions; the provenance and the SBOM must be attested for this
+      # digest by this workflow, and the provenance must name this repository
+      # and this commit.
+      - name: Verify the signature, provenance and SBOM
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REFERENCE: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
+          SIGNER: ${{ github.repository }}/.github/workflows/image-release.yml
+        run: |
+          cosign verify "$REFERENCE" \
+            --certificate-identity "https://github.com/$SIGNER@$GITHUB_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          gh attestation verify "oci://$REFERENCE" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$SIGNER" \
+            --predicate-type https://slsa.dev/provenance/v1 --format json > provenance.json
+          gh attestation verify "oci://$REFERENCE" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$SIGNER" \
+            --predicate-type https://cyclonedx.org/bom --format json > /dev/null
+          jq -e --arg repo "https://github.com/$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" '
+            .[0].verificationResult.statement.predicate.buildDefinition
+            | (.externalParameters.workflow.repository == $repo)
+              and any(.resolvedDependencies[]; .digest.gitCommit == $sha)
+          ' provenance.json > /dev/null
+
+      - name: Tag the verified digest
+        id: tag
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          tags=("$IMAGE:sha-${GITHUB_SHA::7}")
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            tags+=("$IMAGE:main")
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [ "${GITHUB_REF#refs/tags/v}" != "$VERSION" ]; then
+              echo "::error::tag ${GITHUB_REF#refs/tags/} is not v$VERSION, the version in release.toml"
+              exit 1
+            fi
+            tags+=("$IMAGE:$VERSION")
+          fi
+          arguments=()
+          for tag in "${tags[@]}"; do arguments+=(--tag "$tag"); done
+          # A copy, not a new index, so every tag resolves to the signed digest.
+          docker buildx imagetools create --prefer-index=false "${arguments[@]}" "$IMAGE@$DIGEST"
+          for tag in "${tags[@]}"; do
+            resolved=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' | jq -r .digest)
+            if [ "$resolved" != "$DIGEST" ]; then
+              echo "::error::$tag resolves to $resolved, not the verified $DIGEST"
+              exit 1
+            fi
+          done
+          printf '%s\n' "${tags[@]}" > tags.txt
+
+      - name: Record the digest for the release manifest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          jq -n --arg component "${{ inputs.component }}" --arg image "$IMAGE" --arg digest "$DIGEST" \
+            --arg sbom "$(sha256sum "sbom-${{ inputs.component }}.cdx.json" | cut -d' ' -f1)" \
+            --rawfile tags tags.txt \
+            '{component: $component, image: $image, digest: $digest, tags: ($tags | split("\n") | map(select(length > 0))), sbom_sha256: $sbom}' \
+            > "digest-${{ inputs.component }}.json"
+
+      - name: Upload the digest record
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: digest-${{ inputs.component }}
+          path: digest-${{ inputs.component }}.json
+          if-no-files-found: error
+
+      - name: Summarise the release
+        if: always()
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          GATE: ${{ steps.gate.outcome }}
+          TAGGED: ${{ steps.tag.outcome }}
+        run: |
+          {
+            echo "### ${{ inputs.component }}"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Digest | \`$IMAGE@$DIGEST\` |"
+            echo "| Scanner | $(trivy --version 2>/dev/null | head -1 || echo 'trivy did not run') |"
+            echo "| Signer | $(cosign version 2>/dev/null | grep -m1 GitVersion | tr -s ' ' || echo 'cosign did not run') |"
+            echo "| Policy | \`trivy.yaml\`: a fixable HIGH or CRITICAL vulnerability, a secret or a HIGH misconfiguration fails the build |"
+            echo "| Gate | $GATE |"
+            echo "| Tagged | $TAGGED: $(tr '\n' ' ' < tags.txt 2>/dev/null || echo none) |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -250,8 +250,8 @@ fn an_image_under_a_doubled_repository_segment_is_refused() {
     let fixture = Fixture::new();
     fixture.edit(
         ".github/workflows/supply-chain.yml",
-        "images: ${{ matrix.image }}",
-        "images: ghcr.io/${{ github.repository }}/capsulet-${{ matrix.component }}",
+        "      image: ${{ matrix.image }}",
+        "      image: ghcr.io/${{ github.repository }}/capsulet-${{ matrix.component }}",
     );
     // Assembled here, so this file does not hold the reference it tests.
     let doubled = ["ghcr.io/mohripan", "capsulet", "capsulet-api:0.1.0"].join("/");

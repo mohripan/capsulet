@@ -25,6 +25,13 @@ scan:
     - vuln
     - secret
 
+# The image's configuration too, read as the Dockerfile that made it: a root
+# user or a secret in an environment variable fails like a fixable CVE.
+image:
+  image-config-scanners:
+    - misconfig
+    - secret
+
 severity:
   - CRITICAL
   - HIGH

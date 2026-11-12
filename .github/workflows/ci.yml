@@ -29,16 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal --component clippy,rustfmt
           rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Verify
         run: >
           cargo run -p capsulet-xtask --locked --
@@ -50,25 +48,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
       # Node 24 or newer: claims-evidence reads which file each dashboard test is
       # in from Node's junit reporter, which only writes it from Node 24.
       - name: Install Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "24"
           cache: npm
@@ -82,7 +78,7 @@ jobs:
         run: >
           cargo run -p capsulet-xtask --locked --
           verify --gate claims --gate api-contracts --gate authorization --gate sdk
-          --gate claims-evidence --gate release
+          --gate claims-evidence --gate release --gate supply-chain-contract
 
   postgres:
     name: PostgreSQL
@@ -93,16 +89,14 @@ jobs:
     # ever sees.
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # These gates fail when any database test was skipped, ignored or filtered
       # out, and the verifier writes every test binary's counts to the job summary
       # and to test-counts.json, which is kept below as the record that they ran.
@@ -113,7 +107,7 @@ jobs:
 
       - name: Keep test counts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: postgres-test-counts
           path: .capsulet/verify/*/test-counts.json
@@ -124,18 +118,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           cache: npm
@@ -153,19 +145,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install Helm
-        uses: azure/setup-helm@v4
-
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate helm
 
@@ -174,16 +163,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate compose
 
@@ -192,18 +179,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           cache: npm
@@ -224,7 +209,7 @@ jobs:
       # stack, and every credential in it, is gone by the time this runs.
       - name: Upload the gate log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dashboard-e2e-log
           path: .capsulet/verify/*/dashboard-e2e.log
@@ -238,15 +223,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate containers

@@ -1,0 +1,266 @@
+name: Release
+
+# Publishes what release.toml names: every component's image (through
+# image-release.yml, which builds, scans, attests, signs and tags each once),
+# the Helm chart and the source SBOM. Then it verifies every image digest
+# again and writes the release manifest, which it attests in turn.
+#
+# Only pushes to main, version tags and a manual run reach this workflow. A
+# pull request never does: supply-chain.yml builds and scans pull requests
+# without any of these permissions.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: plan the images
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Plan the images
+        id: plan
+        run: echo "matrix=$(cargo run --quiet -p capsulet-xtask --locked -- release images --plan)" >> "$GITHUB_OUTPUT"
+
+  images:
+    name: image (${{ matrix.component }})
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    uses: ./.github/workflows/image-release.yml
+    with:
+      component: ${{ matrix.component }}
+      image: ${{ matrix.image }}
+      version: ${{ matrix.version }}
+      dockerfile: ${{ matrix.dockerfile }}
+      context: ${{ matrix.context }}
+      target: ${{ matrix.target }}
+      build_args: ${{ matrix.build_args }}
+
+  chart:
+    name: package, attest and sign the chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Package the chart
+        id: package
+        run: |
+          helm package charts/capsulet --destination dist
+          echo "path=$(ls dist/capsulet-*.tgz)" >> "$GITHUB_OUTPUT"
+
+      - name: Attest the package's provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.package.outputs.path }}
+
+      - name: Sign the package
+        env:
+          PACKAGE: ${{ steps.package.outputs.path }}
+        run: cosign sign-blob --yes --bundle "$PACKAGE.sigstore.json" "$PACKAGE"
+
+      - name: Verify the package's signature and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE: ${{ steps.package.outputs.path }}
+          SIGNER: ${{ github.repository }}/.github/workflows/release.yml
+        run: |
+          cosign verify-blob "$PACKAGE" --bundle "$PACKAGE.sigstore.json" \
+            --certificate-identity "https://github.com/$SIGNER@$GITHUB_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          gh attestation verify "$PACKAGE" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER" > /dev/null
+
+      # Only a version tag publishes the chart to the registry, at release.toml's
+      # chart repository: on main it would overwrite the same chart version with
+      # every push.
+      - name: Push the chart to GHCR
+        id: push
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          PACKAGE: ${{ steps.package.outputs.path }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+          helm push "$PACKAGE" oci://ghcr.io/mohripan/charts 2>&1 | tee push.log
+          echo "digest=$(grep -o 'sha256:[0-9a-f]\{64\}' push.log | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Attest the pushed chart's provenance
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/mohripan/charts/capsulet
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Sign the pushed chart's digest
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: cosign sign --yes "ghcr.io/mohripan/charts/capsulet@${{ steps.push.outputs.digest }}"
+
+      - name: Upload the chart
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: chart
+          path: dist/
+          if-no-files-found: error
+
+  source-sbom:
+    name: source SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Cargo.lock, the dashboard's package-lock.json and the Python SDK: every
+      # source package the images are built from.
+      - name: Generate the source SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom-source.cdx.json
+          artifact-name: sbom-source.cdx.json
+
+  manifest:
+    name: verify and write the release manifest
+    needs:
+      - images
+      - chart
+      - source-sbom
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      # Outside the checkout: the manifest records the commit it was built
+      # from, and downloads in the worktree would make that commit `-dirty`.
+      - name: Download the digest records
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Download the chart
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: chart
+          path: ${{ runner.temp }}/dist
+
+      - name: Download the source SBOM
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sbom-source.cdx.json
+          path: ${{ runner.temp }}/sbom
+
+      # Every digest the manifest will name is verified again here, from the
+      # registry, before the manifest exists.
+      - name: Verify every image's signature, provenance and SBOM
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNER: ${{ github.repository }}/.github/workflows/image-release.yml
+        run: |
+          for record in "$RUNNER_TEMP"/digests/digest-*.json; do
+            reference="$(jq -r '.image + "@" + .digest' "$record")"
+            cosign verify "$reference" \
+              --certificate-identity "https://github.com/$SIGNER@$GITHUB_REF" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+            gh attestation verify "oci://$reference" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER" \
+              --predicate-type https://slsa.dev/provenance/v1 > /dev/null
+            gh attestation verify "oci://$reference" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER" \
+              --predicate-type https://cyclonedx.org/bom > /dev/null
+            echo "verified $reference"
+          done
+
+      - name: Write the release manifest
+        run: >
+          cargo run --quiet -p capsulet-xtask --locked --
+          release manifest --digests "$RUNNER_TEMP/digests" --chart "$RUNNER_TEMP/dist"
+          --source-sbom "$RUNNER_TEMP/sbom/sbom-source.cdx.json"
+          --output "$RUNNER_TEMP/release-manifest.json"
+
+      - name: Attest the release manifest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/release-manifest.json
+
+      - name: Upload the release manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-manifest
+          path: ${{ runner.temp }}/release-manifest.json
+          if-no-files-found: error
+
+      - name: Summarise the release
+        env:
+          MANIFEST: ${{ runner.temp }}/release-manifest.json
+        run: |
+          {
+            echo "### Release manifest"
+            echo ""
+            echo "Revision \`$(jq -r '.revision' "$MANIFEST")\`, version \`$(jq -r '.version' "$MANIFEST")\`."
+            echo ""
+            echo "| Component | Digest | Tags |"
+            echo "| --- | --- | --- |"
+            jq -r '.images[] | "| \(.component) | `\(.reference)` | \(.tags | join(", ")) |"' "$MANIFEST"
+            echo ""
+            echo "Chart: \`$(jq -r '.chart.file' "$MANIFEST")\` (sha256 \`$(jq -r '.chart.sha256' "$MANIFEST")\`)."
+            echo "Source SBOM: sha256 \`$(jq -r '.source_sbom.sha256' "$MANIFEST")\`."
+          } >> "$GITHUB_STEP_SUMMARY"

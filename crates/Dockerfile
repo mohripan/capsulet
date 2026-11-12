@@ -11,7 +11,7 @@
 # `capsulet-xtask release images --plan` prints the image name, target and
 # build arguments of each component from release.toml.
 
-FROM rust:1.96-bookworm AS build
+FROM rust:1.96-bookworm@sha256:a339861ae23e9abb272cea45dfafde21760d2ce6577a70f8a926153677902663 AS build
 ENV RUSTUP_TOOLCHAIN=1.96.0
 ENV CARGO_HTTP_MULTIPLEXING=false
 ENV CARGO_HTTP_TIMEOUT=600
@@ -32,7 +32,7 @@ RUN --mount=type=cache,id=capsulet-cargo-registry-v3,target=/usr/local/cargo/reg
         target/release/capsulet-scheduler target/release/capsulet-graph-worker \
         target/release/capsulet-evaluator /out/
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
 
 # `upgrade` before `install`, so a rebuild picks up fixes Debian published
 # after this tag was cut. Without it only the named packages are current while

@@ -12,6 +12,7 @@
 mod chart;
 mod check;
 mod images;
+mod manifest;
 mod set;
 
 use std::{
@@ -33,7 +34,15 @@ pub(crate) const RELEASE_FILE: &str = "release.toml";
 pub(crate) struct Release {
     pub(crate) product: Product,
     pub(crate) images: Images,
+    pub(crate) chart: Chart,
     pub(crate) compatibility: Compatibility,
+}
+
+/// Where a version tag publishes the Helm chart.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Chart {
+    pub(crate) repository: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +141,12 @@ impl Release {
                 ));
             }
         }
+        if !self.chart.repository.split('/').all(is_image_segment) {
+            return Err(format!(
+                "{RELEASE_FILE}: chart.repository {:?} is not a lowercase repository path",
+                self.chart.repository
+            ));
+        }
         if self.images.components.is_empty() {
             return Err(format!("{RELEASE_FILE}: images.components is empty"));
         }
@@ -163,6 +178,15 @@ impl Release {
         format!(
             "{}/{}/{}",
             self.images.registry, self.images.namespace, component.image
+        )
+    }
+
+    /// `<registry>/<namespace>/<chart repository>`, the OCI repository a version
+    /// tag pushes the chart to.
+    pub(crate) fn chart_repository(&self) -> String {
+        format!(
+            "{}/{}/{}",
+            self.images.registry, self.images.namespace, self.chart.repository
         )
     }
 
@@ -245,6 +269,8 @@ pub(crate) fn git(root: &Path, arguments: &[&str]) -> Result<String, String> {
 }
 
 const USAGE: &str = "usage: capsulet-xtask release check | check-chart | images [--plan] | \
+                     inspect <component> <image reference> | manifest --digests <directory> \
+                     --chart <directory> --source-sbom <file> --output <file> | \
                      set <version> (--dry-run | --write) [--allow-dirty]  [--root <directory>]";
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
@@ -280,13 +306,20 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             [flag] if flag == "--plan" => images::print_plan(&root, &release),
             _ => Err(USAGE.to_string()),
         },
+        Some("inspect") => match &arguments[1..] {
+            [component, reference] => {
+                images::inspect_reference(&root, &release, component, reference)
+            }
+            _ => Err(USAGE.to_string()),
+        },
+        Some("manifest") => manifest::write(&root, &release, &arguments[1..]),
         Some("set") => set::run(&root, &release, &arguments[1..]),
         _ => Err(USAGE.to_string()),
     }
 }
 
 /// Takes `--root <directory>` out of the arguments; the repository otherwise.
-fn split_root(arguments: &[String]) -> Result<(PathBuf, Vec<String>), String> {
+pub(crate) fn split_root(arguments: &[String]) -> Result<(PathBuf, Vec<String>), String> {
     let mut root = None;
     let mut rest = Vec::new();
     let mut iterator = arguments.iter();

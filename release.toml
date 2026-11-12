@@ -53,6 +53,11 @@ image = "capsulet-dashboard"
 dockerfile = "dashboard/Dockerfile"
 context = "dashboard"
 
+# A version tag publishes the Helm chart as an OCI artifact under
+# <registry>/<namespace>/<repository>, named as in Chart.yaml.
+[chart]
+repository = "charts"
+
 # The API versions this release's clients (the Python SDK, the CLI and the
 # dashboard) are built against. The product version must fall inside it; widen
 # it here, deliberately, before releasing a version outside it.
