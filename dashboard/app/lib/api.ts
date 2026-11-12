@@ -649,6 +649,9 @@ export const DASHBOARD_OPERATIONS = {
   runIngestionConnector: clientOperation("POST", "/v1/ingestion/connectors/{id}/runs", "runIngestionConnector", null, "IngestionRunWithOutputsResponse"),
   listIngestionRuns: clientOperation("GET", "/v1/ingestion/runs", "listIngestionRuns", null, "ListIngestionRunsResponse"),
   listReviewClaims: clientOperation("GET", "/v1/ingestion/review/claims", "listIngestionReviewClaims", null, "ListIngestionReviewClaimsResponse", true, ["status"]),
+  listOpenReadings: clientOperation("GET", "/v1/reasoning/readings", "listOpenReadings", null, "OpenReadingsResponse"),
+  getReviewedCertificate: clientOperation("GET", "/v1/reasoning/certificates/{id}/review", "getReviewedCertificate", null, "ReviewedCertificateResponse"),
+  reviewReading: clientOperation("POST", "/v1/reasoning/certificates/{id}/readings/{reading}/review", "reviewReading", "ReviewReadingRequest", "ReviewedCertificateResponse"),
   approveReviewClaim: clientOperation("POST", "/v1/ingestion/review/claims/{id}/approve", "approveIngestionReviewClaim", null, "ReviewClaimResponse"),
   rejectReviewClaim: clientOperation("POST", "/v1/ingestion/review/claims/{id}/reject", "rejectIngestionReviewClaim", null, "ReviewClaimResponse"),
   listWorkflowRuns: clientOperation("GET", "/v1/workflow-runs", "listWorkflowRuns", null, "ListWorkflowRunsResponse", true, TABLE_QUERY_PARAMETERS),
@@ -1001,6 +1004,69 @@ export async function runIngestionConnector(id: string) {
 
 export async function listIngestionRuns() {
   return apiFetch<{ runs: IngestionRun[] }>("/v1/ingestion/runs");
+}
+
+/** A step the kernel could not take, and where it stands. */
+export type Reading = {
+  /** Its digest, which is what a review names. */
+  reading: string;
+  /** `source` for a reading of a cited source, `question` for a reading of the question asked. */
+  kind: string;
+  from: string;
+  to: { subject: string; predicate: string; object: string };
+  rationale: string;
+  evidence_ids: string[];
+  /** `open`, `holds` or `does_not_hold`. */
+  state: string;
+  reviewer: string | null;
+  authority: string | null;
+  review_rationale: string | null;
+};
+
+export type OpenReading = { certificate_id: string; question: string; reading: Reading };
+
+/** A certificate's outcome once the decisions recorded on its readings are read. */
+export type ReviewedCertificate = {
+  certificate_id: string;
+  question: string;
+  kernel_verdict: string;
+  verdict: string;
+  /** `mechanical`, `human_review`, or null while the answer is not accepted. */
+  basis: string | null;
+  readings: Reading[];
+};
+
+export type ReadingDecision = "holds" | "does_not_hold";
+
+export async function listOpenReadings() {
+  return apiFetch<{ readings: OpenReading[] }>("/v1/reasoning/readings");
+}
+
+export async function getReviewedCertificate(id: string) {
+  return apiFetch<ReviewedCertificate>(`/v1/reasoning/certificates/${encodeURIComponent(id)}/review`);
+}
+
+export async function reviewReading(certificateId: string, reading: string, decision: ReadingDecision, rationale: string) {
+  return apiFetch<ReviewedCertificate>(
+    `/v1/reasoning/certificates/${encodeURIComponent(certificateId)}/readings/${encodeURIComponent(reading)}/review`,
+    { method: "POST", body: JSON.stringify({ decision, rationale }) }
+  );
+}
+
+/** What an answer amounts to after review, in words that do not overstate it. */
+export function reviewedOutcome(certificate: Pick<ReviewedCertificate, "verdict" | "basis">) {
+  if (certificate.verdict === "accepted") {
+    return certificate.basis === "human_review" ? "accepted on review" : "accepted by the kernel";
+  }
+  if (certificate.verdict === "rejected") {
+    return "rejected";
+  }
+  return "still conditional";
+}
+
+/** The proposition a reading reaches, as one line. */
+export function readingLine(reading: Pick<Reading, "to">) {
+  return `${reading.to.subject} · ${reading.to.predicate} · ${reading.to.object}`;
 }
 
 export async function listReviewClaims(status?: "candidate" | "active" | "rejected") {

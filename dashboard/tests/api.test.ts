@@ -13,6 +13,8 @@ import {
   createSubgraphEdge,
   formatBytes,
   getErrorMessage,
+  readingLine,
+  reviewedOutcome,
   resultTone,
   roleLabel,
   isTerminalStatus,
@@ -598,6 +600,22 @@ describe("agent run explanations", () => {
     assert.equal(roleLabel("external"), "outside");
     assert.equal(roleLabel("consequence"), "work");
     assert.equal(roleLabel("divergent"), "diverges");
+  });
+});
+
+describe("reading reviews", () => {
+  it("never calls an answer accepted on the kernel's word when a person accepted it", () => {
+    assert.equal(reviewedOutcome({ verdict: "accepted", basis: "human_review" }), "accepted on review");
+    assert.equal(reviewedOutcome({ verdict: "accepted", basis: "mechanical" }), "accepted by the kernel");
+    assert.equal(reviewedOutcome({ verdict: "rejected", basis: null }), "rejected");
+    assert.equal(reviewedOutcome({ verdict: "conditional", basis: null }), "still conditional");
+  });
+
+  it("puts a reading's proposition on one line", () => {
+    assert.equal(
+      readingLine({ to: { subject: "either party", predicate: "may_terminate", object: "this agreement" } }),
+      "either party · may_terminate · this agreement"
+    );
   });
 });
 

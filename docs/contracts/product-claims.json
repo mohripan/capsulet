@@ -222,6 +222,16 @@
       "marker_required": true
     },
     {
+      "path": "dashboard/app/readings/page.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
+      "path": "dashboard/app/readings/readings-client.tsx",
+      "category": "dashboard",
+      "marker_required": true
+    },
+    {
       "path": "dashboard/app/agent-runs/[id]/page.tsx",
       "category": "dashboard",
       "marker_required": true
@@ -3038,7 +3048,9 @@
         "dashboard/app/agent-runs/page.tsx",
         "dashboard/app/agent-runs/[id]/page.tsx",
         "dashboard/app/agent-runs/agent-runs-client.tsx",
-        "dashboard/app/agent-runs/[id]/agent-run-detail-client.tsx"
+        "dashboard/app/agent-runs/[id]/agent-run-detail-client.tsx",
+        "dashboard/app/readings/page.tsx",
+        "dashboard/app/readings/readings-client.tsx"
       ],
       "evidence": [
         {
@@ -5099,7 +5111,9 @@
       "area": "Correctness kernel",
       "statement": "A reading a reasoning certificate leaves open can be decided by a person holding `review:write`: `POST /v1/reasoning/certificates/{id}/readings/{reading}/review` records `holds` or `does_not_hold` with a rationale, bound to that reading by a digest over it and its certificate. The outcome (`GET /v1/reasoning/certificates/{id}/review`) is re-derived from the kernel's certificate and the recorded reviews: every reading held is `accepted` on basis `human_review`, any reading refuted is `rejected`, and a rejected certificate stays rejected. `GET /v1/reasoning/readings` lists the open ones. A decision is recorded once and never rewritten, and another project's certificate is not found.",
       "public_surfaces": [
-        "docs/api.md"
+        "docs/api.md",
+        "dashboard/app/readings/page.tsx",
+        "dashboard/app/readings/readings-client.tsx"
       ],
       "verification": [
         {

@@ -16,6 +16,7 @@ import {
   FileCode2,
   GitBranch,
   Layers3,
+  ListChecks,
   ListTree,
   LogOut,
   Network,
@@ -42,6 +43,7 @@ const nav: Array<[LucideIcon, string, string]> = [
   [CheckCheck, "Contradictions", "/memory/edges"],
   [FileCode2, "Schema Studio", "/memory/contracts"],
   [Activity, "Agent Runs", "/agent-runs"],
+  [ListChecks, "Readings", "/readings"],
   [ShieldCheck, "Security", "/security"],
   [Settings, "Settings", "/settings"]
 ];

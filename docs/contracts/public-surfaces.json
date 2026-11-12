@@ -29,6 +29,7 @@
         "dashboard/app/agent-runs/*/*-client.tsx",
         "dashboard/app/runs/*/*-client.tsx",
         "dashboard/app/runs/*-client.tsx",
+        "dashboard/app/readings/*-client.tsx",
         "dashboard/app/mock-data.ts"
       ],
       "exclude": ["dashboard/app/api/**"]
