@@ -158,6 +158,7 @@ const GITLEAKS: &str = "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071
 ///
 /// The report is redacted: it records where a secret is, never what it is.
 fn scan_secrets(root: &Path, staged: bool) -> Result<(), String> {
+    whole_history(root)?;
     let root = docker_path(root)?;
     let directory = Path::new(&root).join(".capsulet/security");
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
@@ -220,6 +221,34 @@ fn scan_secrets(root: &Path, staged: bool) -> Result<(), String> {
         if let Ok(mut file) = fs::OpenOptions::new().append(true).open(path) {
             let _ = file.write_all(lines.as_bytes());
         }
+    }
+    Ok(())
+}
+
+/// Refuses a checkout whose whole history gitleaks cannot read from inside its
+/// container. A scan of less would find fewer secrets, and the registered test
+/// fixtures it did not reach would read as stale exceptions rather than as a scan
+/// that never happened.
+///
+/// - A Git worktree's `.git` is a file naming the main repository by a host path,
+///   which means nothing inside the container.
+/// - A shallow clone has only its last commits.
+fn whole_history(root: &Path) -> Result<(), String> {
+    let git = root.join(".git");
+    if git.is_file() {
+        return Err(format!(
+            "the secrets gate scans the whole history inside a container, and {} is a Git \
+             worktree: its .git is a file naming the repository by a path the container cannot \
+             see. Run it from the repository's own checkout or a clone",
+            root.display()
+        ));
+    }
+    if git.join("shallow").exists() {
+        return Err(format!(
+            "the secrets gate scans the whole history, and {} is a shallow clone. Fetch all of \
+             it first (`git fetch --unshallow`; in CI, `fetch-depth: 0`)",
+            root.display()
+        ));
     }
     Ok(())
 }
@@ -505,4 +534,31 @@ fn check_advisory(
         exception.owner, exception.expires, exception.issue
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::whole_history;
+
+    #[test]
+    fn a_worktree_or_a_shallow_clone_is_refused_and_a_full_clone_is_not() {
+        let worktree = tempfile::tempdir().expect("temp directory");
+        std::fs::write(
+            worktree.path().join(".git"),
+            "gitdir: C:/elsewhere/.git/worktrees/one\n",
+        )
+        .expect("a .git file");
+        let refused = whole_history(worktree.path()).expect_err("a worktree");
+        assert!(refused.contains("is a Git worktree"), "{refused}");
+
+        let shallow = tempfile::tempdir().expect("temp directory");
+        std::fs::create_dir_all(shallow.path().join(".git")).expect(".git");
+        std::fs::write(shallow.path().join(".git/shallow"), "0000\n").expect("shallow");
+        let refused = whole_history(shallow.path()).expect_err("a shallow clone");
+        assert!(refused.contains("is a shallow clone"), "{refused}");
+
+        let full = tempfile::tempdir().expect("temp directory");
+        std::fs::create_dir_all(full.path().join(".git")).expect(".git");
+        assert_eq!(whole_history(full.path()), Ok(()));
+    }
 }
