@@ -5,7 +5,7 @@ mod kind;
 mod leftovers;
 mod postgres;
 pub(crate) mod process;
-mod record;
+pub(crate) mod record;
 mod summary;
 mod worktree;
 

@@ -229,6 +229,7 @@ fn lists_the_executable_gate_graph_as_json() {
         "containers",
         "supply-chain-contract",
         "ci-contract",
+        "completion",
         "secrets",
         "dependency-images",
     ] {

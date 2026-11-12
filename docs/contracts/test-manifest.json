@@ -3,6 +3,24 @@
   "generated_by": "cargo run -p capsulet-xtask --locked -- claims collect",
   "commands": [
     {
+      "gate": "verifier",
+      "command": "cargo test -p capsulet-xtask --locked --target-dir .capsulet/verify/xtask-tests",
+      "tests": [
+        {
+          "path": "crates/xtask/tests/required_summary.rs",
+          "selector": "a_job_that_was_skipped_cancelled_or_failed_is_refused"
+        },
+        {
+          "path": "crates/xtask/tests/required_summary.rs",
+          "selector": "a_run_that_left_resources_or_changed_the_worktree_is_refused"
+        },
+        {
+          "path": "crates/xtask/tests/required_summary.rs",
+          "selector": "removing_the_evidence_of_any_required_coverage_is_refused"
+        }
+      ]
+    },
+    {
       "gate": "unit",
       "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
       "tests": [

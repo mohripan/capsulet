@@ -2,6 +2,7 @@
 
 mod ci;
 mod claims;
+mod completion;
 mod fixtures;
 mod release;
 mod security;
@@ -18,6 +19,7 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
         Some("security") => return security::run(&arguments[1..]),
         Some("claims") => return claims::run(&arguments[1..]),
         Some("ci") => return ci::run(&arguments[1..]),
+        Some("completion") => return completion::run(&arguments[1..]),
         Some("stack") => return verify::stack(&arguments[1..]),
         Some("kind") => return verify::kind(&arguments[1..]),
         Some("release") => return release::run(&arguments[1..]),

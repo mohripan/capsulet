@@ -212,7 +212,11 @@ cargo run -p capsulet-xtask --locked -- verify record .capsulet/verify/<run> --o
 
 The record keeps the commit, the host, the duration, every tool's version, each gate's result and
 test counts and log digest, every image ID, the chart render digest and the summary's SHA-256. It
-names no path on the machine.
+names no path on the machine. Commit it as
+[`docs/contracts/clean-checkout-rehearsal.json`](../contracts/clean-checkout-rehearsal.json):
+[the M1 completion report](../contracts/m1-completion.md) links each M1 criterion to its gates and to
+that record, and the `completion` gate requires the record to be of a commit the checkout descends
+from, from a clean full run that passed every gate the report cites.
 
 ## Cache boundaries
 

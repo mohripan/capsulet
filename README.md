@@ -371,7 +371,8 @@ each database test a database of its own; to run those tests by hand against a s
 - [Persistence](docs/persistence.md)
 - [Security](docs/security.md) and the [supply chain](docs/security/supply-chain.md)
 - [Release process](docs/contracts/release-process.md)
-- [Verification matrix](docs/contracts/verification-matrix.md)
+- [Verification matrix](docs/contracts/verification-matrix.md), [CI](docs/development/ci.md), and
+  the [M1 completion report](docs/contracts/m1-completion.md)
 
 ## License
 

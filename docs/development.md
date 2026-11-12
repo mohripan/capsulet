@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-JOB-001, CAP-JOB-002, CAP-JOB-003, CAP-JOB-004, CAP-JOB-005, CAP-JOB-006, CAP-JOB-007, CAP-JOB-008, CAP-JOB-009, CAP-WORKFLOW-001, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-HELM-001 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-JOB-001, CAP-JOB-002, CAP-JOB-003, CAP-JOB-004, CAP-JOB-005, CAP-JOB-006, CAP-JOB-007, CAP-JOB-008, CAP-JOB-009, CAP-WORKFLOW-001, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-SDK-001, CAP-OBSERVABILITY-001, CAP-HELM-001, CAP-VERIFY-001 -->
 # Development
 
 This guide covers development of Capsulet's three layers: the implemented compatibility workflow
@@ -25,6 +25,13 @@ cargo run -p capsulet-xtask --locked -- verify doctor
 Run deterministic service-free verification with `verify --profile fast`, or the release-equivalent
 suite with `verify --profile full`. The executable gate graph and supported-tool matrix are in
 [`docs/contracts/verification-matrix.md`](contracts/verification-matrix.md).
+
+Every run fails if it leaves behind anything it made: a container, volume, network, image, Kind
+cluster or generated credential directory. A full-profile run also fails if the worktree changed
+while it ran. In CI, the `Required` check passes only when every gate of the full profile ran and
+passed in some job and every job succeeded (`CAP-VERIFY-001`).
+[CI](development/ci.md) describes both, and how to rehearse the release gate in a fresh clone.
+[The M1 completion report](contracts/m1-completion.md) records the latest rehearsal.
 
 If Windows reserves the default PostgreSQL host port, choose another before the stack starts.
 Containers still reach each other on their own ports:

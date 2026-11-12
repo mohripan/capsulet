@@ -669,6 +669,18 @@ pub(crate) fn gates() -> Vec<Gate> {
             &[Fast, Full],
             vec![xtask(&["ci", "check"])],
         ),
+        // Needs the history: the rehearsal record names the commit it was run at,
+        // which this checkout must descend from.
+        gate(
+            "completion",
+            "Every M1 deliverable and exit criterion, word for word from the plan, names the \
+             full-profile gates that prove it, and the clean-checkout rehearsal record shows them \
+             passing in a clean run that left nothing behind",
+            &["cargo", "git"],
+            300,
+            &[Fast, Full],
+            vec![xtask(&["completion", "check"])],
+        ),
         gate(
             "secrets",
             "gitleaks over the whole Git history; every finding a registered, unexpired test \

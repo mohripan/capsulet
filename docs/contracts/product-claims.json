@@ -1908,7 +1908,7 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Jobs and runners",
-      "statement": "A job can execute as a Job on a Kubernetes cluster. No gate creates one: the `kind` gate only discovers clusters.",
+      "statement": "A job can execute as a Job on a Kubernetes cluster. The `kind` gate runs one: on a Kind cluster of its own, its smoke starts a job run that the worker executes as a Kubernetes Job, then reads the run's logs and artifact.",
       "public_surfaces": [
         "README.md",
         "ARCHITECTURE.md",
@@ -1938,6 +1938,11 @@
         {
           "type": "source",
           "path": "crates/runner/src/lib.rs"
+        },
+        {
+          "type": "source",
+          "path": "tests/kind/smoke.py",
+          "gate": "kind"
         }
       ]
     },
@@ -3130,7 +3135,7 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Helm and self-hosting",
-      "statement": "An alpha-readiness Helm chart installs the current control plane, execution services, dashboard, and optional bundled dependencies, but is not yet a public-alpha distribution.",
+      "statement": "A Helm chart installs the current control plane, execution services, dashboard, and optional bundled dependencies. The `kind` gate installs it on a Kind cluster from images built from the checkout, runs its Helm test and an in-cluster smoke, and uninstalls it with nothing left behind. It is not a public-alpha distribution: upgrade, rollback, backup and restore are untested.",
       "public_surfaces": [
         "README.md",
         "docs/development.md",
@@ -3153,6 +3158,68 @@
         {
           "type": "source",
           "path": "charts/capsulet/templates/deployments.yaml"
+        },
+        {
+          "type": "source",
+          "path": "crates/xtask/src/verify/kind.rs",
+          "gate": "kind"
+        }
+      ]
+    },
+    {
+      "id": "CAP-VERIFY-001",
+      "kind": "guarantee",
+      "maturity": "implemented",
+      "area": "Verification",
+      "statement": "CI's `Required` check passes only when every gate of the full verification profile ran and passed in some job, every job it waited for succeeded, and no verifier run changed the worktree or left behind a container, volume, network, image, Kind cluster or credential directory it made.",
+      "public_surfaces": [
+        "docs/development.md"
+      ],
+      "verification": [
+        {
+          "assertion": "missing-coverage-refused",
+          "evidence_selectors": [
+            "removing_the_evidence_of_any_required_coverage_is_refused"
+          ]
+        },
+        {
+          "assertion": "unsuccessful-job-refused",
+          "evidence_selectors": [
+            "a_job_that_was_skipped_cancelled_or_failed_is_refused"
+          ]
+        },
+        {
+          "assertion": "dirty-run-refused",
+          "evidence_selectors": [
+            "a_run_that_left_resources_or_changed_the_worktree_is_refused"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/xtask/tests/required_summary.rs",
+          "gate": "verifier",
+          "command": "cargo test -p capsulet-xtask --locked --target-dir .capsulet/verify/xtask-tests",
+          "selector": "removing_the_evidence_of_any_required_coverage_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/xtask/tests/required_summary.rs",
+          "gate": "verifier",
+          "command": "cargo test -p capsulet-xtask --locked --target-dir .capsulet/verify/xtask-tests",
+          "selector": "a_job_that_was_skipped_cancelled_or_failed_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/xtask/tests/required_summary.rs",
+          "gate": "verifier",
+          "command": "cargo test -p capsulet-xtask --locked --target-dir .capsulet/verify/xtask-tests",
+          "selector": "a_run_that_left_resources_or_changed_the_worktree_is_refused"
+        },
+        {
+          "type": "source",
+          "path": ".github/workflows/ci.yml"
         }
       ]
     },

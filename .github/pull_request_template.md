@@ -16,7 +16,12 @@ Describe the behavior and contract impact.
 
 ## Verification
 
-- [ ] `pwsh ./scripts/check-contracts.ps1`
-- [ ] Relevant Rust, Python, dashboard, Helm, Compose, or Kubernetes tests are listed below.
+- [ ] `cargo run -p capsulet-xtask --locked -- verify --profile fast` passes locally, or the gates
+      this change touches (`verify --gate <name>`) do.
+- [ ] `Required` is green. It passes only when every gate of the full profile ran and passed, no
+      job was skipped or cancelled, and no run changed the worktree or left anything behind.
+- [ ] A new check is a gate in `crates/xtask/src/verify/catalog.rs`, not a workflow step
+      (`ci-contract` refuses the latter).
+- [ ] The tests that show this change are listed below.
 
 Verification notes:

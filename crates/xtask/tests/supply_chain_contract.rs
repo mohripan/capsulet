@@ -297,10 +297,12 @@ fn a_gate_turned_into_a_warning_is_refused() {
 #[test]
 fn secret_scanning_of_only_the_latest_commit_is_refused() {
     let fixture = Fixture::new();
+    // The secrets job's checkout, not the first one: other jobs fetch the
+    // whole history for reasons of their own.
     fixture.edit(
         CI,
-        "          fetch-depth: 0\n",
-        "          fetch-depth: 1\n",
+        "      # every clone of the commit that added it.\n      - name: Checkout\n        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0\n        with:\n          fetch-depth: 0\n",
+        "      # every clone of the commit that added it.\n      - name: Checkout\n        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0\n        with:\n          fetch-depth: 1\n",
     );
     fixture.refuses(&["no CI job runs the secrets gate over the whole Git history"]);
 }

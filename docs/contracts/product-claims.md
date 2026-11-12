@@ -115,7 +115,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-HELM-001` | experimental | capability | An alpha-readiness Helm chart installs the current control plane, execution services, dashboard, and optional bundled dependencies, but is not yet a public-alpha distribution. |
+| `CAP-HELM-001` | experimental | capability | A Helm chart installs the current control plane, execution services, dashboard, and optional bundled dependencies. The `kind` gate installs it on a Kind cluster from images built from the checkout, runs its Helm test and an in-cluster smoke, and uninstalls it with nothing left behind. It is not a public-alpha distribution: upgrade, rollback, backup and restore are untested. |
 
 ## IR adapters
 
@@ -142,7 +142,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-JOB-007` | experimental | capability | A job can execute as a local process. Only the Compose agent smoke exercises this path; no test runs it or its limits. |
 | `CAP-JOB-008` | experimental | capability | A job can execute a Python script under WASI and collect its artifacts. Its test runs only in the `wasm-python` gate, which is in no profile, and passes without running anything where no WASI Python runtime is configured. |
-| `CAP-JOB-009` | experimental | capability | A job can execute as a Job on a Kubernetes cluster. No gate creates one: the `kind` gate only discovers clusters. |
+| `CAP-JOB-009` | experimental | capability | A job can execute as a Job on a Kubernetes cluster. The `kind` gate runs one: on a Kind cluster of its own, its smoke starts a job run that the worker executes as a Kubernetes Job, then reads the run's logs and artifact. |
 | `CAP-JOB-001` | implemented | capability | The job worker renews a job run's lease for as long as its runner is still working. |
 | `CAP-JOB-002` | implemented | capability | PostgreSQL leases a queued job run to one worker at a time, and an execution pool's concurrency limit caps how many of its runs are leased at once. |
 | `CAP-JOB-003` | implemented | capability | The stub runner completes a job run, fails it, or schedules a retry when attempts remain. |
@@ -229,6 +229,12 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
 | `CAP-SUPPLY-001` | experimental | capability | Each published image is built once and pushed by digest; that digest alone is scanned, attested with SLSA build provenance and an SBOM, and signed keylessly, and it is tagged only after its signature and both attestations verify. Pull requests build and scan the same images without any credential that could publish, sign or attest. |
+
+## Verification
+
+| ID | Maturity | Kind | Claim |
+| --- | --- | --- | --- |
+| `CAP-VERIFY-001` | implemented | guarantee | CI's `Required` check passes only when every gate of the full verification profile ran and passed in some job, every job it waited for succeeded, and no verifier run changed the worktree or left behind a container, volume, network, image, Kind cluster or credential directory it made. |
 
 ## Verified computation IR
 

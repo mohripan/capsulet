@@ -1,0 +1,400 @@
+{
+  "schema_version": 1,
+  "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+  "verifier": "0.1.0",
+  "profile": "full",
+  "host": "windows-x86_64",
+  "started_unix": 1794491546,
+  "finished_unix": 1794492989,
+  "duration_seconds": 1443,
+  "clean_at_start": true,
+  "worktree_changes": [],
+  "cleanup_scope": [
+    "docker",
+    "kind",
+    "files"
+  ],
+  "leftovers": [],
+  "tools": {
+    "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+    "cargo-audit": "cargo-audit 0.22.2",
+    "cargo-deny": "cargo-deny 0.20.2",
+    "docker": "Docker version 29.6.2, build dfc4efb",
+    "git": "git version 2.55.0.windows.3",
+    "helm": "v4.1.4+g05fa379",
+    "kind": "kind version 0.31.0",
+    "kubectl": "Client Version: v1.36.3",
+    "npm": "11.19.0",
+    "npx": "11.19.0",
+    "powershell": "5.1.26100.9711",
+    "python": "Python 3.14.7"
+  },
+  "gates": [
+    {
+      "name": "verifier",
+      "status": "passed",
+      "duration_seconds": 44.3,
+      "test_binaries": 11,
+      "tests_passed": 141,
+      "tests_failed": 0,
+      "tests_ignored": 4,
+      "log_sha256": "15ed9d7c828f176739ed7824b062ed446d1079ef0ced30f5eb5b10311ef8d0ec"
+    },
+    {
+      "name": "format",
+      "status": "passed",
+      "duration_seconds": 2.9,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "lint",
+      "status": "passed",
+      "duration_seconds": 55.0,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "76d1482198e8d38e1ecebfef5cf1fb74109660117c588494fe33c117d4f703fe"
+    },
+    {
+      "name": "unit",
+      "status": "passed",
+      "duration_seconds": 194.8,
+      "test_binaries": 88,
+      "tests_passed": 825,
+      "tests_failed": 0,
+      "tests_ignored": 2,
+      "log_sha256": "4425526a3821d9c1e62e6abcee82a722d9903f171535f31d74b6695d1a651b6f"
+    },
+    {
+      "name": "ir",
+      "status": "passed",
+      "duration_seconds": 23.7,
+      "test_binaries": 28,
+      "tests_passed": 245,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "daeb194fe99fd1b89d3f703e50e7548278b7a53bc50b046ce1a62f6409b2bade"
+    },
+    {
+      "name": "replay",
+      "status": "passed",
+      "duration_seconds": 4.8,
+      "test_binaries": 4,
+      "tests_passed": 16,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "13da90fde62a622063a159d803826cead2c42080a905ad9d37dc520be9821c23"
+    },
+    {
+      "name": "api-contracts",
+      "status": "passed",
+      "duration_seconds": 64.5,
+      "test_binaries": 1,
+      "tests_passed": 13,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "fbf1d0b64d5b3551a881a20008ea7a8aac3440066eadd446882d848c4f8eef51"
+    },
+    {
+      "name": "authorization",
+      "status": "passed",
+      "duration_seconds": 50.8,
+      "test_binaries": 2,
+      "tests_passed": 144,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "78a639290f479d3b337328e8e778d167f5cbd2877fd8af24565bec898c2c574a"
+    },
+    {
+      "name": "claims",
+      "status": "passed",
+      "duration_seconds": 39.1,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "43e1c55e4c9ab45dc17159dc8b6c47433505ebaf0f95e1b9a1de425673098a39"
+    },
+    {
+      "name": "claims-evidence",
+      "status": "passed",
+      "duration_seconds": 124.5,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "ac3f835d42e20ae277693163c84668e6108b639b04841724cacbf224f61897fc"
+    },
+    {
+      "name": "sdk",
+      "status": "passed",
+      "duration_seconds": 29.2,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "a3c86d0cada1bf4c535baa9ad080ef17be2aca5da9e8dfdcc52851832c1291e1"
+    },
+    {
+      "name": "dashboard",
+      "status": "passed",
+      "duration_seconds": 31.9,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "38ba964236eec07de4a2bbaef5d60494ed3338862f3562e3e1532a90c45306b5"
+    },
+    {
+      "name": "postgres",
+      "status": "passed",
+      "duration_seconds": 77.6,
+      "test_binaries": 8,
+      "tests_passed": 186,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "95c2c2a5717cf2984c00e3dbd8e08ecf551f6ffae709f5d700c69adbb83aa6a6"
+    },
+    {
+      "name": "chaos",
+      "status": "passed",
+      "duration_seconds": 9.9,
+      "test_binaries": 1,
+      "tests_passed": 5,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "54cd929c1861d623be478211f084d2be2dbdfe84fdca9baa44bf10e9d9bb7adf"
+    },
+    {
+      "name": "migrations",
+      "status": "passed",
+      "duration_seconds": 7.9,
+      "test_binaries": 1,
+      "tests_passed": 8,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "76222acd3462ada733e22c9b7718db68d3522f597eacdd7400a1c5ad9a5fd182"
+    },
+    {
+      "name": "security",
+      "status": "passed",
+      "duration_seconds": 55.5,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "9908f2aeeea665dfeadb5dce4b509e43db9e50416fc3f454dd65b329a99a294c"
+    },
+    {
+      "name": "gate-regressions",
+      "status": "passed",
+      "duration_seconds": 27.3,
+      "test_binaries": 1,
+      "tests_passed": 4,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "06ebf44098b23786c8d84b29fc67c3f6fcf5f73719556b1e5db15caebbd09467"
+    },
+    {
+      "name": "compose",
+      "status": "passed",
+      "duration_seconds": 205.0,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "1430987fd67c5a90bf5bafa18b00d92c833224eeafcc2a10c6f19476b9940ceb"
+    },
+    {
+      "name": "dashboard-e2e",
+      "status": "passed",
+      "duration_seconds": 83.8,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "3a8cd83806d291d6e1f2753b01a6f58c671a04415d4f9aa285368a2f4c4dd57f"
+    },
+    {
+      "name": "release",
+      "status": "passed",
+      "duration_seconds": 0.9,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "990eb70223215e176986aa17f2632b72b92cf022c1d6de082d6daa43f74b18b2"
+    },
+    {
+      "name": "supply-chain-contract",
+      "status": "passed",
+      "duration_seconds": 0.4,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "784437163667cc688ad34ab9e8d50871ec4a329375d5a5ab9401c2f6f1d8a153"
+    },
+    {
+      "name": "ci-contract",
+      "status": "passed",
+      "duration_seconds": 0.3,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "bf170f2fc1c448a6f093eba05090079363c919d907ffad2821948bc6c845e0dc"
+    },
+    {
+      "name": "secrets",
+      "status": "passed",
+      "duration_seconds": 4.8,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "39361d0dcc4ea48c390bf6b0cc636d28646dde2c943d19eb4f362989c103cb5c"
+    },
+    {
+      "name": "dependency-images",
+      "status": "passed",
+      "duration_seconds": 22.8,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "05c5c05749a196f0abb1d9f8e689a24187309b1abf6e89d7da6c11de3d84253d"
+    },
+    {
+      "name": "containers",
+      "status": "passed",
+      "duration_seconds": 9.0,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "28a8292277d69e9b902b835f51d8f8b9933a020757025654b2dc43af046232bf"
+    },
+    {
+      "name": "helm",
+      "status": "passed",
+      "duration_seconds": 1.1,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "4d739b7c03f0f8794f607daf11313c9f0d670fa19adf5ae9b03de060d89f8486"
+    },
+    {
+      "name": "kind",
+      "status": "passed",
+      "duration_seconds": 255.9,
+      "test_binaries": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log_sha256": "f6f93e8987aab03f17d8bdd2cc97f43d4a1746411f9bda00bb7c76ee45cdafa2"
+    }
+  ],
+  "totals": {
+    "gates": 27,
+    "gates_passed": 27,
+    "test_binaries": 145,
+    "tests_passed": 1587,
+    "tests_failed": 0,
+    "tests_ignored": 6
+  },
+  "images": [
+    {
+      "component": "api",
+      "image": "ghcr.io/mohripan/capsulet-api",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:f6eb77906a9e4e3216aa76e0d109b4aefbc102ab3a6d0366dff23157104bd77d"
+    },
+    {
+      "component": "dashboard",
+      "image": "ghcr.io/mohripan/capsulet-dashboard",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:1b56b55fb177dd4cccd790b2629354a6d6efd444f9868a0d0e5e05f1310e92c6"
+    },
+    {
+      "component": "evaluator",
+      "image": "ghcr.io/mohripan/capsulet-evaluator",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:4d82795213fd34fdd8c65997b13b24c3ba5e28f4fa347205716c74c1b3691c6c"
+    },
+    {
+      "component": "graph-worker",
+      "image": "ghcr.io/mohripan/capsulet-graph-worker",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:b386d539ac5b4b5ec11b388aff69ba6d8c9d438d0c5ebdb4b6d6b98b64bc6101"
+    },
+    {
+      "component": "scheduler",
+      "image": "ghcr.io/mohripan/capsulet-scheduler",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:62668b94691da2408b8cf6aa21d82ccec87ea973779b1a75719d31ee145ee5a2"
+    },
+    {
+      "component": "worker",
+      "image": "ghcr.io/mohripan/capsulet-worker",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:53bc6a76471b27cb48fc6b2ea6149da52f82e48b59bcb748c7ce81f5466a99b7"
+    },
+    {
+      "component": "api",
+      "image": "ghcr.io/mohripan/capsulet-api",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:65cfcfca1ee45ec095abf2b3b3a2184c397bcf4d2a4ea9cf4f34cc4381438cf9"
+    },
+    {
+      "component": "dashboard",
+      "image": "ghcr.io/mohripan/capsulet-dashboard",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:0f2b33668ac34d919b19d1df8761093f3c5a297cf025f2d79b4afa4a284ab361"
+    },
+    {
+      "component": "evaluator",
+      "image": "ghcr.io/mohripan/capsulet-evaluator",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:3c5cd9c0c1e045f2d5e06ddad2ab397ce02b5ccc442150baac310098fc145c15"
+    },
+    {
+      "component": "graph-worker",
+      "image": "ghcr.io/mohripan/capsulet-graph-worker",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:6d1d33f7fa8ce3faa7bb04201b72d7a98d804444295fb64ae3b1f64802532820"
+    },
+    {
+      "component": "scheduler",
+      "image": "ghcr.io/mohripan/capsulet-scheduler",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:b2649b2df8ace166996e952c931cdd92d61ab95574430377adb93519430abc40"
+    },
+    {
+      "component": "worker",
+      "image": "ghcr.io/mohripan/capsulet-worker",
+      "version": "0.1.0",
+      "revision": "0d8726544054cfeb16c58ad5ea197d2ac16b4251",
+      "id": "sha256:965709ad85c2ff7375a0e2691d3da03c9bb096a4a0f2ab8b6deb57d3890cecc6"
+    }
+  ],
+  "chart_render_sha256": "sha256:99895f5e497548751f89faba2f93e34619648ae5a5bd35194a101c79d0c16220",
+  "verification_summary_sha256": "sha256:9c8d1f7c7908afb625f086e3afc24af88ea0229f9d26ec7a84a6ddcd9c9e115b"
+}

@@ -65,8 +65,12 @@ jobs:
     name: Product contracts
     runs-on: ubuntu-latest
     steps:
+      # The whole history: the completion gate requires the commit the
+      # clean-checkout rehearsal record names to be an ancestor of this one.
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
       - name: Install Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
@@ -93,7 +97,7 @@ jobs:
           cargo run -p capsulet-xtask --locked --
           verify --gate claims --gate api-contracts --gate authorization --gate sdk
           --gate claims-evidence --gate release --gate supply-chain-contract
-          --gate ci-contract
+          --gate ci-contract --gate completion
 
       - name: Keep the verification summary
         if: always()
