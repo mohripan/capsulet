@@ -60,6 +60,7 @@ skip = [
   { crate = "itertools@0.14.0", reason = "via prost-derive (OpenTelemetry's protobuf); object_store uses 0.15" },
   { crate = "phf@0.11.3", reason = "via cron 0.17's parser tables; chrono-tz uses 0.12" },
   { crate = "phf_shared@0.11.3", reason = "via phf 0.11 (cron 0.17); chrono-tz uses 0.12" },
+  { crate = "winnow@0.7.15", reason = "cron 0.17's expression parser (capsulet-evaluator), the newest cron; toml 1 (capsulet-xtask's release checks) uses winnow 1. Clears when cron moves to winnow 1" },
   { crate = "thiserror@1.0.69", reason = "via forwarded-header-value (tower_governor's client-IP extraction); everything else uses thiserror 2" },
   { crate = "thiserror-impl@1.0.69", reason = "derive of thiserror 1 (forwarded-header-value, tower_governor)" },
   { crate = "tower-http@0.6.11", reason = "kube-client and reqwest 0.13 use tower-http 0.6; capsulet-api uses 0.7" },

@@ -10,8 +10,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+  # The Rust images' Dockerfile. The dashboard's is the next entry; release.toml
+  # names both, and there is no other.
   - package-ecosystem: docker
-    directory: /
+    directory: /crates
     schedule:
       interval: weekly
   - package-ecosystem: docker

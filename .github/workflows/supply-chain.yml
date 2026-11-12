@@ -87,6 +87,7 @@ jobs:
         run: echo "matrix=$(cargo run --quiet -p capsulet-xtask --locked -- release images --plan)" >> "$GITHUB_OUTPUT"
 
   images:
+    name: image (${{ matrix.component }})
     needs: image-plan
     runs-on: ubuntu-latest
     strategy:
