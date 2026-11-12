@@ -111,6 +111,7 @@ fn every_derivation_shape_reaches_a_verdict() {
                 let certificate = check(
                     &Proposal {
                         schema_version: Proposal::current_schema_version(),
+                        question_reading: None,
                         goal: Proposition::new("s", "p", "o"),
                         derivation,
                     },
@@ -138,6 +139,7 @@ fn an_empty_snapshot_never_accepts_anything() {
         let certificate = check(
             &Proposal {
                 schema_version: Proposal::current_schema_version(),
+                question_reading: None,
                 goal: Proposition::new("s", "p", "o"),
                 derivation: leaf,
             },

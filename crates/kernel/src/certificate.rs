@@ -38,9 +38,32 @@ pub struct DischargedStep {
     pub detail: String,
 }
 
+/// What a residual is a reading of.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResidualKind {
+    /// What a cited source means. Every residual was this before questions were.
+    #[default]
+    Source,
+    /// What the question an answer was asked asks for.
+    Question,
+}
+
+impl ResidualKind {
+    /// Whether this is the default, which is left out so older certificates
+    /// encode byte for byte as they did.
+    #[must_use]
+    pub const fn is_source(&self) -> bool {
+        matches!(self, Self::Source)
+    }
+}
+
 /// An interpretation the kernel could not make, pinned to where it was needed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Residual {
+    /// What was read: a source, or the question an answer was asked.
+    #[serde(default, skip_serializing_if = "ResidualKind::is_source")]
+    pub kind: ResidualKind,
     /// The attributed content the reading starts from.
     pub from: String,
     /// The proposition the proposer read out of it.

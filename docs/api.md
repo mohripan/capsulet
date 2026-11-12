@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -504,6 +504,40 @@ the kernel's pinned currency table; neither policy consults the machine locale. 
 formats and inexact/overflowing quantities fail closed. Entity names retain their existing text
 matching. A stored contract that does not compile is refused before source storage. The endpoint's
 authority floor remains `low`; no API request/response shape changed.
+
+### Holding an answer to its question
+
+The question is always pinned with the decision, so the proposer cannot choose what its answer is
+checked against ([ADR 0021](adr/0021-the-verifier-protocol-boundary.md)). An optional `query` says
+what it asks, over the contract's relations. Leave out the end the question asks for:
+
+```json
+{
+  "text": "Fabrikam acquired Contoso in 2024.",
+  "question": "Which company acquired Contoso?",
+  "contract_id": "contract_deals",
+  "query": { "relation": "acquired", "object": "Contoso" }
+}
+```
+
+With a `query`, the answer is held to it mechanically:
+
+- its predicate must be the asked relation;
+- each named term must match, as written, by exact value for a typed object, or through a confirmed
+  name group, and the discharged `answer` step names any resolution it relied on;
+- the asked-for end must be filled.
+
+A grounded, accurately cited fact that answers some other question is `rejected` with
+`goal_not_responsive`, owned by the proposer. A `query` naming neither end, or a relation the
+contract does not declare, is refused with `400` before anything is stored.
+
+Without a `query`, the proposer has to say how it read the question. The kernel holds the answer to
+that reading, and the reading itself is a residual with `"kind": "question"`, so the answer is
+`conditional` at best and a reviewer judges one small thing: whether the question asks what the
+reading says. An answer that gives no reading is `rejected` with `question_not_read`, and a reading
+with no rationale with `question_reading_without_a_rationale` (`CAP-CORRECTNESS-015`). The raw
+proposal carries the reading as `asks_relation`, `asks_subject`, `asks_object` (`?` for the asked-for
+end) and `asks_rationale`.
 
 Certificates expose the goal, mechanically discharged steps, interpretation and value residuals, errors and
 repair ownership, and a replay digest. Memory evidence responses currently expose `source_id`, a

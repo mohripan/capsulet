@@ -414,6 +414,7 @@ fn verdict_of(sentence: &str, subject: &str, predicate: &str, object: &str) -> V
     let goal = Proposition::new(subject, predicate, object);
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {

@@ -437,6 +437,30 @@
         ],
         "type": "object"
       },
+      "AskQuery": {
+        "description": "A question as a typed query: the relation asked about and the terms it names.\n\nLeave out the end the question asks for. \"Which company acquired Contoso?\" is\n`{\"relation\": \"acquired\", \"object\": \"Contoso\"}`; naming both ends asks whether\nthe relation holds between them.",
+        "properties": {
+          "object": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relation": {
+            "type": "string"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "relation"
+        ],
+        "type": "object"
+      },
       "AskRequest": {
         "properties": {
           "authority": {
@@ -457,6 +481,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "query": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskQuery",
+                "description": "What the question asks, as a typed query over the contract's relations.\nThe answer is then held to it mechanically. Without one the question is\npinned in words alone, the model has to say how it read it, and that\nreading is a residual: such an answer is `conditional` at best."
+              }
             ]
           },
           "question": {
@@ -4251,6 +4286,18 @@
       "RawProposal": {
         "additionalProperties": false,
         "properties": {
+          "asks_object": {
+            "type": "string"
+          },
+          "asks_rationale": {
+            "type": "string"
+          },
+          "asks_relation": {
+            "type": "string"
+          },
+          "asks_subject": {
+            "type": "string"
+          },
           "evidence_id": {
             "type": "string"
           },
@@ -4280,7 +4327,11 @@
           "evidence_id",
           "quote",
           "needs_interpretation",
-          "rationale"
+          "rationale",
+          "asks_relation",
+          "asks_subject",
+          "asks_object",
+          "asks_rationale"
         ],
         "type": "object"
       },
@@ -4359,6 +4410,15 @@
             "type": "array"
           },
           "from": {
+            "type": "string"
+          },
+          "kind": {
+            "default": "source",
+            "description": "What was read: a cited source, or the question the answer was asked.",
+            "enum": [
+              "source",
+              "question"
+            ],
             "type": "string"
           },
           "rationale": {

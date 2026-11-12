@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::names::NameGroup;
 use crate::phrasing::{Phrasebook, Phrasing};
+use crate::question::Question;
 use crate::snapshot::Snapshot;
 
 /// Why a snapshot document could not be rebuilt.
@@ -130,6 +131,10 @@ pub struct SnapshotDocument {
     /// find a term under another name, which therefore find every term as written.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub name_groups: Vec<NameGroupDocument>,
+    /// The question an answer was held to. Absent from documents written before
+    /// answers were held to questions, which decide as claims, as they did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<Question>,
 }
 
 impl SnapshotDocument {
@@ -145,6 +150,18 @@ impl SnapshotDocument {
             snapshot = snapshot.with_authority_floor(authority(floor)?);
         }
         snapshot = snapshot.with_phrasebook(self.phrasebook()?);
+        if let Some(question) = &self.question {
+            if let Some(problem) = question
+                .query
+                .as_ref()
+                .and_then(crate::question::Query::problem)
+            {
+                return Err(RebuildError::from(format!(
+                    "the pinned question's query is not one: {problem}"
+                )));
+            }
+            snapshot = snapshot.with_question(question.clone());
+        }
 
         for source in &self.sources {
             let id = SourceId::new(&source.id).map_err(RebuildError::from)?;

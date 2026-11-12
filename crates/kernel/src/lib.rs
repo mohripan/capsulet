@@ -27,6 +27,7 @@ pub mod ir;
 pub mod names;
 pub mod phrasing;
 pub mod quantity;
+pub mod question;
 pub mod replay;
 pub mod snapshot;
 pub mod snapshot_document;
@@ -37,13 +38,16 @@ pub mod workflow;
 use capsulet_core::{Authority, ClaimStatus, verify_evidence_span};
 
 pub use bundle::{Bundle, BundleError};
-pub use certificate::{Certificate, CertificateError, DischargedStep, Residual, Verdict};
+pub use certificate::{
+    Certificate, CertificateError, DischargedStep, Residual, ResidualKind, Verdict,
+};
 pub use error::{CheckError, RepairOwner};
 pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};
 pub use ir::{ArithOp, Judgment, Proposal, Proposition, Rule};
 pub use names::{MAX_NAMES_PER_GROUP, NameGroup, confirmed_name_groups};
 pub use phrasing::{Phrasebook, Phrasing};
 pub use quantity::{MAX_SCALE, Quantity, QuantityError};
+pub use question::{Query, Question, QuestionReading, Slot};
 pub use replay::{EvidenceMap, EvidenceSource, ReplayFinding, ReplayNote, ReplayOutcome, replay};
 pub use snapshot::Snapshot;
 pub use snapshot_document::{NameGroupDocument, SnapshotDocument};
@@ -130,6 +134,9 @@ pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
             .canonical(),
         });
     }
+    if let Some(question) = snapshot.question() {
+        check_responsive(proposal, question, snapshot, &mut state);
+    }
 
     let verdict = if outcome.is_none() || !state.errors.is_empty() {
         Verdict::Rejected
@@ -179,6 +186,106 @@ fn reaches_goal(judgment: &Judgment, goal: &Proposition) -> bool {
     proposition.subject.trim() == goal.subject.trim()
         && proposition.predicate.trim() == goal.predicate.trim()
         && proposition.object.trim() == goal.object.trim()
+}
+
+/// Holds the goal to the question it was asked.
+///
+/// A query the snapshot pins is the caller's, so the goal is held to it and
+/// nothing is read. A question pinned in words alone needs the proposal's own
+/// reading: the goal is held to that reading mechanically, and the reading itself
+/// is a residual for a reviewer. A proposal that answers a question in words
+/// without saying how it read it is refused, as a reading without a rationale is,
+/// because a reviewer handed an unread question is handed the whole answer to
+/// judge.
+fn check_responsive(
+    proposal: &Proposal,
+    question: &Question,
+    snapshot: &Snapshot,
+    state: &mut CheckState,
+) {
+    let (query, reading) = match (&question.query, &proposal.question_reading) {
+        (Some(query), _) => (query, None),
+        (None, Some(reading)) => (&reading.query, Some(reading)),
+        (None, None) => {
+            state.errors.push(CheckError::QuestionNotRead {
+                question: question.text.clone(),
+            });
+            return;
+        }
+    };
+    if let Some(problem) = query.problem() {
+        state.errors.push(CheckError::QueryMalformed {
+            query: query.canonical(),
+            problem,
+            pinned: reading.is_none(),
+        });
+        return;
+    }
+    if let Some(reading) = reading
+        && reading.rationale.trim().is_empty()
+    {
+        state
+            .errors
+            .push(CheckError::QuestionReadingWithoutARationale {
+                question: question.text.clone(),
+                query: query.canonical(),
+            });
+        return;
+    }
+
+    let goal = Judgment::Holds {
+        proposition: proposal.goal.clone(),
+    };
+    match question::answers(&proposal.goal, query, snapshot.phrasebook()) {
+        Err(reason) => state.errors.push(CheckError::GoalNotResponsive {
+            goal: proposal.goal.canonical(),
+            query: query.canonical(),
+            reason,
+        }),
+        Ok(answered) => {
+            let whose = if reading.is_some() {
+                "the proposer's reading of the question, which is itself a residual"
+            } else {
+                "the query the question was pinned to"
+            };
+            state.discharge(
+                "answer",
+                &goal,
+                format!(
+                    "the goal fills {}, {whose}{}",
+                    query.canonical(),
+                    relied_on(&answered.resolutions)
+                ),
+            );
+            for rationale in answered.residuals {
+                state.residuals.push(Residual {
+                    kind: ResidualKind::Question,
+                    from: asked(&question.text),
+                    to: proposal.goal.clone(),
+                    rationale,
+                    evidence_ids: Vec::new(),
+                });
+            }
+        }
+    }
+    if let Some(reading) = reading {
+        state.residuals.push(Residual {
+            kind: ResidualKind::Question,
+            from: asked(&question.text),
+            to: proposal.goal.clone(),
+            rationale: format!(
+                "the question was read as {}: {}",
+                query.canonical(),
+                reading.rationale.trim()
+            ),
+            evidence_ids: Vec::new(),
+        });
+    }
+}
+
+/// How a residual names the question it reads: the caller's words, quoted.
+fn asked(text: &str) -> String {
+    format!("asked({text:?})")
 }
 
 /// The certificate for a proposal the kernel could not pin.
@@ -459,6 +566,7 @@ fn record_value_residuals(
 ) {
     for rationale in rationales {
         state.residuals.push(Residual {
+            kind: ResidualKind::Source,
             from: Judgment::Mentions {
                 source_id: source_id.to_string(),
                 proposition: proposition.clone(),
@@ -644,6 +752,7 @@ fn derive_interpret(
     }
 
     state.residuals.push(Residual {
+        kind: ResidualKind::Source,
         from: inner.canonical(),
         to: proposition.clone(),
         rationale: rationale.to_string(),

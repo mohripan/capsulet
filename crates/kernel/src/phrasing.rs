@@ -122,6 +122,15 @@ pub struct Statement {
     pub resolutions: Vec<String>,
 }
 
+/// Two terms found to name one thing, and what that relied on.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct NamedSame {
+    /// The confirmed resolutions that joined them; empty when they matched as written.
+    pub resolutions: Vec<String>,
+    /// Unresolved readings of a typed value.
+    pub residuals: Vec<String>,
+}
+
 /// The phrasings a decision reads, by relation, and the cues a contract adds.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Phrasebook {
@@ -257,6 +266,58 @@ impl Phrasebook {
         resolutions.sort();
         resolutions.dedup();
         resolutions
+    }
+
+    /// Whether `found` names what `asked` names, as the object of `relation` when
+    /// `object` is set and its subject otherwise.
+    ///
+    /// The same relations a citation finds a term under: a typed object compares
+    /// exact values, and any other term compares as written under the citation
+    /// text relation, then through a name group reviewers confirmed. A typed value
+    /// has no other names. `None` when they name different things.
+    pub(crate) fn names_same(
+        &self,
+        relation: &str,
+        object: bool,
+        asked: &str,
+        found: &str,
+    ) -> Option<NamedSame> {
+        if object && let Some(&kind) = self.object_types.get(relation.trim()) {
+            let matcher = value::Matcher::new(
+                kind,
+                asked,
+                self.default_currency.as_deref(),
+                self.date_order.as_deref(),
+            )?;
+            return matcher
+                .compare_folded(&text::fold(found))
+                .map(|residuals| NamedSame {
+                    resolutions: Vec::new(),
+                    residuals,
+                });
+        }
+        let wanted = text::fold(asked.trim());
+        if wanted.is_empty() {
+            return None;
+        }
+        if wanted == text::fold(found.trim()) {
+            return Some(NamedSame::default());
+        }
+        let mut resolutions: Vec<String> = self
+            .names
+            .iter()
+            .filter(|group| group.contains(asked) && group.contains(found))
+            .flat_map(|group| group.resolutions().iter().cloned())
+            .collect();
+        if resolutions.is_empty() {
+            return None;
+        }
+        resolutions.sort();
+        resolutions.dedup();
+        Some(NamedSame {
+            resolutions,
+            residuals: Vec::new(),
+        })
     }
 
     /// Declares how this relation's object is read, independently of phrasings.

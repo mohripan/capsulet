@@ -17,6 +17,7 @@ fn arith(op: ArithOp, operands: &[&str], claimed: &str) -> Verdict {
     check(
         &Proposal {
             schema_version: Proposal::current_schema_version(),
+            question_reading: None,
             goal: proposition.clone(),
             derivation: Rule::Arith {
                 op,

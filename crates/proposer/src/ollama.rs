@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use capsulet_kernel::{Phrasebook, Proposal, Proposition, Rule};
+use capsulet_kernel::{Phrasebook, Proposal, Proposition, Query, QuestionReading, Rule, Slot};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -39,6 +39,21 @@ pub struct RawProposal {
     pub needs_interpretation: bool,
     #[serde(default)]
     pub rationale: String,
+    /// The relation the model says the question asks about. With the two terms
+    /// below, its reading of a question asked only in words: the kernel holds the
+    /// answer to it, and a reviewer decides whether the words ask it. Ignored
+    /// when the caller pinned the question to a query.
+    #[serde(default)]
+    pub asks_relation: String,
+    /// The subject the question names, or `?` when the subject is what it asks for.
+    #[serde(default)]
+    pub asks_subject: String,
+    /// The object the question names, or `?` when the object is what it asks for.
+    #[serde(default)]
+    pub asks_object: String,
+    /// Why the question asks that, in one sentence.
+    #[serde(default)]
+    pub asks_rationale: String,
 }
 
 #[derive(Debug, Error)]
@@ -105,6 +120,10 @@ impl OllamaProposer {
     /// judged by the phrasings in `phrasebook` — the ones the kernel will decide
     /// it against.
     ///
+    /// When the caller pinned the question to `query`, the model is told what it
+    /// asks and offers no reading of its own. Otherwise the proposal carries the
+    /// model's reading of the question, which the kernel records as a residual.
+    ///
     /// # Errors
     ///
     /// Returns [`ProposerError`] when the server is unreachable, the response
@@ -112,13 +131,14 @@ impl OllamaProposer {
     pub async fn propose(
         &self,
         question: &str,
+        query: Option<&Query>,
         alphabet: &EvidenceAlphabet,
         phrasebook: &Phrasebook,
     ) -> Result<(Proposal, RawProposal), ProposerError> {
         if alphabet.is_empty() {
             return Err(ProposerError::EmptyAlphabet);
         }
-        let raw = self.request(question, alphabet, phrasebook).await?;
+        let raw = self.request(question, query, alphabet, phrasebook).await?;
 
         let Some(entry) = alphabet.entry(&raw.evidence_id) else {
             return Err(ProposerError::OutsideAlphabet {
@@ -126,12 +146,17 @@ impl OllamaProposer {
             });
         };
 
-        Ok((build_proposal(&raw, &entry.excerpt, phrasebook), raw))
+        let mut proposal = build_proposal(&raw, &entry.excerpt, phrasebook);
+        if query.is_none() {
+            proposal.question_reading = question_reading(&raw);
+        }
+        Ok((proposal, raw))
     }
 
     async fn request(
         &self,
         question: &str,
+        query: Option<&Query>,
         alphabet: &EvidenceAlphabet,
         phrasebook: &Phrasebook,
     ) -> Result<RawProposal, ProposerError> {
@@ -141,7 +166,7 @@ impl OllamaProposer {
             .post(format!("{}/api/generate", self.base_url))
             .json(&json!({
                 "model": self.model,
-                "prompt": build_prompt(question, alphabet, &predicates),
+                "prompt": build_prompt(question, query, alphabet, &predicates),
                 "stream": false,
                 "format": output_schema(&predicates),
                 "options": { "temperature": 0.0, "num_predict": 512 },
@@ -221,9 +246,39 @@ pub fn build_proposal(raw: &RawProposal, excerpt: &str, phrasebook: &Phrasebook)
     };
     Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal,
         derivation,
     }
+}
+
+/// The model's reading of the question, when it offered one.
+///
+/// `?` marks the slot the question asks for, and anything else is a term the
+/// question names. A reading with no relation is no reading, so the kernel
+/// refuses the answer for not saying how it read the question. An empty term is
+/// passed on as written, and refused by the kernel as the empty term it is,
+/// rather than guessed into a wanted slot.
+#[must_use]
+pub fn question_reading(raw: &RawProposal) -> Option<QuestionReading> {
+    if raw.asks_relation.trim().is_empty() {
+        return None;
+    }
+    let slot = |term: &str| {
+        if term.trim() == "?" {
+            Slot::Wanted
+        } else {
+            Slot::bound(term.trim())
+        }
+    };
+    Some(QuestionReading {
+        query: Query::new(
+            raw.asks_relation.trim(),
+            slot(&raw.asks_subject),
+            slot(&raw.asks_object),
+        ),
+        rationale: raw.asks_rationale.clone(),
+    })
 }
 
 /// The relations a contract declares phrasings for, in order.
@@ -252,16 +307,40 @@ fn output_schema(predicates: &[&str]) -> Value {
             "evidence_id": { "type": "string" },
             "quote": { "type": "string" },
             "needs_interpretation": { "type": "boolean" },
-            "rationale": { "type": "string" }
+            "rationale": { "type": "string" },
+            "asks_relation": predicate,
+            "asks_subject": { "type": "string" },
+            "asks_object": { "type": "string" },
+            "asks_rationale": { "type": "string" }
         },
         "required": [
             "subject", "predicate", "object", "evidence_id",
-            "quote", "needs_interpretation", "rationale"
+            "quote", "needs_interpretation", "rationale",
+            "asks_relation", "asks_subject", "asks_object", "asks_rationale"
         ]
     })
 }
 
-fn build_prompt(question: &str, alphabet: &EvidenceAlphabet, predicates: &[&str]) -> String {
+fn build_prompt(
+    question: &str,
+    query: Option<&Query>,
+    alphabet: &EvidenceAlphabet,
+    predicates: &[&str],
+) -> String {
+    let asks = match query {
+        Some(query) => format!(
+            "THE QUESTION ASKS FOR: {}. Answer with that predicate and the terms it names; \
+             ? is the one to find. Copy the same into asks_relation, asks_subject and \
+             asks_object.\n\n",
+            query.canonical()
+        ),
+        None => "Also say what the question asks, before answering it:\n\
+                 - asks_relation: the predicate the question asks about.\n\
+                 - asks_subject and asks_object: the term the question names in that position, \
+                 copied from the question, or ? for the one it asks you to find.\n\
+                 - asks_rationale: one short sentence saying why the question asks that.\n\n"
+            .to_string(),
+    };
     let predicate_rule = if predicates.is_empty() {
         String::new()
     } else {
@@ -278,6 +357,7 @@ fn build_prompt(question: &str, alphabet: &EvidenceAlphabet, predicates: &[&str]
          {predicate_rule}\
          QUESTION: {question}\n\
          \n\
+         {asks}\
          Answer with one fact as subject, predicate, object.\n\
          Rules:\n\
          - evidence_id must be exactly one of the ids listed above.\n\
@@ -311,7 +391,52 @@ mod tests {
             quote: quote.to_string(),
             needs_interpretation,
             rationale: "the sentence states it".to_string(),
+            asks_relation: String::new(),
+            asks_subject: String::new(),
+            asks_object: String::new(),
+            asks_rationale: String::new(),
         }
+    }
+
+    #[test]
+    fn a_reading_marks_the_wanted_slot_and_keeps_named_terms_as_written() {
+        let mut proposal = raw(
+            "the Contoso contract",
+            "Acme renewed the Contoso contract.",
+            false,
+        );
+        assert_eq!(super::question_reading(&proposal), None);
+
+        proposal.asks_relation = "renewed".to_string();
+        proposal.asks_subject = " ? ".to_string();
+        proposal.asks_object = " the Contoso contract ".to_string();
+        proposal.asks_rationale = "asks who renewed it".to_string();
+        let reading = super::question_reading(&proposal).expect("a reading");
+        assert_eq!(
+            reading.query.canonical(),
+            "renewed(?, the Contoso contract)"
+        );
+        assert_eq!(reading.rationale, "asks who renewed it");
+
+        // An empty term is passed on, for the kernel to refuse, not guessed wanted.
+        proposal.asks_object = String::new();
+        let reading = super::question_reading(&proposal).expect("a reading");
+        assert!(reading.query.problem().is_some());
+    }
+
+    #[test]
+    fn a_pinned_query_is_put_to_the_model_and_words_alone_ask_for_its_reading() {
+        let alphabet = crate::alphabet::EvidenceAlphabet::from_evidence(&[]);
+        let query = capsulet_kernel::Query::new(
+            "renewed",
+            capsulet_kernel::Slot::Wanted,
+            capsulet_kernel::Slot::bound("the Contoso contract"),
+        );
+        let pinned = super::build_prompt("Who renewed it?", Some(&query), &alphabet, &["renewed"]);
+        assert!(pinned.contains("THE QUESTION ASKS FOR: renewed(?, the Contoso contract)"));
+        let words = super::build_prompt("Who renewed it?", None, &alphabet, &["renewed"]);
+        assert!(words.contains("asks_relation: the predicate the question asks about"));
+        assert!(!words.contains("THE QUESTION ASKS FOR"));
     }
 
     fn renewals() -> Phrasebook {
@@ -499,6 +624,7 @@ mod tests {
         );
         let prompt = super::build_prompt(
             "Who renewed?",
+            None,
             &crate::alphabet::EvidenceAlphabet::from_entries(vec![]),
             &predicates,
         );

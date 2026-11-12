@@ -14,7 +14,10 @@ use capsulet_core::{
     Authority, EntityResolutionStatus, Evidence, EvidenceId, EvidenceSpan, MemoryContractId,
     MemoryScope, Source, SourceContent, SourceId,
 };
-use capsulet_kernel::{Certificate, NameGroup, Phrasebook, Snapshot, check, confirmed_name_groups};
+use capsulet_kernel::{
+    Certificate, NameGroup, Phrasebook, Query, Question, Slot, Snapshot, check,
+    confirmed_name_groups,
+};
 use capsulet_postgres::CertificateRecord;
 use capsulet_proposer::{EvidenceAlphabet, OllamaProposer, RawProposal, chunk_into_spans};
 use capsulet_storage::ObjectStore;
@@ -56,6 +59,57 @@ pub struct AskRequest {
     /// at best.
     #[serde(default)]
     pub contract_id: Option<String>,
+    /// What the question asks, as a typed query over the contract's relations.
+    /// The answer is then held to it mechanically. Without one the question is
+    /// pinned in words alone, the model has to say how it read it, and that
+    /// reading is a residual: such an answer is `conditional` at best.
+    #[serde(default)]
+    pub query: Option<AskQuery>,
+}
+
+/// A question as a typed query: the relation asked about and the terms it names.
+///
+/// Leave out the end the question asks for. "Which company acquired Contoso?" is
+/// `{"relation": "acquired", "object": "Contoso"}`; naming both ends asks whether
+/// the relation holds between them.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AskQuery {
+    pub relation: String,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub object: Option<String>,
+}
+
+impl AskQuery {
+    /// The kernel's query, or why this is not one.
+    fn to_query(&self, phrasebook: &Phrasebook) -> Result<Query, ApiError> {
+        let slot = |term: &Option<String>| {
+            term.as_ref()
+                .map_or(Slot::Wanted, |term| Slot::bound(term.trim()))
+        };
+        let query = Query::new(
+            self.relation.trim(),
+            slot(&self.subject),
+            slot(&self.object),
+        );
+        if let Some(problem) = query.problem() {
+            return Err(ApiError::validation(format!(
+                "query {} is not one an answer can be held to: {problem}",
+                query.canonical()
+            )));
+        }
+        // With a contract, its relations are the only predicates an answer can
+        // state, so a query about any other relation could never be answered.
+        let declared: Vec<&str> = phrasebook.relations().map(|(name, _)| name).collect();
+        if !declared.is_empty() && !declared.contains(&query.relation.as_str()) {
+            return Err(ApiError::validation(format!(
+                "query relation `{}` is not one the contract declares",
+                query.relation
+            )));
+        }
+        Ok(query)
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -129,6 +183,11 @@ where
         None => Phrasebook::new(),
     };
     let phrasebook = phrasebook.with_name_groups(project_name_groups(&state, &context).await?);
+    let query = request
+        .query
+        .as_ref()
+        .map(|query| query.to_query(&phrasebook))
+        .transpose()?;
 
     // Store the source and its bytes before anything cites them, so every span
     // below resolves against content that is already durable.
@@ -166,16 +225,21 @@ where
 
     let proposer = build_proposer(request.model.as_deref())?;
     let (proposal, raw) = proposer
-        .propose(&request.question, &alphabet, &phrasebook)
+        .propose(&request.question, query.as_ref(), &alphabet, &phrasebook)
         .await
         .map_err(|error| ApiError::Proposer(error.to_string()))?;
 
     // The kernel sees only what was pinned: the same source, the same bytes, the
     // same evidence the proposer was offered, the same phrasings — and the floor
-    // a trust step is held to, which is this endpoint's decision and not the
-    // proposer's.
+    // a trust step is held to and the question an answer is held to, which are
+    // this endpoint's to set and not the proposer's.
+    let question = Question {
+        text: request.question.clone(),
+        query,
+    };
     let mut snapshot = Snapshot::new()
         .with_authority_floor(AUTHORITY_FLOOR)
+        .with_question(question)
         .with_phrasebook(phrasebook)
         .with_source(source)
         .with_source_content(stored_text);

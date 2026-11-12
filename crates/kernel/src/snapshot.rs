@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use capsulet_core::{Authority, Claim, Evidence, Source, SourceContent};
 
 use crate::phrasing::Phrasebook;
+use crate::question::Question;
 
 #[derive(Debug, Clone)]
 pub struct Snapshot {
@@ -28,6 +29,10 @@ pub struct Snapshot {
     /// judged against. Empty unless a contract supplies them, and then nothing
     /// is stated — a citation can only mention its terms.
     phrasebook: Phrasebook,
+    /// The question an answer is held to, when it was asked one. Policy too: the
+    /// proposer does not choose what its answer is checked against. Without one,
+    /// a decision is about a claim and says nothing about responsiveness.
+    question: Option<Question>,
 }
 
 impl Default for Snapshot {
@@ -41,6 +46,7 @@ impl Default for Snapshot {
             claims: HashMap::new(),
             authority_floor: Authority::Low,
             phrasebook: Phrasebook::new(),
+            question: None,
         }
     }
 }
@@ -105,6 +111,18 @@ impl Snapshot {
     #[must_use]
     pub const fn phrasebook(&self) -> &Phrasebook {
         &self.phrasebook
+    }
+
+    /// Holds the answer decided against this snapshot to `question`.
+    #[must_use]
+    pub fn with_question(mut self, question: Question) -> Self {
+        self.question = Some(question);
+        self
+    }
+
+    #[must_use]
+    pub const fn question(&self) -> Option<&Question> {
+        self.question.as_ref()
     }
 
     #[must_use]

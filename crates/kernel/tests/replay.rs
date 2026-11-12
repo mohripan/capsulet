@@ -506,6 +506,7 @@ fn pinned_snapshot() -> SnapshotDocument {
         default_currency: None,
         date_order: None,
         name_groups: vec![],
+        question: None,
     }
 }
 
@@ -514,6 +515,7 @@ fn trusted_citation(object: &str) -> Proposal {
     let goal = Proposition::new("Acme", "renewed", object);
     Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {
@@ -663,6 +665,7 @@ fn typed_value_policies_are_pinned_and_replayed_offline() {
         let goal = Proposition::new("Acme", "value", "2026-01-05");
         let proposal = Proposal {
             schema_version: Proposal::current_schema_version(),
+            question_reading: None,
             goal: goal.clone(),
             derivation: Rule::Trust {
                 premise: Box::new(Rule::Cite {

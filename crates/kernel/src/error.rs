@@ -124,6 +124,26 @@ pub enum CheckError {
     },
     #[error("the derivation concludes {derived}, which is not the stated goal {goal}")]
     GoalNotDerived { derived: String, goal: String },
+    #[error("{goal} does not answer the question it was asked, {query}: {reason}")]
+    GoalNotResponsive {
+        goal: String,
+        query: String,
+        reason: String,
+    },
+    #[error(
+        "the question {question:?} was asked in words alone, and the proposal does not say how it \
+         read it, so nobody can review whether its answer is one"
+    )]
+    QuestionNotRead { question: String },
+    #[error("a reading of the question {question:?} as {query} was recorded without saying why")]
+    QuestionReadingWithoutARationale { question: String, query: String },
+    #[error("{query} is not a query an answer can be held to: {problem}")]
+    QueryMalformed {
+        query: String,
+        problem: &'static str,
+        /// Whether the snapshot pinned it, rather than a proposal offering it.
+        pinned: bool,
+    },
 }
 
 impl CheckError {
@@ -137,7 +157,9 @@ impl CheckError {
             Self::SourceContentMissing { .. } | Self::Provenance { .. } => RepairOwner::Ingestion,
             Self::ClaimNotActive { .. } => RepairOwner::Memory,
             Self::ArithMismatch { .. } => RepairOwner::AutoRepairable,
-            Self::AuthorityBelowFloor { .. } => RepairOwner::Policy,
+            Self::AuthorityBelowFloor { .. } | Self::QueryMalformed { pinned: true, .. } => {
+                RepairOwner::Policy
+            }
             Self::TermNotInSpan { .. }
             | Self::ArithNoOperands { .. }
             | Self::ArithNotExact { .. }
@@ -148,7 +170,11 @@ impl CheckError {
             | Self::ProposalNotEncodable { .. }
             | Self::DerivationTooDeep { .. }
             | Self::CitedSpanTooLong { .. }
-            | Self::GoalNotDerived { .. } => RepairOwner::Proposer,
+            | Self::GoalNotDerived { .. }
+            | Self::GoalNotResponsive { .. }
+            | Self::QuestionNotRead { .. }
+            | Self::QuestionReadingWithoutARationale { .. }
+            | Self::QueryMalformed { pinned: false, .. } => RepairOwner::Proposer,
         }
     }
 
@@ -175,6 +201,10 @@ impl CheckError {
             Self::DerivationTooDeep { .. } => "derivation_too_deep",
             Self::CitedSpanTooLong { .. } => "cited_span_too_long",
             Self::GoalNotDerived { .. } => "goal_not_derived",
+            Self::GoalNotResponsive { .. } => "goal_not_responsive",
+            Self::QuestionNotRead { .. } => "question_not_read",
+            Self::QuestionReadingWithoutARationale { .. } => "question_reading_without_a_rationale",
+            Self::QueryMalformed { .. } => "query_malformed",
         }
     }
 

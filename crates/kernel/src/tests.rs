@@ -108,6 +108,7 @@ fn accepts_a_citation_that_re_derives_and_states_its_proposition() {
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {
@@ -134,6 +135,7 @@ fn rejects_a_fabricated_quotation() {
     let goal = Proposition::new("Acme", "terminated", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -159,6 +161,7 @@ fn rejects_a_triple_whose_subject_is_absent_from_the_cited_span() {
     let goal = Proposition::new("Contoso", "acquired_by", "30 days");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -181,6 +184,7 @@ fn rejects_an_object_the_cited_span_does_not_contain() {
     let goal = Proposition::new("Acme", "acquired", "Contoso Ltd");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -201,6 +205,7 @@ fn rejects_a_citation_to_evidence_that_is_not_in_the_snapshot() {
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_missing".to_string(),
@@ -223,6 +228,7 @@ fn returns_conditional_when_the_derivation_needed_a_reading() {
     let goal = Proposition::new("Contoso contract", "notice_period_days", "30");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Interpret {
             premise: Box::new(Rule::Cite {
@@ -250,6 +256,7 @@ fn a_reading_of_a_fabricated_citation_is_still_rejected() {
     let goal = Proposition::new("Contoso contract", "notice_period_days", "90");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Interpret {
             premise: Box::new(Rule::Cite {
@@ -273,6 +280,7 @@ fn recomputes_arithmetic_and_reports_the_correct_value() {
     let goal = Proposition::new("Q1", "total_contract_value", "47");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Arith {
             op: ArithOp::Sum,
@@ -297,6 +305,7 @@ fn accepts_arithmetic_that_recomputes() {
     let goal = Proposition::new("Q1", "total_contract_value", "46");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Arith {
             op: ArithOp::Sum,
@@ -316,6 +325,7 @@ fn refuses_to_trust_a_source_below_the_authority_floor() {
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {
@@ -339,6 +349,7 @@ fn refuses_to_attest_a_claim_that_is_not_active() {
     let goal = Proposition::new("entity_acme", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal,
         derivation: Rule::Attest {
             claim_id: "claim_1".to_string(),
@@ -358,6 +369,7 @@ fn attests_an_active_claim() {
     let goal = Proposition::new("entity_acme", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal,
         derivation: Rule::Attest {
             claim_id: "claim_1".to_string(),
@@ -373,6 +385,7 @@ fn rejects_a_derivation_that_proves_something_other_than_the_goal() {
     let snapshot = base_snapshot(evidence, Authority::High);
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: Proposition::new("Acme", "renewed", "the Fabrikam contract"),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {
@@ -396,6 +409,7 @@ fn tolerates_reflowed_whitespace_and_case_when_matching_the_object() {
     let goal = Proposition::new("Acme", "renewed", "The   Contoso\n Contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -426,6 +440,7 @@ fn a_bare_citation_attributes_and_does_not_reach_the_goal() {
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -461,6 +476,7 @@ fn a_goal_is_compared_field_by_field_rather_than_by_its_rendering() {
     let goal = Proposition::new("Acme|x", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal,
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {
@@ -513,6 +529,7 @@ fn a_stale_content_digest_rejects_rather_than_silently_repointing() {
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -534,6 +551,7 @@ fn every_error_routes_to_a_repair_owner() {
     let goal = Proposition::new("Acme", "acquired", "Contoso Ltd");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -568,6 +586,7 @@ fn the_replay_digest_is_stable_for_the_same_proposal() {
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -586,6 +605,7 @@ fn trusted_renewal(min_authority: &str) -> Proposal {
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {

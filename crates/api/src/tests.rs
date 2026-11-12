@@ -6497,6 +6497,104 @@ async fn reasoning_under_another_project_s_contract_finds_no_contract_and_stores
     );
 }
 
+/// Asks the reasoning endpoint about Fabrikam and Contoso, under a contract declaring
+/// `acquired`, with `query` as the typed question.
+async fn ask_with_query(
+    query: serde_json::Value,
+) -> (axum::http::StatusCode, serde_json::Value, FakeStore) {
+    let store = FakeStore::default();
+    let app = authenticated_app(store.clone());
+    let dsl = "entity Organization:\n  fields:\n    name: string\n\nrelation acquired:\n  from: Organization\n  to: Organization\n  stated_by:\n    - \"{from} acquired {to}\"\n\nclaim_policy:\n  require_source: true\n";
+    let created = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/memory/contracts")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "id": "contract_deals", "name": "Deals", "source": dsl }).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(created.status(), axum::http::StatusCode::CREATED);
+
+    let asked = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/reasoning/ask")
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "text": "Fabrikam acquired Contoso.",
+                        "question": "Who acquired Contoso?",
+                        "contract_id": "contract_deals",
+                        "query": query
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let status = asked.status();
+    (status, response_json(asked).await, store)
+}
+
+#[tokio::test]
+async fn reasoning_refuses_a_query_about_a_relation_its_contract_does_not_declare() {
+    // An answer can only state a declared relation, so a query about any other one
+    // could never be answered. It is refused before anything is stored.
+    let (status, body, store) =
+        ask_with_query(json!({ "relation": "owns_account", "object": "Contoso" })).await;
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("owns_account")),
+        "{body}"
+    );
+    assert!(
+        store
+            .memory_sources
+            .lock()
+            .expect("memory sources mutex")
+            .is_empty(),
+        "nothing should be stored for a request refused at its query"
+    );
+}
+
+#[tokio::test]
+async fn reasoning_refuses_a_query_that_asks_for_nothing_in_particular() {
+    // Naming neither end leaves nothing for an answer to be held to.
+    let (status, body, store) = ask_with_query(json!({ "relation": "acquired" })).await;
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("acquired(?, ?)")),
+        "{body}"
+    );
+    assert!(
+        store
+            .memory_sources
+            .lock()
+            .expect("memory sources mutex")
+            .is_empty()
+    );
+}
+
 #[tokio::test]
 async fn reasoning_loads_typed_endpoints_and_policies_from_its_scoped_contract() {
     let store = FakeStore::default();

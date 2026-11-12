@@ -243,15 +243,24 @@ never claims a review. The `aliases` fields on an entity and a canonical entity 
 from API requests, so they do not widen anything, and neither does a candidate resolution or a score:
 an embedding may propose a resolution, and only the review makes it a name (`CAP-CORRECTNESS-004`).
 
-**Relevance is not checked at all.** Asked the same unanswerable question after
-the fix, the model returned `Dana Whitfield | is the named account owner |
-Dana Whitfield` — a correctly grounded, accurately cited fact that does not
-answer the question, and the kernel accepted it. This is correct behaviour: the
-certificate asserts that a claim is grounded in its source, not that it responds
-to the caller's question. Whether an answer is responsive is a second undecidable
-axis, and any mechanism that judged it would be a model in the verifier seat.
-Treat it the way interpretation is treated — as an explicit obligation on the
-caller or a review step — rather than something the kernel can absorb.
+**Relevance is checked against a query, and read otherwise.** Asked the same
+unanswerable question after the fix, the model returned `Dana Whitfield | is the
+named account owner | Dana Whitfield` — a correctly grounded, accurately cited
+fact that does not answer the question — and the kernel accepted it, because the
+certificate asserted only that a claim was grounded. Whether a sentence asks for a
+fact is undecidable; whether a fact fills a typed query is not, so
+[ADR 0021](../adr/0021-the-verifier-protocol-boundary.md) splits the two. A
+question is pinned in the snapshot, beside the authority floor, so the proposer
+cannot choose what it is checked against. Pinned to a query such as
+`acquired(?, Contoso)`, the goal must state the asked relation, name each bound
+term as written, by value, or through a confirmed name group, and fill the wanted
+slot. That answer is now `rejected` as `goal_not_responsive`. Pinned in words
+alone, the proposal has to say how it read the question; the goal is held to that
+reading, and the reading is a residual of kind `question`, so the reviewer judges
+one small thing rather than the whole answer. An answer that gives no reading is
+refused, as a reading without a rationale is. A snapshot with no question decides
+as before, and its certificate is about a claim, not an answer
+(`CAP-CORRECTNESS-015`).
 
 ## Why this targets small models
 

@@ -54,6 +54,7 @@ fn snapshot_over(document: &str) -> Snapshot {
 fn cite(subject: &str, object: &str) -> Proposal {
     Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: Proposition::new(subject, "says", object),
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
@@ -102,6 +103,7 @@ fn typed_relation_decision(
     check(
         &Proposal {
             schema_version: Proposal::current_schema_version(),
+            question_reading: None,
             goal: goal.clone(),
             derivation: Rule::Trust {
                 premise: Box::new(Rule::Cite {
@@ -254,6 +256,7 @@ fn an_unphrased_citation_does_not_lose_its_value_ambiguity() {
     let goal = Proposition::new("Acme", "value", "2026-01-05");
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Interpret {
             premise: Box::new(Rule::Cite {
@@ -548,6 +551,7 @@ fn trusted(document: &str, subject: &str, predicate: &str, object: &str) -> Cert
     let proposition = Proposition::new(subject, predicate, object);
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: proposition.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {
@@ -688,6 +692,7 @@ fn a_relation_with_no_declared_phrasing_is_only_mentioned() {
     let goal = Proposition::new("Acme", "renewed", "the Contoso contract");
     let reading = Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Interpret {
             premise: Box::new(Rule::Cite {
@@ -738,6 +743,7 @@ fn a_contract_s_phrasings_and_cues_judge_a_citation() {
         let proposition = Proposition::new("Fabrikam", "acquired", "Contoso");
         let proposal = Proposal {
             schema_version: Proposal::current_schema_version(),
+            question_reading: None,
             goal: proposition.clone(),
             derivation: Rule::Trust {
                 premise: Box::new(Rule::Cite {
@@ -792,6 +798,7 @@ fn stated(subject: &str, predicate: &str, object: &str) -> Proposal {
     let goal = Proposition::new(subject, predicate, object);
     Proposal {
         schema_version: Proposal::current_schema_version(),
+        question_reading: None,
         goal: goal.clone(),
         derivation: Rule::Trust {
             premise: Box::new(Rule::Cite {

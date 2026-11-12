@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::quantity::Quantity;
+use crate::question::QuestionReading;
 
 /// A statement about the world, in subject-predicate-object form.
 ///
@@ -239,6 +240,12 @@ pub struct Proposal {
     pub schema_version: SchemaVersion,
     pub goal: Proposition,
     pub derivation: Rule,
+    /// How the proposer read the question it was asked, when that question was
+    /// pinned in words alone. The reading is a residual: the kernel holds the
+    /// goal to it, and a reviewer decides whether the words ask it. Absent from
+    /// proposals that answer no question, which encode as they always did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question_reading: Option<QuestionReading>,
 }
 
 /// The schema identity of a persisted claim-reasoning proposal.

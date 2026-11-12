@@ -114,12 +114,23 @@ wire_schema!(
     /// An interpretation the kernel could not discharge, and why.
     Residual = "Residual",
     [Proposition],
-    all_required(&[
-        ("from", json!({"type": "string"})),
-        ("to", reference("Proposition")),
-        ("rationale", json!({"type": "string"})),
-        ("evidence_ids", json!({"type": "array", "items": {"type": "string"}})),
-    ])
+    {
+        let mut schema = all_required(&[
+            ("from", json!({"type": "string"})),
+            ("to", reference("Proposition")),
+            ("rationale", json!({"type": "string"})),
+            ("evidence_ids", json!({"type": "array", "items": {"type": "string"}})),
+        ]);
+        // Optional: left out for a reading of a source, which every residual was
+        // before answers were held to their questions.
+        schema["properties"]["kind"] = json!({
+            "type": "string",
+            "enum": ["source", "question"],
+            "default": "source",
+            "description": "What was read: a cited source, or the question the answer was asked."
+        });
+        schema
+    }
 );
 wire_schema!(
     /// A reason the kernel rejected a proposal.
@@ -183,6 +194,10 @@ wire_schema!(
         ("quote", json!({"type": "string"})),
         ("needs_interpretation", json!({"type": "boolean"})),
         ("rationale", json!({"type": "string"})),
+        ("asks_relation", json!({"type": "string"})),
+        ("asks_subject", json!({"type": "string"})),
+        ("asks_object", json!({"type": "string"})),
+        ("asks_rationale", json!({"type": "string"})),
     ])
 );
 

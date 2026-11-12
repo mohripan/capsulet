@@ -138,6 +138,14 @@
         },
         {
           "path": "crates/api/src/tests.rs",
+          "selector": "reasoning_refuses_a_query_about_a_relation_its_contract_does_not_declare"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "reasoning_refuses_a_query_that_asks_for_nothing_in_particular"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
           "selector": "rejects_manual_automation_trigger_when_workflow_queue_is_overloaded"
         },
         {
@@ -423,6 +431,46 @@
         {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "typed_value_policies_are_pinned_and_replayed_offline"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "a_bound_term_matches_under_a_confirmed_name_and_says_which"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "a_bound_typed_object_matches_by_exact_value"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "a_grounded_fact_that_answers_nothing_is_rejected_once_the_question_is_pinned"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "a_pinned_query_that_asks_nothing_is_refused_as_policy"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "a_pinned_question_travels_in_the_snapshot_document_and_a_hollow_one_is_refused"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "a_proposal_that_reads_no_question_encodes_as_it_always_did"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "a_question_asked_in_words_leaves_the_proposers_reading_of_it_to_review"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "an_answer_that_fills_the_pinned_query_is_accepted_and_says_so"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "an_answer_to_a_question_in_words_must_say_how_it_read_it_and_why"
+        },
+        {
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "selector": "the_callers_query_is_what_counts_whatever_the_proposer_read"
         },
         {
           "path": "crates/kernel/tests/statement_corpus.rs",

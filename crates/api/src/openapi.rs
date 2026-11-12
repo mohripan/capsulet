@@ -629,6 +629,10 @@ mod tests {
             quote: "total: 46".to_string(),
             needs_interpretation: false,
             rationale: String::new(),
+            asks_relation: "totals".to_string(),
+            asks_subject: "invoice".to_string(),
+            asks_object: "?".to_string(),
+            asks_rationale: "asks for the invoice's total".to_string(),
         };
         assert_conforms(
             "RawProposal",
@@ -746,6 +750,7 @@ mod tests {
                 detail: "literal evidence matched".to_string(),
             }],
             residuals: vec![Residual {
+                kind: capsulet_kernel::ResidualKind::Source,
                 from: "attributed text".to_string(),
                 to: goal.clone(),
                 rationale: "interpretation required".to_string(),

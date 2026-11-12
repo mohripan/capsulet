@@ -4727,6 +4727,146 @@
       ]
     },
     {
+      "id": "CAP-CORRECTNESS-015",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "An answer can be held to the question it was asked. Pinned to a typed query (`POST /v1/reasoning/ask` `query`), the goal must state the asked relation, name each bound term as written, by exact value, or through a confirmed name group the step names, and fill the wanted slot; a grounded claim that answers another question is rejected as `goal_not_responsive`. A question pinned in words alone needs the proposal's own reading of it, which the kernel holds the answer to and records as a residual of kind `question`; an answer that gives none is refused. A snapshot with no question decides as before. Whether the words ask what a reading says is not decided.",
+      "public_surfaces": [
+        "README.md",
+        "docs/api.md"
+      ],
+      "verification": [
+        {
+          "assertion": "an-answer-that-answers-nothing-is-rejected",
+          "evidence_selectors": [
+            "a_grounded_fact_that_answers_nothing_is_rejected_once_the_question_is_pinned",
+            "an_answer_that_fills_the_pinned_query_is_accepted_and_says_so",
+            "the_callers_query_is_what_counts_whatever_the_proposer_read"
+          ]
+        },
+        {
+          "assertion": "a-question-in-words-leaves-its-reading-to-review",
+          "evidence_selectors": [
+            "a_question_asked_in_words_leaves_the_proposers_reading_of_it_to_review",
+            "an_answer_to_a_question_in_words_must_say_how_it_read_it_and_why"
+          ]
+        },
+        {
+          "assertion": "bound-terms-match-only-as-written-by-value-or-as-reviewed",
+          "evidence_selectors": [
+            "a_bound_term_matches_under_a_confirmed_name_and_says_which",
+            "a_bound_typed_object_matches_by_exact_value"
+          ]
+        },
+        {
+          "assertion": "queries-that-ask-nothing-are-refused",
+          "evidence_selectors": [
+            "a_pinned_query_that_asks_nothing_is_refused_as_policy",
+            "reasoning_refuses_a_query_that_asks_for_nothing_in_particular",
+            "reasoning_refuses_a_query_about_a_relation_its_contract_does_not_declare"
+          ]
+        },
+        {
+          "assertion": "questions-are-pinned-and-legacy-bytes-stay-exact",
+          "evidence_selectors": [
+            "a_pinned_question_travels_in_the_snapshot_document_and_a_hollow_one_is_refused",
+            "a_proposal_that_reads_no_question_encodes_as_it_always_did"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_grounded_fact_that_answers_nothing_is_rejected_once_the_question_is_pinned"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_answer_that_fills_the_pinned_query_is_accepted_and_says_so"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_callers_query_is_what_counts_whatever_the_proposer_read"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_question_asked_in_words_leaves_the_proposers_reading_of_it_to_review"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_answer_to_a_question_in_words_must_say_how_it_read_it_and_why"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_bound_term_matches_under_a_confirmed_name_and_says_which"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_bound_typed_object_matches_by_exact_value"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_pinned_query_that_asks_nothing_is_refused_as_policy"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "reasoning_refuses_a_query_that_asks_for_nothing_in_particular"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "reasoning_refuses_a_query_about_a_relation_its_contract_does_not_declare"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_pinned_question_travels_in_the_snapshot_document_and_a_hollow_one_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/responsiveness.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_proposal_that_reads_no_question_encodes_as_it_always_did"
+        },
+        {
+          "type": "source",
+          "path": "crates/kernel/src/question.rs"
+        }
+      ]
+    },
+    {
       "id": "CAP-IR-003",
       "kind": "capability",
       "maturity": "implemented",
