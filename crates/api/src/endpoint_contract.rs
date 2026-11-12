@@ -122,6 +122,7 @@ permissions! {
     CertificatesRead => ("certificates:read", Certificates, Some(ProjectRole::Viewer)),
     IngestionRead => ("ingestion:read", Ingestion, Some(ProjectRole::Viewer)),
     IngestionOperate => ("ingestion:operate", Ingestion, Some(ProjectRole::Operator)),
+    ProjectsWrite => ("projects:write", Projects, Some(ProjectRole::Admin)),
     ProjectMembersWrite => ("project-members:write", ProjectMemberships, Some(ProjectRole::Admin)),
     ServiceAccountsWrite => ("service-accounts:write", ServiceAccounts, Some(ProjectRole::Admin)),
 }
@@ -151,6 +152,7 @@ pub enum ResourceKind {
     Connectors,
     Ingestion,
     Review,
+    Projects,
     ProjectMemberships,
     ServiceAccounts,
 }
@@ -178,6 +180,7 @@ impl ResourceKind {
             Self::Connectors => "connectors",
             Self::Ingestion => "ingestion",
             Self::Review => "review",
+            Self::Projects => "projects",
             Self::ProjectMemberships => "project_memberships",
             Self::ServiceAccounts => "service_accounts",
         }
@@ -528,6 +531,9 @@ macro_rules! required_permission {
     ("ingestion:operate") => {
         RequiredPermission::IngestionOperate
     };
+    ("projects:write") => {
+        RequiredPermission::ProjectsWrite
+    };
     ("project-members:write") => {
         RequiredPermission::ProjectMembersWrite
     };
@@ -794,6 +800,20 @@ const ENDPOINTS: &[EndpointContract] = &[
         true,
         None,
         crate::models::ListProjectsResponse,
+        "200"
+    ),
+    // The project comes from the path, so a project admin may rename their own
+    // project, and only a platform admin passes for a project that does not
+    // exist yet.
+    endpoint!(
+        "PUT",
+        "/v1/projects/{project_id}",
+        "upsertProject",
+        "projects:write",
+        path,
+        true,
+        Some(crate::models::UpsertProjectRequest),
+        crate::models::ProjectResponse,
         "200"
     ),
     endpoint!(

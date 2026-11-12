@@ -512,6 +512,27 @@ impl ApiStore for FakeStore {
             .collect())
     }
 
+    async fn upsert_project(
+        &self,
+        project: &ProjectRecord,
+    ) -> Result<Option<ProjectRecord>, Self::Error> {
+        let mut projects = self.projects.lock().map_err(|error| error.to_string())?;
+        match projects
+            .iter_mut()
+            .find(|existing| existing.id == project.id)
+        {
+            Some(existing) if existing.tenant_id != project.tenant_id => Ok(None),
+            Some(existing) => {
+                existing.name.clone_from(&project.name);
+                Ok(Some(existing.clone()))
+            }
+            None => {
+                projects.push(project.clone());
+                Ok(Some(project.clone()))
+            }
+        }
+    }
+
     async fn list_project_memberships(
         &self,
         tenant_id: &str,

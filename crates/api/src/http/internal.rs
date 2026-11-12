@@ -56,8 +56,8 @@ use crate::{
         ListWorkflowRunsQuery, ListWorkflowRunsResponse, ListWorkflowsResponse,
         ProjectMembershipResponse, ProjectResponse, ServiceAccountResponse, TopologyEdgeResponse,
         TopologyNodeResponse, TopologyResponse, UpsertProjectMembershipRequest,
-        WorkflowEditabilityResponse, WorkflowResponse, WorkflowRunLogEntryResponse,
-        WorkflowRunLogsResponse, WorkflowRunResponse,
+        UpsertProjectRequest, WorkflowEditabilityResponse, WorkflowResponse,
+        WorkflowRunLogEntryResponse, WorkflowRunLogsResponse, WorkflowRunResponse,
     },
     state::AppState,
     store::ApiStore,
@@ -286,6 +286,7 @@ where
     let routes = ContractRouter::new(state.clone())
         .operation("getCurrentPrincipal", current_principal)
         .operation("listProjects", list_projects)
+        .operation("upsertProject", upsert_project)
         .operation("listProjectMemberships", list_project_memberships)
         .operation("upsertProjectMembership", upsert_project_membership)
         .operation("deleteProjectMembership", delete_project_membership)
@@ -645,6 +646,55 @@ where
     Ok(Json(ListProjectsResponse {
         projects: projects.iter().map(ProjectResponse::from).collect(),
     }))
+}
+
+/// Creates the project in the caller's tenant, or renames it. Repeating the
+/// same request changes nothing, which is what lets a seed run twice.
+async fn upsert_project<S, O>(
+    State(state): State<AppState<S, O>>,
+    Extension(principal): Extension<Principal>,
+    Path(project_id): Path<String>,
+    Json(request): Json<UpsertProjectRequest>,
+) -> Result<Json<ProjectResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let project_id = validate_project_id(&project_id)?;
+    require_project_admin(&principal, &principal.tenant_id, &project_id)?;
+    let project = capsulet_postgres::ProjectRecord {
+        id: project_id,
+        tenant_id: principal.tenant_id.to_string(),
+        name: non_empty_trimmed(&request.name, "project name")?,
+    };
+    let stored = state
+        .store
+        .upsert_project(&project)
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::ProjectUnavailable(project.id.clone()))?;
+    Ok(Json(ProjectResponse::from(&stored)))
+}
+
+/// A project id travels in paths and in `x-capsulet-project-id`, so it is held
+/// to characters that need no escaping in either.
+fn validate_project_id(value: &str) -> Result<String, ApiError> {
+    let valid = (1..=63).contains(&value.len())
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
+        })
+        && value
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric());
+    if valid {
+        Ok(value.to_string())
+    } else {
+        Err(ApiError::Validation(
+            "a project id is 1 to 63 lowercase letters, digits, '-' or '_', starting with a letter or digit"
+                .to_string(),
+        ))
+    }
 }
 
 async fn list_project_memberships<S, O>(

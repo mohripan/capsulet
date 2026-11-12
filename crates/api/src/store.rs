@@ -67,6 +67,14 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
     async fn list_all_projects(&self, _tenant_id: &str) -> Result<Vec<ProjectRecord>, Self::Error> {
         Ok(Vec::new())
     }
+    /// Creates the project in its tenant or renames it there. `None` means the
+    /// id is not available to that tenant.
+    async fn upsert_project(
+        &self,
+        _project: &ProjectRecord,
+    ) -> Result<Option<ProjectRecord>, Self::Error> {
+        unreachable!("project provisioning is unsupported by this store")
+    }
     async fn list_project_memberships(
         &self,
         _tenant_id: &str,
@@ -894,6 +902,13 @@ impl ApiStore for PostgresStore {
 
     async fn list_all_projects(&self, tenant_id: &str) -> Result<Vec<ProjectRecord>, Self::Error> {
         PostgresStore::list_all_projects(self, tenant_id).await
+    }
+
+    async fn upsert_project(
+        &self,
+        project: &ProjectRecord,
+    ) -> Result<Option<ProjectRecord>, Self::Error> {
+        PostgresStore::upsert_project(self, project).await
     }
 
     async fn list_project_memberships(

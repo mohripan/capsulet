@@ -311,6 +311,7 @@ authorization_operation!(authorization_get_open_api, "getOpenApi");
 authorization_operation!(authorization_ingest_webhook, "ingestWebhook");
 authorization_operation!(authorization_get_current_principal, "getCurrentPrincipal");
 authorization_operation!(authorization_list_projects, "listProjects");
+authorization_operation!(authorization_upsert_project, "upsertProject");
 authorization_operation!(
     authorization_list_project_memberships,
     "listProjectMemberships"
@@ -689,4 +690,86 @@ async fn authorization_wildcard_scope_cannot_elevate_a_project_viewer() {
         .await
         .expect("response");
     assert_eq!(response.status(), 403);
+}
+
+/// Projects are provisioned through the API. A platform admin creates any
+/// project and repeating the request changes nothing; a project admin can only
+/// rename their own; an id another tenant holds is refused and left alone.
+#[tokio::test]
+async fn authorization_projects_are_created_by_platform_admins_and_renamed_by_their_own() {
+    let global_admin = "matrix-global-admin-token-0123456789-abcdef";
+    let project_admin = "matrix-project-admin-token-0123456789-abcdef";
+    let operator = "matrix-operator-token-0123456789-abcdef";
+    let store = FakeStore::default();
+    store
+        .projects
+        .lock()
+        .expect("projects")
+        .push(ProjectRecord {
+            id: "elsewhere".to_string(),
+            tenant_id: "other-tenant".to_string(),
+            name: "Another tenant's project".to_string(),
+        });
+    let projects = Arc::clone(&store.projects);
+    let app = authorization_router_with_store(store);
+    let put = |token: &str, project: &str, name: &str| {
+        let request = Request::builder()
+            .method(Method::PUT)
+            .uri(format!("/v1/projects/{project}"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(json!({ "name": name }).to_string()))
+            .expect("request");
+        app.clone().oneshot(request)
+    };
+
+    for _ in 0..2 {
+        let created = put(global_admin, "alpha", "Alpha").await.expect("create");
+        assert_eq!(created.status(), 200);
+        assert_eq!(
+            response_json(created).await,
+            json!({ "id": "alpha", "tenant_id": "default", "name": "Alpha" })
+        );
+    }
+    let renamed = put(project_admin, "default", "Default, renamed")
+        .await
+        .expect("rename");
+    assert_eq!(renamed.status(), 200);
+    let foreign = put(project_admin, "gamma", "Gamma").await.expect("create");
+    assert_eq!(
+        foreign.status(),
+        403,
+        "a project admin cannot create projects"
+    );
+    let below_admin = put(operator, "default", "Operated").await.expect("rename");
+    assert_eq!(below_admin.status(), 403);
+    let taken = put(global_admin, "elsewhere", "Mine now")
+        .await
+        .expect("take");
+    assert_eq!(taken.status(), 409);
+    assert_eq!(response_json(taken).await["code"], "project_unavailable");
+    let invalid = put(global_admin, "Not-Lowercase", "Invalid")
+        .await
+        .expect("invalid");
+    assert_eq!(invalid.status(), 400);
+
+    let projects = projects.lock().expect("projects");
+    let names = projects
+        .iter()
+        .map(|project| {
+            (
+                project.id.as_str(),
+                project.tenant_id.as_str(),
+                project.name.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        [
+            ("elsewhere", "other-tenant", "Another tenant's project"),
+            ("alpha", "default", "Alpha"),
+            ("default", "default", "Default, renamed"),
+        ]
+    );
 }

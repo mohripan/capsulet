@@ -4568,6 +4568,19 @@
         ],
         "type": "object"
       },
+      "UpsertProjectRequest": {
+        "additionalProperties": false,
+        "description": "Creates the project named in the path in the caller's tenant, or renames it.",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "WebhookRequest": {
         "additionalProperties": true,
         "type": "object"
@@ -12060,6 +12073,76 @@
         ],
         "x-capsulet-required-scope": "auth:read",
         "x-capsulet-resource": "identity",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/projects/{project_id}": {
+      "put": {
+        "operationId": "upsertProject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "upsert project",
+        "x-capsulet-ownership": "path_project",
+        "x-capsulet-project-context": false,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "projects:write",
+        "x-capsulet-resource": "projects",
         "x-capsulet-stability": "experimental"
       }
     },

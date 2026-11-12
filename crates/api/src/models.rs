@@ -132,6 +132,13 @@ pub(crate) struct ListProjectsResponse {
     pub(crate) projects: Vec<ProjectResponse>,
 }
 
+/// Creates the project named in the path in the caller's tenant, or renames it.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct UpsertProjectRequest {
+    pub(crate) name: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct UpsertProjectMembershipRequest {
     pub(crate) principal_kind: String,

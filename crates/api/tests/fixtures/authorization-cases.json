@@ -40,6 +40,11 @@
     "ownership": "unscoped"
   },
   {
+    "operation_id": "upsertProject",
+    "minimum_role": "admin",
+    "ownership": "path_project"
+  },
+  {
     "operation_id": "listProjectMemberships",
     "minimum_role": "admin",
     "ownership": "path_project"

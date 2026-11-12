@@ -18,6 +18,7 @@ without membership or lacking action permission returns `403`. Webhooks require 
 | `ingestWebhook` | POST | `/v1/webhooks/{automation_id}/{trigger_name}` | `public` | unscoped | allow | allow | allow |
 | `getCurrentPrincipal` | GET | `/v1/auth/me` | `auth:read` | unscoped | allow | allow | allow |
 | `listProjects` | GET | `/v1/projects` | `auth:read` | unscoped | allow | allow | allow |
+| `upsertProject` | PUT | `/v1/projects/{project_id}` | `projects:write` | path_project | deny | deny | allow |
 | `listProjectMemberships` | GET | `/v1/projects/{project_id}/memberships` | `project-members:write` | path_project | deny | deny | allow |
 | `upsertProjectMembership` | POST | `/v1/projects/{project_id}/memberships` | `project-members:write` | path_project | deny | deny | allow |
 | `deleteProjectMembership` | DELETE | `/v1/projects/{project_id}/memberships/{principal_kind}/{principal_name}` | `project-members:write` | path_project | deny | deny | allow |

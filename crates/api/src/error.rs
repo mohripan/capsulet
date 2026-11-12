@@ -56,6 +56,8 @@ pub(crate) enum ApiError {
     TriggerPluginNotFound(String),
     #[error("job run not found: {0}")]
     RunNotFound(String),
+    #[error("project id {0} is held by another tenant, or this tenant does not exist")]
+    ProjectUnavailable(String),
     #[error("job run already exists: {0}")]
     RunAlreadyExists(String),
     #[error("agent run already exists: {0}")]
@@ -122,6 +124,7 @@ impl ApiError {
             Self::QueueOverloaded(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::WorkflowLocked(_)
             | Self::JobDefinitionInUse(_)
+            | Self::ProjectUnavailable(_)
             | Self::RunAlreadyExists(_)
             | Self::AgentRunAlreadyExists(_)
             | Self::AgentRunStateConflict(_) => StatusCode::CONFLICT,
@@ -177,6 +180,7 @@ impl ApiError {
             Self::AutomationNotFound(_) => "automation_not_found",
             Self::TriggerPluginNotFound(_) => "trigger_plugin_not_found",
             Self::RunNotFound(_) => "job_run_not_found",
+            Self::ProjectUnavailable(_) => "project_unavailable",
             Self::RunAlreadyExists(_) => "job_run_already_exists",
             Self::AgentRunAlreadyExists(_) => "agent_run_already_exists",
             Self::AgentNotRunnable(_) => "agent_not_runnable",

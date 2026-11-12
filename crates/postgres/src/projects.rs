@@ -103,6 +103,43 @@ impl PostgresStore {
             .collect()
     }
 
+    /// Creates a project in a tenant, or renames it if that tenant already has
+    /// it. Project ids are unique across tenants, so `None` means another
+    /// tenant holds the id or the tenant does not exist; nothing changes then.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when persistence fails.
+    pub async fn upsert_project(
+        &self,
+        project: &ProjectRecord,
+    ) -> Result<Option<ProjectRecord>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            INSERT INTO projects (id, tenant_id, name)
+            SELECT $1, $2, $3
+            WHERE EXISTS (SELECT 1 FROM tenants WHERE id = $2)
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+            WHERE projects.tenant_id = EXCLUDED.tenant_id
+            RETURNING id, tenant_id, name
+            ",
+        )
+        .bind(&project.id)
+        .bind(&project.tenant_id)
+        .bind(&project.name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.map(|row| {
+            Ok(ProjectRecord {
+                id: row.try_get("id")?,
+                tenant_id: row.try_get("tenant_id")?,
+                name: row.try_get("name")?,
+            })
+        })
+        .transpose()
+    }
+
     /// Lists project memberships for one project.
     ///
     /// # Errors

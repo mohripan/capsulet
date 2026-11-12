@@ -948,6 +948,70 @@ async fn job_definition_listing_applies_project_scope_before_limit() {
     assert_eq!(listed[0].id(), job.id());
 }
 
+/// A project id belongs to one tenant: its own tenant can rename it, any other
+/// tenant is refused without changing it, and a missing tenant gets nothing.
+#[tokio::test]
+async fn a_project_id_belongs_to_one_tenant() {
+    let store = scoped_store().await;
+    let id = unique_id("provisioned");
+    let other_tenant = unique_id("other_tenant");
+    sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, 'Other tenant')")
+        .bind(&other_tenant)
+        .execute(store.pool())
+        .await
+        .expect("tenant");
+    let project = |tenant_id: &str, name: &str| capsulet_postgres::ProjectRecord {
+        id: id.clone(),
+        tenant_id: tenant_id.to_string(),
+        name: name.to_string(),
+    };
+
+    let created = store
+        .upsert_project(&project("default", "Provisioned"))
+        .await
+        .expect("create");
+    assert_eq!(created, Some(project("default", "Provisioned")));
+    let repeated = store
+        .upsert_project(&project("default", "Provisioned"))
+        .await
+        .expect("repeat");
+    assert_eq!(repeated, created, "the same request changes nothing");
+    let renamed = store
+        .upsert_project(&project("default", "Renamed"))
+        .await
+        .expect("rename");
+    assert_eq!(renamed, Some(project("default", "Renamed")));
+    let taken = store
+        .upsert_project(&project(&other_tenant, "Taken"))
+        .await
+        .expect("take");
+    assert_eq!(taken, None, "another tenant cannot take the id");
+    let missing = capsulet_postgres::ProjectRecord {
+        id: unique_id("orphan"),
+        tenant_id: unique_id("no_such_tenant"),
+        name: "Orphan".to_string(),
+    };
+    assert_eq!(store.upsert_project(&missing).await.expect("orphan"), None);
+
+    assert_eq!(
+        store
+            .list_all_projects("default")
+            .await
+            .expect("list")
+            .into_iter()
+            .filter(|listed| listed.id == id)
+            .collect::<Vec<_>>(),
+        [project("default", "Renamed")]
+    );
+    assert!(
+        store
+            .list_all_projects(&other_tenant)
+            .await
+            .expect("list")
+            .is_empty()
+    );
+}
+
 #[tokio::test]
 async fn job_definition_upsert_rejects_cross_project_collision_without_mutating_original() {
     let store = PostgresStore::connect(&database_url())

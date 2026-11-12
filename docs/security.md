@@ -90,7 +90,11 @@ Project roles:
 
 `GET /v1/auth/me` returns the caller's `platform_admin` flag and
 `project_memberships`. `GET /v1/projects` returns only projects visible to the
-caller. The dashboard project switcher is a convenience control; backend APIs
+caller. `PUT /v1/projects/{project_id}` with `{"name": …}` creates a project in
+the caller's tenant or renames it, and repeating it changes nothing. A platform
+admin can create any project; a project admin can only rename their own. A
+project id is unique across tenants, so an id another tenant holds is refused
+with `409 project_unavailable`. The dashboard project switcher is a convenience control; backend APIs
 must continue to enforce project scope on resource access.
 
 Project membership can be managed from the dashboard Security page or through
