@@ -29,7 +29,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.5",
     "postcss": "^8.5.19",
-    "tailwindcss": "^4.3.2",
+    "tailwindcss": "^4.3.5",
     "tsx": "^4.23.11",
     "typescript": "^6.0.3"
   },
