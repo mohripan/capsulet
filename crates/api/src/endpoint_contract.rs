@@ -286,7 +286,8 @@ pub enum MediaType {
     Json,
     PlainText,
     EventStream,
-    Binary,
+    /// Whatever media type the bytes were recorded with, such as an artifact download.
+    Any,
     OpenApiJson,
 }
 
@@ -297,7 +298,7 @@ impl MediaType {
             Self::Json => "application/json",
             Self::PlainText => "text/plain",
             Self::EventStream => "text/event-stream",
-            Self::Binary => "application/octet-stream",
+            Self::Any => "*/*",
             Self::OpenApiJson => "application/vnd.oai.openapi+json",
         }
     }
@@ -380,25 +381,26 @@ impl fmt::Debug for SchemaId {
     }
 }
 
-/// The query parameters an endpoint reads, by the Rust type its handler deserializes.
+/// The parameters an endpoint reads, by the Rust type that names them.
 ///
 /// Like [`SchemaId`], a handle on a type, never a list kept beside it: the names,
-/// types, bounds and descriptions published come from the type's `IntoParams`.
+/// locations (query or header), types, bounds and descriptions published all
+/// come from the type's `IntoParams`.
 #[derive(Clone, Copy)]
 pub struct ParamsId {
     parameters: fn() -> Vec<Parameter>,
 }
 
 impl ParamsId {
-    /// The query parameters of `T`.
+    /// The parameters of `T`, in the location its `into_params` attribute declares.
     #[must_use]
     pub const fn of<T: IntoParams>() -> Self {
         Self {
-            parameters: query_parameters::<T>,
+            parameters: declared_parameters::<T>,
         }
     }
 
-    /// Every query parameter, in field order.
+    /// Every parameter, in field order.
     #[must_use]
     pub fn parameters(self) -> Vec<Parameter> {
         (self.parameters)()
@@ -412,7 +414,8 @@ impl ParamsId {
     }
 }
 
-fn query_parameters<T: IntoParams>() -> Vec<Parameter> {
+/// A type's parameters, where its own `parameter_in` puts them, or the query.
+fn declared_parameters<T: IntoParams>() -> Vec<Parameter> {
     T::into_params(|| Some(ParameterIn::Query))
 }
 
@@ -461,7 +464,7 @@ pub struct EndpointContract {
     pub authentication: AuthenticationMode,
     pub request_schema: Option<SchemaId>,
     pub response_schema: SchemaId,
-    pub query: Option<ParamsId>,
+    pub parameters: Option<ParamsId>,
     pub error_contract: ErrorContract,
     pub success_status: ResponseStatus,
     pub response_content_type: MediaType,
@@ -645,8 +648,8 @@ macro_rules! media_type {
     ("text/event-stream") => {
         MediaType::EventStream
     };
-    ("application/octet-stream") => {
-        MediaType::Binary
+    ("*/*") => {
+        MediaType::Any
     };
     ("application/vnd.oai.openapi+json") => {
         MediaType::OpenApiJson
@@ -677,15 +680,15 @@ macro_rules! endpoint {
             authentication: authentication_mode!($auth),
             request_schema: optional_schema!($request $(($request_type))?),
             response_schema: SchemaId::of::<$response>(),
-            query: None,
+            parameters: None,
             error_contract: ErrorContract::Json,
             success_status: response_status!($status),
             response_content_type: MediaType::Json,
         }
     };
-    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:ident $(($request_type:ty))?, $response:ty, $status:tt, query = $query:ty) => {
+    ($method:tt, $path:literal, $operation:literal, $scope:tt, $project:tt, $auth:tt, $request:ident $(($request_type:ty))?, $response:ty, $status:tt, parameters = $parameters:ty) => {
         EndpointContract {
-            query: Some(ParamsId::of::<$query>()),
+            parameters: Some(ParamsId::of::<$parameters>()),
             ..endpoint!(
                 $method, $path, $operation, $scope, $project, $auth, $request $(($request_type))?, $response, $status
             )
@@ -768,7 +771,8 @@ const ENDPOINTS: &[EndpointContract] = &[
         false,
         Some(crate::wire_schemas::WebhookRequest),
         crate::webhooks::WebhookResponse,
-        "202"
+        "202",
+        parameters = crate::webhooks::WebhookHeaders
     ),
     endpoint!(
         "GET",
@@ -868,7 +872,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         None,
         crate::models::ListJobDefinitionsResponse,
         "200",
-        query = crate::models::ListJobDefinitionsQuery
+        parameters = crate::models::ListJobDefinitionsQuery
     ),
     endpoint!(
         "POST",
@@ -1639,7 +1643,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         None,
         crate::memory::ListEntityResolutionsResponse,
         "200",
-        query = crate::memory::ListEntityResolutionsQuery
+        parameters = crate::memory::ListEntityResolutionsQuery
     ),
     endpoint!(
         "POST",
@@ -1684,7 +1688,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         None,
         crate::memory::ListClaimConflictsResponse,
         "200",
-        query = crate::memory::ListClaimConflictsQuery
+        parameters = crate::memory::ListClaimConflictsQuery
     ),
     endpoint!(
         "POST",
@@ -1817,7 +1821,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         None,
         crate::ingestion::ListReviewClaimsResponse,
         "200",
-        query = crate::ingestion::ReviewClaimsQuery
+        parameters = crate::ingestion::ReviewClaimsQuery
     ),
     endpoint!(
         "POST",
@@ -1983,7 +1987,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         None,
         crate::models::ListWorkflowRunsResponse,
         "200",
-        query = crate::models::ListWorkflowRunsQuery
+        parameters = crate::models::ListWorkflowRunsQuery
     ),
     endpoint!(
         "GET",
@@ -2074,7 +2078,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         None,
         crate::models::ListRunsResponse,
         "200",
-        query = crate::models::ListRunsQuery
+        parameters = crate::models::ListRunsQuery
     ),
     endpoint!(
         "POST",
@@ -2153,7 +2157,7 @@ const ENDPOINTS: &[EndpointContract] = &[
         None,
         crate::wire_schemas::BinaryResponse,
         "200",
-        "application/octet-stream"
+        "*/*"
     ),
 ];
 

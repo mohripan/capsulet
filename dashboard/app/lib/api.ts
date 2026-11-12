@@ -563,6 +563,11 @@ export type TableQuery = {
   direction?: "asc" | "desc";
 };
 
+/** Every key a `TableQuery` can send, which the contract test holds to the API's declared query. */
+export const TABLE_QUERY_PARAMETERS = [
+  "limit", "start_at", "end_at", "q", "state", "sort", "direction",
+] as const satisfies readonly (keyof TableQuery)[];
+
 export type ClientOperationContract = {
   method: "GET" | "POST" | "PUT" | "DELETE";
   path: string;
@@ -570,18 +575,21 @@ export type ClientOperationContract = {
   requestSchema: string | null;
   responseSchema: string | null;
   projectContext: boolean;
+  /** The query parameters this client sends; each must be one the operation declares. */
+  query: readonly string[];
 };
 
 function clientOperation(
   method: ClientOperationContract["method"], path: string, operationId: string,
-  requestSchema: string | null, responseSchema: string | null, projectContext = true
+  requestSchema: string | null, responseSchema: string | null, projectContext = true,
+  query: readonly string[] = []
 ): ClientOperationContract {
-  return { method, path, operationId, requestSchema, responseSchema, projectContext };
+  return { method, path, operationId, requestSchema, responseSchema, projectContext, query };
 }
 
 // Experimental handwritten transport map. The checked OpenAPI document remains authoritative.
 export const DASHBOARD_OPERATIONS = {
-  listRuns: clientOperation("GET", "/v1/jobs/runs", "listJobRuns", null, "ListRunsResponse"),
+  listRuns: clientOperation("GET", "/v1/jobs/runs", "listJobRuns", null, "ListRunsResponse", true, TABLE_QUERY_PARAMETERS),
   listAgentRuns: clientOperation("GET", "/v1/agent-runs", "listAgentRuns", null, "ListAgentRunsResponse"),
   getAgentRun: clientOperation("GET", "/v1/agent-runs/{id}", "getAgentRun", null, "AgentRunResponse"),
   getAgentRunEvents: clientOperation("GET", "/v1/agent-runs/{id}/events", "getAgentRunEvents", null, "IrRunEventsResponse"),
@@ -596,7 +604,7 @@ export const DASHBOARD_OPERATIONS = {
   listServiceAccounts: clientOperation("GET", "/v1/service-accounts", "listServiceAccounts", null, "ListServiceAccountsResponse"),
   createServiceAccount: clientOperation("POST", "/v1/service-accounts", "createServiceAccount", "CreateServiceAccountRequest", "CreateServiceAccountResponse"),
   revokeServiceAccount: clientOperation("POST", "/v1/service-accounts/{id}/revoke", "revokeServiceAccount", null, null),
-  listJobDefinitions: clientOperation("GET", "/v1/job-definitions", "listJobDefinitions", null, "ListJobDefinitionsResponse"),
+  listJobDefinitions: clientOperation("GET", "/v1/job-definitions", "listJobDefinitions", null, "ListJobDefinitionsResponse", true, ["limit"]),
   createJobDefinition: clientOperation("POST", "/v1/job-definitions", "createJobDefinition", "CreateJobDefinitionRequest", "JobDefinitionResponse"),
   updateJobDefinition: clientOperation("PUT", "/v1/job-definitions/{id}", "updateJobDefinition", "CreateJobDefinitionRequest", "JobDefinitionResponse"),
   deleteJobDefinition: clientOperation("DELETE", "/v1/job-definitions/{id}", "deleteJobDefinition", null, null),
@@ -626,10 +634,10 @@ export const DASHBOARD_OPERATIONS = {
   listCanonicalEntities: clientOperation("GET", "/v1/memory/canonical-entities", "listCanonicalEntities", null, "ListCanonicalEntitiesResponse"),
   createCanonicalEntity: clientOperation("POST", "/v1/memory/canonical-entities", "createCanonicalEntity", "CreateCanonicalEntityRequest", "CanonicalEntityResponse"),
   createEntityResolution: clientOperation("POST", "/v1/memory/entity-resolutions", "createEntityResolution", "CreateEntityResolutionRequest", "EntityResolutionResponse"),
-  listEntityResolutions: clientOperation("GET", "/v1/memory/entity-resolutions", "listEntityResolutions", null, "ListEntityResolutionsResponse"),
+  listEntityResolutions: clientOperation("GET", "/v1/memory/entity-resolutions", "listEntityResolutions", null, "ListEntityResolutionsResponse", true, ["status"]),
   confirmEntityResolution: clientOperation("POST", "/v1/memory/entity-resolutions/{id}/confirm", "confirmEntityResolution", null, "EntityResolutionResponse"),
   rejectEntityResolution: clientOperation("POST", "/v1/memory/entity-resolutions/{id}/reject", "rejectEntityResolution", null, "EntityResolutionResponse"),
-  listClaimConflicts: clientOperation("GET", "/v1/memory/conflicts", "listClaimConflicts", null, "ListClaimConflictsResponse"),
+  listClaimConflicts: clientOperation("GET", "/v1/memory/conflicts", "listClaimConflicts", null, "ListClaimConflictsResponse", true, ["status"]),
   resolveClaimConflict: clientOperation("POST", "/v1/memory/conflicts/{id}/resolve", "resolveClaimConflict", "ResolveClaimConflictRequest", "ClaimConflictResponse"),
   dismissClaimConflict: clientOperation("POST", "/v1/memory/conflicts/{id}/dismiss", "dismissClaimConflict", null, "ClaimConflictResponse"),
   createSummaryTrace: clientOperation("POST", "/v1/memory/summary-traces", "createSummaryTrace", "CreateSummaryTraceRequest", "SummaryTraceResponse"),
@@ -639,10 +647,10 @@ export const DASHBOARD_OPERATIONS = {
   createIngestionConnector: clientOperation("POST", "/v1/ingestion/connectors", "createIngestionConnector", "CreateIngestionConnectorRequest", "IngestionConnectorResponse"),
   runIngestionConnector: clientOperation("POST", "/v1/ingestion/connectors/{id}/runs", "runIngestionConnector", null, "IngestionRunWithOutputsResponse"),
   listIngestionRuns: clientOperation("GET", "/v1/ingestion/runs", "listIngestionRuns", null, "ListIngestionRunsResponse"),
-  listReviewClaims: clientOperation("GET", "/v1/ingestion/review/claims", "listIngestionReviewClaims", null, "ListIngestionReviewClaimsResponse"),
+  listReviewClaims: clientOperation("GET", "/v1/ingestion/review/claims", "listIngestionReviewClaims", null, "ListIngestionReviewClaimsResponse", true, ["status"]),
   approveReviewClaim: clientOperation("POST", "/v1/ingestion/review/claims/{id}/approve", "approveIngestionReviewClaim", null, "ReviewClaimResponse"),
   rejectReviewClaim: clientOperation("POST", "/v1/ingestion/review/claims/{id}/reject", "rejectIngestionReviewClaim", null, "ReviewClaimResponse"),
-  listWorkflowRuns: clientOperation("GET", "/v1/workflow-runs", "listWorkflowRuns", null, "ListWorkflowRunsResponse"),
+  listWorkflowRuns: clientOperation("GET", "/v1/workflow-runs", "listWorkflowRuns", null, "ListWorkflowRunsResponse", true, TABLE_QUERY_PARAMETERS),
   getRun: clientOperation("GET", "/v1/jobs/runs/{id}", "getJobRun", null, "JobRunResponse"),
   getRunLogs: clientOperation("GET", "/v1/jobs/runs/{id}/logs", "getJobRunLogs", null, "JobRunLogsResponse"),
   getWorkflowRunLogs: clientOperation("GET", "/v1/workflow-runs/{id}/logs", "getWorkflowRunLogs", null, "WorkflowRunLogsResponse"),

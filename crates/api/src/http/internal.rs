@@ -218,6 +218,16 @@ where
                 },
             ));
         }
+        // Every failure, including a rejection raised before the handler runs,
+        // leaves as the contract's JSON error.
+        route = route.route_layer(middleware::from_fn(crate::error::json_errors));
+        // In tests, every response is held to this contract.
+        #[cfg(any(test, feature = "contract-conformance"))]
+        {
+            route = route.route_layer(middleware::from_fn(move |request: Request, next: Next| {
+                crate::openapi::conformance::check(contract, request, next)
+            }));
+        }
         self.router = self.router.route(contract.path, route);
         self
     }

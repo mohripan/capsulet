@@ -66,17 +66,21 @@ Use the following workflow for contract changes:
    Regenerate `docs/contracts/product-claims.md` with
    `pwsh ./scripts/render-product-claims.ps1 -OutputPath docs/contracts/product-claims.md`.
 2. Endpoint or wire schema: declare the operation in `crates/api/src/endpoint_contract.rs`, naming
-   the Rust type the handler reads, the one it writes and, with `query = Type`, the query it
-   deserializes, never a schema name or a parameter list. Register its handler in
+   the Rust type the handler reads, the one it writes and, with `parameters = Type`, the query or
+   headers it reads, never a schema name or a parameter list. Register its handler in
    `crates/api/src/http/internal.rs` with `.operation("operationId", handler)`: the method, the path
    and whether it needs authentication come from the contract, and the router refuses to start
    with an operation unregistered. Derive `utoipa::ToSchema` on the body types and
-   `utoipa::IntoParams` on the query type; `#[schema(as = Name)]` keeps a published component name
+   `utoipa::IntoParams` on the parameter type; `#[schema(as = Name)]` keeps a published component name
    that differs from the Rust one. The document collects each type's schema and every schema it
    refers to, and refuses two types that claim one name. Only shapes with no serde type in this
    crate, such as non-JSON bodies or the kernel's certificate, are written out, as types in
    `crates/api/src/wire_schemas.rs`, and each is checked against real payloads in
-   `crates/api/src/openapi.rs`. Preserve stable `operationId` values unless the versioning policy
+   `crates/api/src/openapi.rs`. In tests every response is checked against the contract of
+   the route that produced it, failures included; a crate whose tests drive the router turns
+   that on with `capsulet-api`'s `contract-conformance` feature as a dev-dependency, and
+   `CAPSULET_CONFORMANCE_TRACE=<file>` records which operations and statuses a run reached.
+   Preserve stable `operationId` values unless the versioning policy
    authorizes a break. Run `cargo run -p capsulet-api --bin export-openapi` and never hand-edit the
    generated artifact.
 3. Status or verdict: update the Rust source enum first, then

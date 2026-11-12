@@ -3741,7 +3741,10 @@
             ]
           },
           "permissions": {
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "project_id": {
             "type": "string"
@@ -3764,7 +3767,6 @@
           "tenant_id",
           "project_id",
           "name",
-          "permissions",
           "status"
         ],
         "type": "object"
@@ -9132,7 +9134,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/octet-stream": {
+              "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/BinaryResponse"
                 }
@@ -12881,6 +12883,7 @@
             }
           },
           {
+            "description": "When the sender signed the delivery, in Unix seconds. A delivery more\nthan five minutes from now is refused.",
             "in": "header",
             "name": "x-capsulet-timestamp",
             "required": true,
@@ -12889,6 +12892,7 @@
             }
           },
           {
+            "description": "The sender's identifier for this delivery. A delivery already accepted is\nanswered `200` and not enqueued again.",
             "in": "header",
             "name": "x-capsulet-delivery",
             "required": true,
@@ -12897,6 +12901,7 @@
             }
           },
           {
+            "description": "Groups deliveries of one logical event; defaults to the delivery id.",
             "in": "header",
             "name": "x-capsulet-correlation",
             "required": false,
@@ -12905,6 +12910,7 @@
             }
           },
           {
+            "description": "HMAC-SHA256 over the automation, trigger, timestamp, delivery, correlation\nand body, under the trigger's secret.",
             "in": "header",
             "name": "x-capsulet-signature",
             "required": true,

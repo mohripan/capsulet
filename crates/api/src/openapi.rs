@@ -200,26 +200,14 @@ fn operation_parameters(endpoint: &crate::EndpointContract) -> Vec<Value> {
         "description": "Optional caller-supplied request correlation identifier.",
         "schema": {"type": "string"}
     }));
-    // The query an endpoint reads is the type its handler deserializes.
-    for parameter in endpoint.query.iter().flat_map(|query| query.parameters()) {
+    // The parameters an endpoint reads are the type its handler takes them from.
+    for parameter in endpoint
+        .parameters
+        .iter()
+        .flat_map(|parameters| parameters.parameters())
+    {
         parameters.push(serde_json::to_value(parameter).expect("query parameters serialize"));
     }
-    if endpoint.path == "/v1/webhooks/{automation_id}/{trigger_name}" {
-        for (name, required) in [
-            ("x-capsulet-timestamp", true),
-            ("x-capsulet-delivery", true),
-            ("x-capsulet-correlation", false),
-            ("x-capsulet-signature", true),
-        ] {
-            parameters.push(json!({
-                "name": name,
-                "in": "header",
-                "required": required,
-                "schema": {"type": "string"}
-            }));
-        }
-    }
-
     parameters
 }
 
@@ -257,17 +245,133 @@ fn humanize(operation_id: &str) -> String {
     output
 }
 
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
+/// Holds every response the API's own tests receive to the published contract.
+///
+/// In test builds each route carries a check, added by `ContractRouter`, that
+/// compares what the handler returned with what its contract publishes: the
+/// declared success status, a body matching the response schema for JSON, the
+/// declared content type for text, binary and event streams (which are never
+/// buffered, since a stream does not end), and the shared `Error` body for every
+/// failure. A mismatch fails the test that made the request. The suite makes
+/// several hundred real requests through every operation it exercises, so this
+/// turns them into conformance checks of the operations' real payloads.
+#[cfg(any(test, feature = "contract-conformance"))]
+pub(crate) mod conformance {
+    use std::sync::OnceLock;
 
-    use axum::response::IntoResponse;
-    use capsulet_kernel::{
-        Certificate, CertificateError, DischargedStep, Proposition, Quantity, Residual, Verdict,
-    };
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::header::CONTENT_TYPE;
+    use axum::middleware::Next;
+    use axum::response::Response;
     use serde_json::{Value, json};
 
-    use super::{SchemaId, generated_openapi, publish};
+    use crate::{EndpointContract, MediaType, ResponseStatus};
+
+    fn document() -> &'static Value {
+        static DOCUMENT: OnceLock<Value> = OnceLock::new();
+        DOCUMENT.get_or_init(super::generated_openapi)
+    }
+
+    /// Checks one response against the contract of the route that produced it.
+    ///
+    /// # Panics
+    ///
+    /// When the response is not what the contract publishes.
+    pub(crate) async fn check(
+        contract: &'static EndpointContract,
+        request: Request,
+        next: Next,
+    ) -> Response {
+        let response = next.run(request).await;
+        let status = response.status();
+        // `CAPSULET_CONFORMANCE_TRACE=<file> cargo test` appends one line per
+        // checked response to `<file>`, to measure which operations and
+        // statuses the suite reaches.
+        if let Some(trace) = std::env::var_os("CAPSULET_CONFORMANCE_TRACE") {
+            use std::io::Write as _;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(trace)
+            {
+                // One write per line, so lines from parallel tests do not interleave.
+                let line = format!("{} {}\n", contract.operation_id, status.as_u16());
+                let _ = file.write_all(line.as_bytes());
+            }
+        }
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        let operation = contract.operation_id;
+        if content_type.starts_with("text/event-stream") {
+            assert_eq!(
+                contract.response_content_type,
+                MediaType::EventStream,
+                "{operation} streamed events, which its contract does not declare"
+            );
+            assert_eq!(
+                status.as_str(),
+                contract.success_status.as_str(),
+                "{operation} streamed with an undeclared status"
+            );
+            return response;
+        }
+        let (parts, body) = response.into_parts();
+        let bytes = axum::body::to_bytes(body, usize::MAX)
+            .await
+            .expect("a response body can be read");
+        if status.is_success() {
+            let alternative = (operation == "ingestWebhook" && status.as_u16() == 200)
+                .then(super::SchemaId::of::<crate::webhooks::WebhookResponse>);
+            assert!(
+                status.as_str() == contract.success_status.as_str() || alternative.is_some(),
+                "{operation} answered {status}, but its contract declares {}",
+                contract.success_status.as_str()
+            );
+            if contract.success_status == ResponseStatus::NoContent {
+                assert!(bytes.is_empty(), "{operation} answered 204 with a body");
+            } else {
+                let declared = contract.response_content_type.as_str();
+                assert!(
+                    contract.response_content_type == MediaType::Any
+                        || content_type.starts_with(declared),
+                    "{operation} answered with content type `{content_type}`, but its contract declares `{declared}`"
+                );
+                if contract.response_content_type == MediaType::Json {
+                    let schema = alternative.unwrap_or(contract.response_schema);
+                    assert_body(operation, &schema.name(), &bytes);
+                }
+            }
+        } else {
+            assert!(
+                content_type.starts_with("application/json"),
+                "{operation} failed with {status} and content type `{content_type}`, not the JSON error every contract declares: {}",
+                String::from_utf8_lossy(&bytes)
+            );
+            let error = super::SchemaId::of::<crate::error::ErrorResponse>().name();
+            assert_body(operation, &error, &bytes);
+        }
+        Response::from_parts(parts, Body::from(bytes))
+    }
+
+    fn assert_body(operation: &str, component: &str, bytes: &[u8]) {
+        let value: Value = serde_json::from_slice(bytes).unwrap_or_else(|error| {
+            panic!(
+                "{operation} sent a body that is not JSON ({error}): {}",
+                String::from_utf8_lossy(bytes)
+            )
+        });
+        let schema = json!({"$ref": format!("#/components/schemas/{component}")});
+        if let Err(problem) = conforms(document(), &schema, &value, component) {
+            panic!(
+                "{operation} sent a {component} its contract does not describe: {problem}\n{value:#}"
+            );
+        }
+    }
 
     /// Whether `value` is what `schema` describes, following references into `document`.
     ///
@@ -276,7 +380,12 @@ mod tests {
     /// A property the schema does not list is drift: the payload carries something
     /// the contract does not describe. Only an explicitly open object
     /// (`additionalProperties: true`) may carry fields it does not list.
-    fn conforms(document: &Value, schema: &Value, value: &Value, path: &str) -> Result<(), String> {
+    pub(crate) fn conforms(
+        document: &Value,
+        schema: &Value,
+        value: &Value,
+        path: &str,
+    ) -> Result<(), String> {
         if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
             let name = reference.trim_start_matches("#/components/schemas/");
             let target = &document["components"]["schemas"][name];
@@ -375,6 +484,20 @@ mod tests {
             _ => false,
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use axum::response::IntoResponse;
+    use capsulet_kernel::{
+        Certificate, CertificateError, DischargedStep, Proposition, Quantity, Residual, Verdict,
+    };
+    use serde_json::{Value, json};
+
+    use super::conformance::conforms;
+    use super::{SchemaId, generated_openapi, publish};
 
     /// Asserts a real payload is what the published component `name` describes.
     fn assert_conforms(name: &str, value: &Value) {
@@ -511,6 +634,63 @@ mod tests {
             "RawProposal",
             &serde_json::to_value(&proposal).expect("serializes"),
         );
+    }
+
+    /// The response check fails a request whose body its contract does not describe.
+    #[tokio::test]
+    #[should_panic(expected = "getHealth sent a HealthResponse its contract does not describe")]
+    async fn a_response_its_contract_does_not_describe_fails_the_request() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use axum::{Json, Router, middleware, routing::get};
+        use tower::ServiceExt;
+
+        let contract = crate::find_operation("getHealth").expect("a declared operation");
+        let app = Router::new()
+            .route(
+                contract.path,
+                get(|| async { Json(json!({"status": "asleep", "extra": true})) }),
+            )
+            .route_layer(middleware::from_fn(move |request, next| {
+                super::conformance::check(contract, request, next)
+            }));
+        let _ = app
+            .oneshot(
+                Request::get(contract.path)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await;
+    }
+
+    /// The signed-delivery headers the document lists are the ones the handler reads.
+    #[test]
+    fn webhook_headers_publish_the_names_the_handler_reads() {
+        use crate::webhooks::{
+            CORRELATION_HEADER, DELIVERY_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER,
+        };
+
+        let document = generated_openapi();
+        let published =
+            document["paths"]["/v1/webhooks/{automation_id}/{trigger_name}"]["post"]["parameters"]
+                .as_array()
+                .expect("parameters")
+                .iter()
+                .filter(|parameter| parameter["in"] == "header")
+                .filter_map(|parameter| {
+                    let name = parameter["name"].as_str()?;
+                    (name != "x-request-id" && name != "x-capsulet-project-id")
+                        .then(|| (name.to_string(), parameter["required"] == true))
+                })
+                .collect::<Vec<_>>();
+        let read = [
+            (TIMESTAMP_HEADER, true),
+            (DELIVERY_HEADER, true),
+            (CORRELATION_HEADER, false),
+            (SIGNATURE_HEADER, true),
+        ]
+        .map(|(name, required)| (name.to_string(), required));
+        assert_eq!(published, read);
     }
 
     /// A listing's published `limit` is what its handler clamps to and falls back on.

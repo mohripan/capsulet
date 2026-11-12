@@ -41,6 +41,9 @@ class OpenApiContractTests(unittest.TestCase):
                 parameter["name"] == "x-request-id" and parameter["in"] == "header"
                 for parameter in parameters
             ), client_name)
+            declared_query = {parameter["name"] for parameter in parameters if parameter["in"] == "query"}
+            for name in expected.get("query", []):
+                self.assertIn(name, declared_query, f"{client_name} sends query parameter {name}, which the operation does not declare")
             request = operation.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema")
             self.assertEqual(expected["request_schema"], schema_name(request), client_name)
             self.assertEqual(expected["request_schema"] is not None, "requestBody" in operation, client_name)
@@ -51,7 +54,7 @@ class OpenApiContractTests(unittest.TestCase):
             content = next(iter(success.get("content", {}).values()), {})
             self.assertEqual(expected["response_schema"], schema_name(content.get("schema")), client_name)
             expected_content_type = (
-                "application/octet-stream" if expected["response_schema"] == "BinaryResponse"
+                "*/*" if expected["response_schema"] == "BinaryResponse"
                 else "text/event-stream" if expected["response_schema"] == "EventStreamResponse"
                 else "application/json" if expected["response_schema"] else None
             )

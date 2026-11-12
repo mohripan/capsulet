@@ -41,6 +41,13 @@ capsulet-observability = { version = "0.1.0", path = "../observability" }
 uuid = { version = "1.23.3", features = ["v4"] }
 utoipa.workspace = true
 
+[features]
+# Holds every response the router sends to its endpoint contract, failing the
+# request that produced a mismatch. Always on in this crate's own tests; other
+# crates' test suites that drive the router enable it as a dev-dependency.
+# Never enabled in a build that ships.
+contract-conformance = []
+
 [dev-dependencies]
 capsulet-observability = { path = "../observability", features = ["testing"] }
 http-body-util.workspace = true

@@ -59,6 +59,12 @@ describe("dashboard OpenAPI contract", () => {
         parameters.some((parameter) => parameter.name === "x-request-id" && parameter.in === "header"),
         `${clientMethod}: request-id header`
       );
+      const declaredQuery = parameters
+        .filter((parameter) => parameter.in === "query")
+        .map((parameter) => parameter.name as string);
+      for (const name of expected.query) {
+        assert.ok(declaredQuery.includes(name), `${clientMethod}: sends query parameter ${name}, which the operation does not declare`);
+      }
 
       const requestSchema = schemaName(operation.requestBody?.content?.["application/json"]?.schema);
       assert.equal(requestSchema, expected.requestSchema, `${clientMethod}: request schema`);
@@ -75,7 +81,7 @@ describe("dashboard OpenAPI contract", () => {
       assert.equal(schemaName(content?.schema), expected.responseSchema, `${clientMethod}: response schema`);
       const contentTypes = Object.keys(success.content ?? {});
       const expectedContentType = expected.responseSchema === "BinaryResponse"
-        ? "application/octet-stream"
+        ? "*/*"
         : expected.responseSchema === "EventStreamResponse"
           ? "text/event-stream"
           : expected.responseSchema === null

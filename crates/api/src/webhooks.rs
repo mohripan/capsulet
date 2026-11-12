@@ -23,6 +23,14 @@ use crate::{ApiStore, error::ApiError, state::AppState};
 type HmacSha256 = Hmac<Sha256>;
 const REPLAY_WINDOW_SECONDS: i64 = 300;
 
+// The headers a signed delivery carries, read here and published by
+// `WebhookHeaders`; `webhook_headers_publish_the_names_the_handler_reads` holds
+// the two to the same names.
+pub(crate) const TIMESTAMP_HEADER: &str = "x-capsulet-timestamp";
+pub(crate) const DELIVERY_HEADER: &str = "x-capsulet-delivery";
+pub(crate) const CORRELATION_HEADER: &str = "x-capsulet-correlation";
+pub(crate) const SIGNATURE_HEADER: &str = "x-capsulet-signature";
+
 #[derive(Clone, Default)]
 pub struct WebhookSecrets(Arc<HashMap<String, Arc<[u8]>>>);
 
@@ -82,7 +90,7 @@ where
         .webhook_secrets
         .get(&automation_id, &trigger_name)
         .ok_or(ApiError::Unauthorized)?;
-    let timestamp = header(&headers, "x-capsulet-timestamp")?
+    let timestamp = header(&headers, TIMESTAMP_HEADER)?
         .parse::<i64>()
         .map_err(|_| ApiError::Unauthorized)?;
     let now = i64::try_from(
@@ -95,14 +103,14 @@ where
     if now.abs_diff(timestamp) > REPLAY_WINDOW_SECONDS as u64 {
         return Err(ApiError::Unauthorized);
     }
-    let delivery = header(&headers, "x-capsulet-delivery")?;
+    let delivery = header(&headers, DELIVERY_HEADER)?;
     if delivery.len() > 200 {
         return Err(ApiError::Validation(
             "webhook delivery id is too long".to_string(),
         ));
     }
     let correlation = headers
-        .get("x-capsulet-correlation")
+        .get(CORRELATION_HEADER)
         .and_then(|value| value.to_str().ok())
         .filter(|value| !value.is_empty())
         .unwrap_or(delivery);
@@ -121,7 +129,7 @@ where
             correlation,
             body: &body[..],
         },
-        header(&headers, "x-capsulet-signature")?,
+        header(&headers, SIGNATURE_HEADER)?,
     )?;
     let payload: Value = serde_json::from_slice(&body).map_err(|error| {
         ApiError::Validation(format!("webhook body must be valid JSON: {error}"))
@@ -375,4 +383,29 @@ mod tests {
 pub(crate) struct WebhookResponse {
     pub(crate) accepted: bool,
     pub(crate) event_id: String,
+}
+
+/// The headers that make a webhook delivery verifiable.
+#[derive(utoipa::IntoParams)]
+#[into_params(parameter_in = Header)]
+#[allow(
+    dead_code,
+    reason = "it documents headers the handler reads one by one"
+)]
+pub(crate) struct WebhookHeaders {
+    /// When the sender signed the delivery, in Unix seconds. A delivery more
+    /// than five minutes from now is refused.
+    #[param(rename = "x-capsulet-timestamp")]
+    timestamp: String,
+    /// The sender's identifier for this delivery. A delivery already accepted is
+    /// answered `200` and not enqueued again.
+    #[param(rename = "x-capsulet-delivery")]
+    delivery: String,
+    /// Groups deliveries of one logical event; defaults to the delivery id.
+    #[param(rename = "x-capsulet-correlation", value_type = String, required = false)]
+    correlation: Option<String>,
+    /// HMAC-SHA256 over the automation, trigger, timestamp, delivery, correlation
+    /// and body, under the trigger's secret.
+    #[param(rename = "x-capsulet-signature")]
+    signature: String,
 }

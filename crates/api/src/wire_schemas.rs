@@ -58,7 +58,7 @@ wire_schema!(
     StringResponse = "StringResponse", [], json!({"type": "string"})
 );
 wire_schema!(
-    /// An `application/octet-stream` body, such as an artifact download.
+    /// Raw bytes, such as an artifact download in the media type it was recorded with.
     BinaryResponse = "BinaryResponse", [], json!({"type": "string", "format": "binary"})
 );
 wire_schema!(

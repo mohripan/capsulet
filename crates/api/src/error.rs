@@ -2,7 +2,9 @@ use std::fmt::Display;
 
 use axum::{
     Json,
-    http::StatusCode,
+    extract::Request,
+    http::{StatusCode, header},
+    middleware::Next,
     response::{IntoResponse, Response},
 };
 use serde::Serialize;
@@ -211,4 +213,43 @@ pub(crate) struct ErrorResponse {
     #[schema(example = "not_found")]
     code: &'static str,
     message: String,
+}
+
+/// Gives every failure the `Error` body each endpoint contract declares.
+///
+/// The crate's own errors already leave as JSON. What does not is a rejection
+/// raised before a handler runs: a body that is not JSON, a path or query that
+/// does not parse, a body over its limit. Axum answers those in plain text, so a
+/// client reading errors by the contract could not read the ones that tell it
+/// its request was malformed. The status is kept; the body becomes the contract's.
+pub(crate) async fn json_errors(request: Request, next: Next) -> Response {
+    let response = next.run(request).await;
+    let status = response.status();
+    let is_json = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/json"));
+    if !(status.is_client_error() || status.is_server_error()) || is_json {
+        return response;
+    }
+    let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .unwrap_or_default();
+    let message = if bytes.is_empty() {
+        status
+            .canonical_reason()
+            .unwrap_or("request rejected")
+            .to_string()
+    } else {
+        String::from_utf8_lossy(&bytes).into_owned()
+    };
+    let code = match status {
+        StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => "invalid_request",
+        StatusCode::PAYLOAD_TOO_LARGE => "payload_too_large",
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => "unsupported_media_type",
+        StatusCode::METHOD_NOT_ALLOWED => "method_not_allowed",
+        _ => "request_rejected",
+    };
+    (status, Json(ErrorResponse { code, message })).into_response()
 }

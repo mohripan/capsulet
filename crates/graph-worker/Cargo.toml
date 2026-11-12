@@ -31,7 +31,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-capsulet-api = { path = "../api" }
+capsulet-api = { path = "../api", features = ["contract-conformance"] }
 capsulet-kernel = { path = "../kernel" }
 capsulet-observability = { path = "../observability", features = ["testing"] }
 capsulet-storage = { path = "../storage" }

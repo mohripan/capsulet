@@ -300,7 +300,7 @@ pub(crate) struct MemorySubgraphResponse {
     owner_id: Option<String>,
     contract_id: Option<String>,
     summary_claim_id: Option<String>,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Option<Object>)]
     permissions: Option<Value>,
     status: String,
 }

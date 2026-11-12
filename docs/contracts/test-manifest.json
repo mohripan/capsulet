@@ -20,6 +20,10 @@
         },
         {
           "path": "crates/api/src/openapi.rs",
+          "selector": "a_response_its_contract_does_not_describe_fails_the_request"
+        },
+        {
+          "path": "crates/api/src/openapi.rs",
           "selector": "a_webhook_reply_matches_its_schema"
         },
         {
@@ -41,6 +45,10 @@
         {
           "path": "crates/api/src/openapi.rs",
           "selector": "two_types_cannot_publish_one_component_name"
+        },
+        {
+          "path": "crates/api/src/openapi.rs",
+          "selector": "webhook_headers_publish_the_names_the_handler_reads"
         },
         {
           "path": "crates/api/src/tests.rs",

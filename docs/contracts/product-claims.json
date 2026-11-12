@@ -3128,7 +3128,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "HTTP API",
-      "statement": "The OpenAPI 3.1 document is generated from typed endpoint metadata that names the Rust wire type of every request, response and query, has no unresolved references, exactly matches runtime registration, validates through utoipa, and is checked for deterministic drift; real error, webhook, service-account, proposal and kernel-certificate payloads are checked against the components they publish, and published list limits are the ones handlers apply.",
+      "statement": "The OpenAPI 3.1 document is generated from typed endpoint metadata that names the Rust wire type of every request, response, query and header, and every route is registered from that metadata, so its method, path and authentication are the contract's; it has no unresolved references, validates through utoipa and is checked for deterministic drift. Every response the API's own tests and the graph-worker suites receive is checked against the contract of the route that produced it, failures included, and the dashboard and Python transports are checked against the operations they call, including the query parameters they send.",
       "public_surfaces": [
         "docs/api.md",
         "crates/api/openapi.json"
@@ -3178,6 +3178,18 @@
           "assertion": "query-limits-match-handlers",
           "evidence_selectors": [
             "published_list_limits_are_the_ones_handlers_apply"
+          ]
+        },
+        {
+          "assertion": "responses-held-to-contracts",
+          "evidence_selectors": [
+            "a_response_its_contract_does_not_describe_fails_the_request"
+          ]
+        },
+        {
+          "assertion": "headers-match-handler",
+          "evidence_selectors": [
+            "webhook_headers_publish_the_names_the_handler_reads"
           ]
         }
       ],
@@ -3262,6 +3274,20 @@
           "gate": "unit",
           "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "published_list_limits_are_the_ones_handlers_apply"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_response_its_contract_does_not_describe_fails_the_request"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/openapi.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "webhook_headers_publish_the_names_the_handler_reads"
         }
       ]
     },

@@ -143,7 +143,7 @@ be described as autonomous agent execution.
 
 ## Since M0
 
-This report records M0 as it closed and is not rewritten. Three things it says have since changed:
+This report records M0 as it closed and is not rewritten. Four things it says have since changed:
 
 - Agent runs now execute. Since 2026-11-08 the graph worker runs them on the durable path
   ([ADR 0019](../adr/0019-agent-runs-execute-on-the-durable-path.md)); the paragraph above describes
@@ -164,3 +164,25 @@ This report records M0 as it closed and is not rewritten. Three things it says h
   ignored or skipped, or the manifest is stale. Collection proves a gate would run a test, not
   that the test asserts anything. The WASI Python test, for one, passes without running where no
   runtime is configured.
+- M0 is complete. The report above recorded M0 as not yet closed, because routes, endpoint metadata
+  and schemas were independently written. By 2026-11-12 Tasks 1 ([#93](https://github.com/mohripan/capsulet/issues/93))
+  and 2 ([#94](https://github.com/mohripan/capsulet/issues/94)) met every original exit criterion:
+  - Endpoint contracts name the Rust types they read and write, and their query and header
+    parameters, instead of strings. Every route is registered from its contract, which supplies the
+    method, the path and whether authentication applies. The router refuses to start with a
+    declared operation unregistered, so the published and running operation sets are equal by
+    construction.
+  - Every component and parameter in the document comes from a Rust type. None of its references
+    dangle.
+  - Every response the API's own tests and the graph-worker suites receive is checked against the
+    contract of the route that produced it, errors included. On 2026-11-12 that was 2,691
+    responses, reaching all 131 operations, with a success body checked for 120.
+  - The dashboard and Python transports are checked against the operations they call, including
+    the query parameters they send.
+  - `cargo run -p capsulet-xtask --locked -- verify --profile fast` enforces the inventory locally,
+    and the CI jobs run the same gates.
+
+  Passing M0 still means one vocabulary and one inspectable contract inventory, not alpha
+  readiness. The 11 operations whose success bodies no test reaches yet need a model, PostgreSQL-only
+  stores, assurance certificates, a signed webhook delivery, a paused run or a live log stream to
+  exercise. Their error responses are checked.

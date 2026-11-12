@@ -109,7 +109,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 
 | ID | Maturity | Kind | Claim |
 | --- | --- | --- | --- |
-| `CAP-OPENAPI-001` | implemented | capability | The OpenAPI 3.1 document is generated from typed endpoint metadata that names the Rust wire type of every request, response and query, has no unresolved references, exactly matches runtime registration, validates through utoipa, and is checked for deterministic drift; real error, webhook, service-account, proposal and kernel-certificate payloads are checked against the components they publish, and published list limits are the ones handlers apply. |
+| `CAP-OPENAPI-001` | implemented | capability | The OpenAPI 3.1 document is generated from typed endpoint metadata that names the Rust wire type of every request, response, query and header, and every route is registered from that metadata, so its method, path and authentication are the contract's; it has no unresolved references, validates through utoipa and is checked for deterministic drift. Every response the API's own tests and the graph-worker suites receive is checked against the contract of the route that produced it, failures included, and the dashboard and Python transports are checked against the operations they call, including the query parameters they send. |
 
 ## Helm and self-hosting
 
