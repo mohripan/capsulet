@@ -1,3 +1,5 @@
+mod images;
+
 use std::{
     collections::BTreeSet,
     fs,
@@ -42,24 +44,35 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     if arguments == ["secrets", "--staged"] {
         return scan_secrets(&root, true);
     }
+    if arguments == ["images"] {
+        return images::scan(&root);
+    }
+    if arguments
+        .first()
+        .is_some_and(|command| command == "check-images")
+    {
+        let policy = arguments
+            .windows(2)
+            .find(|pair| pair[0] == "--policy")
+            .map_or_else(|| root.join(images::POLICY), |pair| PathBuf::from(&pair[1]));
+        return images::check_reports(
+            Path::new(option(arguments, "--reports")?),
+            Path::new(option(arguments, "--registry")?),
+            &policy,
+            &today(arguments),
+        );
+    }
     if arguments
         .first()
         .is_some_and(|command| command == "check-secrets")
     {
         let report = option(arguments, "--report")?;
         let registry = option(arguments, "--registry")?;
-        let today = arguments
-            .windows(2)
-            .find(|pair| pair[0] == "--today")
-            .map_or_else(
-                || Utc::now().date_naive().to_string(),
-                |pair| pair[1].clone(),
-            );
         let complete = !arguments.iter().any(|argument| argument == "--staged");
         return check_secrets(
             &read_json(Path::new(report))?,
             &read_json(Path::new(registry))?,
-            &today,
+            &today(arguments),
             complete,
         )
         .map(|_| ());
@@ -68,24 +81,28 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         .first()
         .is_none_or(|command| command != "check-npm")
     {
-        return Err("usage: security npm | security secrets [--staged] | security check-secrets --report <json> --registry <json> [--today YYYY-MM-DD] [--staged] | security check-npm --report <json> --registry <json> --lockfile <json> [--today YYYY-MM-DD]".to_string());
+        return Err("usage: security npm | security secrets [--staged] | security images | security check-secrets --report <json> --registry <json> [--today YYYY-MM-DD] [--staged] | security check-npm --report <json> --registry <json> --lockfile <json> [--today YYYY-MM-DD] | security check-images --reports <directory> --registry <json> [--policy <trivy.yaml>] [--today YYYY-MM-DD]".to_string());
     }
     let report = option(arguments, "--report")?;
     let registry = option(arguments, "--registry")?;
     let lockfile = option(arguments, "--lockfile")?;
-    let today = arguments
+    check_npm(
+        &read_json(Path::new(report))?,
+        &read_json(Path::new(registry))?,
+        &read_json(Path::new(lockfile))?,
+        &today(arguments),
+    )
+}
+
+/// `--today`, or the date in UTC.
+fn today(arguments: &[String]) -> String {
+    arguments
         .windows(2)
         .find(|pair| pair[0] == "--today")
         .map_or_else(
             || Utc::now().date_naive().to_string(),
             |pair| pair[1].clone(),
-        );
-    check_npm(
-        &read_json(Path::new(report))?,
-        &read_json(Path::new(registry))?,
-        &read_json(Path::new(lockfile))?,
-        &today,
-    )
+        )
 }
 
 fn option<'a>(arguments: &'a [String], name: &str) -> Result<&'a str, String> {
@@ -345,7 +362,10 @@ fn validate_registry(value: &Value, today: &str) -> Result<Registry, String> {
             || !exception
                 .issue
                 .starts_with("https://github.com/mohripan/capsulet/issues/")
-            || !matches!(exception.ecosystem.as_str(), "npm" | "rust" | "secret")
+            || !matches!(
+                exception.ecosystem.as_str(),
+                "npm" | "rust" | "secret" | "image"
+            )
             || !matches!(
                 exception.scope.as_str(),
                 "development-only"
@@ -353,9 +373,13 @@ fn validate_registry(value: &Value, today: &str) -> Result<Registry, String> {
                     | "unmaintained-macro"
                     | "unmaintained-parser"
                     | "test-fixture"
+                    | "upstream-image"
             )
             // A secret exception covers a test fixture, and only a secret is one.
             || ((exception.ecosystem == "secret") != (exception.scope == "test-fixture"))
+            // An image exception covers an image Capsulet pulls and cannot
+            // rebuild, and nothing else is one.
+            || ((exception.ecosystem == "image") != (exception.scope == "upstream-image"))
         {
             return Err(format!("invalid or unowned exception {}", exception.id));
         }

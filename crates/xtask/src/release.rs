@@ -7,10 +7,13 @@
 //!   image the release names.
 //! - `release images` builds each component's image the way CI does and checks
 //!   its labels. With `--plan`, it prints that build matrix instead.
+//! - `release dependency-images` lists the third-party images the chart and
+//!   Compose pull, by digest, which the `dependency-images` gate scans.
 //! - `release set <version>` rewrites every derived manifest at once.
 
 mod chart;
 mod check;
+mod dependencies;
 mod images;
 mod manifest;
 mod set;
@@ -25,6 +28,8 @@ use std::{
 use chrono::{DateTime, Utc};
 use semver::{Version, VersionReq};
 use serde::Deserialize;
+
+pub(crate) use dependencies::{dependency_images, repository};
 
 pub(crate) const RELEASE_FILE: &str = "release.toml";
 
@@ -269,9 +274,10 @@ pub(crate) fn git(root: &Path, arguments: &[&str]) -> Result<String, String> {
 }
 
 const USAGE: &str = "usage: capsulet-xtask release check | check-chart | images [--plan] | \
-                     inspect <component> <image reference> | manifest --digests <directory> \
-                     --chart <directory> --source-sbom <file> --output <file> | \
-                     set <version> (--dry-run | --write) [--allow-dirty]  [--root <directory>]";
+                     dependency-images | inspect <component> <image reference> | \
+                     manifest --digests <directory> --chart <directory> --source-sbom <file> \
+                     --output <file> | set <version> (--dry-run | --write) [--allow-dirty] \
+                     [--root <directory>]";
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     let (root, arguments) = split_root(arguments)?;
@@ -306,6 +312,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             [flag] if flag == "--plan" => images::print_plan(&root, &release),
             _ => Err(USAGE.to_string()),
         },
+        Some("dependency-images") if arguments.len() == 1 => dependencies::print(&root),
         Some("inspect") => match &arguments[1..] {
             [component, reference] => {
                 images::inspect_reference(&root, &release, component, reference)

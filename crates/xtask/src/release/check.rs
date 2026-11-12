@@ -463,7 +463,7 @@ pub(super) fn is_digest(value: &str) -> bool {
 }
 
 /// Whether a full image reference names a tag other than `latest` and a digest.
-fn pinned(image: &str) -> bool {
+pub(super) fn pinned(image: &str) -> bool {
     let Some((reference, digest)) = image.split_once('@') else {
         return false;
     };
@@ -783,7 +783,7 @@ fn tokens<'a>(line: &'a str, prefix: &str) -> Vec<&'a str> {
 }
 
 /// `registry/namespace/name` and the tag, if any, of an image reference.
-fn split_reference(reference: &str) -> (&str, Option<&str>) {
+pub(super) fn split_reference(reference: &str) -> (&str, Option<&str>) {
     let without_digest = reference.split('@').next().unwrap_or(reference);
     let last_slash = without_digest.rfind('/').unwrap_or(0);
     match without_digest[last_slash..].find(':') {

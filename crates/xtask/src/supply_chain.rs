@@ -15,7 +15,8 @@
 //!   alone. It verifies the signature, the provenance and the SBOM before it
 //!   tags anything;
 //! - the release manifest is written only after every image is verified again;
-//! - a CI job scans the whole Git history for secrets;
+//! - a CI job scans the whole Git history for secrets, and one scans the
+//!   third-party images the chart and Compose pull;
 //! - every base image a Dockerfile pulls is pinned by digest.
 
 use std::{collections::BTreeSet, fs, path::Path};
@@ -103,6 +104,7 @@ pub(crate) fn check(root: &Path) -> Result<Vec<String>, String> {
     }
     publication(&workflows, &mut findings);
     secret_scanning(&workflows, &mut findings);
+    dependency_scanning(&workflows, &mut findings);
     dependabot(root, &mut findings);
     dockerfiles(root, &mut findings)?;
     Ok(findings.0)
@@ -671,6 +673,23 @@ fn secret_scanning(workflows: &[Workflow], findings: &mut Findings) {
         findings.push(format!(
             "{WORKFLOWS}: no CI job runs the secrets gate over the whole Git history \
              (a checkout with `fetch-depth: 0`)"
+        ));
+    }
+}
+
+/// The images the chart and Compose pull are nobody's build, so nothing else
+/// in CI would scan them.
+fn dependency_scanning(workflows: &[Workflow], findings: &mut Findings) {
+    let scans = workflows.iter().any(|workflow| {
+        workflow.jobs().any(|(_, job)| {
+            steps(job)
+                .iter()
+                .any(|step| script(step).contains("--gate dependency-images"))
+        })
+    });
+    if !scans {
+        findings.push(format!(
+            "{WORKFLOWS}: no CI job runs the dependency-images gate, so nothing scans the              third-party images the chart and Compose pull"
         ));
     }
 }

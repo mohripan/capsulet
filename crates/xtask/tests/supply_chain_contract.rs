@@ -305,6 +305,17 @@ fn secret_scanning_of_only_the_latest_commit_is_refused() {
 }
 
 #[test]
+fn ci_that_never_scans_the_dependency_images_is_refused() {
+    let fixture = Fixture::new();
+    fixture.edit(
+        SUPPLY_CHAIN,
+        "        run: cargo run -p capsulet-xtask --locked -- verify --gate dependency-images",
+        "        run: cargo run -p capsulet-xtask --locked -- release dependency-images",
+    );
+    fixture.refuses(&["no CI job runs the dependency-images gate"]);
+}
+
+#[test]
 fn a_base_image_pinned_by_tag_alone_is_refused() {
     let fixture = Fixture::new();
     fixture.edit(

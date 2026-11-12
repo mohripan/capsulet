@@ -670,6 +670,26 @@ pub(crate) fn gates() -> Vec<Gate> {
             )],
         ),
         gate(
+            "dependency-images",
+            "Trivy, pinned by digest, over every third-party image the chart and Compose pull; \
+             every finding that fails trivy.yaml a registered, unexpired image exception",
+            &["cargo", "docker"],
+            1_800,
+            &[Full],
+            vec![command(
+                "cargo",
+                &[
+                    "run",
+                    "-p",
+                    "capsulet-xtask",
+                    "--locked",
+                    "--",
+                    "security",
+                    "images",
+                ],
+            )],
+        ),
+        gate(
             "containers",
             "Every component image built from release.toml's plan, its labels and non-root user \
              checked, then removed",

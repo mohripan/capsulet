@@ -87,6 +87,30 @@ jobs:
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate secrets
 
+  # The third-party images the chart and Compose pull, each scanned by the
+  # digest they pin, under trivy.yaml. Capsulet cannot rebuild them, so a
+  # finding no newer pin fixes is a registered, expiring exception in
+  # docs/contracts/security-exceptions.json; anything else fails. Trivy runs
+  # in Docker, pinned by digest, and the gate writes its version, database and
+  # result to the job summary.
+  dependency-images:
+    name: dependency images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate dependency-images
+
   # The image matrix is release.toml's, through the plan the `containers`
   # gate builds too: each component's image name, Dockerfile, target and the
   # build arguments its OCI labels come from. A matrix written here would be a

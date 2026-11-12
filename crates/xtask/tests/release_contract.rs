@@ -298,6 +298,79 @@ fn a_latest_or_unpinned_dependency_is_refused() {
     ]);
 }
 
+/// The `dependency-images` gate scans what this lists: each third-party image
+/// once, by digest, with every place that pins it, and nothing Compose builds.
+#[test]
+fn every_dependency_image_is_listed_once_by_digest() {
+    let listing = |fixture: &Fixture| {
+        let output = fixture.release(&["dependency-images"]);
+        assert!(output.status.success(), "{}", stderr(&output));
+        stdout(&output)
+    };
+    let fixture = Fixture::new();
+    let images = listing(&fixture);
+    for line in images.lines() {
+        let reference = line.split('\t').next().expect("reference");
+        assert!(reference.contains("@sha256:"), "{line}");
+        assert!(
+            !reference.contains("capsulet-"),
+            "lists a component: {line}"
+        );
+    }
+    for (image, pins) in [
+        (
+            "chrislusf/seaweedfs:",
+            "charts/capsulet/values.yaml seaweedfs.image, compose.yaml services.seaweedfs.image",
+        ),
+        (
+            "postgres:",
+            "charts/capsulet/values.yaml postgresql.image, compose.yaml services.postgres.image",
+        ),
+        ("busybox:", "charts/capsulet/values.yaml tests.image"),
+        (
+            "quay.io/keycloak/keycloak:",
+            "compose.yaml services.keycloak.image",
+        ),
+    ] {
+        let lines: Vec<&str> = images
+            .lines()
+            .filter(|line| line.starts_with(image))
+            .collect();
+        assert_eq!(lines.len(), 1, "{image} is not listed once:\n{images}");
+        assert!(lines[0].ends_with(pins), "{}", lines[0]);
+    }
+
+    // Another digest is another image to scan.
+    fixture.edit(
+        "compose.yaml",
+        "chrislusf/seaweedfs:4.53@sha256:c",
+        "chrislusf/seaweedfs:4.53@sha256:0",
+    );
+    let images = listing(&fixture);
+    assert_eq!(
+        images
+            .lines()
+            .filter(|line| line.starts_with("chrislusf/seaweedfs:"))
+            .count(),
+        2,
+        "{images}"
+    );
+
+    // An image that is not pinned cannot be scanned by digest.
+    fixture.edit(
+        "compose.yaml",
+        "axllent/mailpit:v1.33.1@",
+        "axllent/mailpit:latest@",
+    );
+    let output = fixture.release(&["dependency-images"]);
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("compose.yaml: services.smtp.image"),
+        "{}",
+        stderr(&output)
+    );
+}
+
 #[test]
 fn a_second_dockerfile_is_refused() {
     let fixture = Fixture::new();

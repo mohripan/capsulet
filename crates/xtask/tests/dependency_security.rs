@@ -276,3 +276,240 @@ fn an_expired_or_mis_scoped_secret_exception_is_refused() {
             .contains("invalid or unowned exception SECRET-2026-0001")
     );
 }
+
+const SEAWEEDFS: &str = "chrislusf/seaweedfs:4.53@sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0";
+const POSTGRES: &str =
+    "postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139";
+
+fn image_registry(scope: &str, expires: &str) -> Value {
+    json!({"schema_version": 1, "exceptions": [{
+        "id": "IMAGE-2026-0001", "ecosystem": "image", "package": "chrislusf/seaweedfs",
+        "versions": ["CVE-2026-78661"], "scope": scope, "owner": "platform",
+        "rationale": "The HTML parser is not linked into the weed binary.",
+        "compensating_control": "The gate fails once a newer pin no longer has it.",
+        "issue": "https://github.com/mohripan/capsulet/issues/101", "expires": expires
+    }]})
+}
+
+fn no_exceptions() -> Value {
+    json!({"schema_version": 1, "exceptions": []})
+}
+
+/// A Trivy JSON report of one image.
+fn image_report(reference: &str, vulnerabilities: &[Value]) -> Value {
+    json!({"SchemaVersion": 2, "ArtifactName": reference, "ArtifactType": "container_image",
+    "Results": [
+        {"Target": "alpine 3.22", "Class": "os-pkgs", "Type": "alpine"},
+        {"Target": "usr/bin/weed", "Class": "lang-pkgs", "Type": "gobinary",
+            "Vulnerabilities": vulnerabilities}
+    ]})
+}
+
+fn vulnerability(id: &str, severity: &str, status: &str) -> Value {
+    json!({"VulnerabilityID": id, "PkgName": "golang.org/x/net", "PkgPath": "usr/bin/weed",
+        "InstalledVersion": "v0.61.0", "FixedVersion": "0.62.0", "Status": status,
+        "Severity": severity})
+}
+
+/// `security check-images` on these reports, under the repository's trivy.yaml.
+fn check_images(reports: &[Value], registry: &Value, today: &str) -> std::process::Output {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let scans = directory.path().join("reports");
+    fs::create_dir(&scans).expect("reports");
+    for (index, report) in reports.iter().enumerate() {
+        fs::write(scans.join(format!("{index}.json")), report.to_string()).expect("report");
+    }
+    fs::write(directory.path().join("registry.json"), registry.to_string()).expect("registry");
+    Command::new(env!("CARGO_BIN_EXE_capsulet-xtask"))
+        .args(["security", "check-images", "--reports"])
+        .arg(&scans)
+        .arg("--registry")
+        .arg(directory.path().join("registry.json"))
+        .args(["--today", today])
+        .output()
+        .expect("checker runs")
+}
+
+#[test]
+fn a_registered_image_finding_passes() {
+    let output = check_images(
+        &[image_report(
+            SEAWEEDFS,
+            &[vulnerability("CVE-2026-78661", "HIGH", "fixed")],
+        )],
+        &image_registry("upstream-image", "2026-12-12"),
+        "2026-11-12",
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("EXCEPTION IMAGE-2026-0001: CVE-2026-78661 (HIGH) in golang.org/x/net"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn an_unregistered_image_finding_fails() {
+    let output = check_images(
+        &[image_report(
+            SEAWEEDFS,
+            &[
+                vulnerability("CVE-2026-78661", "HIGH", "fixed"),
+                vulnerability("CVE-2026-99999", "CRITICAL", "fixed"),
+            ],
+        )],
+        &image_registry("upstream-image", "2026-12-12"),
+        "2026-11-12",
+    );
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "1 finding(s) in dependency images fail trivy.yaml outside the exception registry"
+        ) && stderr.contains("CVE-2026-99999 (CRITICAL)"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn an_image_exception_covers_its_own_repository_only() {
+    let output = check_images(
+        &[
+            image_report(
+                SEAWEEDFS,
+                &[vulnerability("CVE-2026-78661", "HIGH", "fixed")],
+            ),
+            image_report(
+                POSTGRES,
+                &[vulnerability("CVE-2026-78661", "HIGH", "fixed")],
+            ),
+        ],
+        &image_registry("upstream-image", "2026-12-12"),
+        "2026-11-12",
+    );
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "CVE-2026-78661 (HIGH) in golang.org/x/net v0.61.0, fixed in 0.62.0, at usr/bin/weed \
+             in {POSTGRES}"
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn a_finding_trivy_yaml_does_not_fail_on_needs_no_exception() {
+    let output = check_images(
+        &[image_report(
+            SEAWEEDFS,
+            &[
+                vulnerability("CVE-2026-10001", "MEDIUM", "fixed"),
+                vulnerability("CVE-2026-10002", "CRITICAL", "affected"),
+                vulnerability("CVE-2026-10003", "HIGH", "will_not_fix"),
+            ],
+        )],
+        &no_exceptions(),
+        "2026-11-12",
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("no image has a finding that fails trivy.yaml")
+    );
+}
+
+#[test]
+fn an_expired_image_exception_fails() {
+    let output = check_images(
+        &[image_report(
+            SEAWEEDFS,
+            &[vulnerability("CVE-2026-78661", "HIGH", "fixed")],
+        )],
+        &image_registry("upstream-image", "2026-12-12"),
+        "2026-12-12",
+    );
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("expired exception IMAGE-2026-0001"));
+}
+
+#[test]
+fn an_image_exception_the_scan_no_longer_needs_is_stale() {
+    let registry = image_registry("upstream-image", "2026-12-12");
+    // A newer pin that no longer has it, or no fix to move to any more.
+    for vulnerabilities in [
+        vec![],
+        vec![vulnerability("CVE-2026-78661", "HIGH", "affected")],
+    ] {
+        let output = check_images(
+            &[image_report(SEAWEEDFS, &vulnerabilities)],
+            &registry,
+            "2026-11-12",
+        );
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(
+                "stale image exception IMAGE-2026-0001: CVE-2026-78661 no longer fails trivy.yaml \
+                 in chrislusf/seaweedfs"
+            ),
+            "{stderr}"
+        );
+    }
+    // An image nothing pulls any more.
+    let output = check_images(&[image_report(POSTGRES, &[])], &registry, "2026-11-12");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains(
+        "stale image exception IMAGE-2026-0001: chrislusf/seaweedfs is not an image the chart or \
+         Compose pulls"
+    ));
+}
+
+#[test]
+fn an_image_exception_must_be_scoped_to_an_upstream_image() {
+    let report = image_report(
+        SEAWEEDFS,
+        &[vulnerability("CVE-2026-78661", "HIGH", "fixed")],
+    );
+    for scope in ["development-only", "test-fixture"] {
+        let output = check_images(
+            std::slice::from_ref(&report),
+            &image_registry(scope, "2026-12-12"),
+            "2026-11-12",
+        );
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("invalid or unowned exception IMAGE-2026-0001")
+        );
+    }
+}
+
+#[test]
+fn a_malformed_image_report_fails() {
+    let mut old = image_report(SEAWEEDFS, &[]);
+    old["SchemaVersion"] = json!(1);
+    let unknown = image_report(
+        SEAWEEDFS,
+        &[vulnerability("CVE-2026-78661", "SEVERE", "fixed")],
+    );
+    let mut filesystem = image_report(SEAWEEDFS, &[]);
+    filesystem["ArtifactType"] = json!("filesystem");
+    for report in [old, unknown, filesystem] {
+        let output = check_images(&[report], &no_exceptions(), "2026-11-12");
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("invalid Trivy report"),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}

@@ -97,8 +97,8 @@ verified.
 | --- | --- | --- |
 | GitHub Actions | full commit SHA, with a `# vX.Y.Z` comment | Dependabot (`github-actions`), which updates the SHA and the comment together |
 | Base images in `crates/Dockerfile` and `dashboard/Dockerfile` | `name:tag@sha256:digest` | Dependabot (`docker` in `/crates` and `/dashboard`) |
-| Images Compose and the chart pull | digest, the same in both (`release check`) | review |
-| Trivy | the version the pinned `trivy-action` installs | its Dependabot update |
+| Images Compose and the chart pull | digest, the same in both (`release check`), and scanned by that digest ([`dependency-images`](#dependency-images)) | review |
+| Trivy | the version the pinned `trivy-action` installs; the `dependency-images` gate runs the same release by image digest, in `crates/xtask/src/security/images.rs` | its Dependabot update for the action, review for the image |
 | gitleaks | image digest, in `crates/xtask/src/security.rs` | review |
 | cargo-audit, cargo-deny | exact versions in `supply-chain.yml` | review |
 
@@ -137,6 +137,43 @@ A staged finding always fails, since nothing staged has a commit to register. Bu
 runtime rather than writing a secret-shaped literal; if one really must be committed, commit it,
 and register the fingerprint the CI scan reports.
 
+## Dependency images
+
+Capsulet also ships images it does not build. The chart bundles PostgreSQL, SeaweedFS and the
+image `helm test` runs, and Compose adds Mailpit, Keycloak, Prometheus and Grafana. The
+`dependency-images` gate scans each one:
+
+- `release dependency-images` lists every image that `charts/capsulet/values.yaml` and
+  `compose.yaml` pin. It reads them with the parsers `release check` uses, lists each digest
+  once, and names every place that pins it. A Compose service that builds its image is a
+  component, which the pipelines above scan.
+- Trivy runs in Docker, pinned by digest. It is the release the pinned `trivy-action` installs.
+  It downloads its databases once, then reads each image from its registry by the pinned digest,
+  taking the `linux/amd64` manifest of a multi-platform image. What is scanned is exactly what the
+  chart and Compose run. Each raw report is kept below `.capsulet/security/dependency-images/`.
+- The thresholds are `trivy.yaml`'s, read from that file: a HIGH or CRITICAL vulnerability that
+  has a fixed version fails.
+
+Capsulet cannot rebuild an upstream image. If a newer release of the image fixes a finding, move
+the pin, in `values.yaml` and `compose.yaml` alike. If none does yet, register the finding in
+[`security-exceptions.json`](../contracts/security-exceptions.json) with:
+
+- ecosystem `image` and scope `upstream-image`;
+- the repository as `package`, such as `chrislusf/seaweedfs`;
+- the vulnerability ids as `versions`;
+- an owner, an issue and an expiry.
+
+The gate fails on a finding nobody registered and on an expired entry. It also fails on an entry
+the scan no longer needs: one whose vulnerability no longer fails the policy, such as after a new
+pin, or whose image nothing pulls any more.
+
+```powershell
+cargo run -p capsulet-xtask -- verify --gate dependency-images
+```
+
+The `dependency images` job in `supply-chain.yml` runs the gate for every pull request and on
+`main`.
+
 ## Summaries and failures
 
 Every scanning job writes its scanner's version, the policy it applied and the result to the job
@@ -163,7 +200,8 @@ summary. Nothing converts a failed scan into a warning:
   - or tags before scanning, signing and verifying;
 - signing anything by reference other than a digest;
 - a release manifest written before every image is verified;
-- no CI job that scans the whole history for secrets;
+- no CI job that scans the whole history for secrets, or none that runs the `dependency-images`
+  gate;
 - a base image pinned by tag alone, or a pin Dependabot does not refresh.
 
 ## Not provided

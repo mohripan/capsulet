@@ -59,6 +59,134 @@
       "compensating_control": "The secrets gate scans the whole history in CI and fails on any finding that is not one of these fingerprints, or when one of them stops being found. Deployed tokens are generated per stack or per install and never committed.",
       "issue": "https://github.com/mohripan/capsulet/issues/101",
       "expires": "2027-05-12"
+    },
+    {
+      "id": "IMAGE-2026-0001",
+      "ecosystem": "image",
+      "package": "chrislusf/seaweedfs",
+      "versions": [
+        "CVE-2026-78661"
+      ],
+      "scope": "upstream-image",
+      "owner": "platform",
+      "rationale": "A denial of service in golang.org/x/net/html, flagged because weed is built with x/net v0.61.0. The HTML parser is not in the binary: weed links nine x/net packages (http2, webdav, trace, idna, dns, internal, http, proxy, context) but not html, and govulncheck -mode binary reports GO-2026-6860 at module level only. Capsulet sends SeaweedFS only S3 requests; the chart and Compose run weed mini with only the S3 port reachable and WebDAV, the admin UI, Iceberg and Lance switched off. 4.53 is the newest SeaweedFS release.",
+      "compensating_control": "The dependency-images gate fails as soon as a SeaweedFS pin no longer has this finding, so the entry cannot outlive the upgrade. Before registering it again for a new pin, check that weed still does not link golang.org/x/net/html.",
+      "issue": "https://github.com/mohripan/capsulet/issues/101",
+      "expires": "2027-02-12"
+    },
+    {
+      "id": "IMAGE-2026-0002",
+      "ecosystem": "image",
+      "package": "postgres",
+      "versions": [
+        "CVE-2025-61726",
+        "CVE-2025-61729",
+        "CVE-2025-68121",
+        "CVE-2026-25679",
+        "CVE-2026-27145",
+        "CVE-2026-32280",
+        "CVE-2026-32281",
+        "CVE-2026-32283",
+        "CVE-2026-33811",
+        "CVE-2026-33814",
+        "CVE-2026-33818",
+        "CVE-2026-39820",
+        "CVE-2026-39821",
+        "CVE-2026-39822",
+        "CVE-2026-39836",
+        "CVE-2026-42499",
+        "CVE-2026-42504",
+        "CVE-2026-56853",
+        "CVE-2026-56858",
+        "CVE-2026-56859",
+        "CVE-2026-56860",
+        "CVE-2026-56862",
+        "CVE-2026-78667",
+        "CVE-2026-78669",
+        "CVE-2026-97031",
+        "CVE-2026-111943"
+      ],
+      "scope": "upstream-image",
+      "owner": "platform",
+      "rationale": "Go standard library advisories in /usr/local/bin/gosu, which the official image builds with Go 1.24.6 and its entrypoint runs once to drop root before it execs postgres. govulncheck -mode binary on that gosu calls none of them: 25 are reported at module level and CVE-2026-39822 at package level, with no affected function reached. gosu opens no socket and parses no network input. postgres:16-alpine has no digest newer than the pinned one.",
+      "compensating_control": "The gate fails once a postgres pin no longer carries these findings. Re-run govulncheck on gosu before registering a new pin's findings.",
+      "issue": "https://github.com/mohripan/capsulet/issues/101",
+      "expires": "2027-02-12"
+    },
+    {
+      "id": "IMAGE-2026-0003",
+      "ecosystem": "image",
+      "package": "postgres",
+      "versions": [
+        "CVE-2026-9947",
+        "CVE-2026-40355",
+        "CVE-2026-40356",
+        "CVE-2026-71199",
+        "CVE-2026-71200",
+        "CVE-2026-87636",
+        "CVE-2026-107364",
+        "CVE-2026-112315",
+        "CVE-2026-112316",
+        "CVE-2026-112317",
+        "CVE-2026-112318",
+        "CVE-2026-112319",
+        "CVE-2026-112320",
+        "CVE-2026-112321",
+        "CVE-2026-112322",
+        "CVE-2026-112323",
+        "CVE-2026-118380",
+        "CVE-2026-119079",
+        "CVE-2026-125350"
+      ],
+      "scope": "upstream-image",
+      "owner": "platform",
+      "rationale": "Alpine published krb5-libs 1.22.3-r0 and libxslt 1.1.43-r4 after the image's 2026-11-06 build. Nothing Capsulet configures uses GSSAPI or XSLT. Of the 16 krb5 advisories, ten are in the KDC and kadmind and their RPC layer (libkdb5, libkadm5srv, libgssrpc), which postgres does not link; CVE-2026-71200 needs a PKINIT KDC and CVE-2026-71199 an authenticated Kerberos principal; CVE-2026-40355 and CVE-2026-40356 need a NegoEx mechanism in /etc/gss/mech, and the image has no /etc/gss. The two ASN.1 decoder advisories (CVE-2026-107364, CVE-2026-119079) are in libkrb5, which postgres links for GSSAPI: Capsulet writes no gss rule into pg_hba.conf (the image's default is scram-sha-256) and ships no keytab, so the server holds no Kerberos acceptor credentials. libxslt is linked only by pgxml.so, the xml2 extension, which no Capsulet migration creates. The database port is a ClusterIP service in the chart and bound to 127.0.0.1 in Compose.",
+      "compensating_control": "Short expiry: the official image is rebuilt when Alpine ships fixes, and the gate fails on this entry as soon as a new postgres:16-alpine digest no longer has them. Move the pin in compose.yaml and the chart's postgresql.image together.",
+      "issue": "https://github.com/mohripan/capsulet/issues/101",
+      "expires": "2026-11-26"
+    },
+    {
+      "id": "IMAGE-2026-0004",
+      "ecosystem": "image",
+      "package": "prom/prometheus",
+      "versions": [
+        "CVE-2026-78661"
+      ],
+      "scope": "upstream-image",
+      "owner": "platform",
+      "rationale": "The same golang.org/x/net/html denial of service as IMAGE-2026-0001, flagged in /bin/prometheus and /bin/promtool because both are built with x/net v0.61.0. Neither binary links golang.org/x/net/html, and govulncheck -mode binary reports GO-2026-6860 at module level only in both. v3.16.0 is the newest Prometheus release. Prometheus runs only in the Compose development stack, bound to 127.0.0.1.",
+      "compensating_control": "The gate fails once a Prometheus pin no longer has this finding.",
+      "issue": "https://github.com/mohripan/capsulet/issues/101",
+      "expires": "2027-02-12"
+    },
+    {
+      "id": "IMAGE-2026-0005",
+      "ecosystem": "image",
+      "package": "grafana/grafana",
+      "versions": [
+        "CVE-2026-21728",
+        "CVE-2026-28377"
+      ],
+      "scope": "upstream-image",
+      "owner": "platform",
+      "rationale": "Advisories against the Tempo server: unbounded search limits in its query path, and the S3 encryption key in its /status/config endpoint. Grafana is flagged because it is built with the github.com/grafana/tempo module, but it links only Tempo's protobuf types (pkg/tempopb and its trace, common and resource packages), not the querier, the frontend or the HTTP endpoints. govulncheck cannot tell, because neither advisory names a package. Compose provisions only a Prometheus datasource, and Grafana runs only in the Compose development stack, bound to 127.0.0.1. 12.4.15 is the newest Grafana 12 release.",
+      "compensating_control": "The gate fails once a Grafana pin no longer carries the Tempo module at an affected version.",
+      "issue": "https://github.com/mohripan/capsulet/issues/101",
+      "expires": "2027-02-12"
+    },
+    {
+      "id": "IMAGE-2026-0006",
+      "ecosystem": "image",
+      "package": "quay.io/keycloak/keycloak",
+      "versions": [
+        "CVE-2026-102554"
+      ],
+      "scope": "upstream-image",
+      "owner": "platform",
+      "rationale": "Unbounded allocation while Java-deserializing Guava collections, in guava 33.6.0-jre. Keycloak accepts no Java-serialized objects over HTTP, and Compose runs it with start-dev, whose caches are local, so no cluster peer sends it serialized cache entries either. Keycloak runs only in the Compose development stack as its test identity provider, bound to 127.0.0.1; the chart does not ship it. 26.8.2 is the newest Keycloak release.",
+      "compensating_control": "Short expiry, because a Keycloak patch release is expected to move Guava; the gate fails on this entry once a pin no longer has it.",
+      "issue": "https://github.com/mohripan/capsulet/issues/101",
+      "expires": "2026-12-12"
     }
   ]
 }

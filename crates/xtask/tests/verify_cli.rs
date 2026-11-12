@@ -194,6 +194,7 @@ fn lists_the_executable_gate_graph_as_json() {
         "containers",
         "supply-chain-contract",
         "secrets",
+        "dependency-images",
     ] {
         assert!(
             graph
