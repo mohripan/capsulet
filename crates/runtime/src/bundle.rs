@@ -12,7 +12,9 @@
 //!
 //! [`explain`] is what reading one is for. It folds the log again, which needs nothing
 //! but the bundle, and says how far that goes: the decisions replay, the node work
-//! does not, and for each node it says what the work would have needed.
+//! does not, and for each node it says what the work would have needed. Each
+//! decision is made again from the log before it ([`crate::replay`]), so a log that
+//! the runtime would not have written disagrees even when it folds.
 
 use std::collections::BTreeMap;
 
@@ -24,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::event::{RecordedEvent, RunEvent};
+use crate::replay::{DecisionReplay, replay_decisions};
 use crate::state::{RunState, RunStatus, Spent};
 
 /// What a sealed bundle says it is.
@@ -206,13 +209,19 @@ pub struct Explanation {
     pub unfinished: Vec<Identifier>,
     pub ended_because: Option<String>,
     pub waiting_on: Option<String>,
+    /// Every decision in the log, made again from the log before it.
+    pub decisions: DecisionReplay,
 }
 
 impl Explanation {
-    /// Whether the log supports everything the installation reported.
+    /// Whether the log supports everything the installation reported, and
+    /// records only decisions the runtime makes again.
     #[must_use]
     pub fn agrees(&self) -> bool {
-        self.status.is_ok() && self.definition_matches && self.disagreements.is_empty()
+        self.status.is_ok()
+            && self.definition_matches
+            && self.disagreements.is_empty()
+            && self.decisions.agrees()
     }
 }
 
@@ -286,6 +295,7 @@ pub fn explain(bundle: &RunBundle) -> Explanation {
         unfinished,
         ended_because,
         waiting_on,
+        decisions: replay_decisions(&bundle.definition, &bundle.events),
     }
 }
 

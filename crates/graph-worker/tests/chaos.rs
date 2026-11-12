@@ -138,6 +138,22 @@ async fn a_run_survives_the_worker_dying_at_every_step_boundary() {
 }
 
 /// Everything the milestone promises about a run that survived a crash.
+/// Every decision any worker made, before or after a restart, is the one
+/// `decide` makes again from the log before it: recovery wrote nothing the
+/// runtime would not have.
+fn assert_decisions_replay(
+    definition: &capsulet_ir::Definition,
+    events: &[capsulet_runtime::RecordedEvent],
+) {
+    let replay = capsulet_runtime::replay::replay_decisions(definition, events);
+    assert!(
+        replay.agrees(),
+        "decisions the runtime would not make again: {:?}",
+        replay.divergences
+    );
+    assert!(replay.replayed > 0, "{replay:?}");
+}
+
 async fn assert_run_is_intact(
     store: &PostgresStore,
     tenant: &str,
@@ -158,6 +174,8 @@ async fn assert_run_is_intact(
         "the run did not finish: {:?}",
         state.failure()
     );
+
+    assert_decisions_replay(definition, &events);
 
     // No committed state was lost: the loop ran the number of times its
     // condition called for, whatever a restart interrupted.

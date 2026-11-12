@@ -234,18 +234,43 @@ The dashboard does not require browser CORS configuration because browser reques
 Export the run as a bundle and read it on any machine, with no database, network or cluster:
 
 ```sh
-curl -fsS -X POST \
-  -H "authorization: Bearer $CAPSULET_TOKEN" \
-  -H "x-capsulet-project-id: $CAPSULET_PROJECT" \
-  "$CAPSULET_API/v1/agent-runs/$RUN_ID/debug-bundle" > run.json
+capsulet agent-runs bundle "$RUN_ID" --project "$CAPSULET_PROJECT" --output run.json
 cargo run -p capsulet-replay --locked -- run.json
 ```
 
+The CLI reads `CAPSULET_API_URL` and `CAPSULET_API_TOKEN` (or `--api-url` and `--api-token`) and needs
+`agents:read` in the project. It checks the bundle against its digest before writing it, so a file it
+writes is the one the API sealed. Every export is recorded in the project's audit log.
+
 `capsulet-replay` checks the bundle against its digest, folds the log again, and prints what the run
 did: each node's attempts and failures, each effect and how it came out, what spent its budget, why it
-ended, and what it was in the middle of if it was interrupted. It exits `0` when the log supports what
-the installation reported, `1` when it does not, and `2` when the bundle cannot be read or does not match
-its digest.
+ended, and what it was in the middle of if it was interrupted.
+
+It also makes every decision in the log again. `decide` is a pure function of the definition, the
+log so far and the time, so for each event a worker chose to write (start a node, claim an effect,
+open or close an iteration, stop a loop, compensate, end the run) the replay folds the log before it
+and decides again. Any event the runtime would not have written is named, with what it would have
+decided instead. A log can fold and still fail this: one with a node cut out of it folds fine, and
+the replay says the runtime would have started that node. The replay counts, but cannot judge, what
+the outside world wrote (admission, inputs and answered signals) and what a node's or effect's own
+work wrote (what it consumed and how it ended).
+
+It exits `0` when the log supports what the installation reported and every decision replays, `1`
+when either fails, and `2` when the bundle cannot be read or does not match its digest.
+
+To look through a run rather than read a report, write it as one page and open it in a browser:
+
+```sh
+cargo run -p capsulet-replay --locked -- run.json --html run.html
+```
+
+The page needs no server, runs no script and loads nothing from anywhere. It walks the run, then
+each node, then what the node was observed to do, each event marked as a decision made again, an
+outside event, or a decision's own work. Under that come the evidence those events name by digest
+(inputs, outputs, receipts), and what the run's verification amounted to: an agent run admitted in
+observe mode captured evidence, evaluated no obligation and issued no certificate, and the page
+says so. Any decision the runtime would not have made is marked where it happened and listed at
+the top.
 
 It also says how far an offline reader can go. The fold, the status and the spend are reproduced. Node
 work is not: a model call can answer differently each time it is asked, a retrieval read the project's

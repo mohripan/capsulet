@@ -1,5 +1,6 @@
 use std::{fmt::Write as _, path::PathBuf, process::ExitCode};
 
+use capsulet_runtime::bundle::{BundleError, SealedRunBundle};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use reqwest::{
@@ -34,6 +35,13 @@ struct Cli {
         help = "Bearer token for the Capsulet API"
     )]
     api_token: Option<String>,
+    #[arg(
+        long,
+        env = "CAPSULET_PROJECT",
+        global = true,
+        help = "Project the request is about, for project-scoped resources such as agent runs"
+    )]
+    project: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -92,6 +100,8 @@ enum Command {
     Artifacts(ArtifactsCommand),
     #[command(subcommand, about = "Inspect a job run")]
     Run(RunCommand),
+    #[command(subcommand, about = "Inspect agent runs")]
+    AgentRuns(AgentRunsCommand),
     #[command(about = "Generate shell completion scripts")]
     Completions {
         #[arg(value_enum, help = "Target shell")]
@@ -113,6 +123,23 @@ enum ArtifactsCommand {
         #[arg(help = "Artifact ID")]
         artifact_id: String,
         #[arg(long, short = 'o', help = "Output file path")]
+        output: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum AgentRunsCommand {
+    /// Exports a run as a digest-checked debug bundle, for `capsulet-replay`.
+    ///
+    /// The bundle holds the definition the run executed, its whole log, what the
+    /// installation reported, and its trace id. It holds none of what the run was
+    /// given or produced: the log names those by digest. The export is recorded
+    /// in the project's audit log.
+    #[command(about = "Export one agent run as a debug bundle")]
+    Bundle {
+        #[arg(help = "Agent run ID")]
+        id: String,
+        #[arg(long, short = 'o', help = "File to write the bundle to")]
         output: PathBuf,
     },
 }
@@ -218,14 +245,49 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
             let run = api.get_run(&id).await?;
             Ok(format_run_detail(&run))
         }
+        Command::AgentRuns(AgentRunsCommand::Bundle { id, output }) => {
+            let project = cli.project.ok_or(CliError::ProjectRequired)?;
+            let api =
+                ApiClient::new(cli.api_url, cli.api_token.as_deref())?.for_project(&project)?;
+            let body = api.agent_run_bundle(&id).await?;
+            let (sealed, summary) = checked_bundle(&body)?;
+            let text = serde_json::to_string_pretty(&sealed)?;
+            std::fs::write(&output, text + "\n")?;
+            Ok(format!(
+                "wrote {}: {summary}\nread it offline with: capsulet-replay {}\n",
+                output.display(),
+                output.display()
+            ))
+        }
     }
+}
+
+/// The bundle a response carries, after checking it is one and that its body is
+/// the one its digest names, and a line saying what it holds. Nothing is written
+/// for a bundle that does not check.
+fn checked_bundle(body: &str) -> Result<(SealedRunBundle, String), CliError> {
+    let sealed: SealedRunBundle = serde_json::from_str(body)?;
+    let bundle = sealed.open()?;
+    let summary = format!(
+        "run {} of agent {}, {} events, bundle version {}, digest {}",
+        bundle.run_id,
+        bundle.agent_id,
+        bundle.events.len(),
+        sealed.bundle_version,
+        sealed.digest
+    );
+    Ok((sealed, summary))
 }
 
 #[derive(Debug, Clone)]
 struct ApiClient {
     base_url: Url,
     client: reqwest::Client,
+    headers: HeaderMap,
 }
+
+/// The header that names the project a project-scoped request is about.
+const PROJECT_HEADER: &str = "x-capsulet-project-id";
 
 impl ApiClient {
     fn new(base_url: Url, token: Option<&str>) -> Result<Self, CliError> {
@@ -235,11 +297,51 @@ impl ApiClient {
                 .map_err(|_| CliError::InvalidApiToken)?;
             headers.insert(AUTHORIZATION, value);
         }
+        Self::with_headers(base_url, headers)
+    }
+
+    fn with_headers(base_url: Url, headers: HeaderMap) -> Result<Self, CliError> {
         Ok(Self {
             base_url,
             client: reqwest::Client::builder()
-                .default_headers(headers)
+                .default_headers(headers.clone())
                 .build()?,
+            headers,
+        })
+    }
+
+    /// The same client, naming `project` on every request.
+    fn for_project(self, project: &str) -> Result<Self, CliError> {
+        let mut headers = self.headers;
+        let value = HeaderValue::from_str(project)
+            .map_err(|_| CliError::InvalidProject(project.to_string()))?;
+        headers.insert(PROJECT_HEADER, value);
+        Self::with_headers(self.base_url, headers)
+    }
+
+    /// `POST /v1/agent-runs/{id}/debug-bundle`, as the text the API returned, so
+    /// the digest is checked over exactly the bytes that came back.
+    async fn agent_run_bundle(&self, id: &str) -> Result<String, CliError> {
+        let response = self
+            .client
+            .post(self.url(&["v1", "agent-runs", id, "debug-bundle"])?)
+            .json(&serde_json::json!({}))
+            .send()
+            .await?;
+        let status = response.status();
+        let body = response.text().await?;
+        if status.is_success() {
+            return Ok(body);
+        }
+        let error =
+            serde_json::from_str::<ApiErrorResponse>(&body).unwrap_or_else(|_| ApiErrorResponse {
+                code: "http_error".to_string(),
+                message: body,
+            });
+        Err(CliError::Api {
+            status,
+            code: error.code,
+            message: error.message,
         })
     }
 
@@ -495,6 +597,12 @@ enum CliError {
     Io(#[from] std::io::Error),
     #[error("failed to encode completion script: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
+    #[error("this command needs a project: pass --project or set CAPSULET_PROJECT")]
+    ProjectRequired,
+    #[error("project id contains invalid header characters: {0:?}")]
+    InvalidProject(String),
+    #[error("the API returned a bundle that does not check: {0}")]
+    Bundle(#[from] BundleError),
     #[error("API returned {status}: {code}: {message}")]
     Api {
         status: StatusCode,

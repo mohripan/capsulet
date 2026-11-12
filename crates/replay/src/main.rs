@@ -1,16 +1,17 @@
 //! `capsulet-replay` — check a certificate against the evidence it cites, or
 //! explain a run from its bundle.
 //!
-//! Usage: `capsulet-replay <bundle.json>`
+//! Usage: `capsulet-replay <bundle.json> [--html <page.html>]`
 //!
 //! A certificate bundle: exits 0 when the certificate still justifies its recorded
 //! verdict, 1 when it does not, and 2 when the bundle cannot be read at all.
 //!
-//! A run bundle (`POST /v1/agent-runs/{id}/debug-bundle`): checks its digest, folds
-//! its log again, and says what the run did, why it ended, and which of its steps a
+//! A run bundle (`capsulet agent-runs bundle`, or `POST /v1/agent-runs/{id}/debug-bundle`):
+//! checks its digest, folds its log again, makes every decision in it again from the
+//! log before it, and says what the run did, why it ended, and which of its steps a
 //! reader could reproduce without the installation. Exits 0 when the log supports
-//! what the installation reported, 1 when it does not, and 2 when the bundle cannot
-//! be read or does not match its digest.
+//! what the installation reported and every decision replays, 1 when either does
+//! not, and 2 when the bundle cannot be read or does not match its digest.
 //!
 //! The distinction matters to a script: "this is wrong" and "I could not open the
 //! file" are different problems.
@@ -30,11 +31,24 @@ use capsulet_runtime::bundle::{
     Explanation, RUN_BUNDLE_KIND, Rework, RunBundle, SealedRunBundle, explain,
 };
 
+mod html;
+
+const USAGE: &str = "usage: capsulet-replay <bundle.json> [--html <page.html>]";
+
 fn main() -> ExitCode {
     let mut arguments = std::env::args_os().skip(1);
     let Some(path) = arguments.next().map(PathBuf::from) else {
-        eprintln!("usage: capsulet-replay <bundle.json>");
+        eprintln!("{USAGE}");
         return ExitCode::from(2);
+    };
+    // A run bundle can also be written out as one page to open in a browser.
+    let page = match (arguments.next(), arguments.next(), arguments.next()) {
+        (None, ..) => None,
+        (Some(flag), Some(page), None) if flag == "--html" => Some(PathBuf::from(page)),
+        _ => {
+            eprintln!("{USAGE}");
+            return ExitCode::from(2);
+        }
     };
 
     let bytes = match std::fs::read(&path) {
@@ -50,12 +64,28 @@ fn main() -> ExitCode {
         && sealed.kind == RUN_BUNDLE_KIND
     {
         return match sealed.open() {
-            Ok(bundle) => report_run(&bundle, &explain(&bundle)),
+            Ok(bundle) => {
+                let explanation = explain(&bundle);
+                if let Some(page) = &page
+                    && let Err(error) = std::fs::write(page, html::render(&bundle, &explanation))
+                {
+                    eprintln!("cannot write {}: {error}", page.display());
+                    return ExitCode::from(2);
+                }
+                report_run(&bundle, &explanation)
+            }
             Err(error) => {
                 eprintln!("{}: {error}", path.display());
                 ExitCode::from(2)
             }
         };
+    }
+    if page.is_some() {
+        eprintln!(
+            "--html is for run bundles; {} is a certificate bundle",
+            path.display()
+        );
+        return ExitCode::from(2);
     }
 
     let bundle = match Bundle::read(&bytes) {
@@ -233,15 +263,30 @@ fn report_run(bundle: &RunBundle, explanation: &Explanation) -> ExitCode {
     }
 
     print_steps(explanation);
+    let decisions = &explanation.decisions;
+    println!(
+        "decisions: {} made again from the log before them, {} written by the outside \
+         world, {} written by a decision's own work",
+        decisions.replayed, decisions.external, decisions.consequences
+    );
     print_offline(bundle, explanation);
 
     if explanation.agrees() {
-        println!("agrees: the log supports what was reported");
+        println!(
+            "agrees: the log supports what was reported, and is one the runtime would \
+             have written"
+        );
         ExitCode::SUCCESS
     } else {
         println!("disagrees:");
         for disagreement in &explanation.disagreements {
             println!("  {disagreement}");
+        }
+        for divergence in &decisions.divergences {
+            println!(
+                "  event {} records {}, but deciding again from the log before it gives: {}",
+                divergence.position, divergence.recorded, divergence.decided
+            );
         }
         ExitCode::FAILURE
     }
@@ -279,7 +324,10 @@ fn print_steps(explanation: &Explanation) {
 /// What a reader without the installation can and cannot do again.
 fn print_offline(bundle: &RunBundle, explanation: &Explanation) {
     println!("offline:");
-    println!("  reproduced here: the fold of every event, the status, and the spend");
+    println!(
+        "  reproduced here: the fold of every event, the status, the spend, and every \
+         decision"
+    );
     let needing = |rework: Rework| -> Vec<&str> {
         explanation
             .nodes

@@ -884,7 +884,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Graphs and agents",
-      "statement": "An agent run can be exported as a digest-checked bundle of its definition, its whole log and what the installation reports, carrying none of the values it was given or produced, and capsulet-replay reads one with no database or network: it refuses a changed bundle, re-folds the log, says when the log does not support the report, and explains a run that succeeded, failed, was interrupted mid-call or ran out of budget, naming which steps cannot be reproduced offline.",
+      "statement": "An agent run can be exported with one command (`capsulet agent-runs bundle`) as a digest-checked bundle of its definition, its whole log and what the installation reports, carrying none of the values it was given or produced, and capsulet-replay reads one with no database or network: it refuses a changed bundle, re-folds the log, makes every decision in it again from the log before it and names any the runtime would not have made, says when the log does not support the report, and explains a run that succeeded, failed, was interrupted mid-call or ran out of budget, naming which steps cannot be reproduced offline; with `--html` it writes the same account as one self-contained page that walks run, node, observed action, evidence and verification outcome.",
       "public_surfaces": [
         "docs/api.md",
         "docs/troubleshooting.md"
@@ -916,6 +916,33 @@
             "a_run_that_failed_says_why_offline",
             "a_run_interrupted_mid_call_says_what_it_was_doing",
             "a_run_that_ran_out_of_budget_says_which_budget"
+          ]
+        },
+        {
+          "assertion": "every-decision-replayed",
+          "evidence_selectors": [
+            "every_decision_in_every_fixture_is_the_one_the_runtime_makes_again",
+            "a_log_that_skips_a_node_the_runtime_would_have_run_is_a_disagreement",
+            "a_loop_stopped_for_a_reason_the_runtime_would_not_give_is_a_disagreement"
+          ]
+        },
+        {
+          "assertion": "recovered-runs-replay",
+          "evidence_selectors": [
+            "a_run_survives_the_worker_dying_at_every_step_boundary"
+          ]
+        },
+        {
+          "assertion": "export-is-checked-before-it-is-written",
+          "evidence_selectors": [
+            "a_bundle_whose_body_was_changed_is_refused_before_anything_is_written"
+          ]
+        },
+        {
+          "assertion": "one-page-viewer",
+          "evidence_selectors": [
+            "a_run_bundle_opens_as_one_page_that_walks_run_node_action_evidence_and_verification",
+            "a_page_for_a_log_the_runtime_would_not_have_written_shows_where"
           ]
         }
       ],
@@ -989,6 +1016,55 @@
           "gate": "replay",
           "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_run_that_succeeded_is_explained_offline"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "every_decision_in_every_fixture_is_the_one_the_runtime_makes_again"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "a_log_that_skips_a_node_the_runtime_would_have_run_is_a_disagreement"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "a_loop_stopped_for_a_reason_the_runtime_would_not_give_is_a_disagreement"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/chaos.rs",
+          "gate": "chaos",
+          "command": "cargo test -p capsulet-graph-worker --test chaos --locked",
+          "selector": "a_run_survives_the_worker_dying_at_every_step_boundary"
+        },
+        {
+          "type": "test",
+          "path": "crates/cli/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_bundle_whose_body_was_changed_is_refused_before_anything_is_written"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "a_run_bundle_opens_as_one_page_that_walks_run_node_action_evidence_and_verification"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "a_page_for_a_log_the_runtime_would_not_have_written_shows_where"
         }
       ]
     },

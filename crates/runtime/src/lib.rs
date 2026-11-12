@@ -23,6 +23,7 @@ pub mod effect;
 pub mod event;
 pub mod failure;
 pub mod loops;
+pub mod replay;
 pub mod state;
 pub mod values;
 pub mod wait;

@@ -2,8 +2,9 @@ use clap::Parser;
 use reqwest::Url;
 
 use super::{
-    ApiClient, ArtifactResponse, ArtifactsCommand, Cli, Command, JobRunResponse, RunCommand,
-    format_artifacts_table, format_run_detail, format_run_status, format_runs_table,
+    AgentRunsCommand, ApiClient, ArtifactResponse, ArtifactsCommand, Cli, Command, JobRunResponse,
+    RunCommand, checked_bundle, format_artifacts_table, format_run_detail, format_run_status,
+    format_runs_table,
 };
 
 #[test]
@@ -191,4 +192,52 @@ fn run(id: &str, status: &str, attempt_count: u32) -> JobRunResponse {
         execution_pool: "mini".to_string(),
         attempt_count,
     }
+}
+
+#[test]
+fn parses_agent_run_bundle_command_with_a_project() {
+    let cli = Cli::try_parse_from([
+        "capsulet",
+        "--project",
+        "alpha",
+        "agent-runs",
+        "bundle",
+        "agent_run_1",
+        "--output",
+        "run.json",
+    ])
+    .expect("parses");
+    assert_eq!(cli.project.as_deref(), Some("alpha"));
+    match cli.command {
+        Command::AgentRuns(AgentRunsCommand::Bundle { id, output }) => {
+            assert_eq!(id, "agent_run_1");
+            assert_eq!(output, std::path::PathBuf::from("run.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+fn fixture_bundle() -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../replay/tests/fixtures/run-succeeded.json"),
+    )
+    .expect("the replay fixture")
+}
+
+#[test]
+fn a_bundle_whose_digest_checks_is_accepted_and_summarised() {
+    let (sealed, summary) = checked_bundle(&fixture_bundle()).expect("checks");
+    assert!(summary.contains("22 events"), "{summary}");
+    assert!(summary.contains(&sealed.digest), "{summary}");
+}
+
+#[test]
+fn a_bundle_whose_body_was_changed_is_refused_before_anything_is_written() {
+    let tampered = fixture_bundle().replacen("completed", "cancelled", 1);
+    let error = checked_bundle(&tampered).expect_err("refused");
+    assert!(
+        error.to_string().contains("does not match its digest"),
+        "{error}"
+    );
 }

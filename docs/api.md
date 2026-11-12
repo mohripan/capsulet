@@ -435,7 +435,9 @@ is `{kind, bundle_version, digest, body}`: `body` is the bundle as JSON text and
 of exactly those bytes. The bundle holds the definition version the run executed, its whole event log,
 what this installation reports about it, and its trace id when it was traced. It holds none of the
 values the run was given or produced (the log names those by digest), not the state it was started
-with, and no credentials or configuration. Read one offline with `capsulet-replay`; see
+with, and no credentials or configuration. `capsulet agent-runs bundle <id> --project <project>
+--output run.json` makes the call and checks the digest before writing the file. Read one offline
+with `capsulet-replay`, which also makes every decision in the log again; see
 [troubleshooting](troubleshooting.md#an-agent-run-did-something-unexpected).
 
 ## Current correctness certificate API

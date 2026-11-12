@@ -734,6 +734,7 @@ async fn approving_at_a_gate_waives_the_failure_and_the_run_finishes() {
             .await
             .contains(&"resumed".to_string())
     );
+    assert_decisions_replay(&stack, &id).await;
 }
 
 #[tokio::test]
@@ -761,6 +762,7 @@ async fn refusing_at_a_gate_stops_the_run() {
             .contains("refused"),
         "{run}"
     );
+    assert_decisions_replay(&stack, &id).await;
 }
 
 #[tokio::test]
@@ -821,6 +823,7 @@ async fn cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled() {
         .post(&format!("/v1/agent-runs/{id}/cancel"), json!({}))
         .await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_decisions_replay(&stack, &id).await;
 }
 
 #[tokio::test]
@@ -1156,6 +1159,7 @@ async fn a_job_that_fails_fails_the_node_with_the_effect_still_on_record() {
         kinds.contains(&"effect_finalized".to_string()),
         "the job ran, so its effect is not abandoned: {kinds:?}"
     );
+    assert_decisions_replay(&stack, &id).await;
 }
 
 #[tokio::test]
@@ -1661,6 +1665,7 @@ async fn an_effect_is_a_tool_span_and_a_refused_one_says_why_only_by_kind() {
     );
 
     assert_nothing_said(&spans, &[PREDICATE, "a claim to write needs"]);
+    assert_decisions_replay(&stack, &id).await;
 }
 
 /// Runs the retrying agent to rest and says how it ended.
@@ -2037,6 +2042,23 @@ impl ModelClient for SilentModel {
     ) -> Result<Embedding, ModelError> {
         std::future::pending().await
     }
+}
+
+/// Every decision in the run's log is the one `decide` makes again from the log
+/// before it, read from the run's bundle as anyone debugging it would.
+async fn assert_decisions_replay(stack: &Stack, id: &str) {
+    let (status, body) = stack
+        .post(&format!("/v1/agent-runs/{id}/debug-bundle"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let sealed: SealedRunBundle = serde_json::from_value(body).expect("a sealed bundle");
+    let bundle = sealed.open().expect("the bundle matches its digest");
+    let replay = capsulet_runtime::replay::replay_decisions(&bundle.definition, &bundle.events);
+    assert!(
+        replay.agrees(),
+        "decisions the runtime would not make again: {:?}",
+        replay.divergences
+    );
 }
 
 async fn bundle_of(stack: &Stack, id: &str, fixture: &str) -> (SealedRunBundle, RunBundle) {

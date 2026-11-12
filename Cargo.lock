@@ -409,6 +409,7 @@ name = "capsulet-cli"
 version = "0.1.0"
 dependencies = [
  "capsulet-core",
+ "capsulet-runtime",
  "clap",
  "clap_complete",
  "reqwest",

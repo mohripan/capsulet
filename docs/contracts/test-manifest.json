@@ -169,6 +169,10 @@
           "selector": "worker_tick_outcome_has_stable_metric_names"
         },
         {
+          "path": "crates/cli/src/tests.rs",
+          "selector": "a_bundle_whose_body_was_changed_is_refused_before_anything_is_written"
+        },
+        {
           "path": "crates/core/src/domain/memory.rs",
           "selector": "accepts_an_excerpt_that_re_derives_from_its_source"
         },
@@ -658,7 +662,23 @@
         },
         {
           "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_log_that_skips_a_node_the_runtime_would_have_run_is_a_disagreement"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_loop_stopped_for_a_reason_the_runtime_would_not_give_is_a_disagreement"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_page_for_a_log_the_runtime_would_not_have_written_shows_where"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
           "selector": "a_report_the_log_does_not_support_is_a_disagreement"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_run_bundle_opens_as_one_page_that_walks_run_node_action_evidence_and_verification"
         },
         {
           "path": "crates/replay/tests/run_bundles.rs",
@@ -675,6 +695,10 @@
         {
           "path": "crates/replay/tests/run_bundles.rs",
           "selector": "a_run_that_succeeded_is_explained_offline"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "every_decision_in_every_fixture_is_the_one_the_runtime_makes_again"
         }
       ]
     },
