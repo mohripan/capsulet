@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from .workflow import Workflow, WorkflowSpec
+
+TOKEN_ENV_VAR = "CAPSULET_API_TOKEN"
 
 
 # Experimental handwritten transport map. OpenAPI remains the authority.
@@ -43,22 +46,40 @@ class CapsuletClient:
         *,
         timeout: float = 30.0,
         project_id: str | None = None,
+        token: str | None = None,
     ) -> None:
+        """Create a client.
+
+        ``token`` is sent as ``Authorization: Bearer <token>``. When it is ``None`` the client reads
+        ``CAPSULET_API_TOKEN`` instead; an empty token sends no ``Authorization`` header.
+        """
+
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.project_id = project_id
+        self._token = (token if token is not None else os.environ.get(TOKEN_ENV_VAR)) or None
 
-    def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
-        data = json.dumps(body).encode() if body is not None else None
+    def __repr__(self) -> str:
+        token = "<set>" if self._token else None
+        return f"CapsuletClient({self.base_url!r}, project_id={self.project_id!r}, token={token})"
+
+    def _new_request(self, method: str, path: str, *, body: dict[str, Any] | None = None) -> urllib.request.Request:
         headers = {"content-type": "application/json"} if body is not None else {}
         if self.project_id:
             headers["x-capsulet-project-id"] = self.project_id
         request = urllib.request.Request(
             f"{self.base_url}{path}",
-            data=data,
+            data=json.dumps(body).encode() if body is not None else None,
             method=method,
             headers=headers,
         )
+        if self._token:
+            # Unredirected: urllib would otherwise copy the token to whatever host a redirect names.
+            request.add_unredirected_header("Authorization", f"Bearer {self._token}")
+        return request
+
+    def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+        request = self._new_request(method, path, body=body)
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 payload = response.read()
@@ -142,8 +163,7 @@ class CapsuletClient:
             id=urllib.parse.quote(job_run_id, safe=""),
             artifact_id=urllib.parse.quote(artifact_id, safe=""),
         )
-        headers = {"x-capsulet-project-id": self.project_id} if self.project_id else {}
-        request = urllib.request.Request(f"{self.base_url}{path}", method=contract["method"], headers=headers)
+        request = self._new_request(contract["method"], path)
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 target.write_bytes(response.read())

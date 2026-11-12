@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from capsulet import CapsuletClient, task, workflow
@@ -49,11 +50,17 @@ def csv_pipeline():
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-url", default="http://127.0.0.1:8080")
+    parser.add_argument(
+        "--token",
+        default=os.environ.get("CAPSULET_API_TOKEN"),
+        help="bearer token for the API (default: the CAPSULET_API_TOKEN environment variable)",
+    )
+    parser.add_argument("--project", help="project id to deploy into, sent as x-capsulet-project-id")
     parser.add_argument("--run", action="store_true", help="create a manual automation and run it")
     parser.add_argument("--output", type=Path, default=Path("customer-summary.csv"))
     args = parser.parse_args()
 
-    client = CapsuletClient(args.api_url)
+    client = CapsuletClient(args.api_url, project_id=args.project, token=args.token)
     deployed = client.deploy(csv_pipeline)
     print(f"deployed workflow {deployed['id']}")
     if not args.run:

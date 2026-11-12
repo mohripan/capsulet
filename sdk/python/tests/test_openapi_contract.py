@@ -63,6 +63,7 @@ class OpenApiContractTests(unittest.TestCase):
                 self.assert_component_shape(expected["response_schema"], client_name)
             error_schema = operation["responses"]["default"]["content"]["application/json"]["schema"]
             self.assertEqual("Error", schema_name(error_schema), client_name)
+            self.assertIn({"bearerAuth": []}, operation.get("security", []), client_name)
             if expected["project_context"]:
                 self.assertTrue(any(
                     parameter["name"] == "x-capsulet-project-id" and parameter["in"] == "header"
@@ -72,6 +73,11 @@ class OpenApiContractTests(unittest.TestCase):
                 parameter["name"] == "x-capsulet-project-id" and parameter["in"] == "header"
                 for parameter in parameters
             ), client_name)
+
+    def test_bearer_scheme_matches_the_authorization_header_the_client_sends(self):
+        scheme = self.document["components"]["securitySchemes"]["bearerAuth"]
+        self.assertEqual("http", scheme["type"])
+        self.assertEqual("bearer", scheme["scheme"].lower())
 
     def assert_component_shape(self, name, client_name):
         schema = self.document["components"]["schemas"][name]
