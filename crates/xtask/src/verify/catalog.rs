@@ -87,6 +87,16 @@ fn gate(
     }
 }
 
+/// A gate that runs the dashboard's own tools (its linter, `tsc`, its tests or
+/// its build) installs the dashboard's packages from the lockfile first, so it
+/// passes on a fresh clone exactly as it does on a checkout that has them.
+fn with_dashboard_packages(gate: Gate) -> Gate {
+    Gate {
+        provision: vec![in_dashboard(command("npm", &["ci"]))],
+        ..gate
+    }
+}
+
 /// A gate whose every collected test has to run, which `verify` checks from the
 /// counts the test binaries report. Used for the database suites, where a test
 /// that could not reach its database must fail rather than pass by skipping.
@@ -314,7 +324,7 @@ pub(crate) fn gates() -> Vec<Gate> {
         // Builds and lists the tests of every gate command a claim cites, so it
         // is as slow as a cold `unit` build. It needs no database: listing a
         // test does not run it.
-        gate(
+        with_dashboard_packages(gate(
             "claims-evidence",
             "claim evidence is collected by the gate command it names",
             &["cargo", "python", "npm", powershell],
@@ -333,8 +343,8 @@ pub(crate) fn gates() -> Vec<Gate> {
                     "--check",
                 ],
             )],
-        ),
-        gate(
+        )),
+        with_dashboard_packages(gate(
             "sdk",
             "Python and dashboard transport contracts",
             &["python", "npm", "npx"],
@@ -356,8 +366,8 @@ pub(crate) fn gates() -> Vec<Gate> {
                 in_dashboard(command("npm", &["test"])),
                 in_dashboard(command("npx", &["tsc", "--noEmit"])),
             ],
-        ),
-        gate(
+        )),
+        with_dashboard_packages(gate(
             "dashboard",
             "dashboard lint, typecheck, and build",
             &["npm"],
@@ -367,7 +377,7 @@ pub(crate) fn gates() -> Vec<Gate> {
                 in_dashboard(command("npm", &["run", "lint"])),
                 in_dashboard(command("npm", &["run", "build"])),
             ],
-        ),
+        )),
         every_test_must_run(gate(
             "postgres",
             "isolated PostgreSQL integration suite",
@@ -548,7 +558,7 @@ pub(crate) fn gates() -> Vec<Gate> {
         // The tests are ignored by default because they need these tools; this
         // gate declares them and runs the tests with `--ignored`, so they never
         // pass by being skipped.
-        gate(
+        with_dashboard_packages(gate(
             "gate-regressions",
             "lint, dashboard and security gates fail on a Clippy warning, a crashing ESLint configuration, an unreviewed duplicate and a vulnerable crate",
             &["cargo", "cargo-audit", "cargo-deny", "npm"],
@@ -569,7 +579,7 @@ pub(crate) fn gates() -> Vec<Gate> {
                     "--ignored",
                 ],
             )],
-        ),
+        )),
         // Each of these gets a stack of its own, which comes down whatever its
         // commands did; see `compose.rs`.
         Gate {

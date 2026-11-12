@@ -5,6 +5,8 @@ name: CI
 # runs identically on their own machine; this file only schedules the work and
 # provides the tools it needs. A workflow that reimplements a check is a
 # second definition of "green" that drifts from the first.
+# Each gate installs the packages it uses itself (the dashboard's from its
+# lockfile), so no job prepares a checkout a fresh clone would not have.
 #
 # Each job uploads its run's verification-summary.json, and `required` fails
 # unless every gate of the full profile ran and passed in some job and every
@@ -86,10 +88,6 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
-      - name: Install dashboard dependencies
-        working-directory: dashboard
-        run: npm ci
-
       - name: Verify
         run: >
           cargo run -p capsulet-xtask --locked --
@@ -165,10 +163,6 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
-
-      - name: Install dashboard dependencies
-        working-directory: dashboard
-        run: npm ci
 
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate dashboard
@@ -398,12 +392,6 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-
-      # gate-regressions runs the dashboard's own ESLint against a crashing
-      # configuration, so the dashboard's dependencies have to be installed.
-      - name: Install dashboard dependencies
-        working-directory: dashboard
-        run: npm ci
 
       # The exceptions live in docs/contracts/security-exceptions.json,
       # .cargo/audit.toml and deny.toml, each owned and expiring.
