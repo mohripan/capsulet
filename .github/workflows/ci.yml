@@ -18,9 +18,11 @@ on:
       - main
   pull_request:
 
+# A pull request's newer push supersedes its older one. On main, every commit
+# runs to the end, so each one gets a `Required` result of its own.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
