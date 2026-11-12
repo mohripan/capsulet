@@ -1319,7 +1319,7 @@ fn generate_service_account_token() -> String {
 }
 
 async fn livez() -> Json<HealthResponse> {
-    Json(HealthResponse { status: "alive" })
+    Json(HealthResponse::new("alive"))
 }
 
 async fn healthz<S, O>(State(state): State<AppState<S, O>>) -> (StatusCode, Json<HealthResponse>)
@@ -1328,12 +1328,10 @@ where
     O: ObjectStore,
 {
     match state.store.ping().await {
-        Ok(()) => (StatusCode::OK, Json(HealthResponse { status: "ok" })),
+        Ok(()) => (StatusCode::OK, Json(HealthResponse::new("ok"))),
         Err(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(HealthResponse {
-                status: "not_ready",
-            }),
+            Json(HealthResponse::new("not_ready")),
         ),
     }
 }
@@ -1344,12 +1342,10 @@ where
     O: ObjectStore,
 {
     match state.store.ping().await {
-        Ok(()) => (StatusCode::OK, Json(HealthResponse { status: "ready" })),
+        Ok(()) => (StatusCode::OK, Json(HealthResponse::new("ready"))),
         Err(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(HealthResponse {
-                status: "not_ready",
-            }),
+            Json(HealthResponse::new("not_ready")),
         ),
     }
 }

@@ -5,7 +5,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "capsulet"
-version = "0.1.0"
+# Read from src/capsulet/_version.py, which release.toml governs.
+dynamic = ["version"]
 description = "Experimental Python authoring SDK for Capsulet compatibility workflows"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,3 +17,6 @@ classifiers = ["Development Status :: 2 - Pre-Alpha"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/capsulet"]
+
+[tool.hatch.version]
+path = "src/capsulet/_version.py"

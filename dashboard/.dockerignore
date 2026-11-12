@@ -5,3 +5,8 @@ next-dev.log
 next-dev.err.log
 npm-debug.log*
 .DS_Store
+
+# Saved test sessions hold tokens; keep them out of the image build.
+test-results/
+playwright/
+playwright-report/

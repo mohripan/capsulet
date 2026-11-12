@@ -1,10 +1,11 @@
 [package]
 name = "capsulet-runner"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "Execution runner boundary for future Kubernetes Job execution."
 
 [[bin]]
@@ -22,7 +23,7 @@ k8s-openapi = { version = "0.26.1", features = ["latest"] }
 kube = { version = "2.0.1", default-features = false, features = ["client", "config", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 serde.workspace = true
-serde_yaml = "0.9"
+serde_yaml.workspace = true
 tempfile = "3"
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "process", "time"] }

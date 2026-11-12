@@ -1,23 +1,38 @@
+# Every Rust component from one build. The `build` stage compiles all five
+# binaries in a single cargo invocation; each component is a target that puts
+# its binary on the same runtime base:
+#
+#   docker build -f crates/Dockerfile --target api --build-arg VERSION=... .
+#
+# with REVISION, CREATED and SOURCE passed the same way.
+#
+# Targets built in one BuildKit session, as Compose and the verifier's
+# `containers` gate do, share the build stage, so the workspace compiles once.
+# `capsulet-xtask release images --plan` prints the image name, target and
+# build arguments of each component from release.toml.
+
 FROM rust:1.96-bookworm AS build
 ENV RUSTUP_TOOLCHAIN=1.96.0
 ENV CARGO_HTTP_MULTIPLEXING=false
 ENV CARGO_HTTP_TIMEOUT=600
 ENV CARGO_NET_RETRY=10
 
-ARG PACKAGE
-ARG BIN
-
 WORKDIR /app
 COPY . .
 RUN --mount=type=cache,id=capsulet-cargo-registry-v3,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=capsulet-target-v2,target=/app/target,sharing=locked \
-    cargo build --release -p "${PACKAGE}" --bin "${BIN}" \
-    && cp "/app/target/release/${BIN}" /tmp/capsulet-bin
+    cargo build --release --locked \
+        --bin capsulet-api \
+        --bin capsulet-worker \
+        --bin capsulet-scheduler \
+        --bin capsulet-graph-worker \
+        --bin capsulet-evaluator \
+    && mkdir -p /out \
+    && cp target/release/capsulet-api target/release/capsulet-worker \
+        target/release/capsulet-scheduler target/release/capsulet-graph-worker \
+        target/release/capsulet-evaluator /out/
 
-FROM debian:bookworm-slim
-
-ARG BIN
-ENV CAPSULET_BIN="${BIN}"
+FROM debian:bookworm-slim AS runtime
 
 # `upgrade` before `install`, so a rebuild picks up fixes Debian published
 # after this tag was cut. Without it only the named packages are current while
@@ -32,8 +47,47 @@ RUN apt-get update \
     && chown -R 10001:10001 /capsulet \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /tmp/capsulet-bin /usr/local/bin/${BIN}
+# Declared after the packages, so a new revision does not reinstall them.
+ARG VERSION
+ARG REVISION
+ARG CREATED
+ARG SOURCE
+LABEL org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.created="${CREATED}" \
+      org.opencontainers.image.source="${SOURCE}" \
+      org.opencontainers.image.url="${SOURCE}" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.vendor="Capsulet"
 
 USER 10001:10001
 
-ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/${CAPSULET_BIN}"]
+FROM runtime AS api
+LABEL org.opencontainers.image.title="capsulet-api" \
+      org.opencontainers.image.description="Capsulet HTTP control plane"
+COPY --from=build /out/capsulet-api /usr/local/bin/capsulet-api
+ENTRYPOINT ["/usr/local/bin/capsulet-api"]
+
+FROM runtime AS worker
+LABEL org.opencontainers.image.title="capsulet-worker" \
+      org.opencontainers.image.description="Capsulet job worker"
+COPY --from=build /out/capsulet-worker /usr/local/bin/capsulet-worker
+ENTRYPOINT ["/usr/local/bin/capsulet-worker"]
+
+FROM runtime AS scheduler
+LABEL org.opencontainers.image.title="capsulet-scheduler" \
+      org.opencontainers.image.description="Capsulet run scheduler"
+COPY --from=build /out/capsulet-scheduler /usr/local/bin/capsulet-scheduler
+ENTRYPOINT ["/usr/local/bin/capsulet-scheduler"]
+
+FROM runtime AS graph-worker
+LABEL org.opencontainers.image.title="capsulet-graph-worker" \
+      org.opencontainers.image.description="Capsulet verified-computation graph worker"
+COPY --from=build /out/capsulet-graph-worker /usr/local/bin/capsulet-graph-worker
+ENTRYPOINT ["/usr/local/bin/capsulet-graph-worker"]
+
+FROM runtime AS evaluator
+LABEL org.opencontainers.image.title="capsulet-evaluator" \
+      org.opencontainers.image.description="Capsulet trigger evaluator and retention"
+COPY --from=build /out/capsulet-evaluator /usr/local/bin/capsulet-evaluator
+ENTRYPOINT ["/usr/local/bin/capsulet-evaluator"]

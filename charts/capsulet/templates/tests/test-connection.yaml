@@ -10,7 +10,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: wget
-      image: busybox:1.36
+      image: {{ include "capsulet.dependencyImage" .Values.tests.image | quote }}
       command:
         - wget
       args:

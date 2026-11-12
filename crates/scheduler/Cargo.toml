@@ -1,10 +1,11 @@
 [package]
 name = "capsulet-scheduler"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "Scheduler service for time-based and delayed automation events."
 
 [[bin]]

@@ -1,0 +1,60 @@
+# The release identity of this repository, declared once.
+#
+# Every package, image, chart, generated contract and served version takes its
+# version and names from here. `cargo run -p capsulet-xtask -- release check`
+# fails on anything that disagrees, and `release set <version> --write` rewrites
+# every derived manifest. docs/contracts/release-process.md says which files
+# those are and how a release is cut.
+
+[product]
+name = "capsulet"
+version = "0.1.0"
+source = "https://github.com/mohripan/capsulet"
+license = "Apache-2.0"
+
+# Each component ships as <registry>/<namespace>/<image>:<product version>, and
+# once built and pushed, by digest. The keys are the chart's component names.
+# The Rust components are targets of one Dockerfile, so building them together
+# compiles the workspace once; `release images --plan` turns this table into
+# the build matrix CI runs.
+[images]
+registry = "ghcr.io"
+namespace = "mohripan"
+
+[images.components.api]
+image = "capsulet-api"
+dockerfile = "crates/Dockerfile"
+target = "api"
+
+[images.components.worker]
+image = "capsulet-worker"
+dockerfile = "crates/Dockerfile"
+target = "worker"
+
+[images.components.scheduler]
+image = "capsulet-scheduler"
+dockerfile = "crates/Dockerfile"
+target = "scheduler"
+
+[images.components.graph-worker]
+image = "capsulet-graph-worker"
+dockerfile = "crates/Dockerfile"
+target = "graph-worker"
+# The chart's values key, where it is not the component's name.
+values = "graphWorker"
+
+[images.components.evaluator]
+image = "capsulet-evaluator"
+dockerfile = "crates/Dockerfile"
+target = "evaluator"
+
+[images.components.dashboard]
+image = "capsulet-dashboard"
+dockerfile = "dashboard/Dockerfile"
+context = "dashboard"
+
+# The API versions this release's clients (the Python SDK, the CLI and the
+# dashboard) are built against. The product version must fall inside it; widen
+# it here, deliberately, before releasing a version outside it.
+[compatibility]
+api = ">=0.1.0, <0.2.0"

@@ -296,7 +296,7 @@ fn a_container_image_grant_carries_its_digest() {
     // Recorded as a type-level fact: the grant cannot be constructed without a
     // digest, so it cannot name whatever the registry serves today.
     let grant = Grant::ContainerImage {
-        image: "ghcr.io/mohripan/capsulet-verifier".to_string(),
+        image: "ghcr.io/acme/verifier".to_string(),
         digest: Digest::of(b"an image"),
     };
     assert_eq!(grant.kind_name(), "a container image");

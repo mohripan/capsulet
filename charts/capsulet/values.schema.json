@@ -4,19 +4,31 @@
   "title": "Capsulet alpha-readiness Helm values",
   "description": "Experimental self-hosting configuration for the correctness-first AI-agent workflow platform.",
   "type": "object",
+  "definitions": {
+    "componentImage": {
+      "type": "object",
+      "description": "A component's image name under image.registry and image.namespace, and optionally the digest of the build to run.",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$" },
+        "digest": { "type": "string", "pattern": "^(sha256:[0-9a-f]{64})?$" }
+      },
+      "required": ["name"]
+    }
+  },
   "properties": {
     "image": {
       "type": "object",
+      "description": "Capsulet's own images: <registry>/<namespace>/<component image.name>:<tag>, from release.toml.",
       "properties": {
         "registry": { "type": "string" },
-        "repository": { "type": "string", "minLength": 1 },
-        "tag": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string" },
+        "tag": { "type": "string", "minLength": 1, "not": { "const": "latest" } },
         "pullPolicy": {
           "type": "string",
           "enum": ["Always", "IfNotPresent", "Never"]
         }
       },
-      "required": ["registry", "repository", "tag", "pullPolicy"]
+      "required": ["registry", "namespace", "tag", "pullPolicy"]
     },
     "serviceAccount": {
       "type": "object",
@@ -101,7 +113,8 @@
           "type": "object",
           "properties": {
             "repository": { "type": "string", "minLength": 1 },
-            "tag": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string", "minLength": 1, "not": { "const": "latest" } },
+            "digest": { "type": "string", "pattern": "^(sha256:[0-9a-f]{64})?$" },
             "pullPolicy": {
               "type": "string",
               "enum": ["Always", "IfNotPresent", "Never"]
@@ -227,6 +240,7 @@
     "api": {
       "type": "object",
       "properties": {
+        "image": { "$ref": "#/definitions/componentImage" },
         "auth": {
           "type": "object",
           "properties": {
@@ -249,6 +263,7 @@
     "worker": {
       "type": "object",
       "properties": {
+        "image": { "$ref": "#/definitions/componentImage" },
         "runner": {
           "type": "object",
           "properties": {
@@ -268,13 +283,21 @@
     "scheduler": {
       "type": "object",
       "properties": {
+        "image": { "$ref": "#/definitions/componentImage" },
         "loop": { "type": "boolean" },
         "pollSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "graphWorker": {
+      "type": "object",
+      "properties": {
+        "image": { "$ref": "#/definitions/componentImage" }
       }
     },
     "evaluator": {
       "type": "object",
       "properties": {
+        "image": { "$ref": "#/definitions/componentImage" },
         "pollSeconds": { "type": "integer", "minimum": 1 },
         "retentionDays": { "type": "integer", "minimum": 1 },
         "auditRetentionDays": { "type": "integer", "minimum": 1 },
@@ -343,6 +366,7 @@
     "dashboard": {
       "type": "object",
       "properties": {
+        "image": { "$ref": "#/definitions/componentImage" },
         "apiBaseUrl": { "type": "string" }
       }
     },

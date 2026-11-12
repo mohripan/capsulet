@@ -20,14 +20,15 @@ kubectl create namespace capsulet
 kubectl label node minikube capsulet.dev/pool=mini --overwrite
 ```
 
-Build API, worker, and dashboard images into minikube's Docker daemon:
+Build every component's image into minikube's Docker daemon:
 
 ```powershell
 minikube docker-env --shell powershell | Invoke-Expression
-docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-api --build-arg BIN=capsulet-api -t capsulet-api:dev .
-docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-worker --build-arg BIN=capsulet-worker -t capsulet-worker:dev .
-docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-scheduler --build-arg BIN=capsulet-scheduler -t capsulet-scheduler:dev .
-docker build -f crates/Dockerfile --build-arg PACKAGE=capsulet-evaluator --build-arg BIN=capsulet-evaluator -t capsulet-evaluator:dev .
+docker build -f crates/Dockerfile --target api -t capsulet-api:dev .
+docker build -f crates/Dockerfile --target worker -t capsulet-worker:dev .
+docker build -f crates/Dockerfile --target scheduler -t capsulet-scheduler:dev .
+docker build -f crates/Dockerfile --target graph-worker -t capsulet-graph-worker:dev .
+docker build -f crates/Dockerfile --target evaluator -t capsulet-evaluator:dev .
 docker build -f dashboard/Dockerfile -t capsulet-dashboard:dev dashboard
 ```
 
@@ -36,22 +37,30 @@ docker build -f dashboard/Dockerfile -t capsulet-dashboard:dev dashboard
 Install the experimental local stack:
 
 ```powershell
+# A fresh administrator token, kept in this session for the steps below.
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$env:CAPSULET_API_TOKEN = -join ($bytes | ForEach-Object { $_.ToString("x2") })
+$tokens = New-TemporaryFile
+ConvertTo-Json -Compress -InputObject @(@{ name = "local-admin"; role = "admin"; token = $env:CAPSULET_API_TOKEN }) |
+  Set-Content -NoNewline $tokens
 kubectl create secret generic capsulet-api-auth `
   --namespace capsulet --dry-run=client -o yaml `
-  --from-literal='tokens=[{"name":"local-admin","role":"admin","token":"capsulet-local-admin-token-change-me"}]' `
+  --from-file=tokens=$tokens `
   | kubectl apply -f -
+Remove-Item $tokens
 
 helm upgrade --install capsulet charts/capsulet `
   --namespace capsulet `
   --set image.registry= `
-  --set image.repository=capsulet `
+  --set image.namespace= `
   --set image.tag=dev `
   --set image.pullPolicy=Never `
   --set api.auth.existingSecret=capsulet-api-auth `
   --set api.auth.secretKey=tokens
 ```
 
-Wait for bundled dependencies, migration, bucket creation, and app deployments:
+Wait for the bundled dependencies, the migration and the app deployments:
 
 ```powershell
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=postgresql -n capsulet --timeout=180s

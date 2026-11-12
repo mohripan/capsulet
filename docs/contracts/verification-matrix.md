@@ -15,6 +15,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `api-contracts` | yes | yes | Runtime/OpenAPI equality and drift | Cargo |
 | `authorization` | yes | yes | Executed HTTP role/scope matrix and generated policy drift | Cargo |
 | `claims` | yes | yes | Claims, lifecycle, and public surfaces | PowerShell |
+| `release` | yes | yes | `release.toml` against every crate, the Python SDK, the dashboard, the chart, OpenAPI, Compose and the Dockerfiles, and every image and repository reference in tracked files ([release process](release-process.md)) | Cargo, Git |
 | `claims-evidence` | yes | yes | Every claim's test evidence is collected, and not ignored or skipped, by the gate command it names; `docs/contracts/test-manifest.json` matches that collection | Cargo, Python, Node.js 24+ with npm, PowerShell |
 | `sdk` | yes | yes | Python and dashboard transports | Python, npm |
 | `dashboard` | no | yes | ESLint and production build | npm |
@@ -25,7 +26,8 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `gate-regressions` | no | yes | The `lint`, `dashboard` and `security` gates' own commands fail on a fixture with a Clippy warning, a crashing ESLint configuration, an unreviewed duplicate dependency and a crate with a published advisory, and pass on a clean one | Cargo with Clippy, cargo-audit, cargo-deny, npm with the dashboard installed |
 | `compose` | no | yes | On a stack of its own (every service built and healthy, seeded alike twice): Compose configuration, agents run over HTTP with the graph worker killed mid-run, and a job leaves logs and a downloadable artifact; reseeding afterwards must leave the fixture as it was | Docker, PowerShell |
 | `dashboard-e2e` | no | yes | On a stack of its own, seeded the same way: Playwright as admin, operator, viewer and service account, including the project-isolation flows for artifacts, memory review, agents and audit events; reseeding afterwards must leave the fixture as it was | Docker, npm |
-| `helm` | no | yes | Chart lint and deterministic render | Helm |
+| `helm` | no | yes | Chart lint and deterministic render; every workload runs the image `release.toml` names, by tag and by digest | Helm, Cargo |
+| `containers` | no | yes | Every component image built from `release.toml`'s plan as CI builds it, its OCI labels and non-root user checked, then removed | Cargo, Docker, Git |
 | `kind` | no | yes | Cluster discovery only; install/smoke pending [#102](https://github.com/mohripan/capsulet/issues/102) | Kind, kubectl, Helm, Docker |
 | `wasm-python` | no | no | WASI Python runner, nightly by name | Cargo, Wasmtime |
 
@@ -44,15 +46,14 @@ test gets a database of its own on them. The `postgres`, `migrations` and `chaos
 test binary ran nothing, or ignored or filtered out any test. Every run writes each binary's counts
 to `.capsulet/verify/<run>/test-counts.json`; CI keeps that file as an artifact and shows the counts
 in the job summary.
-Container scanning, secret scanning, immutable artifact attestations, release identity, required-job
-aggregation and the clean-checkout rehearsal remain open under
+Container scanning, secret scanning, immutable artifact attestations, required-job aggregation and the clean-checkout rehearsal remain open under
 [the integrity tracker](https://github.com/mohripan/capsulet/issues/104). Do not infer M1 completion
 from the current `full` summary.
 
 Supported baseline tools are Rust 1.96, Node.js 20/npm 10 or newer compatible releases, Python
 3.12 or newer, Docker Engine 27 or newer with Compose v2, Helm 3.18 or newer, Kind 0.30 or newer,
 and a kubectl release compatible with the target cluster. `verify doctor` asks each of these tools,
-plus PowerShell, `cargo-audit` and `cargo-deny`, for its version without changing anything, and
+plus Git, PowerShell, `cargo-audit` and `cargo-deny`, for its version without changing anything, and
 fails when one is missing or older than the minimum above, or than cargo-audit 0.22.2 and
-cargo-deny 0.20.2, the scanner versions CI pins. kubectl and PowerShell are only required to run.
+cargo-deny 0.20.2, the scanner versions CI pins. kubectl, Git and PowerShell are only required to run.
 Each gate separately fails when a declared prerequisite is missing.

@@ -4852,7 +4852,31 @@ async fn healthz_returns_ok() {
         .expect("response");
 
     assert_eq!(response.status(), axum::http::StatusCode::OK);
-    assert_eq!(response_json(response).await, json!({ "status": "ok" }));
+    assert_eq!(
+        response_json(response).await,
+        json!({ "status": "ok", "version": release_version() })
+    );
+}
+
+/// `product.version` in the repository's `release.toml`, which the API must
+/// serve: read from the file, not from this crate, so a crate that drifted
+/// from the release fails here.
+fn release_version() -> String {
+    let release = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../release.toml"),
+    )
+    .expect("release.toml");
+    let mut table = "";
+    for line in release.lines().map(str::trim) {
+        if line.starts_with('[') {
+            table = line;
+        } else if table == "[product]"
+            && let Some(value) = line.strip_prefix("version = \"")
+        {
+            return value.trim_end_matches('"').to_string();
+        }
+    }
+    panic!("release.toml has no product.version");
 }
 
 #[tokio::test]

@@ -15,7 +15,8 @@ cargo run -p capsulet-xtask -- stack down          # containers, volumes, images
 `stack up` runs Compose project `capsulet-local` on the ports `compose.yaml` documents, all
 bound to `127.0.0.1`. It writes three files to `.capsulet/stack/capsulet-local/`:
 
-- `stack.env`: the environment file Compose reads its secrets and ports from
+- `stack.env`: the environment file Compose reads its secrets and ports from, with the release
+  version, commit and source the images it builds are labelled with
 - `secrets.json`: the same secrets, reused when `stack up` runs again (PostgreSQL only reads its
   password when its volume is created)
 - `fixture.json`: what a test needs, described below
@@ -84,7 +85,8 @@ The `compose` and `dashboard-e2e` gates each declare a stack. For each run, the 
 1. Names a Compose project `capsulet-verify-<gate>-<pid>-<millis>`, finds free ports, and writes
    fresh secrets under `.capsulet/stack/<project>/`.
 2. Builds the local images and waits on every service's health check (`up --wait`), with no
-   fixed sleeps.
+   fixed sleeps. The API and the dashboard must then report the version `release.toml` names on
+   `/healthz`, since their images were built from this checkout.
 3. Seeds twice and fails if the two snapshots of the fixture graph differ. A snapshot covers each
    identity's principal, role and memberships, the projects, the active service accounts, and the
    id and name of every seeded resource. It leaves out timestamps, generated ids and tokens.

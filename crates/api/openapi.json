@@ -2306,10 +2306,15 @@
         "properties": {
           "status": {
             "type": "string"
+          },
+          "version": {
+            "description": "The release this API was built as: the product version in `release.toml`.",
+            "type": "string"
           }
         },
         "required": [
-          "status"
+          "status",
+          "version"
         ],
         "type": "object"
       },

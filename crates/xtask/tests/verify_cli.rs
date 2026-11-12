@@ -190,6 +190,8 @@ fn lists_the_executable_gate_graph_as_json() {
         "compose",
         "helm",
         "kind",
+        "release",
+        "containers",
     ] {
         assert!(
             graph

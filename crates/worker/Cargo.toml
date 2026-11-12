@@ -1,10 +1,11 @@
 [package]
 name = "capsulet-worker"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "Worker service that leases runs and creates Kubernetes Jobs."
 
 [[bin]]
@@ -24,7 +25,7 @@ capsulet-postgres = { path = "../postgres" }
 capsulet-runner = { path = "../runner" }
 capsulet-storage = { path = "../storage" }
 capsulet-observability = { version = "0.1.0", path = "../observability" }
-serde_yaml = "0.9"
+serde_yaml.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 

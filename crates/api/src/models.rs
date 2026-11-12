@@ -19,6 +19,17 @@ use crate::{error::ApiError, http::json_from_string};
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct HealthResponse {
     pub(crate) status: &'static str,
+    /// The release this API was built as: the product version in `release.toml`.
+    pub(crate) version: &'static str,
+}
+
+impl HealthResponse {
+    pub(crate) fn new(status: &'static str) -> Self {
+        Self {
+            status,
+            version: env!("CARGO_PKG_VERSION"),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

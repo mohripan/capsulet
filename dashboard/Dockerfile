@@ -20,6 +20,21 @@ RUN apk upgrade --no-cache \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
     && addgroup -S -g 10001 capsulet \
     && adduser -S -u 10001 -G capsulet capsulet
+# From release.toml, through `capsulet-xtask release images --plan`. Declared
+# after the packages, so a new revision does not reinstall them.
+ARG VERSION
+ARG REVISION
+ARG CREATED
+ARG SOURCE
+LABEL org.opencontainers.image.title="capsulet-dashboard" \
+      org.opencontainers.image.description="Capsulet operator dashboard" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.created="${CREATED}" \
+      org.opencontainers.image.source="${SOURCE}" \
+      org.opencontainers.image.url="${SOURCE}" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.vendor="Capsulet"
 COPY --from=build --chown=10001:10001 /app/.next/standalone ./
 COPY --from=build --chown=10001:10001 /app/.next/static ./.next/static
 USER 10001:10001

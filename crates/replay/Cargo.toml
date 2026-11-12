@@ -1,10 +1,11 @@
 [package]
 name = "capsulet-replay"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "Offline certificate replay. Reads a bundle, reaches its own verdict, and reaches it without a network."
 
 # Deliberately minimal. This binary exists so that "replay needs nothing but the

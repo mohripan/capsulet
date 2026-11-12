@@ -193,12 +193,12 @@ Component image.
 {{- define "capsulet.componentImage" -}}
 {{- $root := index . 0 -}}
 {{- $component := index . 1 -}}
-{{- $repository := printf "%s-%s" $root.Values.image.repository $component.image.repositorySuffix -}}
-{{- if $root.Values.image.registry -}}
-{{- printf "%s/%s:%s" $root.Values.image.registry $repository $root.Values.image.tag -}}
-{{- else -}}
-{{- printf "%s:%s" $repository $root.Values.image.tag -}}
+{{- $path := list $root.Values.image.registry $root.Values.image.namespace $component.image.name | compact | join "/" -}}
+{{- $reference := printf "%s:%s" $path $root.Values.image.tag -}}
+{{- with $component.image.digest -}}
+{{- $reference = printf "%s@%s" $reference . -}}
 {{- end -}}
+{{- $reference -}}
 {{- end -}}
 
 {{/*

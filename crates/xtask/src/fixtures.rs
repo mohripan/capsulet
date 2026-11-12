@@ -10,6 +10,8 @@ use std::{collections::BTreeMap, fmt::Write as _, net::TcpListener, thread, time
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::release::BuildIdentity;
+
 /// Every fixture project is in the tenant the migrations create. Tenants have
 /// no API, and one is all the fixture needs.
 pub(crate) const TENANT: &str = "default";
@@ -189,9 +191,14 @@ impl Secrets {
         .to_string()
     }
 
-    /// The environment file `compose.yaml` reads its secrets and ports from.
-    pub(crate) fn env_file(&self, ports: Ports) -> String {
+    /// The environment file `compose.yaml` reads its secrets, ports and the
+    /// identity of the images it builds from.
+    pub(crate) fn env_file(&self, ports: Ports, identity: &BuildIdentity) -> String {
         let entries = [
+            ("CAPSULET_VERSION", identity.version.clone()),
+            ("CAPSULET_REVISION", identity.revision.clone()),
+            ("CAPSULET_CREATED", identity.created.clone()),
+            ("CAPSULET_SOURCE", identity.source.clone()),
             ("CAPSULET_API_TOKENS", self.api_tokens()),
             (
                 "CAPSULET_WEBHOOK_SECRETS",
@@ -426,6 +433,21 @@ impl Api {
         }
         Err(format!("{} never reported ready", self.base))
     }
+}
+
+/// The version a service reports on `/healthz`.
+pub(crate) fn served_version(base: &str) -> Result<String, String> {
+    let url = format!("{base}/healthz");
+    let body: Value = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .and_then(|client| client.get(&url).send())
+        .and_then(reqwest::blocking::Response::json)
+        .map_err(|error| format!("GET {url}: {error}"))?;
+    body["version"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| format!("GET {url} reported no version: {body}"))
 }
 
 /// Seeds the fixture through the API and returns the new service account token.
@@ -812,13 +834,25 @@ fn resource_snapshot(api: &Api, admin: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::{Ports, Secrets};
+    use crate::release::BuildIdentity;
+
+    fn identity() -> BuildIdentity {
+        BuildIdentity {
+            version: "0.1.0".to_string(),
+            revision: "0123456789abcdef".to_string(),
+            created: "2026-01-01T00:00:00Z".to_string(),
+            source: "https://github.com/mohripan/capsulet".to_string(),
+        }
+    }
 
     #[test]
     fn every_stack_gets_its_own_secrets() {
         let first = Secrets::generate(1_000).expect("secrets");
         let second = Secrets::generate(1_000).expect("secrets");
-        let first_file = first.env_file(Ports::STANDARD);
-        assert_ne!(first_file, second.env_file(Ports::STANDARD));
+        let first_file = first.env_file(Ports::STANDARD, &identity());
+        assert_ne!(first_file, second.env_file(Ports::STANDARD, &identity()));
+        assert!(first_file.contains("CAPSULET_VERSION='0.1.0'\n"));
+        assert!(first_file.contains("CAPSULET_REVISION='0123456789abcdef'\n"));
         for value in first.tokens.values() {
             assert_eq!(value.len(), 64);
             assert!(value.bytes().all(|byte| byte.is_ascii_hexdigit()));

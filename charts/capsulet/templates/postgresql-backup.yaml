@@ -45,7 +45,7 @@ spec:
             {{- toYaml .Values.postgresql.securityContext | nindent 12 }}
           containers:
             - name: pg-dump
-              image: {{ printf "%s:%s" .Values.postgresql.image.repository .Values.postgresql.image.tag | quote }}
+              image: {{ include "capsulet.dependencyImage" .Values.postgresql.image | quote }}
               imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
               securityContext:
                 {{- toYaml .Values.postgresql.containerSecurityContext | nindent 16 }}

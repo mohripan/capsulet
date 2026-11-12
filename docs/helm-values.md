@@ -8,22 +8,38 @@ This document summarizes the current Helm values. The authoritative defaults liv
 ```yaml
 image:
   registry: ghcr.io
-  repository: mohripan16/capsulet
+  namespace: mohripan
   tag: "0.1.0"
   pullPolicy: IfNotPresent
 ```
 
-Each Capsulet component appends its repository suffix, such as `api`, `worker`, `scheduler`, `evaluator`, or `dashboard`.
+Each component names its image, and may pin it by digest:
 
-For local minikube images:
+```yaml
+api:
+  image:
+    name: capsulet-api
+    digest: ""
+```
+
+A component runs `<registry>/<namespace>/<name>:<tag>`, with `@<digest>` appended when one is set,
+for example `ghcr.io/mohripan/capsulet-api:0.1.0`. The registry, namespace, tag and names all come
+from `release.toml`, and `capsulet-xtask release check` fails when the values disagree with it;
+`release check-chart` renders the chart and checks every workload's image, by tag and by digest. See
+the [release process](contracts/release-process.md).
+
+For local minikube images, built as in the [installation guide](installation.md):
 
 ```yaml
 image:
   registry: ""
-  repository: capsulet
+  namespace: ""
   tag: dev
   pullPolicy: Never
 ```
+
+The third-party images the chart bundles, `postgresql.image`, `seaweedfs.image` and `tests.image`,
+each name a version and a `digest`, and are rendered as `<repository>:<tag>@<digest>`.
 
 ## Components
 
@@ -40,7 +56,7 @@ Each component supports:
 
 - `enabled`
 - `replicaCount`
-- `image.repositorySuffix`
+- `image.name` and `image.digest`
 - `resources`
 
 Worker pods receive a unique `CAPSULET_WORKER_ID` from their pod name. Lease heartbeats and

@@ -6,9 +6,9 @@ type: application
 version: 0.1.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.27.0-0"
-home: https://github.com/mohripan16/capsulet
+home: https://github.com/mohripan/capsulet
 sources:
-  - https://github.com/mohripan16/capsulet
+  - https://github.com/mohripan/capsulet
 maintainers:
   - name: Mohammad Ripan
 keywords:
@@ -23,6 +23,6 @@ annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/links: |
     - name: Documentation
-      url: https://github.com/mohripan16/capsulet/tree/main/docs
+      url: https://github.com/mohripan/capsulet/tree/main/docs
     - name: Source
-      url: https://github.com/mohripan16/capsulet
+      url: https://github.com/mohripan/capsulet

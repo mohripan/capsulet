@@ -21,7 +21,10 @@ use super::{
     catalog::CommandSpec,
     process::{ProcessFailure, run_command},
 };
-use crate::fixtures::{self, Api, Ports, Secrets};
+use crate::{
+    fixtures::{self, Api, Ports, Secrets},
+    release::BuildIdentity,
+};
 
 /// Where the stack's secrets live while it is up.
 const STACK_DIRECTORY: &str = ".capsulet/stack";
@@ -98,8 +101,12 @@ impl ComposeStack {
             removed: false,
         };
         // From here on, a failure still takes the stack down: `Drop` does that.
-        fs::write(stack.env_file(), stack.secrets.env_file(stack.ports))
-            .map_err(|error| format!("could not write the stack's environment file: {error}"))?;
+        let identity = BuildIdentity::current(root)?;
+        fs::write(
+            stack.env_file(),
+            stack.secrets.env_file(stack.ports, &identity),
+        )
+        .map_err(|error| format!("could not write the stack's environment file: {error}"))?;
         fs::write(
             stack.directory.join("database-url"),
             stack.secrets.database_url(stack.ports),
@@ -118,7 +125,10 @@ impl ComposeStack {
             stack.collect_logs(root, log_path);
             return Err(format!("the stack did not come up healthy: {failure}"));
         }
-        match stack.seed_twice(root) {
+        match stack
+            .check_served_versions(root, &identity.version)
+            .and_then(|()| stack.seed_twice(root))
+        {
             Ok(()) => Ok(stack),
             Err(error) => {
                 stack.collect_logs(root, log_path);
@@ -127,10 +137,36 @@ impl ComposeStack {
         }
     }
 
+    /// The API and dashboard that came up must report the version this
+    /// checkout's `release.toml` names, because their images were built from it.
+    fn check_served_versions(&self, root: &Path, version: &str) -> Result<(), String> {
+        let running = self.running_services(root)?;
+        for (service, url) in [
+            ("api", self.ports.api_url()),
+            ("dashboard", self.ports.dashboard_url()),
+        ] {
+            if !running.iter().any(|name| name == service) {
+                continue;
+            }
+            let served = fixtures::served_version(&url)?;
+            if served != version {
+                return Err(format!(
+                    "the stack's {service} reports version {served}, but release.toml says \
+                     {version}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Seeds the stack twice and records the fixture graph, which the second
     /// seed must leave exactly as the first did.
     fn seed_twice(&mut self, root: &Path) -> Result<(), String> {
-        if !self.runs_api(root)? {
+        if !self
+            .running_services(root)?
+            .iter()
+            .any(|name| name == "api")
+        {
             // Only data services, for running the API itself from cargo: there is
             // nothing to seed through.
             return Ok(());
@@ -208,8 +244,8 @@ impl ComposeStack {
         fixtures::snapshot(&self.api, &self.secrets, &self.service_token)
     }
 
-    /// Whether the API is among the services that came up.
-    fn runs_api(&self, root: &Path) -> Result<bool, String> {
+    /// The services that came up.
+    fn running_services(&self, root: &Path) -> Result<Vec<String>, String> {
         let specification = self.compose_command(&["ps", "--services", "--status", "running"]);
         let output = Command::new(&specification.program)
             .args(&specification.arguments)
@@ -218,7 +254,8 @@ impl ComposeStack {
             .map_err(|error| format!("could not list the stack's services: {error}"))?;
         Ok(String::from_utf8_lossy(&output.stdout)
             .lines()
-            .any(|service| service.trim() == "api"))
+            .map(|service| service.trim().to_string())
+            .collect())
     }
 
     fn env_file(&self) -> PathBuf {

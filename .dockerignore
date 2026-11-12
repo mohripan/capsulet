@@ -4,3 +4,10 @@ dashboard/.next/
 dashboard/tsconfig.tsbuildinfo
 .git/
 .idea/
+
+# Generated stack secrets, verifier logs and saved test sessions stay out of
+# the build context, and so out of every image layer and builder cache.
+.capsulet/
+dashboard/test-results/
+dashboard/playwright/
+dashboard/playwright-report/

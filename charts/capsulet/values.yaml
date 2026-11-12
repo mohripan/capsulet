@@ -2,9 +2,12 @@
 nameOverride: ""
 fullnameOverride: ""
 
+# Capsulet's own images: <registry>/<namespace>/<component image.name>:<tag>,
+# all from release.toml, which `capsulet-xtask release check` holds this file
+# to. Set a component's image.digest to run exactly the build that was pushed.
 image:
   registry: ghcr.io
-  repository: mohripan16/capsulet
+  namespace: mohripan
   tag: "0.1.0"
   pullPolicy: IfNotPresent
 
@@ -60,9 +63,11 @@ config:
 
 postgresql:
   mode: bundled
+  # The same image, by the same digest, as compose.yaml's postgres service.
   image:
     repository: postgres
     tag: "16-alpine"
+    digest: sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
     pullPolicy: IfNotPresent
   auth:
     database: capsulet
@@ -115,6 +120,7 @@ postgresql:
 # set mode to external and point config.objectStorage at your own S3 service.
 seaweedfs:
   mode: bundled
+  # The same image, by the same digest, as compose.yaml's seaweedfs service.
   image:
     repository: chrislusf/seaweedfs
     tag: "4.53"
@@ -154,6 +160,13 @@ seaweedfs:
       cpu: 500m
       memory: 512Mi
 
+# The image `helm test` runs to reach the API from inside the cluster.
+tests:
+  image:
+    repository: busybox
+    tag: "1.36"
+    digest: sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+
 migrations:
   enabled: true
   backoffLimit: 6
@@ -174,7 +187,8 @@ api:
     existingSecret: ""
     secretKey: webhook-secrets
   image:
-    repositorySuffix: api
+    name: capsulet-api
+    digest: ""
   service:
     type: ClusterIP
     port: 80
@@ -196,7 +210,8 @@ worker:
     maxReplicas: 10
     targetCPUUtilizationPercentage: 70
   image:
-    repositorySuffix: worker
+    name: capsulet-worker
+    digest: ""
   runner:
     mode: kubernetes
     executionNamespace: ""
@@ -219,7 +234,8 @@ scheduler:
   loop: true
   pollSeconds: 5
   image:
-    repositorySuffix: scheduler
+    name: capsulet-scheduler
+    digest: ""
   resources:
     requests:
       cpu: 50m
@@ -239,7 +255,8 @@ graphWorker:
     maxReplicas: 10
     targetCPUUtilizationPercentage: 70
   image:
-    repositorySuffix: graph-worker
+    name: capsulet-graph-worker
+    digest: ""
   pollSeconds: 2
   leaseSeconds: 60
   # A local Ollama for model nodes, for example http://ollama:11434. Left empty, model
@@ -263,7 +280,8 @@ evaluator:
     maxReplicas: 6
     targetCPUUtilizationPercentage: 70
   image:
-    repositorySuffix: evaluator
+    name: capsulet-evaluator
+    digest: ""
   pollSeconds: 2
   retentionDays: 30
   auditRetentionDays: 365
@@ -292,7 +310,8 @@ dashboard:
     targetCPUUtilizationPercentage: 70
   apiBaseUrl: ""
   image:
-    repositorySuffix: dashboard
+    name: capsulet-dashboard
+    digest: ""
   service:
     type: ClusterIP
     port: 80

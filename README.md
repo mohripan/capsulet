@@ -258,14 +258,16 @@ The response contains the workflow run and preserved successful step runs. Activ
 
 ## Kubernetes with Helm
 
-The chart installs the API, worker, graph worker, scheduler, evaluator, dashboard, migration job, separated control-plane/execution service accounts, default-deny execution network policy, services, configuration, and optional bundled PostgreSQL and MinIO.
+The chart installs the API, worker, graph worker, scheduler, evaluator, dashboard, migration job, separated control-plane/execution service accounts, default-deny execution network policy, services, configuration, and optional bundled PostgreSQL and SeaweedFS.
 
 ```sh
 helm lint charts/capsulet
 kubectl create namespace capsulet
+# A fresh administrator token: keep it, it is how you sign in to the API.
+token="$(openssl rand -hex 32)"
 kubectl create secret generic capsulet-api-auth \
   --namespace capsulet \
-  --from-literal='tokens=[{"name":"cluster-admin","role":"admin","token":"replace-with-at-least-32-random-characters"}]'
+  --from-literal="tokens=[{\"name\":\"cluster-admin\",\"role\":\"admin\",\"token\":\"$token\"}]"
 helm install capsulet charts/capsulet \
   --namespace capsulet \
   --set api.auth.existingSecret=capsulet-api-auth

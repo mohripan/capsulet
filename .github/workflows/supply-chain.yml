@@ -62,46 +62,36 @@ jobs:
           cargo run -p capsulet-xtask --locked --
           verify --gate security --gate gate-regressions
 
+  # The image matrix is release.toml's, through the plan the `containers`
+  # gate builds too: each component's image name, Dockerfile, target and the
+  # build arguments its OCI labels come from. A matrix written here would be a
+  # second definition of the images that drifts from the first.
+  image-plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96.0"
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Plan the images
+        id: plan
+        run: echo "matrix=$(cargo run --quiet -p capsulet-xtask --locked -- release images --plan)" >> "$GITHUB_OUTPUT"
+
   images:
+    needs: image-plan
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: api
-            dockerfile: crates/Dockerfile
-            context: .
-            build-args: |
-              PACKAGE=capsulet-api
-              BIN=capsulet-api
-          - name: worker
-            dockerfile: crates/Dockerfile
-            context: .
-            build-args: |
-              PACKAGE=capsulet-worker
-              BIN=capsulet-worker
-          - name: scheduler
-            dockerfile: crates/Dockerfile
-            context: .
-            build-args: |
-              PACKAGE=capsulet-scheduler
-              BIN=capsulet-scheduler
-          - name: graph-worker
-            dockerfile: crates/Dockerfile
-            context: .
-            build-args: |
-              PACKAGE=capsulet-graph-worker
-              BIN=capsulet-graph-worker
-          - name: evaluator
-            dockerfile: crates/Dockerfile
-            context: .
-            build-args: |
-              PACKAGE=capsulet-evaluator
-              BIN=capsulet-evaluator
-          - name: dashboard
-            dockerfile: dashboard/Dockerfile
-            context: dashboard
-            build-args: ""
+      matrix: ${{ fromJSON(needs.image-plan.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -109,11 +99,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Tags only. The labels are the Dockerfile's, from the plan's build
+      # arguments: this action's would say the version is the branch name.
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/capsulet-${{ matrix.name }}
+          images: ${{ matrix.image }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -124,9 +116,9 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          build-args: ${{ matrix.build-args }}
+          target: ${{ matrix.target }}
+          build-args: ${{ matrix.build_args }}
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
           load: true
 
       # Two scans, because reporting and gating want different thresholds.
@@ -137,7 +129,7 @@ jobs:
         with:
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           format: sarif
-          output: trivy-${{ matrix.name }}.sarif
+          output: trivy-${{ matrix.component }}.sarif
           exit-code: "0"
 
       # And this one fails the build, under the checked-in policy in
@@ -153,20 +145,20 @@ jobs:
         if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: trivy-${{ matrix.name }}.sarif
+          sarif_file: trivy-${{ matrix.component }}.sarif
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
           image: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           format: cyclonedx-json
-          output-file: sbom-${{ matrix.name }}.cyclonedx.json
+          output-file: sbom-${{ matrix.component }}.cyclonedx.json
 
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-${{ matrix.name }}
-          path: sbom-${{ matrix.name }}.cyclonedx.json
+          name: sbom-${{ matrix.component }}
+          path: sbom-${{ matrix.component }}.cyclonedx.json
 
       - name: Login to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -182,9 +174,9 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          build-args: ${{ matrix.build-args }}
+          target: ${{ matrix.target }}
+          build-args: ${{ matrix.build_args }}
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
           push: true
 
       - name: Install cosign

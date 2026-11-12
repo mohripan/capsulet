@@ -82,7 +82,7 @@ jobs:
         run: >
           cargo run -p capsulet-xtask --locked --
           verify --gate claims --gate api-contracts --gate authorization --gate sdk
-          --gate claims-evidence
+          --gate claims-evidence --gate release
 
   postgres:
     name: PostgreSQL
@@ -230,56 +230,23 @@ jobs:
           path: .capsulet/verify/*/dashboard-e2e.log
           if-no-files-found: ignore
 
-  docker:
-    name: Docker images
+  # Every component's image, built from the plan release.toml defines, with
+  # its labels and non-root user checked, then removed. The Rust targets share
+  # one build stage, so the workspace compiles once for all five.
+  containers:
+    name: Container images
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: capsulet-api
-            dockerfile: crates/Dockerfile
-            build-args: |
-              PACKAGE=capsulet-api
-              BIN=capsulet-api
-          - image: capsulet-worker
-            dockerfile: crates/Dockerfile
-            build-args: |
-              PACKAGE=capsulet-worker
-              BIN=capsulet-worker
-          - image: capsulet-scheduler
-            dockerfile: crates/Dockerfile
-            build-args: |
-              PACKAGE=capsulet-scheduler
-              BIN=capsulet-scheduler
-          - image: capsulet-graph-worker
-            dockerfile: crates/Dockerfile
-            build-args: |
-              PACKAGE=capsulet-graph-worker
-              BIN=capsulet-graph-worker
-          - image: capsulet-evaluator
-            dockerfile: crates/Dockerfile
-            build-args: |
-              PACKAGE=capsulet-evaluator
-              BIN=capsulet-evaluator
-          - image: capsulet-dashboard
-            dockerfile: Dockerfile.dashboard
-            build-args: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
 
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: false
-          load: false
-          tags: ${{ matrix.image }}:ci
-          build-args: ${{ matrix.build-args }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate containers

@@ -136,6 +136,8 @@ const SUPPORTED_TOOLS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("helm", "helm", &["version", "--short"], Some("3.18")),
     ("kind", "kind", &["--version"], Some("0.30")),
     ("kubectl", "kubectl", &["version", "--client"], None),
+    // Only required to run: the release gates read the commit an image is built from.
+    ("git", "git", &["--version"], None),
     // The versions CI pins in .github/workflows/supply-chain.yml.
     ("cargo-audit", "cargo-audit", &["--version"], Some("0.22.2")),
     ("cargo-deny", "cargo-deny", &["--version"], Some("0.20.2")),

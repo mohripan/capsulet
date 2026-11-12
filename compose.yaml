@@ -13,6 +13,15 @@
 
 x-database-url: &database-url postgres://capsulet:${CAPSULET_POSTGRES_PASSWORD:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}@postgres:5432/capsulet
 
+# Every image built here is labelled with the release identity from
+# release.toml and the revision it was built from, which `stack up` writes to
+# the stack's environment file alongside its secrets.
+x-image-identity: &image-identity
+  VERSION: ${CAPSULET_VERSION:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+  REVISION: ${CAPSULET_REVISION:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+  CREATED: ${CAPSULET_CREATED:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+  SOURCE: ${CAPSULET_SOURCE:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+
 # Artifacts and logs go through the S3 adapter to the bundled SeaweedFS, the
 # same path a deployment against any S3-compatible store takes.
 x-object-storage: &object-storage
@@ -127,9 +136,8 @@ services:
     build:
       context: .
       dockerfile: crates/Dockerfile
-      args:
-        PACKAGE: capsulet-api
-        BIN: capsulet-api
+      target: api
+      args: *image-identity
     depends_on:
       postgres:
         condition: service_healthy
@@ -168,9 +176,8 @@ services:
     build:
       context: .
       dockerfile: crates/Dockerfile
-      args:
-        PACKAGE: capsulet-worker
-        BIN: capsulet-worker
+      target: worker
+      args: *image-identity
     depends_on:
       postgres:
         condition: service_healthy
@@ -205,9 +212,8 @@ services:
     build:
       context: .
       dockerfile: crates/Dockerfile
-      args:
-        PACKAGE: capsulet-scheduler
-        BIN: capsulet-scheduler
+      target: scheduler
+      args: *image-identity
     depends_on:
       postgres:
         condition: service_healthy
@@ -230,9 +236,8 @@ services:
     build:
       context: .
       dockerfile: crates/Dockerfile
-      args:
-        PACKAGE: capsulet-graph-worker
-        BIN: capsulet-graph-worker
+      target: graph-worker
+      args: *image-identity
     depends_on:
       postgres:
         condition: service_healthy
@@ -261,9 +266,8 @@ services:
     build:
       context: .
       dockerfile: crates/Dockerfile
-      args:
-        PACKAGE: capsulet-evaluator
-        BIN: capsulet-evaluator
+      target: evaluator
+      args: *image-identity
     depends_on:
       postgres:
         condition: service_healthy
@@ -289,6 +293,7 @@ services:
     build:
       context: ./dashboard
       dockerfile: Dockerfile
+      args: *image-identity
     depends_on:
       api:
         condition: service_healthy

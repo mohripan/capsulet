@@ -609,14 +609,66 @@ pub(crate) fn gates() -> Vec<Gate> {
             )
         },
         gate(
+            "release",
+            "release.toml against every crate, SDK, dashboard, chart, OpenAPI, Compose and \
+             Dockerfile, and every image and repository reference",
+            &["cargo", "git"],
+            300,
+            &[Fast, Full],
+            vec![command(
+                "cargo",
+                &[
+                    "run",
+                    "-p",
+                    "capsulet-xtask",
+                    "--locked",
+                    "--",
+                    "release",
+                    "check",
+                ],
+            )],
+        ),
+        gate(
+            "containers",
+            "Every component image built from release.toml's plan, its labels and non-root user \
+             checked, then removed",
+            &["cargo", "docker", "git"],
+            3_600,
+            &[Full],
+            vec![command(
+                "cargo",
+                &[
+                    "run",
+                    "-p",
+                    "capsulet-xtask",
+                    "--locked",
+                    "--",
+                    "release",
+                    "images",
+                ],
+            )],
+        ),
+        gate(
             "helm",
-            "Helm lint and render",
-            &["helm"],
+            "Helm lint and render, and every workload's image against release.toml",
+            &["helm", "cargo"],
             300,
             &[Full],
             vec![
                 command("helm", &["lint", "charts/capsulet"]),
                 command("helm", &["template", "capsulet", "charts/capsulet"]),
+                command(
+                    "cargo",
+                    &[
+                        "run",
+                        "-p",
+                        "capsulet-xtask",
+                        "--locked",
+                        "--",
+                        "release",
+                        "check-chart",
+                    ],
+                ),
             ],
         ),
         // Not in a profile: this one needs a Wasmtime runtime and a WASI Python
