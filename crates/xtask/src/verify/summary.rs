@@ -8,6 +8,12 @@
 //! to `verify summary --require full`, which fails unless every gate of the
 //! profile is there and passed. A gate that is missing, skipped, failed or
 //! timed out cannot hide behind a green job.
+//!
+//! Each summary also records its run: the commit, whether the worktree was
+//! clean when it started and what changed while it ran, and what the run left
+//! behind of the containers, volumes, networks, images, clusters and credential
+//! files its gates made. A run that changed the worktree, left anything, or
+//! stopped before it could look fails `verify summary` too.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -32,7 +38,36 @@ pub(crate) struct Summary {
     pub(crate) schema_version: u32,
     /// The verifier's own version, which is the product's.
     pub(crate) verifier: String,
+    /// Absent only in a summary this check cannot vouch for.
+    #[serde(default)]
+    pub(crate) run: Option<RunRecord>,
     pub(crate) gates: Vec<GateRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct RunRecord {
+    /// The run directory's name, `<millis>-<pid>`, which every disposable
+    /// resource of the run is named with.
+    pub(crate) id: String,
+    /// The commit checked out, or `None` outside a Git checkout.
+    pub(crate) revision: Option<String>,
+    /// `--profile`, when the run selected one.
+    pub(crate) profile: Option<String>,
+    /// `<os>-<arch>` of the machine.
+    pub(crate) host: String,
+    pub(crate) started_unix: u64,
+    pub(crate) finished_unix: Option<u64>,
+    /// `git status` reported nothing when the run started.
+    pub(crate) clean_at_start: bool,
+    /// What changed in the worktree while the run ran: every path whose
+    /// status or contents differ, and a moved `HEAD`.
+    pub(crate) worktree_changes: Vec<String>,
+    /// Whether the run got as far as looking for what it left behind.
+    pub(crate) cleanup_checked: bool,
+    /// What it looked at: `docker`, `kind`, `files`.
+    pub(crate) cleanup_scope: Vec<String>,
+    /// Every resource of this run still there after its last gate.
+    pub(crate) leftovers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,10 +153,15 @@ impl GateRecord {
 
 /// Rewrites the run's summary with every gate recorded so far, so a run that
 /// stops early still says what ran.
-pub(crate) fn write(directory: &Path, records: &[GateRecord]) -> Result<(), String> {
+pub(crate) fn write(
+    directory: &Path,
+    run: &RunRecord,
+    records: &[GateRecord],
+) -> Result<(), String> {
     let summary = Summary {
-        schema_version: 1,
+        schema_version: 2,
         verifier: env!("CARGO_PKG_VERSION").to_string(),
+        run: Some(run.clone()),
         gates: records.to_vec(),
     };
     let path = directory.join(FILE);
@@ -242,6 +282,38 @@ pub(crate) fn check(required: &[String], summaries: &[(String, Summary)]) -> Vec
                 findings.push(format!("{} {} ({source})", record.name, record.status));
             }
         }
+        findings.extend(run_findings(source, summary));
+    }
+    findings
+}
+
+/// What a run's own record says against it, whatever its gates did.
+fn run_findings(source: &str, summary: &Summary) -> Vec<String> {
+    let Some(run) = &summary.run else {
+        return vec![format!(
+            "{source} records no run, so nothing says what the run left behind"
+        )];
+    };
+    let mut findings = Vec::new();
+    if !run.cleanup_checked {
+        findings.push(format!(
+            "run {} stopped before it checked what it left behind ({source})",
+            run.id
+        ));
+    }
+    if !run.leftovers.is_empty() {
+        findings.push(format!(
+            "run {} left behind {} ({source})",
+            run.id,
+            run.leftovers.join(", ")
+        ));
+    }
+    if !run.worktree_changes.is_empty() {
+        findings.push(format!(
+            "run {} changed the worktree: {} ({source})",
+            run.id,
+            run.worktree_changes.join(", ")
+        ));
     }
     findings
 }
@@ -311,7 +383,7 @@ fn publish(required: &[String], summaries: &[(String, Summary)], findings: &[Str
 
 #[cfg(test)]
 mod tests {
-    use super::{GateRecord, Log, Summary, Tests, check};
+    use super::{GateRecord, Log, RunRecord, Summary, Tests, check};
 
     fn record(name: &str, status: &str) -> GateRecord {
         GateRecord {
@@ -328,12 +400,63 @@ mod tests {
         }
     }
 
+    fn clean_run() -> RunRecord {
+        RunRecord {
+            id: "1700000000000-1".to_string(),
+            revision: Some("0".repeat(40)),
+            profile: Some("full".to_string()),
+            host: "linux-x86_64".to_string(),
+            started_unix: 1_700_000_000,
+            finished_unix: Some(1_700_000_100),
+            clean_at_start: true,
+            worktree_changes: Vec::new(),
+            cleanup_checked: true,
+            cleanup_scope: vec!["docker".to_string(), "files".to_string()],
+            leftovers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_run_that_left_something_changed_the_worktree_or_stopped_early_is_refused() {
+        let gates = || vec![record("format", "passed")];
+        let mut left = summary(gates());
+        left.1.run.as_mut().expect("run").leftovers =
+            vec!["container capsulet-verify-1700000000000-1-postgres".to_string()];
+        let mut changed = summary(gates());
+        changed.1.run.as_mut().expect("run").worktree_changes =
+            vec!["crates/api/openapi.json".to_string()];
+        let mut stopped = summary(gates());
+        stopped.1.run.as_mut().expect("run").cleanup_checked = false;
+        let mut unrecorded = summary(gates());
+        unrecorded.1.run = None;
+        let required = ["format".to_string()];
+        assert_eq!(
+            check(&required, &[left]),
+            vec![
+                "run 1700000000000-1 left behind container capsulet-verify-1700000000000-1-postgres (job)"
+            ]
+        );
+        assert_eq!(
+            check(&required, &[changed]),
+            vec!["run 1700000000000-1 changed the worktree: crates/api/openapi.json (job)"]
+        );
+        assert_eq!(
+            check(&required, &[stopped]),
+            vec!["run 1700000000000-1 stopped before it checked what it left behind (job)"]
+        );
+        assert_eq!(
+            check(&required, &[unrecorded]),
+            vec!["job records no run, so nothing says what the run left behind"]
+        );
+    }
+
     fn summary(records: Vec<GateRecord>) -> (String, Summary) {
         (
             "job".to_string(),
             Summary {
-                schema_version: 1,
+                schema_version: 2,
                 verifier: "0.1.0".to_string(),
+                run: Some(clean_run()),
                 gates: records,
             },
         )

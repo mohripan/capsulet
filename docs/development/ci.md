@@ -16,6 +16,33 @@ reports each tool's version against the supported minimum. `--profile fast` is t
 it prints what it leaves out. `verify --gate <name>` runs one gate, and `verify --list` prints them
 all with their commands.
 
+After the last gate, whether or not the gates passed, every run checks two things.
+
+- **Nothing left behind.** It looks for anything named for the run: containers, volumes, networks
+  and images, Kind clusters, and the directories of generated credentials under `.capsulet/stack`
+  and `.capsulet/kind`. Anything left fails the run.
+- **The worktree unchanged.** It compares the worktree with how it was when the run started: the
+  commit, and the status and contents of every path `git status` reports. A change fails a
+  `--profile full` run and is a warning for any other.
+
+Every disposable resource is named `capsulet-verify-<run>`, then the gate or service:
+
+| Resource | Name |
+| --- | --- |
+| Database fixture | `<prefix>-postgres-<gate>`, removed with its volume |
+| Compose stack | project `<prefix>-<gate>` |
+| Kind cluster | `<prefix>` |
+| Built images | `capsulet-verify/<image>:<version>-<run>-<pid>` |
+
+So the check finds exactly what that run made, and nothing another run made.
+
+What a run keeps on purpose:
+
+- its directory under `.capsulet/verify`;
+- the scanners' reports under `.capsulet/security`;
+- Trivy's vulnerability database, in the `capsulet-trivy-cache` volume;
+- the pinned images it pulled.
+
 ## Required jobs
 
 `ci.yml` is the primary workflow. Its jobs:
@@ -138,9 +165,20 @@ the run that failed, under its run directory.
 - its duration;
 - the commands it ran;
 - what each prerequisite tool reported as its version;
-- the verifier's version;
 - the passed, failed and ignored tests of every test binary;
 - the path and SHA-256 of its log.
+
+It also records the run itself: the verifier's version, its id, the commit, the profile, the host,
+when it started and finished, whether the checkout was clean when it started, what changed in the
+worktree, and what the cleanup check looked at and found. Required fails on a summary whose run
+changed the worktree, left anything behind, or stopped before it could look.
+
+The run directory also holds evidence a gate leaves for the record:
+
+- `images.jsonl`: the `containers` and `kind` gates add the ID of every image they built;
+- `chart-render.json`: the `helm` gate's render digest. It is the SHA-256 of the default render,
+  with every Secret's values and each `checksum/` annotation masked, since the chart generates
+  those at random for a new install. The gate renders twice and fails if the digests differ.
 
 Runs are written to `.capsulet/verify/<run>/`, or below `CAPSULET_VERIFY_RUNS` when it is set. The
 verifier's own tests set it, so the runs they fail on purpose never reach a job's upload, where
@@ -151,6 +189,30 @@ Download a run's `verification-*` artifacts and check them as Required does:
 ```powershell
 cargo run -p capsulet-xtask --locked -- verify summary --require full <directory>
 ```
+
+## The clean-checkout rehearsal
+
+The release gate is the one local command run in a fresh clone, with only the documented
+prerequisites installed. Its run becomes the committed record of what was verified:
+
+```powershell
+git clone https://github.com/mohripan/capsulet.git capsulet-rehearsal
+cd capsulet-rehearsal
+cargo run -p capsulet-xtask --locked -- verify --profile full
+cargo run -p capsulet-xtask --locked -- verify record .capsulet/verify/<run> --output <file>
+```
+
+`verify record` refuses a run unless all of these hold:
+
+- it selected the full profile;
+- it started from a clean checkout;
+- every gate passed;
+- the worktree did not change;
+- nothing was left behind.
+
+The record keeps the commit, the host, the duration, every tool's version, each gate's result and
+test counts and log digest, every image ID, the chart render digest and the summary's SHA-256. It
+names no path on the machine.
 
 ## Cache boundaries
 

@@ -1,8 +1,6 @@
-use std::{
-    process::Command,
-    thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{fs, path::Path, process::Command, thread, time::Duration};
+
+use super::leftovers;
 
 pub(crate) struct PostgresFixture {
     name: String,
@@ -11,18 +9,21 @@ pub(crate) struct PostgresFixture {
 }
 
 impl PostgresFixture {
-    pub(crate) fn start() -> Result<Self, String> {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| error.to_string())?
-            .as_millis();
-        let name = format!("capsulet-verify-postgres-{}-{nonce}", std::process::id());
+    /// A container named for the run and the gate, from the image Compose
+    /// pins, so the database the suites run against is the one the stack and
+    /// its scan use.
+    pub(crate) fn start(root: &Path, run: &str, gate: &str) -> Result<Self, String> {
+        let name = format!("{}-postgres-{gate}", leftovers::prefix(run));
+        let image = image(root)?;
+        let label = format!("capsulet.verify.run={run}");
         let output = Command::new("docker")
             .args([
                 "run",
                 "--detach",
                 "--name",
                 &name,
+                "--label",
+                &label,
                 "--env",
                 "POSTGRES_PASSWORD=capsulet_verify",
                 "--env",
@@ -31,7 +32,7 @@ impl PostgresFixture {
                 "POSTGRES_DB=capsulet_test",
                 "--publish",
                 "127.0.0.1::5432",
-                "postgres:16-alpine",
+                &image,
             ])
             .output()
             .map_err(|error| format!("could not start PostgreSQL container: {error}"))?;
@@ -60,7 +61,9 @@ impl PostgresFixture {
             return Ok(());
         }
         let output = Command::new("docker")
-            .args(["rm", "--force", &self.name])
+            // `--volumes`: the image declares a volume for its data, which
+            // would otherwise outlive the container.
+            .args(["rm", "--force", "--volumes", &self.name])
             .output()
             .map_err(|error| format!("could not remove PostgreSQL container: {error}"))?;
         if output.status.success() {
@@ -117,6 +120,19 @@ impl PostgresFixture {
             "postgres://postgres:capsulet_verify@127.0.0.1:{port}/capsulet_test"
         ))
     }
+}
+
+/// The image of `compose.yaml`'s `postgres` service, pinned by digest.
+fn image(root: &Path) -> Result<String, String> {
+    let path = root.join("compose.yaml");
+    let text = fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let compose: serde_yaml::Value =
+        serde_yaml::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
+    compose["services"]["postgres"]["image"]
+        .as_str()
+        .filter(|image| image.contains("@sha256:"))
+        .map(str::to_string)
+        .ok_or_else(|| "compose.yaml names no postgres image pinned by digest".to_string())
 }
 
 impl Drop for PostgresFixture {

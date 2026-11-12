@@ -5,6 +5,10 @@
 //! `<registry>/<namespace>/<image>:<version>`; with a digest set for every
 //! component, each must run exactly that digest. Every other container must run
 //! one of the third-party images the values pin by digest.
+//!
+//! The default render is made twice more, and both must have the same
+//! [`render_digest`]: the chart's output depends only on the checkout and the
+//! values, apart from what it generates at random for a new install.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -29,7 +33,8 @@ struct Container {
     image: String,
 }
 
-pub(super) fn check(root: &Path, release: &Release) -> Result<Vec<String>, String> {
+/// The findings, and the digest of the default render.
+pub(super) fn check(root: &Path, release: &Release) -> Result<(Vec<String>, String), String> {
     let values = read_yaml(root, CHART_VALUES)?;
     let mut dependencies = BTreeSet::new();
     for dependency in DEPENDENCY_IMAGES {
@@ -40,6 +45,14 @@ pub(super) fn check(root: &Path, release: &Release) -> Result<Vec<String>, Strin
     }
     let mut findings = Vec::new();
     let documents = render(root, &[])?;
+    let digest = render_digest(&documents);
+    let again = render_digest(&render(root, &[])?);
+    if again != digest {
+        findings.push(format!(
+            "two renders with the default values differ beyond the generated secrets: \
+             {digest} and {again}"
+        ));
+    }
     findings.extend(workload_findings(&documents, release, &values));
     let defaults = containers(&documents);
     expect(release, &defaults, None, &dependencies, &mut findings);
@@ -68,7 +81,69 @@ pub(super) fn check(root: &Path, release: &Release) -> Result<Vec<String>, Strin
         &dependencies,
         &mut findings,
     );
-    Ok(findings)
+    Ok((findings, digest))
+}
+
+/// `sha256:<hex>` of the rendered documents with what the chart generates at
+/// random for a new install masked: every Secret's values, and the `checksum/`
+/// annotations that roll pods when those change. Everything else, which is
+/// every workload, image, probe, security context and setting, is hashed as
+/// rendered.
+pub(crate) fn render_digest(documents: &[Yaml]) -> String {
+    use sha2::{Digest, Sha256};
+    let masked: Vec<Yaml> = documents
+        .iter()
+        .cloned()
+        .map(|mut document| {
+            mask_generated(&mut document);
+            document
+        })
+        .collect();
+    let text = serde_yaml::to_string(&masked).unwrap_or_default();
+    let digest = Sha256::digest(text.as_bytes());
+    let hex: String = digest
+        .iter()
+        .fold(String::with_capacity(64), |mut hex, byte| {
+            use std::fmt::Write as _;
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        });
+    format!("sha256:{hex}")
+}
+
+fn mask_generated(document: &mut Yaml) {
+    if document["kind"].as_str() == Some("Secret") {
+        for field in ["data", "stringData"] {
+            if let Some(values) = document.get_mut(field).and_then(Yaml::as_mapping_mut) {
+                for value in values.values_mut() {
+                    *value = Yaml::String("<generated>".to_string());
+                }
+            }
+        }
+    }
+    mask_checksums(document);
+}
+
+fn mask_checksums(value: &mut Yaml) {
+    match value {
+        Yaml::Mapping(mapping) => {
+            if let Some(annotations) = mapping
+                .get_mut("annotations")
+                .and_then(Yaml::as_mapping_mut)
+            {
+                for (key, value) in annotations.iter_mut() {
+                    if key.as_str().is_some_and(|key| key.starts_with("checksum/")) {
+                        *value = Yaml::String("<generated>".to_string());
+                    }
+                }
+            }
+            for value in mapping.values_mut() {
+                mask_checksums(value);
+            }
+        }
+        Yaml::Sequence(items) => items.iter_mut().for_each(mask_checksums),
+        _ => {}
+    }
 }
 
 /// Renders the chart with extra `helm template` arguments, as parsed documents.

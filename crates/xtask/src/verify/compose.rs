@@ -59,6 +59,7 @@ impl ComposeStack {
     /// they depend on.
     pub(crate) fn for_gate(
         gate: &str,
+        run: &str,
         services: &[&str],
         root: &Path,
         log_path: &Path,
@@ -67,11 +68,9 @@ impl ComposeStack {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| error.to_string())?;
-        let project = format!(
-            "capsulet-verify-{gate}-{}-{}",
-            std::process::id(),
-            now.as_millis()
-        );
+        // Named for the run, so the end of the run can find anything of it
+        // still there: its containers, volumes, networks, images and directory.
+        let project = format!("{}-{gate}", super::leftovers::prefix(run));
         let plan = Plan {
             directory: root.join(STACK_DIRECTORY).join(&project),
             project,

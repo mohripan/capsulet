@@ -226,6 +226,23 @@ pub(crate) fn build_verified(root: &Path, built: &mut Vec<String>) -> Result<(),
     images::build_all(root, &release, &identity, &entries, built)
 }
 
+/// A verifier run keeps the render digest in its directory, for the
+/// clean-checkout rehearsal's record.
+fn record_render(digest: &str) -> Result<(), String> {
+    let Some(directory) = std::env::var_os(crate::verify::RUN_DIRECTORY_VARIABLE) else {
+        return Ok(());
+    };
+    let path = Path::new(&directory).join("chart-render.json");
+    let record = serde_json::json!({
+        "chart": "charts/capsulet",
+        "values": "defaults",
+        "sha256": digest,
+        "masked": ["Secret data and stringData", "checksum/ annotations"],
+    });
+    fs::write(&path, format!("{record:#}\n"))
+        .map_err(|error| format!("{}: {error}", path.display()))
+}
+
 /// What an image built from this checkout is labelled with.
 pub(crate) struct BuildIdentity {
     pub(crate) version: String,
@@ -312,12 +329,17 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             }
         }
         Some("check-chart") if arguments.len() == 1 => {
-            let findings = chart::check(&root, &release)?;
+            let (findings, digest) = chart::check(&root, &release)?;
             if findings.is_empty() {
                 println!(
                     "[release] every chart workload runs the image {RELEASE_FILE} names, by tag \
                      and by digest"
                 );
+                println!(
+                    "[release] the default render is {digest}, the same twice, with Secret \
+                     values and checksum annotations masked"
+                );
+                record_render(&digest)?;
                 Ok(())
             } else {
                 Err(report(&findings))

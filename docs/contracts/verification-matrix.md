@@ -36,7 +36,10 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `wasm-python` | no | no | WASI Python runner, nightly by name; its test is ignored elsewhere and must run here. The runner's command line and validation are tested in `unit` | Cargo, Wasmtime |
 
 `fast` prints its exact omissions at both the start and end. `full` cannot report success unless
-every full-profile gate ran successfully. Per-gate logs are written below `.capsulet/verify/`.
+every full-profile gate ran successfully, nothing named for the run is left behind (containers,
+volumes, networks, images, Kind clusters, generated credential directories), and the worktree is as
+it was when the run started; any run fails on what it left behind ([CI](../development/ci.md)).
+Per-gate logs are written below `.capsulet/verify/`.
 The verifier's own tests build in `.capsulet/verify/xtask-tests`, separate from the running
 executable's target directory so Windows does not block replacing an executable in use.
 Run directories include a timestamp and process ID and must be newly created, preventing

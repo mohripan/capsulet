@@ -92,13 +92,25 @@ pub(super) fn build_all(
     built: &mut Vec<String>,
 ) -> Result<(), String> {
     for entry in entries {
-        // A local name nobody pulls or pushes, unique to this run.
-        let tag = format!(
-            "capsulet-verify/{}:{}-{}",
-            entry.title,
-            entry.version,
-            std::process::id()
-        );
+        // A local name nobody pulls or pushes, unique to this process and
+        // carrying the verifier run's id, by which the run finds it if it was
+        // left behind.
+        let run = std::env::var(crate::verify::RUN_VARIABLE).unwrap_or_default();
+        let tag = if run.is_empty() {
+            format!(
+                "capsulet-verify/{}:{}-{}",
+                entry.title,
+                entry.version,
+                std::process::id()
+            )
+        } else {
+            format!(
+                "capsulet-verify/{}:{}-{run}-{}",
+                entry.title,
+                entry.version,
+                std::process::id()
+            )
+        };
         let mut command = Command::new("docker");
         command
             .env("DOCKER_BUILDKIT", "1")
@@ -120,9 +132,43 @@ pub(super) fn build_all(
         }
         built.push(tag.clone());
         inspect(&tag, entry, release, identity)?;
-        println!("[release] {} carries its release labels", entry.image);
+        let id = record_built(&tag, entry, identity)?;
+        println!("[release] {} carries its release labels: {id}", entry.image);
     }
     Ok(())
+}
+
+/// The image ID (its configuration's digest) of what was just built, which a
+/// verifier run records in `images.jsonl` in its directory: the clean-checkout
+/// rehearsal reports these beside the release identity they were built from.
+fn record_built(tag: &str, entry: &Entry, identity: &BuildIdentity) -> Result<String, String> {
+    let output = Command::new("docker")
+        .args(["image", "inspect", "--format", "{{.Id}}", tag])
+        .output()
+        .map_err(|error| format!("could not inspect {tag}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("docker image inspect {tag} failed"));
+    }
+    let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if let Some(directory) = std::env::var_os(crate::verify::RUN_DIRECTORY_VARIABLE) {
+        let line = serde_json::json!({
+            "component": entry.component,
+            "image": entry.image,
+            "version": identity.version,
+            "revision": identity.revision,
+            "reference": tag,
+            "id": id,
+        });
+        let path = std::path::Path::new(&directory).join("images.jsonl");
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        std::io::Write::write_all(&mut file, format!("{line}\n").as_bytes())
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+    }
+    Ok(id)
 }
 
 /// `release inspect <component> <reference>`: an image already built, by CI

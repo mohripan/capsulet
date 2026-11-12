@@ -2,9 +2,12 @@ pub(crate) mod catalog;
 mod compose;
 mod counts;
 mod kind;
+mod leftovers;
 mod postgres;
 pub(crate) mod process;
+mod record;
 mod summary;
+mod worktree;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -17,6 +20,9 @@ use catalog::{Gate, Profile, gates};
 
 /// The variable that tells a gate's steps which verifier run they belong to.
 pub(crate) const RUN_VARIABLE: &str = "CAPSULET_VERIFY_RUN";
+/// The run's directory, where a step may leave evidence beside the gate logs:
+/// the `containers` and `kind` gates record the ID of every image they built.
+pub(crate) const RUN_DIRECTORY_VARIABLE: &str = "CAPSULET_VERIFY_RUN_DIRECTORY";
 use process::{ProcessFailure, run_command};
 
 /// `xtask kind smoke|delete`.
@@ -41,6 +47,12 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         .is_some_and(|argument| argument == "summary")
     {
         return summary::run(&arguments[2..]);
+    }
+    if arguments
+        .get(1)
+        .is_some_and(|argument| argument == "record")
+    {
+        return record::run(&arguments[2..]);
     }
     let options = Options::parse(&arguments[1..])?;
     if options.doctor {
@@ -232,19 +244,54 @@ fn execute(options: &Options) -> Result<(), String> {
     }
     let root = workspace_root();
     let log_directory = log_directory(&root)?;
+    let before = worktree::Snapshot::take(&root);
+    let mut run = summary::RunRecord {
+        id: log_directory
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        revision: before.revision.clone(),
+        profile: options.profile.as_ref().map(|profile| {
+            match profile {
+                Profile::Fast => "fast",
+                Profile::Full => "full",
+            }
+            .to_string()
+        }),
+        host: format!("{}-{}", env::consts::OS, env::consts::ARCH),
+        started_unix: unix_now(),
+        finished_unix: None,
+        clean_at_start: before.is_clean(),
+        worktree_changes: Vec::new(),
+        cleanup_checked: false,
+        cleanup_scope: Vec::new(),
+        leftovers: Vec::new(),
+    };
     let mut passed = Vec::new();
     let mut ran = Vec::new();
     let mut records = Vec::new();
+    summary::write(&log_directory, &run, &records)?;
     let result = run_selected(
         &selected,
         &root,
         &log_directory,
+        &run,
         &mut passed,
         &mut ran,
         &mut records,
     );
+    // Whatever the gates did, look for what they left before saying so.
+    let ending = finish_run(
+        &root,
+        &log_directory,
+        &before,
+        &mut run,
+        &records,
+        options.profile == Some(Profile::Full),
+    );
     publish_summary(&ran);
     result?;
+    ending?;
     if options.profile == Some(Profile::Fast) {
         print_omitted(&catalog, &selected_names, "end");
     }
@@ -256,11 +303,69 @@ fn execute(options: &Options) -> Result<(), String> {
     Ok(())
 }
 
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+/// After the last gate, however it ended: what the run changed in the worktree
+/// and what it left behind, written to its summary. Anything left behind fails
+/// every run. A changed worktree fails a full-profile run, which is the release
+/// gate, and is a warning otherwise; `verify summary` refuses either.
+fn finish_run(
+    root: &Path,
+    log_directory: &Path,
+    before: &worktree::Snapshot,
+    run: &mut summary::RunRecord,
+    records: &[summary::GateRecord],
+    worktree_must_hold: bool,
+) -> Result<(), String> {
+    let report = leftovers::find(root, &run.id);
+    run.cleanup_checked = true;
+    run.cleanup_scope = report.checked;
+    run.leftovers = report.found;
+    run.worktree_changes = worktree::Snapshot::take(root).changes_since(before);
+    run.finished_unix = Some(unix_now());
+    summary::write(log_directory, run, records)?;
+    let mut problems = Vec::new();
+    if !run.leftovers.is_empty() {
+        problems.push(format!(
+            "run {} left behind {}",
+            run.id,
+            run.leftovers.join(", ")
+        ));
+    }
+    if !run.worktree_changes.is_empty() {
+        let changes = format!(
+            "the worktree changed during run {}: {}",
+            run.id,
+            run.worktree_changes.join(", ")
+        );
+        if worktree_must_hold {
+            problems.push(changes);
+        } else {
+            println!("[verify] warning: {changes}");
+        }
+    }
+    if problems.is_empty() {
+        println!(
+            "[verify] run {} left nothing behind (checked {})",
+            run.id,
+            run.cleanup_scope.join(", ")
+        );
+        Ok(())
+    } else {
+        Err(problems.join("; "))
+    }
+}
+
 /// Runs the selected gates in order, stopping at the first that fails.
 fn run_selected(
     selected: &[&Gate],
     root: &Path,
     log_directory: &Path,
+    run: &summary::RunRecord,
     passed: &mut Vec<&'static str>,
     ran: &mut Vec<counts::GateCounts>,
     records: &mut Vec<summary::GateRecord>,
@@ -276,7 +381,7 @@ fn run_selected(
                 &[],
                 &log_path,
             ));
-            summary::write(log_directory, records)?;
+            summary::write(log_directory, run, records)?;
             return Err(missing);
         }
         let started = Instant::now();
@@ -304,7 +409,7 @@ fn run_selected(
             record.status = "failed".to_string();
         }
         records.push(record);
-        summary::write(log_directory, records)?;
+        summary::write(log_directory, run, records)?;
         ran.push(counts::GateCounts {
             gate: gate.name,
             passed: outcome.is_ok(),
@@ -424,17 +529,27 @@ fn run_gate(
         .and_then(Path::file_name)
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
+    let run_directory = log_path
+        .parent()
+        .map(|directory| directory.display().to_string())
+        .unwrap_or_default();
     let with_run = |specification: &catalog::CommandSpec| {
         let mut specification = specification.clone();
         specification
             .environment
             .insert(RUN_VARIABLE.to_string(), run_id.clone());
         specification
+            .environment
+            .insert(RUN_DIRECTORY_VARIABLE.to_string(), run_directory.clone());
+        specification
     };
     let provision: Vec<catalog::CommandSpec> = gate.provision.iter().map(with_run).collect();
     let teardown_steps: Vec<catalog::CommandSpec> = gate.teardown.iter().map(with_run).collect();
     let mut fixture = if matches!(gate.name, "postgres" | "migrations" | "chaos") {
-        Some(postgres::PostgresFixture::start().map_err(ProcessFailure::Io)?)
+        Some(
+            postgres::PostgresFixture::start(root, &run_id, gate.name)
+                .map_err(ProcessFailure::Io)?,
+        )
     } else {
         None
     };
@@ -447,6 +562,7 @@ fn run_gate(
         Some(services) => Some(
             compose::ComposeStack::for_gate(
                 gate.name,
+                &run_id,
                 services,
                 root,
                 log_path,
