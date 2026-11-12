@@ -174,6 +174,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-OBSERVABILITY-001` | experimental | capability | Services expose health, readiness, Prometheus metrics, structured logs, and starter dashboards and alerts for current execution paths. |
 | `CAP-OBSERVABILITY-002` | experimental | capability | Agent runs export OpenTelemetry traces whose model, retrieval and tool spans follow the generative-AI semantic conventions of release 1.41.0: every lease of a run, on any worker, continues the trace of the request that started it; node attempts, model calls, retrievals and effects carry run, node, attempt and log-position identifiers, token usage only where a provider reported it, and failures by kind; no prompt, completion, retrieved text, input value or failure detail is exported, metric labels come from closed sets, and a collector that is down does not change how a run ends. |
+| `CAP-OBSERVABILITY-003` | experimental | capability | Agent run traces can be viewed in Jaeger 2.23, an optional viewer for operators, pinned by digest: the `trace-viewer` gate sends a synthetic run's trace to it over OTLP/HTTP and finds it there by the trace id the run's bundle names, with Capsulet's spans and attributes and none of the run's input. The viewer has no authentication or project isolation, so it is not offered to tenants, and a run's trace id is disclosed only to a caller allowed to export its bundle. |
 
 ## Offline certificate replay
 

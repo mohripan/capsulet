@@ -3243,6 +3243,27 @@
       ]
     },
     {
+      "id": "CAP-OBSERVABILITY-003",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Observability and operations",
+      "statement": "Agent run traces can be viewed in Jaeger 2.23, an optional viewer for operators, pinned by digest: the `trace-viewer` gate sends a synthetic run's trace to it over OTLP/HTTP and finds it there by the trace id the run's bundle names, with Capsulet's spans and attributes and none of the run's input. The viewer has no authentication or project isolation, so it is not offered to tenants, and a run's trace id is disclosed only to a caller allowed to export its bundle.",
+      "public_surfaces": [
+        "docs/operations/observability.md"
+      ],
+      "evidence": [
+        {
+          "type": "decision",
+          "path": "docs/adr/0020-an-optional-operator-trace-viewer.md"
+        },
+        {
+          "type": "source",
+          "path": "scripts/trace-viewer-spike.ps1",
+          "gate": "trace-viewer"
+        }
+      ]
+    },
+    {
       "id": "CAP-VERIFY-001",
       "kind": "guarantee",
       "maturity": "implemented",

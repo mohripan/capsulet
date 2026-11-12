@@ -766,6 +766,30 @@ pub(crate) fn gates() -> Vec<Gate> {
                 ),
             ],
         ),
+        // Not in a profile: the trace viewer is optional (ADR 0020), so a run that
+        // does not use one does not need its image. On demand, on a stack of its
+        // own, it shows the export reaches one and carries no content.
+        Gate {
+            stack: Some(&["api", "graph-worker"]),
+            ..gate(
+                "trace-viewer",
+                "A synthetic agent run's trace reaches Jaeger over OTLP/HTTP and is found there by \
+                 the trace id its bundle names, with Capsulet's spans and none of its input",
+                &["docker", powershell],
+                1_800,
+                &[],
+                vec![command(
+                    powershell,
+                    &[
+                        "-NoProfile",
+                        "-File",
+                        "scripts/trace-viewer-spike.ps1",
+                        "-Viewer",
+                        "jaeger",
+                    ],
+                )],
+            )
+        },
         // Not in a profile: this one needs a Wasmtime runtime and a WASI Python
         // build that a normal checkout does not have. It runs nightly by name,
         // so its pass/fail still lives here rather than in YAML.

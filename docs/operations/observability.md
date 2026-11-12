@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-JOB-001, CAP-JOB-002, CAP-JOB-003, CAP-JOB-004, CAP-JOB-005, CAP-JOB-006, CAP-JOB-007, CAP-JOB-008, CAP-JOB-009, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-OBSERVABILITY-001, CAP-OBSERVABILITY-002, CAP-HELM-001 -->
+<!-- capsulet-claims: CAP-JOB-001, CAP-JOB-002, CAP-JOB-003, CAP-JOB-004, CAP-JOB-005, CAP-JOB-006, CAP-JOB-007, CAP-JOB-008, CAP-JOB-009, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-OBSERVABILITY-001, CAP-OBSERVABILITY-002, CAP-HELM-001, CAP-OBSERVABILITY-003 -->
 # Observability
 
 Capsulet services emit JSON logs and Prometheus metrics by default. Distributed tracing is enabled when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
@@ -140,6 +140,51 @@ which is also the whole status description; a model error kind (`unreachable`, `
 `malformed`), described without the provider's response body (`refused with status 503`); `storage`
 for a retrieval the store refused; or, on a lease, the worker error that stopped it (`storage`,
 `unfoldable`, `inconsistent`, ...), described by its message.
+
+### Viewing traces
+
+Any OTLP backend can receive these traces. The one Capsulet tests is Jaeger, run by the operator
+beside the stack, as [ADR 0020](../adr/0020-an-optional-operator-trace-viewer.md) decided. It is
+optional: nothing in Capsulet needs it, and it is not part of `compose.yaml` or the chart.
+
+```sh
+docker run -d --name capsulet-traces --network <the stack's network> \
+  -p 127.0.0.1:16686:16686 \
+  jaegertracing/jaeger:2.23.0@sha256:3823829974ccfc2485d2e48b165579091f32295022ae80ca49704e2f4834116e
+```
+
+Then give the API and graph worker:
+
+```text
+OTEL_EXPORTER_OTLP_ENDPOINT=http://capsulet-traces:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+Jaeger then holds every lease, node, model, retrieval and tool span. Its UI is on
+`http://127.0.0.1:16686`, and `GET /api/v3/traces/{trace_id}` returns one trace. A run's trace id is
+the `trace_id` in its bundle (`capsulet agent-runs bundle`), so finding which trace is whose takes the
+same `agents:read` in the run's project as exporting the bundle.
+
+Jaeger has no authentication and no project isolation. Keep it on the operator's network and never
+expose it to tenants. Tenants read a run through the API and its bundle, which the project's access
+rules govern. The default store keeps traces in memory until Jaeger restarts; for persistence, use
+its Badger store and set a time-to-live, which is then the traces' retention.
+
+`scripts/trace-viewer-spike.ps1` is the check behind this:
+
+1. it runs a synthetic agent run against a stack, with the services exporting to the viewer;
+2. it finds the run's trace there by the id the bundle names;
+3. it fails if Capsulet's spans or attributes are missing, or if the run's input appears anywhere in
+   the trace.
+
+The `trace-viewer` gate runs it on a stack of its own, on demand:
+
+```sh
+cargo run -p capsulet-xtask --locked -- verify --gate trace-viewer
+```
+
+`-Viewer mlflow` runs the same check against MLflow 3.18, which shows that the export is plain OTLP
+rather than anything Jaeger-specific.
 
 ### What a trace never carries
 
