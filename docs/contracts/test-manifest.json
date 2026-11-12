@@ -198,6 +198,10 @@
         },
         {
           "path": "crates/core/tests/memory_contract_dsl.rs",
+          "selector": "a_statement_policy_declares_how_its_documents_are_structured"
+        },
+        {
+          "path": "crates/core/tests/memory_contract_dsl.rs",
           "selector": "bundled_memory_contract_examples_compile"
         },
         {
@@ -267,6 +271,34 @@
         {
           "path": "crates/kernel/tests/arithmetic.rs",
           "selector": "the_classic_float_sum_is_exact_here"
+        },
+        {
+          "path": "crates/kernel/tests/context.rs",
+          "selector": "a_citation_that_reads_nothing_else_encodes_as_it_always_did"
+        },
+        {
+          "path": "crates/kernel/tests/context.rs",
+          "selector": "a_clause_is_read_only_with_spans_of_its_own_text"
+        },
+        {
+          "path": "crates/kernel/tests/context.rs",
+          "selector": "a_declared_condition_in_the_cited_sentence_qualifies_it"
+        },
+        {
+          "path": "crates/kernel/tests/context.rs",
+          "selector": "a_defined_term_is_read_with_its_definition"
+        },
+        {
+          "path": "crates/kernel/tests/context.rs",
+          "selector": "a_reading_of_a_qualified_clause_names_every_qualifier_it_left_out"
+        },
+        {
+          "path": "crates/kernel/tests/context.rs",
+          "selector": "an_exactly_quoted_clause_that_another_qualifies_states_nothing_outright"
+        },
+        {
+          "path": "crates/kernel/tests/context.rs",
+          "selector": "the_context_policy_travels_in_the_snapshot_document_and_a_hollow_template_is_refused"
         },
         {
           "path": "crates/kernel/tests/depth.rs",

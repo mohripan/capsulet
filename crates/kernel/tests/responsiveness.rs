@@ -72,6 +72,7 @@ fn answer(subject: &str, relation: &str, object: &str) -> Proposal {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: goal,
+                read_with: Vec::new(),
             }),
             min_authority: "low".to_string(),
         },

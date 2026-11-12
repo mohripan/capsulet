@@ -57,6 +57,7 @@ fn citation() -> Rule {
     Rule::Cite {
         evidence_id: "ev_1".to_string(),
         proposition: Proposition::new("Acme", "says", "Contoso"),
+        read_with: Vec::new(),
     }
 }
 

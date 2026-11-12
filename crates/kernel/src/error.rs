@@ -110,6 +110,23 @@ pub enum CheckError {
     },
     #[error("a reading of {from} as {to} was recorded without saying why")]
     InterpretationWithoutARationale { from: String, to: String },
+    #[error(
+        "source {source_id} states {proposition} only under a qualification ({qualifications}), \
+         so trusting it would assert it outright; propose it as a reading"
+    )]
+    RelationQualified {
+        source_id: String,
+        proposition: String,
+        qualifications: String,
+    },
+    #[error(
+        "evidence {evidence_id} is not a span of the text the citation cites from {source_id}, so \
+         it cannot be read with it"
+    )]
+    ReadWithAnotherSource {
+        evidence_id: String,
+        source_id: String,
+    },
     #[error("the proposal has no canonical encoding, so it cannot be pinned: {detail}")]
     ProposalNotEncodable { detail: String },
     #[error("the derivation nests deeper than the {limit} rules this kernel will walk")]
@@ -166,6 +183,8 @@ impl CheckError {
             | Self::UnknownAuthority { .. }
             | Self::TrustPremiseNotAttributed { .. }
             | Self::RelationNotStated { .. }
+            | Self::RelationQualified { .. }
+            | Self::ReadWithAnotherSource { .. }
             | Self::InterpretationWithoutARationale { .. }
             | Self::ProposalNotEncodable { .. }
             | Self::DerivationTooDeep { .. }
@@ -196,6 +215,8 @@ impl CheckError {
             Self::UnknownAuthority { .. } => "unknown_authority",
             Self::TrustPremiseNotAttributed { .. } => "trust_premise_not_attributed",
             Self::RelationNotStated { .. } => "relation_not_stated",
+            Self::RelationQualified { .. } => "relation_qualified",
+            Self::ReadWithAnotherSource { .. } => "read_with_another_source",
             Self::InterpretationWithoutARationale { .. } => "interpretation_without_a_rationale",
             Self::ProposalNotEncodable { .. } => "proposal_not_encodable",
             Self::DerivationTooDeep { .. } => "derivation_too_deep",

@@ -297,3 +297,35 @@ fn built_in_value_types_do_not_weaken_entity_endpoint_validation() {
         assert!(parse(&source).expect("contract parses").compile().is_err());
     }
 }
+
+#[test]
+fn a_statement_policy_declares_how_its_documents_are_structured() {
+    let structure = "statement_policy:\n  provisions:\n    - \"{ref}.\"\n  references:\n    - \"Section {ref}\"\n  subject_to:\n    - \"subject to\"\n  overrides:\n    - notwithstanding\n  conditions:\n    - \"provided that\"\n  definitions:\n    - \"{term}\" means";
+    let contract = parse(&STATED.replace("statement_policy:", structure))
+        .expect("a declared structure parses");
+    let policy = contract.ast().statement_policy();
+    assert_eq!(policy.provisions(), ["{ref}."]);
+    assert_eq!(policy.references(), ["Section {ref}"]);
+    assert_eq!(policy.subject_to(), ["subject to"]);
+    assert_eq!(policy.overrides(), ["notwithstanding"]);
+    assert_eq!(policy.conditions(), ["provided that"]);
+    assert_eq!(policy.definitions(), ["\"{term}\" means"]);
+    assert_eq!(policy.cues(), ["doubted", "in talks"]);
+
+    // A template without its placeholder, with it twice, or with nothing beside
+    // it would match anything, so it is refused.
+    for (list, item) in [
+        ("references", "Section"),
+        ("references", "{ref} {ref}"),
+        ("provisions", "{ref}"),
+        ("definitions", "{term} means"),
+        ("definitions", "\"{ref}\" means"),
+        ("subject_to", "\"\""),
+    ] {
+        let source = STATED.replace(
+            "statement_policy:",
+            &format!("statement_policy:\n  {list}:\n    - {item}"),
+        );
+        assert!(parse(&source).is_err(), "{list}: {item}");
+    }
+}

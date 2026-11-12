@@ -420,6 +420,7 @@ fn verdict_of(sentence: &str, subject: &str, predicate: &str, object: &str) -> V
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev".to_string(),
                 proposition: goal,
+                read_with: Vec::new(),
             }),
             min_authority: "low".to_string(),
         },

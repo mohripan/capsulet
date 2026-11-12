@@ -59,6 +59,7 @@ fn cite(subject: &str, object: &str) -> Proposal {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: Proposition::new(subject, "says", object),
+            read_with: Vec::new(),
         },
     }
 }
@@ -109,6 +110,7 @@ fn typed_relation_decision(
                 premise: Box::new(Rule::Cite {
                     evidence_id: "ev_1".into(),
                     proposition: goal,
+                    read_with: Vec::new(),
                 }),
                 min_authority: "low".into(),
             },
@@ -262,6 +264,7 @@ fn an_unphrased_citation_does_not_lose_its_value_ambiguity() {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".into(),
                 proposition: goal.clone(),
+                read_with: Vec::new(),
             }),
             proposition: goal,
             rationale: "read the date as Acme's value".into(),
@@ -557,6 +560,7 @@ fn trusted(document: &str, subject: &str, predicate: &str, object: &str) -> Cert
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition,
+                read_with: Vec::new(),
             }),
             min_authority: "low".to_string(),
         },
@@ -698,6 +702,7 @@ fn a_relation_with_no_declared_phrasing_is_only_mentioned() {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: goal.clone(),
+                read_with: Vec::new(),
             }),
             proposition: goal,
             rationale: "the sentence says Acme renewed it".to_string(),
@@ -749,6 +754,7 @@ fn a_contract_s_phrasings_and_cues_judge_a_citation() {
                 premise: Box::new(Rule::Cite {
                     evidence_id: "ev_1".to_string(),
                     proposition,
+                    read_with: Vec::new(),
                 }),
                 min_authority: "low".to_string(),
             },
@@ -804,6 +810,7 @@ fn stated(subject: &str, predicate: &str, object: &str) -> Proposal {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: goal,
+                read_with: Vec::new(),
             }),
             min_authority: "low".to_string(),
         },

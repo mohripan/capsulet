@@ -513,6 +513,7 @@ fn pinned_snapshot() -> SnapshotDocument {
         date_order: None,
         name_groups: vec![],
         question: None,
+        context: capsulet_kernel::ContextPolicy::default(),
     }
 }
 
@@ -527,6 +528,7 @@ fn trusted_citation(object: &str) -> Proposal {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: goal,
+                read_with: Vec::new(),
             }),
             min_authority: "low".to_string(),
         },
@@ -680,6 +682,7 @@ fn typed_value_policies_are_pinned_and_replayed_offline() {
                 premise: Box::new(Rule::Cite {
                     evidence_id: "ev_1".into(),
                     proposition: goal,
+                    read_with: Vec::new(),
                 }),
                 min_authority: "low".into(),
             },

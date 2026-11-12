@@ -34,10 +34,12 @@ fn leaves() -> Vec<Rule> {
         Rule::Cite {
             evidence_id: String::new(),
             proposition: Proposition::new("s", "p", "o"),
+            read_with: Vec::new(),
         },
         Rule::Cite {
             evidence_id: "absent".to_string(),
             proposition: Proposition::new("", "", ""),
+            read_with: Vec::new(),
         },
     ];
     for op in ops {

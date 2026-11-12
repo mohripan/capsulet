@@ -243,6 +243,20 @@ never claims a review. The `aliases` fields on an entity and a canonical entity 
 from API requests, so they do not widen anything, and neither does a candidate resolution or a score:
 an embedding may propose a resolution, and only the review makes it a name (`CAP-CORRECTNESS-004`).
 
+**An exact quote is read with what qualifies it.** Most misreadings of a correctly
+quoted contract are quotes out of context: the clause is "subject to" a provision
+two sections later, overridden by one ("notwithstanding Section 9"), conditional
+("provided that"), or uses a defined term in its defined sense. Whether a reading
+is right stays undecidable. Whether the derivation read the clause with what could
+change it is not. A contract declares its documents' provisions, references,
+qualifying cues, conditions and definitions, and a qualified clause then states
+nothing outright: trusting it is rejected as `relation_qualified`, and reading it
+leaves a residual naming each qualifying provision the derivation does not
+`read_with`. A referenced provision or a definition left out is a residual too.
+Reading the qualifier removes the residual for omitting it and not the reading
+itself. The kernel holds no legal vocabulary: every cue and template is the
+contract's, pinned for replay (`CAP-CORRECTNESS-016`).
+
 **Relevance is checked against a query, and read otherwise.** Asked the same
 unanswerable question after the fix, the model returned `Dana Whitfield | is the
 named account owner | Dana Whitfield` — a correctly grounded, accurately cited

@@ -4990,6 +4990,109 @@
       ]
     },
     {
+      "id": "CAP-CORRECTNESS-016",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "A contract can declare how its documents mark out provisions, refer to one another, qualify one another (`subject_to`, `overrides`), make a sentence conditional, and define terms. A cited clause that is qualified then states nothing outright: trusting it is rejected as `relation_qualified`, and reading it leaves a residual for each qualifying provision the derivation does not read it with. A referenced provision or a defined term's definition left out is a residual too, and citing it with `read_with` removes that residual and not the reading. Every cue and template comes from the contract, pinned for replay; a contract declaring none decides as before. Whether a reading of the clause is right is not decided.",
+      "public_surfaces": [
+        "README.md",
+        "docs/api.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-qualified-clause-states-nothing-outright",
+          "evidence_selectors": [
+            "an_exactly_quoted_clause_that_another_qualifies_states_nothing_outright",
+            "a_declared_condition_in_the_cited_sentence_qualifies_it"
+          ]
+        },
+        {
+          "assertion": "every-left-out-qualifier-is-a-residual",
+          "evidence_selectors": [
+            "a_reading_of_a_qualified_clause_names_every_qualifier_it_left_out",
+            "a_defined_term_is_read_with_its_definition"
+          ]
+        },
+        {
+          "assertion": "read-with-spans-are-the-same-text",
+          "evidence_selectors": [
+            "a_clause_is_read_only_with_spans_of_its_own_text"
+          ]
+        },
+        {
+          "assertion": "declared-by-the-contract-and-pinned",
+          "evidence_selectors": [
+            "the_context_policy_travels_in_the_snapshot_document_and_a_hollow_template_is_refused",
+            "a_citation_that_reads_nothing_else_encodes_as_it_always_did",
+            "a_statement_policy_declares_how_its_documents_are_structured"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/context.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_exactly_quoted_clause_that_another_qualifies_states_nothing_outright"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/context.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_declared_condition_in_the_cited_sentence_qualifies_it"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/context.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_reading_of_a_qualified_clause_names_every_qualifier_it_left_out"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/context.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_defined_term_is_read_with_its_definition"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/context.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_clause_is_read_only_with_spans_of_its_own_text"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/context.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_context_policy_travels_in_the_snapshot_document_and_a_hollow_template_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/context.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_citation_that_reads_nothing_else_encodes_as_it_always_did"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/tests/memory_contract_dsl.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_statement_policy_declares_how_its_documents_are_structured"
+        },
+        {
+          "type": "source",
+          "path": "crates/kernel/src/context.rs"
+        }
+      ]
+    },
+    {
       "id": "CAP-IR-003",
       "kind": "capability",
       "maturity": "implemented",

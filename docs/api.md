@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015, CAP-CORRECTNESS-016 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -504,6 +504,43 @@ the kernel's pinned currency table; neither policy consults the machine locale. 
 formats and inexact/overflowing quantities fail closed. Entity names retain their existing text
 matching. A stored contract that does not compile is refused before source storage. The endpoint's
 authority floor remains `low`; no API request/response shape changed.
+
+### Reading a clause with what qualifies it
+
+A contract can declare how its documents are structured, under `statement_policy`:
+
+```text
+statement_policy:
+  provisions:
+    - "{ref}."
+  references:
+    - "Section {ref}"
+  subject_to:
+    - "subject to"
+  overrides:
+    - "notwithstanding"
+  conditions:
+    - "provided that"
+  definitions:
+    - "{term}" means
+```
+
+- `provisions` are heading templates, matched at the start of a line. A provision runs to the next
+  heading that is not nested inside it, so `12.1` belongs to `12`.
+- `references` are how one provision names another.
+- A `subject_to` cue right before a reference makes the referenced provision qualify the sentence it
+  is in. An `overrides` cue makes the sentence it is in prevail over the referenced provision.
+- `conditions` make a sentence conditional.
+- `definitions` capture defined terms, which are matched as written, so "Affiliate" is the defined
+  term and "affiliate" is the word.
+
+A cited clause that is qualified (a condition in its sentence, "subject to" a provision, or overridden
+from elsewhere) states nothing outright: trusting it is `rejected` with `relation_qualified`, and
+reading it is `conditional`. Each qualifying provision, referenced provision or definition the
+derivation leaves out is a residual naming it. A citation's `read_with` lists other spans of the same
+text the clause is read with, and reading the qualifying provision too removes the residual for
+leaving it out, but not the reading (`CAP-CORRECTNESS-016`). A contract that declares none of this
+decides exactly as before. Nothing here decides whether a reading of the clause is right.
 
 ### Holding an answer to its question
 

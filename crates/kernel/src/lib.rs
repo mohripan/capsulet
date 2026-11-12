@@ -21,6 +21,7 @@
 
 pub mod bundle;
 pub mod certificate;
+pub mod context;
 pub mod error;
 pub mod family;
 pub mod ir;
@@ -41,6 +42,7 @@ pub use bundle::{Bundle, BundleError};
 pub use certificate::{
     Certificate, CertificateError, DischargedStep, Residual, ResidualKind, Verdict,
 };
+pub use context::ContextPolicy;
 pub use error::{CheckError, RepairOwner};
 pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};
 pub use ir::{ArithOp, Judgment, Proposal, Proposition, Rule};
@@ -363,6 +365,9 @@ struct CheckState {
     discharged: Vec<DischargedStep>,
     residuals: Vec<Residual>,
     errors: Vec<CheckError>,
+    /// Citations that found a qualified clause: the source, the proposition,
+    /// and what qualifies it, so a trust step refused over one says why.
+    qualified: Vec<(String, String, String)>,
 }
 
 impl CheckState {
@@ -398,7 +403,8 @@ fn derive(
         Rule::Cite {
             evidence_id,
             proposition,
-        } => derive_cite(evidence_id, proposition, snapshot, state),
+            read_with,
+        } => derive_cite(evidence_id, proposition, read_with, snapshot, state),
         Rule::Attest { claim_id } => derive_attest(claim_id, snapshot, state),
         Rule::Trust {
             premise,
@@ -431,9 +437,155 @@ fn derive(
 fn derive_cite(
     evidence_id: &str,
     proposition: &Proposition,
+    read_with: &[String],
     snapshot: &Snapshot,
     state: &mut CheckState,
 ) -> Option<Judgment> {
+    let (evidence, span, content) = cited_span(evidence_id, snapshot, state)?;
+    let source_id = evidence.source_id().as_str().to_string();
+    let excerpt = evidence.excerpt();
+
+    let phrasebook = snapshot.phrasebook();
+    let object_presence = terms_in_span(evidence_id, excerpt, proposition, phrasebook, state)?;
+
+    let spans = read_with_spans(
+        read_with,
+        &source_id,
+        span.source_content_hash(),
+        snapshot,
+        state,
+    )?;
+    let surroundings = context::context_of(
+        content.text(),
+        span.start(),
+        span.end(),
+        &spans,
+        phrasebook.context(),
+    );
+
+    let provenance = format!(
+        "excerpt re-derived from {source_id} bytes {}..{}{}",
+        span.start(),
+        span.end(),
+        if read_with.is_empty() {
+            String::new()
+        } else {
+            format!(", read with {}", read_with.join(", "))
+        }
+    );
+    let statement = phrasebook
+        .statement_in(excerpt, proposition)
+        .filter(|_| surroundings.qualified.is_empty());
+    let qualified = (!surroundings.qualified.is_empty()).then(|| {
+        state.qualified.push((
+            source_id.clone(),
+            proposition.canonical(),
+            surroundings.qualified.join("; "),
+        ));
+        format!(
+            "; it is qualified ({}), so it states no relation outright",
+            surroundings.qualified.join("; ")
+        )
+    });
+    let (judgment, detail, residuals) = match statement {
+        Some(statement) => (
+            Judgment::Says {
+                source_id: source_id.clone(),
+                proposition: proposition.clone(),
+            },
+            format!(
+                "{provenance}; it states `{}` in the declared phrasing {:?}: {:?}{}",
+                proposition.predicate.trim(),
+                statement.phrasing,
+                statement.sentence,
+                relied_on(&statement.resolutions)
+            ),
+            statement.residuals,
+        ),
+        None => (
+            Judgment::Mentions {
+                source_id: source_id.clone(),
+                proposition: proposition.clone(),
+            },
+            format!(
+                "{provenance} and contains the subject and the object; no declared phrasing of \
+                 `{}` states the relation between them{}{}",
+                proposition.predicate.trim(),
+                relied_on(&phrasebook.resolutions_for_terms(excerpt, proposition)),
+                qualified.unwrap_or_default()
+            ),
+            object_presence,
+        ),
+    };
+    record_value_residuals(residuals, &source_id, proposition, evidence_id, state);
+    let mut read = vec![evidence_id.to_string()];
+    read.extend(read_with.iter().cloned());
+    for rationale in surroundings.uncited {
+        state.residuals.push(Residual {
+            kind: ResidualKind::Source,
+            from: judgment.canonical(),
+            to: proposition.clone(),
+            rationale,
+            evidence_ids: read.clone(),
+        });
+    }
+    state.discharge("cite", &judgment, detail);
+    Some(judgment)
+}
+
+/// Whether both endpoints of the relation are in the cited excerpt, and the
+/// residuals a typed object's reading leaves. `None` once a failure is recorded.
+///
+/// Both, not just the object. Checking only the object lets a proposer attach
+/// any subject it likes to a span that happens to contain a matching string —
+/// "Contoso acquired-by X" grounded on a sentence about anniversary dates. The
+/// predicate is not matched here: it is an ontology label, not a quotation, and
+/// whether the span states it is what the phrasings decide.
+fn terms_in_span(
+    evidence_id: &str,
+    excerpt: &str,
+    proposition: &Proposition,
+    phrasebook: &Phrasebook,
+    state: &mut CheckState,
+) -> Option<Vec<String>> {
+    let object_presence = phrasebook.object_in(excerpt, proposition);
+    for (role, value) in [
+        ("subject", &proposition.subject),
+        ("object", &proposition.object),
+    ] {
+        let present = if role == "object" {
+            object_presence.is_some()
+        } else {
+            phrasebook.subject_in(excerpt, proposition)
+        };
+        if !present {
+            state.errors.push(CheckError::TermNotInSpan {
+                evidence_id: evidence_id.to_string(),
+                role,
+                term: value.clone(),
+                excerpt: excerpt.to_string(),
+            });
+            return None;
+        }
+    }
+    Some(object_presence.unwrap_or_default())
+}
+
+/// The evidence a citation names, its span, and the stored text that span
+/// re-derives from, once each is shown to be there and to agree. `None` once a
+/// failure is recorded.
+///
+/// The length is checked after provenance, so a span that does not re-derive is
+/// reported as the fabrication it is rather than as a size complaint.
+fn cited_span<'s>(
+    evidence_id: &str,
+    snapshot: &'s Snapshot,
+    state: &mut CheckState,
+) -> Option<(
+    &'s capsulet_core::Evidence,
+    &'s capsulet_core::EvidenceSpan,
+    &'s capsulet_core::SourceContent,
+)> {
     let Some(evidence) = snapshot.evidence(evidence_id) else {
         state.errors.push(CheckError::DanglingEvidence {
             evidence_id: evidence_id.to_string(),
@@ -441,7 +593,6 @@ fn derive_cite(
         return None;
     };
     let source_id = evidence.source_id().as_str().to_string();
-
     let Some(span) = evidence.span() else {
         state.errors.push(CheckError::Provenance {
             evidence_id: evidence_id.to_string(),
@@ -465,9 +616,6 @@ fn derive_cite(
         });
         return None;
     }
-
-    // Checked after provenance, so a span that does not re-derive is reported as
-    // the fabrication it is rather than as a size complaint.
     let excerpt = evidence.excerpt();
     if excerpt.len() > MAX_CITED_EXCERPT_BYTES {
         state.errors.push(CheckError::CitedSpanTooLong {
@@ -477,72 +625,50 @@ fn derive_cite(
         });
         return None;
     }
+    Some((evidence, span, content))
+}
 
-    // Both endpoints of the relation must be present, not just the object.
-    // Checking only the object lets a proposer attach any subject it likes to a
-    // span that happens to contain a matching string — "Contoso acquired-by X"
-    // grounded on a sentence about anniversary dates. The predicate is not
-    // matched here: it is an ontology label, not a quotation, and whether the
-    // span states it is what the phrasings below decide.
-    let phrasebook = snapshot.phrasebook();
-    let object_presence = phrasebook.object_in(excerpt, proposition);
-    for (role, value) in [
-        ("subject", &proposition.subject),
-        ("object", &proposition.object),
-    ] {
-        let present = if role == "object" {
-            object_presence.is_some()
-        } else {
-            phrasebook.subject_in(excerpt, proposition)
+/// The spans a citation is read with, each re-derived from the same stored text
+/// as the span it cites. `None` once a failure is recorded.
+fn read_with_spans(
+    read_with: &[String],
+    source_id: &str,
+    content_hash: &str,
+    snapshot: &Snapshot,
+    state: &mut CheckState,
+) -> Option<Vec<(usize, usize)>> {
+    let mut spans = Vec::with_capacity(read_with.len());
+    for id in read_with {
+        let Some(evidence) = snapshot.evidence(id) else {
+            state.errors.push(CheckError::DanglingEvidence {
+                evidence_id: id.clone(),
+            });
+            return None;
         };
-        if !present {
-            state.errors.push(CheckError::TermNotInSpan {
-                evidence_id: evidence_id.to_string(),
-                role,
-                term: value.clone(),
-                excerpt: evidence.excerpt().to_string(),
+        let same_text = evidence.source_id().as_str() == source_id
+            && evidence
+                .span()
+                .is_some_and(|span| span.source_content_hash() == content_hash);
+        if !same_text {
+            state.errors.push(CheckError::ReadWithAnotherSource {
+                evidence_id: id.clone(),
+                source_id: source_id.to_string(),
             });
             return None;
         }
+        let content = snapshot.source_content(source_id, content_hash)?;
+        if let Err(error) = verify_evidence_span(evidence, content) {
+            state.errors.push(CheckError::Provenance {
+                evidence_id: id.clone(),
+                source: error,
+            });
+            return None;
+        }
+        if let Some(span) = evidence.span() {
+            spans.push((span.start(), span.end()));
+        }
     }
-
-    let provenance = format!(
-        "excerpt re-derived from {source_id} bytes {}..{}",
-        span.start(),
-        span.end()
-    );
-    let (judgment, detail, residuals) = match phrasebook.statement_in(excerpt, proposition) {
-        Some(statement) => (
-            Judgment::Says {
-                source_id: source_id.clone(),
-                proposition: proposition.clone(),
-            },
-            format!(
-                "{provenance}; it states `{}` in the declared phrasing {:?}: {:?}{}",
-                proposition.predicate.trim(),
-                statement.phrasing,
-                statement.sentence,
-                relied_on(&statement.resolutions)
-            ),
-            statement.residuals,
-        ),
-        None => (
-            Judgment::Mentions {
-                source_id: source_id.clone(),
-                proposition: proposition.clone(),
-            },
-            format!(
-                "{provenance} and contains the subject and the object; no declared phrasing of \
-                 `{}` states the relation between them{}",
-                proposition.predicate.trim(),
-                relied_on(&phrasebook.resolutions_for_terms(excerpt, proposition))
-            ),
-            object_presence.unwrap_or_default(),
-        ),
-    };
-    record_value_residuals(residuals, &source_id, proposition, evidence_id, state);
-    state.discharge("cite", &judgment, detail);
-    Some(judgment)
+    Some(spans)
 }
 
 /// What a discharged step says it relied on, when it was another name.
@@ -633,10 +759,23 @@ fn derive_trust(
             source_id,
             proposition,
         } => {
-            state.errors.push(CheckError::RelationNotStated {
-                source_id,
-                predicate: proposition.predicate.trim().to_string(),
-                proposition: proposition.canonical(),
+            let canonical = proposition.canonical();
+            let qualified = state
+                .qualified
+                .iter()
+                .find(|(source, cited, _)| source == &source_id && cited == &canonical)
+                .map(|(_, _, reasons)| reasons.clone());
+            state.errors.push(match qualified {
+                Some(qualifications) => CheckError::RelationQualified {
+                    source_id,
+                    proposition: canonical,
+                    qualifications,
+                },
+                None => CheckError::RelationNotStated {
+                    source_id,
+                    predicate: proposition.predicate.trim().to_string(),
+                    proposition: canonical,
+                },
             });
             return None;
         }
@@ -772,7 +911,14 @@ fn cited_evidence_ids(rule: &Rule) -> Vec<String> {
 
 fn collect_evidence_ids(rule: &Rule, out: &mut Vec<String>) {
     match rule {
-        Rule::Cite { evidence_id, .. } => out.push(evidence_id.clone()),
+        Rule::Cite {
+            evidence_id,
+            read_with,
+            ..
+        } => {
+            out.push(evidence_id.clone());
+            out.extend(read_with.iter().cloned());
+        }
         Rule::Trust { premise, .. } | Rule::Interpret { premise, .. } => {
             collect_evidence_ids(premise, out);
         }

@@ -275,6 +275,12 @@ pub struct StatementPolicySpec {
     cues: Vec<String>,
     default_currency: Option<String>,
     date_order: Option<String>,
+    provisions: Vec<String>,
+    references: Vec<String>,
+    subject_to: Vec<String>,
+    overrides: Vec<String>,
+    conditions: Vec<String>,
+    definitions: Vec<String>,
 }
 
 impl StatementPolicySpec {
@@ -297,6 +303,70 @@ impl StatementPolicySpec {
     pub fn date_order(&self) -> Option<&str> {
         self.date_order.as_deref()
     }
+
+    /// Heading templates, such as `Section {ref}.`, that start a provision at a
+    /// line start.
+    #[must_use]
+    pub fn provisions(&self) -> &[String] {
+        &self.provisions
+    }
+
+    /// How one provision refers to another, such as `Section {ref}`.
+    #[must_use]
+    pub fn references(&self) -> &[String] {
+        &self.references
+    }
+
+    /// Cues that, right before a reference, make the referenced provision
+    /// qualify the sentence they are in.
+    #[must_use]
+    pub fn subject_to(&self) -> &[String] {
+        &self.subject_to
+    }
+
+    /// Cues that, right before a reference, make the sentence they are in
+    /// prevail over the referenced provision.
+    #[must_use]
+    pub fn overrides(&self) -> &[String] {
+        &self.overrides
+    }
+
+    /// Cues that make the sentence they are in conditional.
+    #[must_use]
+    pub fn conditions(&self) -> &[String] {
+        &self.conditions
+    }
+
+    /// How a term is defined, such as `"{term}" means`.
+    #[must_use]
+    pub fn definitions(&self) -> &[String] {
+        &self.definitions
+    }
+}
+
+/// Why a statement-policy template cannot be used, if it cannot.
+///
+/// A template has its placeholder exactly once, and literal text beside it: on
+/// one side for a provision or a reference, so a bare number is not one, and on
+/// both sides for a definition, so the term it captures has an end.
+fn template_problem(list: &str, value: &str) -> Option<&'static str> {
+    let placeholder = if list == "definitions" {
+        "{term}"
+    } else {
+        "{ref}"
+    };
+    let Some((before, after)) = value.split_once(placeholder) else {
+        return Some("a template needs its placeholder");
+    };
+    if after.contains(placeholder) {
+        return Some("a template has its placeholder once");
+    }
+    let enclosed = !before.trim().is_empty() && !after.trim().is_empty();
+    let anchored = !before.trim().is_empty() || !after.trim().is_empty();
+    if (list == "definitions" && !enclosed) || !anchored {
+        return Some("a template needs literal text beside its placeholder");
+    }
+    None
 }
 
 /// The pinned ISO 4217 currency/fund codes (SIX List One, 2026-09-17), excluding
@@ -649,7 +719,18 @@ impl<'a> MemoryContractParser<'a> {
         line: &str,
     ) -> Result<(), MemoryContractError> {
         if line.ends_with(':') {
-            if matches!(self.section, Some(Section::StatementPolicy)) && line != "cues:" {
+            if matches!(self.section, Some(Section::StatementPolicy))
+                && !matches!(
+                    line,
+                    "cues:"
+                        | "provisions:"
+                        | "references:"
+                        | "subject_to:"
+                        | "overrides:"
+                        | "conditions:"
+                        | "definitions:"
+                )
+            {
                 return Err(parse_error(
                     line_number,
                     "unknown or empty statement policy property",
@@ -861,6 +942,33 @@ impl<'a> MemoryContractParser<'a> {
                     return Err(parse_error(line_number, "a cue cannot be empty"));
                 }
                 self.ast.statement_policy.cues.push(cue.to_string());
+                return Ok(());
+            }
+            Some(Section::StatementPolicy) => {
+                let item = unquote(value).trim();
+                let policy = &mut self.ast.statement_policy;
+                let (list, needs_template) = match self.subsection.as_deref() {
+                    Some("provisions") => (&mut policy.provisions, true),
+                    Some("references") => (&mut policy.references, true),
+                    Some("definitions") => (&mut policy.definitions, true),
+                    Some("subject_to") => (&mut policy.subject_to, false),
+                    Some("overrides") => (&mut policy.overrides, false),
+                    Some("conditions") => (&mut policy.conditions, false),
+                    _ => return Err(parse_error(line_number, "list item is not valid here")),
+                };
+                if item.is_empty() {
+                    return Err(parse_error(
+                        line_number,
+                        "a statement policy item cannot be empty",
+                    ));
+                }
+                if needs_template
+                    && let Some(problem) =
+                        template_problem(self.subsection.as_deref().unwrap_or_default(), item)
+                {
+                    return Err(parse_error(line_number, problem));
+                }
+                list.push(item.to_string());
                 return Ok(());
             }
             _ => {}

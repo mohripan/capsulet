@@ -180,6 +180,15 @@ pub enum Rule {
     Cite {
         evidence_id: String,
         proposition: Proposition,
+        /// Other spans of the same text the cited one is read with: the
+        /// provision that qualifies it, the one it refers to, the definition of
+        /// a term it uses. Each has to re-derive from the same stored bytes.
+        /// Reading a qualified clause with its qualifier removes the residual
+        /// for leaving it out, and not the reading: a qualified clause still
+        /// states nothing outright. Absent from citations that read nothing
+        /// else, which encode as they always did.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        read_with: Vec<String>,
     },
     /// Lifts an already-active claim out of memory. Concludes `Holds(P)`.
     Attest { claim_id: String },

@@ -31,6 +31,7 @@ use capsulet_core::MemoryContractAst;
 pub use capsulet_core::{Phrasing, PhrasingError};
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::context::ContextPolicy;
 use crate::ir::Proposition;
 use crate::names::NameGroup;
 use crate::text;
@@ -140,6 +141,7 @@ pub struct Phrasebook {
     default_currency: Option<String>,
     date_order: Option<String>,
     names: Vec<NameGroup>,
+    context: ContextPolicy,
 }
 
 /// One way a term may be written, and what makes that a way of writing it.
@@ -181,6 +183,15 @@ impl Phrasebook {
             .default_currency()
             .map(str::to_string);
         phrasebook.date_order = contract.statement_policy().date_order().map(str::to_string);
+        let policy = contract.statement_policy();
+        phrasebook.context = ContextPolicy {
+            provisions: policy.provisions().to_vec(),
+            references: policy.references().to_vec(),
+            subject_to: policy.subject_to().to_vec(),
+            overrides: policy.overrides().to_vec(),
+            conditions: policy.conditions().to_vec(),
+            definitions: policy.definitions().to_vec(),
+        };
         phrasebook
     }
 
@@ -206,6 +217,20 @@ impl Phrasebook {
     pub fn with_name_groups(mut self, groups: Vec<NameGroup>) -> Self {
         self.names = groups;
         self
+    }
+
+    /// Reads every citation decided against this phrasebook with what `context`
+    /// says qualifies, is referred to by, or defines the terms of a cited clause.
+    #[must_use]
+    pub fn with_context(mut self, context: ContextPolicy) -> Self {
+        self.context = context;
+        self
+    }
+
+    /// How a cited clause's surroundings are read.
+    #[must_use]
+    pub const fn context(&self) -> &ContextPolicy {
+        &self.context
     }
 
     /// The names this phrasebook pins.

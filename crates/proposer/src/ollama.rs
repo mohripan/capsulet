@@ -222,6 +222,7 @@ pub fn build_proposal(raw: &RawProposal, excerpt: &str, phrasebook: &Phrasebook)
         Box::new(Rule::Cite {
             evidence_id: raw.evidence_id.clone(),
             proposition,
+            read_with: Vec::new(),
         })
     };
 

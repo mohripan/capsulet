@@ -114,6 +114,7 @@ fn accepts_a_citation_that_re_derives_and_states_its_proposition() {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: goal,
+                read_with: Vec::new(),
             }),
             min_authority: "medium".to_string(),
         },
@@ -140,6 +141,7 @@ fn rejects_a_fabricated_quotation() {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -166,6 +168,7 @@ fn rejects_a_triple_whose_subject_is_absent_from_the_cited_span() {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -189,6 +192,7 @@ fn rejects_an_object_the_cited_span_does_not_contain() {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -210,6 +214,7 @@ fn rejects_a_citation_to_evidence_that_is_not_in_the_snapshot() {
         derivation: Rule::Cite {
             evidence_id: "ev_missing".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -234,6 +239,7 @@ fn returns_conditional_when_the_derivation_needed_a_reading() {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: Proposition::new("Notice", "text", "30 days"),
+                read_with: Vec::new(),
             }),
             proposition: goal,
             rationale: "\"Notice is 30 days\" states the contract's notice period".to_string(),
@@ -262,6 +268,7 @@ fn a_reading_of_a_fabricated_citation_is_still_rejected() {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: Proposition::new("Notice", "text", "90 days"),
+                read_with: Vec::new(),
             }),
             proposition: goal,
             rationale: "the memo sets a 90 day notice period".to_string(),
@@ -331,6 +338,7 @@ fn refuses_to_trust_a_source_below_the_authority_floor() {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: goal,
+                read_with: Vec::new(),
             }),
             min_authority: "high".to_string(),
         },
@@ -391,6 +399,7 @@ fn rejects_a_derivation_that_proves_something_other_than_the_goal() {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: Proposition::new("Acme", "renewed", "the Contoso contract"),
+                read_with: Vec::new(),
             }),
             min_authority: "low".to_string(),
         },
@@ -414,6 +423,7 @@ fn tolerates_reflowed_whitespace_and_case_when_matching_the_object() {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -445,6 +455,7 @@ fn a_bare_citation_attributes_and_does_not_reach_the_goal() {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -482,6 +493,7 @@ fn a_goal_is_compared_field_by_field_rather_than_by_its_rendering() {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: derived,
+                read_with: Vec::new(),
             }),
             min_authority: "low".to_string(),
         },
@@ -534,6 +546,7 @@ fn a_stale_content_digest_rejects_rather_than_silently_repointing() {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -556,6 +569,7 @@ fn every_error_routes_to_a_repair_owner() {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -591,6 +605,7 @@ fn the_replay_digest_is_stable_for_the_same_proposal() {
         derivation: Rule::Cite {
             evidence_id: "ev_1".to_string(),
             proposition: goal,
+            read_with: Vec::new(),
         },
     };
 
@@ -611,6 +626,7 @@ fn trusted_renewal(min_authority: &str) -> Proposal {
             premise: Box::new(Rule::Cite {
                 evidence_id: "ev_1".to_string(),
                 proposition: goal,
+                read_with: Vec::new(),
             }),
             min_authority: min_authority.to_string(),
         },

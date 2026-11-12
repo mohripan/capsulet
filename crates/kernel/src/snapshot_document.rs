@@ -16,6 +16,7 @@ use capsulet_core::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::context::ContextPolicy;
 use crate::names::NameGroup;
 use crate::phrasing::{Phrasebook, Phrasing};
 use crate::question::Question;
@@ -135,6 +136,10 @@ pub struct SnapshotDocument {
     /// answers were held to questions, which decide as claims, as they did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question: Option<Question>,
+    /// How a cited clause's surroundings are read. Absent from documents written
+    /// before citations were read with their context, which read none.
+    #[serde(default, skip_serializing_if = "ContextPolicy::is_empty")]
+    pub context: ContextPolicy,
 }
 
 impl SnapshotDocument {
@@ -275,7 +280,22 @@ impl SnapshotDocument {
                 })?,
             );
         }
+        for (list, placeholder, templates) in [
+            ("provisions", "{ref}", &self.context.provisions),
+            ("references", "{ref}", &self.context.references),
+            ("definitions", "{term}", &self.context.definitions),
+        ] {
+            if templates
+                .iter()
+                .any(|template| template.matches(placeholder).count() != 1)
+            {
+                return Err(RebuildError::from(format!(
+                    "a {list} template needs {placeholder} exactly once"
+                )));
+            }
+        }
         phrasebook
+            .with_context(self.context.clone())
             .with_name_groups(groups)
             .with_value_policy(self.default_currency.as_deref(), self.date_order.as_deref())
             .map_err(RebuildError::from)
