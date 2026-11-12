@@ -11,10 +11,11 @@ Check the database URL:
 $env:CAPSULET_DATABASE_URL
 ```
 
-For local Docker Compose PostgreSQL, use:
+For local Docker Compose PostgreSQL, use the URL the stack wrote for itself, which carries its
+generated password:
 
-```text
-postgres://capsulet:capsulet@localhost:55432/capsulet
+```powershell
+Get-Content .capsulet/stack/capsulet-local/database-url
 ```
 
 If migrations fail, confirm PostgreSQL is running and reachable:

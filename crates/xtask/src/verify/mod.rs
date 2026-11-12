@@ -1,4 +1,5 @@
 pub(crate) mod catalog;
+mod compose;
 mod counts;
 mod postgres;
 pub(crate) mod process;
@@ -12,6 +13,11 @@ use std::{
 
 use catalog::{Gate, Profile, gates};
 use process::{ProcessFailure, run_command};
+
+/// `xtask stack up|down`.
+pub(crate) fn stack(arguments: &[String]) -> Result<(), String> {
+    compose::run(arguments)
+}
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     let Some(command) = arguments.first() else {
@@ -355,6 +361,24 @@ fn run_gate(
         None
     };
     let mut commands = effective_commands(gate).map_err(ProcessFailure::Io)?;
+    let mut stack = match gate.stack {
+        Some(services) => Some(
+            compose::ComposeStack::for_gate(
+                gate.name,
+                services,
+                root,
+                log_path,
+                gate.timeout_seconds,
+            )
+            .map_err(ProcessFailure::Io)?,
+        ),
+        None => None,
+    };
+    if let Some(stack) = &stack {
+        for command in &mut commands {
+            command.environment.extend(stack.environment());
+        }
+    }
     if let Some(database) = &fixture {
         for command in &mut commands {
             command.environment.insert(
@@ -370,6 +394,11 @@ fn run_gate(
     let outcome = run_steps(&gate.provision, gate, root, log_path)
         .and_then(|()| run_counted_steps(&commands, gate, root, log_path, recorded));
     let teardown = run_steps(&gate.teardown, gate, root, log_path);
+    let stack_cleanup = stack.as_mut().map_or(Ok(()), |stack| {
+        stack
+            .finish(outcome.is_ok(), root, log_path, gate.timeout_seconds)
+            .map_err(ProcessFailure::Io)
+    });
     let database_cleanup = fixture.as_mut().map_or(Ok(()), |database| {
         database.cleanup().map_err(ProcessFailure::Io)
     });
@@ -378,7 +407,10 @@ fn run_gate(
     } else {
         Ok(())
     };
-    let cleanup = teardown.and(database_cleanup).and(simulated_cleanup);
+    let cleanup = teardown
+        .and(stack_cleanup)
+        .and(database_cleanup)
+        .and(simulated_cleanup);
     match cleanup {
         Ok(()) => outcome,
         Err(error) => Err(error),

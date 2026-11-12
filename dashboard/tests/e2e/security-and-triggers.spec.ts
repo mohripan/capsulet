@@ -1,14 +1,29 @@
 import { expect, test } from "@playwright/test";
+import { fixture, storageState } from "./fixture";
 
 test("shows the authenticated identity and durable audit trail", async ({ page }) => {
+  const admin = fixture.identities.admin;
   await page.goto("/security");
   await expect(page.getByRole("heading", { name: "Review sandbox and access controls" })).toBeVisible();
   await expect(page.getByText("Authenticated Session")).toBeVisible();
-  await expect(page.getByText("local-admin", { exact: true })).toBeVisible();
-  await expect(page.getByText("admin", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(admin.principal, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(admin.role, { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Recent Audit Events")).toBeVisible();
+  // The seed's writes to the selected project are in its audit trail.
   await expect(page.getByText(/POST \/v1\//).first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test.describe("as a viewer", () => {
+  test.use({ storageState: storageState("viewer") });
+
+  test("the session names the viewer and its role", async ({ page }) => {
+    const viewer = fixture.identities.viewer;
+    await page.goto("/security");
+    await expect(page.getByText("Authenticated Session")).toBeVisible();
+    await expect(page.getByText(viewer.principal, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(viewer.role, { exact: true }).first()).toBeVisible();
+  });
 });
 
 test("renders production trigger contracts in the automation wizard", async ({ page }) => {

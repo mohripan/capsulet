@@ -127,10 +127,13 @@ Current crates:
 Capsulet uses PostgreSQL as the durable metadata store and object storage for script bundles, large logs, and artifacts. For a full local product check, start the Compose stack from the repository root:
 
 ```sh
-docker compose up --build
+cargo run -p capsulet-xtask -- stack up
 ```
 
-This starts:
+This generates the stack's secrets, builds the images, waits for every health check, and seeds a
+tenant with two projects and an identity per role. Nothing it uses is checked in; see
+[test identities](development/test-identities.md). `cargo run -p capsulet-xtask -- stack down`
+removes the stack, its volumes and its secrets. It starts:
 
 - PostgreSQL on `localhost:55432`
 - Keycloak on `localhost:18080` with realm `capsulet`
@@ -147,22 +150,18 @@ Open the live dashboard:
 http://127.0.0.1:3000/runs
 ```
 
-Sign in to the dashboard with Keycloak or the temporary local admin:
+Sign in to the dashboard as the temporary local admin, whose username and password are under
+`dashboard_login` in `.capsulet/stack/capsulet-local/fixture.json`. Keycloak's realm user `admin`
+also gets a password generated for the stack.
 
-```text
-username: admin
-password: admin
-```
+All `/v1` API calls require `Authorization: Bearer <token>` unless authentication is explicitly
+disabled for an isolated test. Each identity's token is in the same file. The smoke scripts and
+Playwright read them from it, so they never need one passed in.
 
-All `/v1` API calls require `Authorization: Bearer <token>` unless authentication is explicitly disabled for an isolated test. CLI and smoke tests can use the Compose service token `capsulet-local-admin-token-change-me`.
+The Compose worker uses `CAPSULET_RUNNER_MODE=process`, running each job's Python in the worker container, so the full API/dashboard/job/artifact flow can be checked without a Kubernetes cluster. Use the Helm/minikube path for Kubernetes Job execution.
 
-The Compose worker uses `CAPSULET_RUNNER_MODE=stub` so the full API/dashboard/job/artifact flow can be checked without a Kubernetes cluster. Use the Helm/minikube path for Kubernetes Job execution.
-
-The Compose database URL is:
-
-```sh
-postgres://capsulet:capsulet@localhost:55432/capsulet
-```
+The Compose database URL, with the password generated for the stack, is in
+`.capsulet/stack/capsulet-local/database-url`.
 
 Compose stores script bundles, large logs and artifacts on the shared `capsulet-objects` volume, in
 filesystem mode. It used MinIO until MinIO stopped publishing community container images on
@@ -172,20 +171,22 @@ the `CAPSULET_OBJECT_STORAGE_*` variables at any S3-compatible store.
 To start only the data services for manual local backend work:
 
 ```sh
-docker compose up -d postgres
+cargo run -p capsulet-xtask -- stack up postgres
 ```
+
+Its URL, with the password generated for it, is in `.capsulet/stack/capsulet-local/database-url`.
 
 The persistence crate embeds migrations from `migrations/` with SQLx. To run the PostgreSQL-backed tests against the local database:
 
 ```sh
-CAPSULET_TEST_DATABASE_URL=postgres://capsulet:capsulet@localhost:55432/capsulet \
+CAPSULET_TEST_DATABASE_URL=$(cat .capsulet/stack/capsulet-local/database-url) \
   cargo test -p capsulet-postgres
 ```
 
 On PowerShell:
 
 ```powershell
-$env:CAPSULET_TEST_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_TEST_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 cargo test -p capsulet-postgres
 ```
 
@@ -222,7 +223,7 @@ The API uses Axum and connects to PostgreSQL through `capsulet-postgres`.
 Run locally:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 $env:CAPSULET_API_ADDR = "127.0.0.1:8080"
 $env:CAPSULET_EXECUTION_POOLS = "mini,large"
 $env:CAPSULET_SEED_EXAMPLES = "true"
@@ -281,7 +282,7 @@ The worker can execute a single tick or poll continuously with the stub, local-p
 Run a success tick:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 $env:CAPSULET_WORKER_ID = "worker-local"
 $env:CAPSULET_STUB_RUNNER_RESULT = "success"
 cargo run -p capsulet-worker

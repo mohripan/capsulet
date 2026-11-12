@@ -368,6 +368,7 @@ mod tests {
             provision: Vec::new(),
             teardown: Vec::new(),
             every_test_runs: false,
+            stack: None,
         }]
     }
 

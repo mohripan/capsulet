@@ -21,7 +21,7 @@ By default it runs in dry-run mode, prints what it would send, and writes an art
 
 ## Use In The Dashboard
 
-1. Start the local stack with `docker compose up --build`.
+1. Start the local stack with `cargo run -p capsulet-xtask -- stack up`, and sign in with the admin login in `.capsulet/stack/capsulet-local/fixture.json`.
 2. Open `http://127.0.0.1:3000/job-definitions`.
 3. Create a job definition and paste `send_email.py` into the script field.
 4. Open `Workflows`, create a workflow that uses the email job definition.

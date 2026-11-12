@@ -58,19 +58,20 @@ Logs up to 64 KiB remain inline. Larger logs retain an inline preview and create
 ## Local database
 
 ```sh
-docker compose up -d postgres
+cargo run -p capsulet-xtask -- stack up postgres
 ```
 
-Default URL:
+The stack's password is generated for it, so its URL is written to
+`.capsulet/stack/capsulet-local/database-url`:
 
 ```text
-postgres://capsulet:capsulet@localhost:55432/capsulet
+postgres://capsulet:<generated password>@127.0.0.1:55432/capsulet
 ```
 
 PowerShell test setup:
 
 ```powershell
-$env:CAPSULET_TEST_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_TEST_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 cargo test -p capsulet-postgres
 ```
 

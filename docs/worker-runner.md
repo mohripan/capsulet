@@ -26,13 +26,15 @@ The WASI Python runner intentionally rejects `python_dependencies` for now. WASI
 Start PostgreSQL:
 
 ```sh
-docker compose up -d postgres
+cargo run -p capsulet-xtask -- stack up postgres
 ```
+
+Its URL, with the password generated for it, is in `.capsulet/stack/capsulet-local/database-url`.
 
 Start the API with example seeding:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 $env:CAPSULET_API_ADDR = "127.0.0.1:8080"
 $env:CAPSULET_EXECUTION_POOLS = "mini,large"
 $env:CAPSULET_SEED_EXAMPLES = "true"
@@ -50,7 +52,7 @@ curl -X POST http://127.0.0.1:8080/v1/jobs/runs \
 Run one worker tick:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 $env:CAPSULET_WORKER_ID = "worker-local"
 $env:CAPSULET_STUB_RUNNER_RESULT = "success"
 $env:CAPSULET_OBJECT_STORAGE_MODE = "filesystem"
@@ -71,7 +73,7 @@ $env:CAPSULET_STUB_RUNNER_RESULT = "failure"
 Run one Kubernetes-backed tick against your current kube context:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 $env:CAPSULET_WORKER_ID = "worker-local"
 $env:CAPSULET_RUNNER_MODE = "kubernetes"
 $env:CAPSULET_EXECUTION_NAMESPACE = "capsulet"
@@ -87,7 +89,7 @@ The WASI Python runner provides a WebAssembly sandbox path for Python scripts. I
 Configure a worker tick with:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 $env:CAPSULET_WORKER_ID = "worker-wasm-local"
 $env:CAPSULET_RUNNER_MODE = "wasm"
 $env:CAPSULET_WASM_RUNTIME_PATH = "C:\path\to\python.wasm"

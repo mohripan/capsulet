@@ -201,36 +201,39 @@ fn lists_the_executable_gate_graph_as_json() {
     }
 }
 
-/// The Compose stack is torn down by the gate's teardown, which runs after a
-/// failure, and not by a last step, which a failure skips.
+/// A gate's Compose stack belongs to the gate, not to one of its steps. A step
+/// is skipped once an earlier one fails, which is exactly when a stack left
+/// running gets in the way of the next attempt; so no step starts or stops a
+/// stack, and the verifier takes a gate's declared stack down whatever its
+/// commands did.
 #[test]
-fn the_compose_stack_is_torn_down_even_when_the_smoke_fails() {
+fn a_compose_stack_belongs_to_its_gate_and_not_to_a_step() {
     let result = output(&["verify", "--list", "--format", "json"]);
     assert!(result.status.success(), "{}", stderr(&result));
     let graph: serde_json::Value = serde_json::from_slice(&result.stdout).expect("gate graph");
-    let compose = graph
-        .as_array()
-        .expect("gates")
-        .iter()
-        .find(|gate| gate["name"] == "compose")
-        .expect("compose gate");
-    let down = serde_json::json!(["compose", "down"]);
-    assert!(
-        compose["teardown"]
+    for name in ["compose", "dashboard-e2e"] {
+        let gate = graph
             .as_array()
-            .expect("teardown")
+            .expect("gates")
             .iter()
-            .any(|step| step["program"] == "docker" && step["arguments"] == down),
-        "{compose}"
-    );
-    assert!(
-        !compose["commands"]
-            .as_array()
-            .expect("commands")
-            .iter()
-            .any(|step| step["arguments"] == down),
-        "a `down` among the steps is skipped by the failure it should clean up after"
-    );
+            .find(|gate| gate["name"] == name)
+            .unwrap_or_else(|| panic!("{name} gate"));
+        assert!(gate["stack"].is_array(), "{name} declares no stack: {gate}");
+        for phase in ["provision", "commands", "teardown"] {
+            for step in gate[phase].as_array().expect("steps") {
+                let arguments = step["arguments"].as_array().expect("arguments");
+                let manages_stack = step["program"] == "docker"
+                    && arguments.first().is_some_and(|first| first == "compose")
+                    && arguments
+                        .iter()
+                        .any(|argument| argument == "up" || argument == "down");
+                assert!(
+                    !manages_stack,
+                    "{name} {phase} starts or stops a stack: {step}"
+                );
+            }
+        }
+    }
 }
 
 /// A prerequisite probe that guesses `--version` for every tool reports

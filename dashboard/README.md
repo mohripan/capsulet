@@ -32,15 +32,21 @@ Run the development server:
 npm run dev
 ```
 
-Point the dashboard at a local API:
+Point the dashboard at a local stack's API, signing in as its admin. The stack's
+credentials are generated for it by `cargo run -p capsulet-xtask -- stack up`, which
+writes them to `.capsulet/stack/capsulet-local/fixture.json`:
 
 ```powershell
-$env:CAPSULET_DASHBOARD_API_URL = "http://127.0.0.1:8080"
-$env:CAPSULET_TEMP_ADMIN_USERNAME = "admin"
-$env:CAPSULET_TEMP_ADMIN_PASSWORD = "admin"
-$env:CAPSULET_TEMP_ADMIN_API_TOKEN = "capsulet-local-admin-token-change-me"
+$fixture = Get-Content -Raw ../.capsulet/stack/capsulet-local/fixture.json | ConvertFrom-Json
+$env:CAPSULET_DASHBOARD_API_URL = $fixture.api_url
+$env:CAPSULET_TEMP_ADMIN_USERNAME = $fixture.dashboard_login.username
+$env:CAPSULET_TEMP_ADMIN_PASSWORD = $fixture.dashboard_login.password
+$env:CAPSULET_TEMP_ADMIN_API_TOKEN = $fixture.identities.admin.token
 npm run dev
 ```
+
+The end-to-end suite runs against such a stack: `npm run test:e2e`. See
+[test identities](../docs/development/test-identities.md).
 
 For Keycloak login, set:
 

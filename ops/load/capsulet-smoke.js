@@ -19,7 +19,11 @@ export const options = {
 };
 
 const baseUrl = __ENV.CAPSULET_API_BASE_URL || "http://127.0.0.1:8080";
-const token = __ENV.CAPSULET_API_TOKEN || "capsulet-local-admin-token-change-me";
+const token = __ENV.CAPSULET_API_TOKEN;
+if (!token) {
+  // No shared default: a local stack's tokens are generated for it, in .capsulet/stack/capsulet-local/fixture.json.
+  throw new Error("set CAPSULET_API_TOKEN to an API token for the stack under test");
+}
 const params = {
   headers: {
     authorization: `Bearer ${token}`,

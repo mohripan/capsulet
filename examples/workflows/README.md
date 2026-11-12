@@ -5,10 +5,11 @@ The CSV example uses Python decorators to infer a two-step DAG. The first task w
 
 ```powershell
 python -m pip install -e sdk/python
-docker compose up -d --build
+cargo run -p capsulet-xtask -- stack up
 python examples/workflows/csv_pipeline.py --run
 ```
 
-If port 5432 is already occupied, use `docker compose -f compose.yaml -f compose.e2e.yaml up -d --build`; the override publishes PostgreSQL on 55432 without changing service-to-service connections.
+The stack publishes PostgreSQL on 55432 and every other port on 127.0.0.1 only; each can be moved
+with its variable in `compose.yaml`.
 
 The final CSV is downloaded to `customer-summary.csv`. Both task artifacts remain available through the dashboard and API.

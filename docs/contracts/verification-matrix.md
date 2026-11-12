@@ -23,7 +23,8 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `migrations` | no | yes | Supported forward migrations | Cargo, Docker |
 | `security` | no | yes | Rust/npm/Python dependency and license policy, including expiring exceptions | cargo-audit, cargo-deny, npm, Python |
 | `gate-regressions` | no | yes | The `lint`, `dashboard` and `security` gates' own commands fail on a fixture with a Clippy warning, a crashing ESLint configuration, an unreviewed duplicate dependency and a crate with a published advisory, and pass on a clean one | Cargo with Clippy, cargo-audit, cargo-deny, npm with the dashboard installed |
-| `compose` | no | yes | Compose configuration, then agents run over HTTP through the built stack, with the graph worker killed mid-run. Job, workflow, dashboard and seed checks are still open under [#98](https://github.com/mohripan/capsulet/issues/98) | Docker, PowerShell |
+| `compose` | no | yes | On a stack of its own (every service built and healthy, seeded alike twice): Compose configuration, agents run over HTTP with the graph worker killed mid-run, and a job leaves logs and a downloadable artifact; reseeding afterwards must leave the fixture as it was | Docker, PowerShell |
+| `dashboard-e2e` | no | yes | On a stack of its own, seeded the same way: Playwright as admin, operator, viewer and service account, including the project-isolation flows for artifacts, memory review, agents and audit events; reseeding afterwards must leave the fixture as it was | Docker, npm |
 | `helm` | no | yes | Chart lint and deterministic render | Helm |
 | `kind` | no | yes | Cluster discovery only; install/smoke pending [#102](https://github.com/mohripan/capsulet/issues/102) | Kind, kubectl, Helm, Docker |
 | `wasm-python` | no | no | WASI Python runner, nightly by name | Cargo, Wasmtime |
@@ -36,8 +37,9 @@ Run directories include a timestamp and process ID and must be newly created, pr
 concurrent verifier commands from merging or overwriting their captured evidence.
 
 The current graph is provisional, not the complete M1 release gate. In particular, a green `kind`
-result does not prove a deployment was built, installed, exercised, or uninstalled, and a green
-`compose` result proves only the agent path above. Disposable PostgreSQL containers are isolated from host data, and each database-backed
+result does not prove a deployment was built, installed, exercised, or uninstalled. The `compose`
+and `dashboard-e2e` stacks, their seed and their teardown are described in
+[test identities](../development/test-identities.md). Disposable PostgreSQL containers are isolated from host data, and each database-backed
 test gets a database of its own on them. The `postgres`, `migrations` and `chaos` gates fail when a
 test binary ran nothing, or ignored or filtered out any test. Every run writes each binary's counts
 to `.capsulet/verify/<run>/test-counts.json`; CI keeps that file as an artifact and shows the counts

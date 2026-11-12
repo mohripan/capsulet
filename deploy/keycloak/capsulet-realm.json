@@ -18,12 +18,12 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "redirectUris": [
-        "http://localhost:3000/api/auth/oidc/callback",
-        "http://127.0.0.1:3000/api/auth/oidc/callback"
+        "http://localhost:${CAPSULET_DASHBOARD_PORT:3000}/api/auth/oidc/callback",
+        "http://127.0.0.1:${CAPSULET_DASHBOARD_PORT:3000}/api/auth/oidc/callback"
       ],
       "webOrigins": [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "http://localhost:${CAPSULET_DASHBOARD_PORT:3000}",
+        "http://127.0.0.1:${CAPSULET_DASHBOARD_PORT:3000}"
       ],
       "defaultClientScopes": [
         "web-origins",
@@ -57,7 +57,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "admin",
+          "value": "${CAPSULET_KEYCLOAK_USER_PASSWORD}",
           "temporary": false
         }
       ],

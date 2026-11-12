@@ -1,77 +1,45 @@
 param(
-  [string]$BaseUrl = "http://127.0.0.1:8080",
-  [string]$Token = "capsulet-local-admin-token-change-me",
-  [int]$TimeoutSeconds = 180,
-  [switch]$KeepExistingQueue
+  [int]$TimeoutSeconds = 180
 )
 
+# A job run through a running stack: it is leased, executed, and leaves logs and
+# a downloadable artifact. Start the stack first, with
+# `cargo run -p capsulet-xtask -- stack up`; the `compose` gate does that itself.
+
 $ErrorActionPreference = "Stop"
-
-function Invoke-CapsuletJson {
-  param(
-    [string]$Method,
-    [string]$Path,
-    [object]$Body = $null
-  )
-  $headers = @{ Authorization = "Bearer $Token" }
-  if ($null -eq $Body) {
-    return Invoke-RestMethod -Method $Method -Uri "$BaseUrl$Path" -Headers $headers
-  }
-  return Invoke-RestMethod -Method $Method -Uri "$BaseUrl$Path" -Headers $headers -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 12)
-}
-
-Write-Host "Starting Capsulet compose stack..."
-docker compose up -d --build
-
-$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-do {
-  try {
-    Invoke-RestMethod -Uri "$BaseUrl/readyz" | Out-Null
-    break
-  } catch {
-    if ((Get-Date) -gt $deadline) { throw "Capsulet API did not become ready within $TimeoutSeconds seconds." }
-    Start-Sleep -Seconds 3
-  }
-} while ($true)
+. "$PSScriptRoot/stack-fixture.ps1"
 
 Write-Host "Checking identity and OpenAPI..."
 $me = Invoke-CapsuletJson -Method GET -Path "/v1/auth/me"
-if ($me.role -ne "admin") { throw "Expected admin role, got $($me.role)." }
+if ($me.role -ne "admin" -or -not $me.platform_admin) { throw "Expected a platform admin, got $($me.role)." }
 Invoke-RestMethod -Uri "$BaseUrl/openapi.json" | Out-Null
 
-if (-not $KeepExistingQueue) {
-  Write-Host "Resetting local smoke queue..."
-  docker compose stop worker scheduler evaluator | Out-Null
-  docker exec capsulet-postgres psql -U capsulet -d capsulet -v ON_ERROR_STOP=1 -c @"
-DELETE FROM workflow_step_runs;
-DELETE FROM workflow_runs;
-DELETE FROM job_runs WHERE status IN ('queued', 'leased', 'running', 'retry_scheduled');
-DELETE FROM trigger_events;
-DELETE FROM trigger_runtime_status;
-DELETE FROM automation_triggers;
-DELETE FROM automations;
-"@ | Out-Null
-  docker compose up -d worker scheduler evaluator | Out-Null
-}
-
-Write-Host "Submitting smoke run..."
+Write-Host "Submitting a run..."
 $run = Invoke-CapsuletJson -Method POST -Path "/v1/jobs/runs" -Body @{
-  job_definition_id = "job_hello_python"
+  job_definition_id = "job_artifact_python"
   execution_pool = "mini"
 }
 
+$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 do {
   $current = Invoke-CapsuletJson -Method GET -Path "/v1/jobs/runs/$($run.id)"
   if ($current.status -in @("succeeded", "failed", "cancelled", "timed_out")) { break }
   if ((Get-Date) -gt $deadline) { throw "Run $($run.id) did not finish within $TimeoutSeconds seconds." }
   Start-Sleep -Seconds 2
 } while ($true)
-
-if ($current.status -ne "succeeded") {
-  throw "Run $($run.id) finished with status $($current.status)."
-}
+if ($current.status -ne "succeeded") { throw "Run $($run.id) finished with status $($current.status)." }
 
 $logs = Invoke-CapsuletJson -Method GET -Path "/v1/jobs/runs/$($run.id)/logs"
 if ([string]::IsNullOrWhiteSpace($logs.logs)) { throw "Run $($run.id) had empty logs." }
 
-Write-Host "PASS compose smoke: run=$($run.id), principal=$($me.name), status=$($current.status)"
+$artifacts = @((Invoke-CapsuletJson -Method GET -Path "/v1/jobs/runs/$($run.id)/artifacts").artifacts)
+if ($artifacts.Count -lt 1) { throw "Run $($run.id) recorded no artifact." }
+$download = Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/v1/jobs/runs/$($run.id)/artifacts/$($artifacts[0].id)" -Headers @{
+  Authorization = "Bearer $($Fixture.identities.admin.token)"
+}
+$content = if ($download.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($download.Content) } else { [string]$download.Content }
+if ($content -notmatch "artifact from capsulet") {
+  throw "Artifact $($artifacts[0].id) of run $($run.id) is not what the runner wrote: $content"
+}
+
+Write-Host "PASS compose smoke: run=$($run.id) succeeded with logs and artifact $($artifacts[0].id), principal=$($me.name)"

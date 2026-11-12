@@ -39,8 +39,9 @@ kubectl -n capsulet port-forward svc/capsulet-api 8080:8080
 In another shell:
 
 ```powershell
+$env:CAPSULET_API_URL = "http://127.0.0.1:8080"
 $env:CAPSULET_API_TOKEN = "capsulet-local-admin-token-change-me"
-.\scripts\compose-smoke.ps1 -BaseUrl http://127.0.0.1:8080 -Token $env:CAPSULET_API_TOKEN
+.\scripts\compose-smoke.ps1
 ```
 
 Expected result: the smoke script prints `PASS compose smoke` and the corresponding Kubernetes Job reaches `Complete`.

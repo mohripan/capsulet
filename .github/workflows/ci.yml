@@ -187,6 +187,49 @@ jobs:
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate compose
 
+  dashboard-e2e:
+    name: Dashboard end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      # The gate installs the browser itself; the system libraries it needs on
+      # Linux take root, which only this step has.
+      - name: Install Playwright's browser and its system libraries
+        working-directory: dashboard
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate dashboard-e2e
+
+      # The gate log carries the stack's service logs when anything failed. The
+      # stack, and every credential in it, is gone by the time this runs.
+      - name: Upload the gate log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-e2e-log
+          path: .capsulet/verify/*/dashboard-e2e.log
+          if-no-files-found: ignore
+
   docker:
     name: Docker images
     runs-on: ubuntu-latest

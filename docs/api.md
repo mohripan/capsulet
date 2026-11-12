@@ -18,19 +18,19 @@ Memory records are tenant/project scoped and claim-first: claims, events, and re
 For the full local stack, including PostgreSQL, MinIO, API, worker, and dashboard, run:
 
 ```sh
-docker compose up --build
+cargo run -p capsulet-xtask -- stack up
 ```
 
-For manual API development, start only the local data services:
+For manual API development, start only the database:
 
 ```sh
-docker compose up -d postgres minio minio-init
+cargo run -p capsulet-xtask -- stack up postgres
 ```
 
 Set the API environment:
 
 ```powershell
-$env:CAPSULET_DATABASE_URL = "postgres://capsulet:capsulet@localhost:55432/capsulet"
+$env:CAPSULET_DATABASE_URL = Get-Content .capsulet/stack/capsulet-local/database-url
 $env:CAPSULET_API_ADDR = "127.0.0.1:8080"
 $env:CAPSULET_EXECUTION_POOLS = "mini,large"
 $env:CAPSULET_SEED_EXAMPLES = "true"

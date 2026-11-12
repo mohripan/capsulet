@@ -1,31 +1,19 @@
 param(
-  [string]$BaseUrl = "http://127.0.0.1:8080",
-  [string]$Token = "capsulet-local-admin-token-change-me",
-  [int]$TimeoutSeconds = 240,
-  [switch]$SkipStart
+  [int]$TimeoutSeconds = 240
 )
 
-# Runs agents through the stack compose.yaml brings up: over HTTP, against the deployed
-# graph worker, with that worker killed while a run is in flight.
+# Runs agents through a running stack: over HTTP, against the deployed graph
+# worker, with that worker killed while a run is in flight. Start the stack
+# first, with `cargo run -p capsulet-xtask -- stack up`; the `compose` gate does
+# that itself.
 #
 # Nothing here needs a model. Every node is deterministic or a real job, so this checks
 # the platform around the model rather than whatever a model happened to answer.
+# Graph and agent ids are fixed and created only when absent, so a second run against
+# the same stack finds the same agents; each run of them gets an id from the server.
 
 $ErrorActionPreference = "Stop"
-$suffix = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-
-function Invoke-CapsuletJson {
-  param(
-    [string]$Method,
-    [string]$Path,
-    [object]$Body = $null
-  )
-  $headers = @{ Authorization = "Bearer $Token" }
-  if ($null -eq $Body) {
-    return Invoke-RestMethod -Method $Method -Uri "$BaseUrl$Path" -Headers $headers
-  }
-  return Invoke-RestMethod -Method $Method -Uri "$BaseUrl$Path" -Headers $headers -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 12)
-}
+. "$PSScriptRoot/stack-fixture.ps1"
 
 function Wait-RunStatus {
   param([string]$Id, [string[]]$Statuses)
@@ -42,24 +30,28 @@ function Wait-RunStatus {
 
 function New-Agent {
   param([string]$Name, [hashtable]$Graph)
-  $Graph.id = "graph_${Name}_$suffix"
-  $Graph.name = $Name
+  $Graph.id = "smoke_${Name}_graph"
+  $Graph.name = "Smoke $Name graph"
   $Graph.transition_policy = @{ mode = "static"; cycles_allowed = $false }
-  Invoke-CapsuletJson -Method POST -Path "/v1/graphs" -Body $Graph | Out-Null
-  $agent = Invoke-CapsuletJson -Method POST -Path "/v1/agents" -Body @{
-    id = "agent_${Name}_$suffix"
-    name = $Name
-    graph_id = $Graph.id
-    budget = @{ max_steps = 3; max_tokens = 1000; max_seconds = 300; max_cost_micros = 1000 }
-    termination_conditions = @("validator_pass")
+  if (-not (Test-CapsuletResource -Path "/v1/graphs/$($Graph.id)")) {
+    Invoke-CapsuletJson -Method POST -Path "/v1/graphs" -Body $Graph | Out-Null
   }
-  return $agent.id
+  $agent = "smoke_${Name}_agent"
+  if (-not (Test-CapsuletResource -Path "/v1/agents/$agent")) {
+    Invoke-CapsuletJson -Method POST -Path "/v1/agents" -Body @{
+      id = $agent
+      name = "Smoke $Name agent"
+      graph_id = $Graph.id
+      budget = @{ max_steps = 3; max_tokens = 1000; max_seconds = 300; max_cost_micros = 1000 }
+      termination_conditions = @("validator_pass")
+    } | Out-Null
+  }
+  return $agent
 }
 
 function Start-AgentRun {
-  param([string]$Agent, [string]$Name, [hashtable]$State)
+  param([string]$Agent, [hashtable]$State)
   $run = Invoke-CapsuletJson -Method POST -Path "/v1/agents/$Agent/runs" -Body @{
-    id = "run_${Name}_$suffix"
     initial_state = $State
   }
   if ($run.status -ne "queued") { throw "A new run should be queued, not $($run.status)." }
@@ -71,23 +63,6 @@ function Get-EventKinds {
   $log = Invoke-CapsuletJson -Method GET -Path "/v1/agent-runs/$Id/events"
   return @($log.events | ForEach-Object { $_.kind })
 }
-
-if (-not $SkipStart) {
-  Write-Host "Starting the stack..."
-  docker compose up -d --build api worker graph-worker
-  if ($LASTEXITCODE -ne 0) { throw "docker compose up failed." }
-}
-
-$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-do {
-  try {
-    Invoke-RestMethod -Uri "$BaseUrl/readyz" | Out-Null
-    break
-  } catch {
-    if ((Get-Date) -gt $deadline) { throw "The API did not become ready within $TimeoutSeconds seconds." }
-    Start-Sleep -Seconds 3
-  }
-} while ($true)
 
 $checked = New-Agent -Name "checked" -Graph @{
   nodes = @(
@@ -140,25 +115,25 @@ $checked = New-Agent -Name "checked" -Graph @{
 }
 
 Write-Host "A run is executed by the deployed worker..."
-$id = Start-AgentRun -Agent $checked -Name "first" -State @{ query = "  what   is capsulet? " }
+$id = Start-AgentRun -Agent $checked -State @{ query = "  what   is capsulet? " }
 $run = Wait-RunStatus -Id $id -Statuses @("succeeded", "failed", "stopped", "cancelled")
 if ($run.status -ne "succeeded") { throw "Run $id ended $($run.status): $($run.execution.detail)" }
 if ($run.state.prompt -ne "Answer this: what is capsulet?") { throw "Unexpected state: $($run.state.prompt)" }
 if ($run.assurance -ne "unverified") { throw "Finishing must not read as verified, got $($run.assurance)." }
 
 Write-Host "A queued run waits for a worker, and is cancelled before it spends anything..."
-docker compose stop graph-worker | Out-Null
-$cancelled = Start-AgentRun -Agent $checked -Name "cancelled" -State @{ query = "stop me" }
+Invoke-Compose stop graph-worker | Out-Null
+$cancelled = Start-AgentRun -Agent $checked -State @{ query = "stop me" }
 Invoke-CapsuletJson -Method POST -Path "/v1/agent-runs/$cancelled/cancel" | Out-Null
 $still = Invoke-CapsuletJson -Method GET -Path "/v1/agent-runs/$cancelled"
 if ($still.status -ne "queued") { throw "With no worker running, $cancelled should still be queued, not $($still.status)." }
-docker compose start graph-worker | Out-Null
+Invoke-Compose start graph-worker | Out-Null
 $run = Wait-RunStatus -Id $cancelled -Statuses @("cancelled", "succeeded", "failed", "stopped")
 if ($run.status -ne "cancelled") { throw "Run $cancelled ended $($run.status) instead of cancelled." }
 if ((Get-EventKinds -Id $cancelled) -contains "node_started") { throw "A cancelled run started a node." }
 
 Write-Host "A worker killed while a run is in flight loses nothing and repeats nothing..."
-docker compose stop worker | Out-Null
+Invoke-Compose stop worker | Out-Null
 $jobbing = New-Agent -Name "jobbing" -Graph @{
   nodes = @(
     @{
@@ -175,7 +150,7 @@ $jobbing = New-Agent -Name "jobbing" -Graph @{
     }
   )
 }
-$killed = Start-AgentRun -Agent $jobbing -Name "killed" -State @{}
+$killed = Start-AgentRun -Agent $jobbing -State @{}
 
 # The job cannot finish with its worker stopped, so the graph worker is holding this run
 # open when it dies.
@@ -187,8 +162,8 @@ do {
   Start-Sleep -Seconds 1
 } while ($true)
 
-docker kill --signal=KILL capsulet-graph-worker | Out-Null
-docker compose start graph-worker worker | Out-Null
+Invoke-Compose kill --signal SIGKILL graph-worker | Out-Null
+Invoke-Compose start graph-worker worker | Out-Null
 
 $run = Wait-RunStatus -Id $killed -Statuses @("succeeded", "failed", "stopped", "cancelled")
 if ($run.status -ne "succeeded") { throw "Run $killed ended $($run.status): $($run.execution.detail)" }
@@ -197,7 +172,7 @@ $finalized = @($kinds | Where-Object { $_ -eq "effect_finalized" }).Count
 if ($finalized -ne 1) { throw "Expected one finalized effect, found $finalized in: $($kinds -join ', ')" }
 
 $jobRun = $run.state.result.job_run_id
-$count = docker exec capsulet-postgres psql -U capsulet -d capsulet -tA -c "SELECT count(*) FROM job_runs WHERE id = '$jobRun'"
+$count = Invoke-Compose exec -T postgres psql -U capsulet -d capsulet -tA -c "SELECT count(*) FROM job_runs WHERE id = '$jobRun'"
 if ($count.Trim() -ne "1") { throw "Expected exactly one job run $jobRun, found $count." }
 
 Write-Host "PASS agent smoke: $id succeeded, $cancelled cancelled, $killed survived a killed worker with one job run ($jobRun)."

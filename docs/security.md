@@ -13,9 +13,11 @@ Capsulet has two authentication paths:
 The dashboard does not ask users to paste API tokens. Local compose provides:
 
 - Keycloak: `http://localhost:18080`, realm `capsulet`
-- temporary dashboard admin: username `admin`, password `admin`
+- a temporary dashboard admin, whose password is generated for each stack
 
-Change or disable the temporary admin before any shared environment.
+No local credential is checked in: `cargo run -p capsulet-xtask -- stack up` generates them
+all, and `stack down` deletes them (see [test identities](development/test-identities.md)).
+Disable the temporary admin before any shared environment.
 
 ## Authorization model
 

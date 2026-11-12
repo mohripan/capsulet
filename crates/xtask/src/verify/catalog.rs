@@ -41,6 +41,10 @@ pub(crate) struct Gate {
     /// Whether every test the gate's commands collect has to run: a binary that
     /// ran none, or ignored or filtered any, fails the gate. See `counts.rs`.
     pub(crate) every_test_runs: bool,
+    /// A Compose stack of the gate's own, seeded with the stack fixture, that
+    /// the gate's commands run against: `Some(&[])` for every service, or the
+    /// services named and what they depend on. See `compose.rs`.
+    pub(crate) stack: Option<&'static [&'static str]>,
 }
 
 fn command(program: &str, arguments: &[&str]) -> CommandSpec {
@@ -79,6 +83,7 @@ fn gate(
         provision: Vec::new(),
         teardown: Vec::new(),
         every_test_runs: false,
+        stack: None,
     }
 }
 
@@ -565,16 +570,15 @@ pub(crate) fn gates() -> Vec<Gate> {
                 ],
             )],
         ),
-        // The stack comes down as teardown, not as a last step: a step is
-        // skipped once an earlier one fails, which is exactly when a stack left
-        // running gets in the way of the next attempt.
+        // Each of these gets a stack of its own, which comes down whatever its
+        // commands did; see `compose.rs`.
         Gate {
-            teardown: vec![command("docker", &["compose", "down"])],
+            stack: Some(&[]),
             ..gate(
                 "compose",
-                "Compose configuration, and agents run through the real stack with a worker killed",
-                &["docker"],
-                1_800,
+                "every service built and healthy, seeded alike twice; agents and jobs run through the stack with a worker killed",
+                &["docker", powershell],
+                3_600,
                 &[Full],
                 vec![
                     command("docker", &["compose", "config", "--quiet"]),
@@ -582,6 +586,25 @@ pub(crate) fn gates() -> Vec<Gate> {
                         powershell,
                         &["-NoProfile", "-File", "scripts/agent-smoke.ps1"],
                     ),
+                    command(
+                        powershell,
+                        &["-NoProfile", "-File", "scripts/compose-smoke.ps1"],
+                    ),
+                ],
+            )
+        },
+        Gate {
+            stack: Some(&["api", "worker", "graph-worker", "dashboard"]),
+            ..gate(
+                "dashboard-e2e",
+                "Playwright against a seeded stack, as every role, across both projects",
+                &["docker", "npm", "npx"],
+                3_600,
+                &[Full],
+                vec![
+                    in_dashboard(command("npm", &["ci"])),
+                    in_dashboard(command("npx", &["playwright", "install", "chromium"])),
+                    in_dashboard(command("npx", &["playwright", "test"])),
                 ],
             )
         },

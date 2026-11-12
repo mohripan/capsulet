@@ -28,6 +28,8 @@ next-dev-*.log
 api-live*.log
 test-results/
 playwright-report/
+# Saved Playwright sessions hold a stack's tokens.
+playwright/.auth/
 *.tsbuildinfo
 
 # Python

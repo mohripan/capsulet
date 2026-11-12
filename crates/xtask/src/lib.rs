@@ -1,6 +1,7 @@
 //! Cross-platform repository verification orchestration.
 
 mod claims;
+mod fixtures;
 mod security;
 pub mod verify;
 
@@ -13,6 +14,7 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
     match arguments.first().map(String::as_str) {
         Some("security") => return security::run(&arguments[1..]),
         Some("claims") => return claims::run(&arguments[1..]),
+        Some("stack") => return verify::stack(&arguments[1..]),
         _ => {}
     }
     verify::run(arguments)

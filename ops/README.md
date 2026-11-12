@@ -20,16 +20,17 @@ derive accepted image patterns from `executionPools.*.policy.images.allowed`.
 
 ## Load Smoke
 
-Run read-only API load:
+Run read-only API load against a local stack, with the admin token generated for it:
 
 ```powershell
-docker run --rm -i grafana/k6 run -e CAPSULET_API_BASE_URL=http://host.docker.internal:8080 -e CAPSULET_API_TOKEN=$env:CAPSULET_TEMP_ADMIN_API_TOKEN - < ops/load/capsulet-smoke.js
+$token = (Get-Content -Raw .capsulet/stack/capsulet-local/fixture.json | ConvertFrom-Json).identities.admin.token
+docker run --rm -i grafana/k6 run -e CAPSULET_API_BASE_URL=http://host.docker.internal:8080 -e CAPSULET_API_TOKEN=$token - < ops/load/capsulet-smoke.js
 ```
 
 Run submit-path load against a seeded job definition:
 
 ```powershell
-docker run --rm -i grafana/k6 run -e CAPSULET_LOAD_SUBMIT=true -e CAPSULET_LOAD_JOB_DEFINITION_ID=hello_python -e CAPSULET_API_BASE_URL=http://host.docker.internal:8080 -e CAPSULET_API_TOKEN=$env:CAPSULET_TEMP_ADMIN_API_TOKEN - < ops/load/capsulet-smoke.js
+docker run --rm -i grafana/k6 run -e CAPSULET_LOAD_SUBMIT=true -e CAPSULET_LOAD_JOB_DEFINITION_ID=hello_python -e CAPSULET_API_BASE_URL=http://host.docker.internal:8080 -e CAPSULET_API_TOKEN=$token - < ops/load/capsulet-smoke.js
 ```
 
 Copy `ops/load/capacity-fixtures.example.json` for each certified cluster size

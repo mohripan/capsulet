@@ -1,13 +1,27 @@
+# Every secret below comes from an environment file generated for one stack.
+# None is checked in. Start a stack with its own secrets and seeded identities:
+#
+#   cargo run -p capsulet-xtask -- stack up
+#
+# and remove it, volumes and secrets included, with `stack down`. The verifier's
+# `compose` and `dashboard-e2e` gates run the same way, each under a project
+# name, ports and secrets of its own. See docs/development/test-identities.md.
+#
+# Host ports bind to 127.0.0.1 only, and each can be moved with its variable.
+# Dependency images are pinned by digest, so a stack built today runs what one
+# built tomorrow runs.
+
+x-database-url: &database-url postgres://capsulet:${CAPSULET_POSTGRES_PASSWORD:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}@postgres:5432/capsulet
+
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: capsulet-postgres
+    image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
     environment:
       POSTGRES_DB: capsulet
       POSTGRES_USER: capsulet
-      POSTGRES_PASSWORD: capsulet
+      POSTGRES_PASSWORD: ${CAPSULET_POSTGRES_PASSWORD:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
     ports:
-      - "${CAPSULET_POSTGRES_HOST_PORT:-55432}:5432"
+      - "127.0.0.1:${CAPSULET_POSTGRES_HOST_PORT:-55432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U capsulet -d capsulet"]
       interval: 5s
@@ -18,11 +32,10 @@ services:
     restart: unless-stopped
 
   smtp:
-    image: axllent/mailpit:v1.20
-    container_name: capsulet-smtp
+    image: axllent/mailpit:v1.20@sha256:7eef0f38dbc85e4e264f2edf5d70fbb694826791e05cb2cae4fc9e3282f968f5
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "127.0.0.1:${CAPSULET_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${CAPSULET_MAIL_UI_PORT:-8025}:8025"
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 5s
@@ -31,19 +44,34 @@ services:
     restart: unless-stopped
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.2
-    container_name: capsulet-keycloak
+    image: quay.io/keycloak/keycloak:26.2@sha256:4883630ef9db14031cde3e60700c9a9a8eaf1b5c24db1589d6a2d43de38ba2a9
     command: start-dev --import-realm
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: capsulet-keycloak-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${CAPSULET_KEYCLOAK_ADMIN_PASSWORD:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
       KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_URL: http://localhost:18080
+      KC_HOSTNAME_URL: http://localhost:${CAPSULET_KEYCLOAK_PORT:-18080}
+      # Read by the realm import, which fills in its placeholders from these.
+      CAPSULET_KEYCLOAK_USER_PASSWORD: ${CAPSULET_KEYCLOAK_USER_PASSWORD:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+      CAPSULET_DASHBOARD_PORT: ${CAPSULET_DASHBOARD_PORT:-3000}
     ports:
-      - "18080:8080"
+      - "127.0.0.1:${CAPSULET_KEYCLOAK_PORT:-18080}:8080"
     volumes:
       - ./deploy/keycloak/capsulet-realm.json:/opt/keycloak/data/import/capsulet-realm.json:ro
+    healthcheck:
+      # The image has no curl or wget; bash can still speak HTTP to the
+      # management port.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 5s
+      timeout: 5s
+      retries: 60
     restart: unless-stopped
 
   api:
@@ -54,21 +82,20 @@ services:
       args:
         PACKAGE: capsulet-api
         BIN: capsulet-api
-    container_name: capsulet-api
     depends_on:
       postgres:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
     environment:
-      CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
+      CAPSULET_DATABASE_URL: *database-url
       CAPSULET_API_ADDR: 0.0.0.0:8080
       CAPSULET_SEED_EXAMPLES: "true"
-      CAPSULET_API_TOKENS: '[{"name":"local-admin","role":"admin","token":"capsulet-local-admin-token-change-me"}]'
-      CAPSULET_OIDC_ISSUER: http://localhost:18080/realms/capsulet
+      CAPSULET_API_TOKENS: ${CAPSULET_API_TOKENS:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+      CAPSULET_OIDC_ISSUER: http://localhost:${CAPSULET_KEYCLOAK_PORT:-18080}/realms/capsulet
       CAPSULET_OIDC_AUDIENCE: capsulet-dashboard
       CAPSULET_OIDC_JWKS_URL: http://keycloak:8080/realms/capsulet/protocol/openid-connect/certs
-      CAPSULET_WEBHOOK_SECRETS: '{"*/*":"capsulet-local-webhook-secret-change-me"}'
+      CAPSULET_WEBHOOK_SECRETS: ${CAPSULET_WEBHOOK_SECRETS:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
       CAPSULET_EXECUTION_POOLS: mini,large
       # MinIO stopped publishing community images on 2025-10-23, so the local stack
       # stores objects on a shared volume instead. Point these at any S3-compatible
@@ -82,14 +109,14 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${CAPSULET_API_PORT:-8080}:8080"
     volumes:
       - capsulet-objects:/capsulet/objects
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
-      interval: 10s
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/readyz"]
+      interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 60
     restart: unless-stopped
 
   worker:
@@ -100,14 +127,13 @@ services:
       args:
         PACKAGE: capsulet-worker
         BIN: capsulet-worker
-    container_name: capsulet-worker
     depends_on:
       postgres:
         condition: service_healthy
       api:
         condition: service_healthy
     environment:
-      CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
+      CAPSULET_DATABASE_URL: *database-url
       CAPSULET_WORKER_ID: worker-compose
       CAPSULET_WORKER_LOOP: "true"
       CAPSULET_WORKER_POLL_SECONDS: "2"
@@ -122,18 +148,15 @@ services:
       SMTP_PORT: "1025"
       SMTP_TLS: "false"
       SMTP_FROM: capsulet@example.local
-      # MinIO stopped publishing community images on 2025-10-23, so the local stack
-      # stores objects on a shared volume instead. Point these at any S3-compatible
-      # store to exercise the S3 adapter.
       CAPSULET_OBJECT_STORAGE_MODE: filesystem
       CAPSULET_OBJECT_STORAGE_PATH: /capsulet/objects
     volumes:
       - capsulet-objects:/capsulet/objects
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/readyz"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 60
     restart: unless-stopped
 
   scheduler:
@@ -144,22 +167,21 @@ services:
       args:
         PACKAGE: capsulet-scheduler
         BIN: capsulet-scheduler
-    container_name: capsulet-scheduler
     depends_on:
       postgres:
         condition: service_healthy
       api:
         condition: service_healthy
     environment:
-      CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
+      CAPSULET_DATABASE_URL: *database-url
       CAPSULET_SCHEDULER_LOOP: "true"
       CAPSULET_SCHEDULER_POLL_SECONDS: "3"
       CAPSULET_SCHEDULER_HEALTH_ADDR: 0.0.0.0:8082
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/readyz"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 60
     restart: unless-stopped
 
   graph-worker:
@@ -170,14 +192,13 @@ services:
       args:
         PACKAGE: capsulet-graph-worker
         BIN: capsulet-graph-worker
-    container_name: capsulet-graph-worker
     depends_on:
       postgres:
         condition: service_healthy
       api:
         condition: service_healthy
     environment:
-      CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
+      CAPSULET_DATABASE_URL: *database-url
       CAPSULET_GRAPH_WORKER_ID: graph-worker-compose
       CAPSULET_GRAPH_WORKER_POLL_SECONDS: "1"
       CAPSULET_GRAPH_WORKER_LEASE_SECONDS: "60"
@@ -189,9 +210,9 @@ services:
       - host.docker.internal:host-gateway
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8084/readyz"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 60
     restart: unless-stopped
 
   evaluator:
@@ -202,21 +223,17 @@ services:
       args:
         PACKAGE: capsulet-evaluator
         BIN: capsulet-evaluator
-    container_name: capsulet-evaluator
     depends_on:
       postgres:
         condition: service_healthy
       api:
         condition: service_healthy
     environment:
-      CAPSULET_DATABASE_URL: postgres://capsulet:capsulet@postgres:5432/capsulet
+      CAPSULET_DATABASE_URL: *database-url
       CAPSULET_EVALUATOR_ID: evaluator-compose
       CAPSULET_EVALUATOR_POLL_SECONDS: "2"
       CAPSULET_EVALUATOR_HEALTH_ADDR: 0.0.0.0:8083
-      CAPSULET_SQL_CONNECTIONS: '{"control":"postgres://capsulet:capsulet@postgres:5432/capsulet"}'
-      # MinIO stopped publishing community images on 2025-10-23, so the local stack
-      # stores objects on a shared volume instead. Point these at any S3-compatible
-      # store to exercise the S3 adapter.
+      CAPSULET_SQL_CONNECTIONS: '{"control":"postgres://capsulet:${CAPSULET_POSTGRES_PASSWORD}@postgres:5432/capsulet"}'
       CAPSULET_OBJECT_STORAGE_MODE: filesystem
       CAPSULET_OBJECT_STORAGE_PATH: /capsulet/objects
       CAPSULET_RETENTION_DAYS: "30"
@@ -225,42 +242,40 @@ services:
       - capsulet-objects:/capsulet/objects
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/readyz"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 60
     restart: unless-stopped
 
   dashboard:
     build:
       context: ./dashboard
       dockerfile: Dockerfile
-    container_name: capsulet-dashboard
     depends_on:
       api:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
     environment:
       CAPSULET_DASHBOARD_API_URL: http://api:8080
-      CAPSULET_DASHBOARD_PUBLIC_URL: http://127.0.0.1:3000
-      CAPSULET_DASHBOARD_OIDC_PUBLIC_ISSUER: http://localhost:18080/realms/capsulet
+      CAPSULET_DASHBOARD_PUBLIC_URL: http://127.0.0.1:${CAPSULET_DASHBOARD_PORT:-3000}
+      CAPSULET_DASHBOARD_OIDC_PUBLIC_ISSUER: http://localhost:${CAPSULET_KEYCLOAK_PORT:-18080}/realms/capsulet
       CAPSULET_DASHBOARD_OIDC_INTERNAL_ISSUER: http://keycloak:8080/realms/capsulet
       CAPSULET_DASHBOARD_OIDC_CLIENT_ID: capsulet-dashboard
-      CAPSULET_TEMP_ADMIN_USERNAME: admin
-      CAPSULET_TEMP_ADMIN_PASSWORD: admin
-      CAPSULET_TEMP_ADMIN_API_TOKEN: capsulet-local-admin-token-change-me
+      CAPSULET_TEMP_ADMIN_USERNAME: ${CAPSULET_DASHBOARD_ADMIN_USERNAME:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+      CAPSULET_TEMP_ADMIN_PASSWORD: ${CAPSULET_DASHBOARD_ADMIN_PASSWORD:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+      CAPSULET_TEMP_ADMIN_API_TOKEN: ${CAPSULET_DASHBOARD_ADMIN_TOKEN:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${CAPSULET_DASHBOARD_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 60
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v3.7.3
-    container_name: capsulet-prometheus
+    image: prom/prometheus:v3.7.3@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038
     depends_on:
       api:
         condition: service_healthy
@@ -275,30 +290,39 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
     ports:
-      - "9090:9090"
+      - "127.0.0.1:${CAPSULET_PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./deploy/observability/prometheus-compose.yml:/etc/prometheus/prometheus.yml:ro
       - ./deploy/observability/prometheus-rules-compose.yml:/etc/prometheus/rules/capsulet.yaml:ro
       - capsulet-prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:12.3.0
-    container_name: capsulet-grafana
+    image: grafana/grafana:12.3.0@sha256:70d9599b186ce287be0d2c5ba9a78acb2e86c1a68c9c41449454d0fc3eeb84e8
     depends_on:
       prometheus:
-        condition: service_started
+        condition: service_healthy
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: capsulet-grafana-admin
+      GF_SECURITY_ADMIN_PASSWORD: ${CAPSULET_GRAFANA_ADMIN_PASSWORD:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
-      - "3001:3000"
+      - "127.0.0.1:${CAPSULET_GRAFANA_PORT:-3001}:3000"
     volumes:
       - ./deploy/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/capsulet.yml:ro
       - ./deploy/observability/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/capsulet.yml:ro
       - ./deploy/observability/grafana-dashboard.json:/var/lib/grafana/dashboards/capsulet.json:ro
       - capsulet-grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
     restart: unless-stopped
 
 volumes:

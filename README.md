@@ -137,13 +137,15 @@ Compatibility workflow nodes still have durable step runs. Successful nodes are 
 Prerequisites: Docker with Compose v2.
 
 ```sh
-docker compose up --build -d
-docker compose ps
+cargo run -p capsulet-xtask -- stack up
 ```
 
+This generates the stack's secrets, builds and starts it, waits for every health check and seeds
+two projects with an identity per role ([test identities](docs/development/test-identities.md)).
 Open the dashboard at <http://127.0.0.1:3000> and the API at <http://127.0.0.1:8080>.
+`cargo run -p capsulet-xtask -- stack down` removes it, volumes and secrets included.
 
-The local stack includes PostgreSQL, Mailpit, API, worker, graph worker, scheduler, evaluator, and dashboard. Objects are stored on a shared volume, because MinIO no longer publishes the community images the stack used. Compose waits on dependency health and restarts long-running services after failure. Sign in with the development token `capsulet-local-admin-token-change-me`; replace it before exposing the stack.
+The local stack includes PostgreSQL, Mailpit, API, worker, graph worker, scheduler, evaluator, and dashboard. Objects are stored on a shared volume, because MinIO no longer publishes the community images the stack used. Compose waits on dependency health and restarts long-running services after failure. Sign in with the admin login in `.capsulet/stack/capsulet-local/fixture.json`; no local credential is checked in.
 
 Useful checks:
 
