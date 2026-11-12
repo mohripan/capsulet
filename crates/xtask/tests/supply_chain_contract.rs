@@ -313,7 +313,10 @@ fn ci_that_never_scans_the_dependency_images_is_refused() {
         "        run: cargo run -p capsulet-xtask --locked -- verify --gate dependency-images",
         "        run: cargo run -p capsulet-xtask --locked -- release dependency-images",
     );
-    fixture.refuses(&["no CI job runs the dependency-images gate"]);
+    fixture.refuses(&[
+        "no CI job runs the dependency-images gate, so nothing scans the third-party images the \
+         chart and Compose pull",
+    ]);
 }
 
 #[test]

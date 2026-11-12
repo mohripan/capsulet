@@ -689,7 +689,8 @@ fn dependency_scanning(workflows: &[Workflow], findings: &mut Findings) {
     });
     if !scans {
         findings.push(format!(
-            "{WORKFLOWS}: no CI job runs the dependency-images gate, so nothing scans the              third-party images the chart and Compose pull"
+            "{WORKFLOWS}: no CI job runs the dependency-images gate, so nothing scans the \
+             third-party images the chart and Compose pull"
         ));
     }
 }
