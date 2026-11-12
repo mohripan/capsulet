@@ -5196,6 +5196,86 @@
       ]
     },
     {
+      "id": "CAP-CORRECTNESS-018",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "Across a labelled corpus of answers to questions about one agreement the project wrote, no answer a reader marks misread or non-responsive reaches accepted, apart from the one recorded limitation it names, and each case is caught by the mechanism it names: a qualifier, a defined term, a cue, or the pinned query. Both sound answers reach accepted. This is a fixture, not a measurement on real contracts or questions.",
+      "public_surfaces": [
+        "README.md"
+      ],
+      "verification": [
+        {
+          "assertion": "no-misreading-reaches-accepted",
+          "evidence_selectors": [
+            "no_misread_or_non_responsive_answer_reaches_accepted_but_the_recorded_limitations"
+          ]
+        },
+        {
+          "assertion": "each-case-caught-by-its-mechanism",
+          "evidence_selectors": [
+            "every_case_is_caught_by_the_mechanism_it_names"
+          ]
+        },
+        {
+          "assertion": "the-counts-are-pinned",
+          "evidence_selectors": [
+            "the_counts_are_what_was_recorded"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "no_misread_or_non_responsive_answer_reaches_accepted_but_the_recorded_limitations"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "every_case_is_caught_by_the_mechanism_it_names"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_counts_are_what_was_recorded"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-019",
+      "kind": "limitation",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "A qualification written as a sentence of its own, with no cue or reference the contract declares, is not read with the clause it qualifies, so an exact quote of that clause can still be accepted.",
+      "public_surfaces": [
+        "ARCHITECTURE.md"
+      ],
+      "verification": [
+        {
+          "assertion": "the-limitation-is-still-real",
+          "evidence_selectors": [
+            "every_recorded_limitation_is_still_the_limitation_it_says_it_is"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "every_recorded_limitation_is_still_the_limitation_it_says_it_is"
+        }
+      ]
+    },
+    {
       "id": "CAP-IR-003",
       "kind": "capability",
       "maturity": "implemented",

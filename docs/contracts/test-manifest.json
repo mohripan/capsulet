@@ -449,6 +449,22 @@
           "selector": "the_residual_names_the_premise_the_conclusion_and_the_evidence"
         },
         {
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "selector": "every_case_is_caught_by_the_mechanism_it_names"
+        },
+        {
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "selector": "every_recorded_limitation_is_still_the_limitation_it_says_it_is"
+        },
+        {
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "selector": "no_misread_or_non_responsive_answer_reaches_accepted_but_the_recorded_limitations"
+        },
+        {
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "selector": "the_counts_are_what_was_recorded"
+        },
+        {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly"
         },
