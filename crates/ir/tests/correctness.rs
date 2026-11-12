@@ -44,6 +44,8 @@ fn statement(name: &str, owner: RepairOwner) -> ObligationStatement {
         id: id(name),
         statement: format!("the property `{name}` holds for this output"),
         owner,
+        authority: None,
+        accepts: Vec::new(),
     }
 }
 
@@ -54,6 +56,7 @@ fn discharged(name: &str, evidence: &EvidenceRef) -> Obligation {
         state: DischargeState::Discharged {
             by: id("cargo-test"),
             evidence: vec![evidence.content],
+            basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
         },
     }
 }
@@ -226,6 +229,16 @@ fn an_obligation_cannot_be_left_without_a_state() {
         DischargeState::Discharged {
             by: id("cargo-test"),
             evidence: vec![],
+            basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
+        },
+        DischargeState::Endorsed {
+            by: id("second-reader"),
+            evidence: vec![],
+        },
+        DischargeState::Disputed {
+            by: id("second-reader"),
+            reason: "disputed".to_string(),
+            evidence: vec![],
         },
         DischargeState::Assumed {
             rationale: "assumed".to_string(),
@@ -247,7 +260,15 @@ fn an_obligation_cannot_be_left_without_a_state() {
     let names: Vec<&str> = states.iter().map(DischargeState::as_str).collect();
     assert_eq!(
         names,
-        ["discharged", "assumed", "waived", "residual", "failed"]
+        [
+            "discharged",
+            "endorsed",
+            "disputed",
+            "assumed",
+            "waived",
+            "residual",
+            "failed"
+        ]
     );
 }
 

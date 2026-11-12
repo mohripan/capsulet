@@ -2,12 +2,12 @@
 //! scoped to a project — enforced by the database, not only by the code above
 //! it.
 
-use capsulet_ir::correctness::certificate::{Certificate, Subject};
+use capsulet_ir::correctness::certificate::{Certificate, Subject, VerifierRecord, VerifierTrust};
 use capsulet_ir::correctness::evidence::EvidenceRef;
 use capsulet_ir::correctness::obligation::{DischargeState, ObligationStatement, RepairOwner};
 use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
 use capsulet_ir::definition::{AssuranceMode, Definition};
-use capsulet_ir::{AssuranceVerdict, Digest, Identity, Obligation, RecordedTime};
+use capsulet_ir::{AssuranceVerdict, CheckerVerdict, Digest, Identity, Obligation, RecordedTime};
 use capsulet_kernel::workflow::{Assembly, certify};
 
 mod support;
@@ -47,11 +47,14 @@ fn certificate(definition: &Definition, certificate_id: &str, content: &[u8]) ->
                 id: id("compiles"),
                 statement: "the patch compiles".to_string(),
                 owner: RepairOwner::Verifier,
+                authority: None,
+                accepts: Vec::new(),
             },
             contract: id("patch-compiles"),
             state: DischargeState::Discharged {
                 by: id("cargo-test"),
                 evidence: vec![Digest::of(content)],
+                basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
             },
         }],
         evidence: vec![evidence],
@@ -276,6 +279,8 @@ async fn obligations_are_projected_so_outstanding_work_is_queryable() {
                 id: id("summary-is-faithful"),
                 statement: "the summary reads faithfully".to_string(),
                 owner: RepairOwner::Human,
+                authority: None,
+                accepts: Vec::new(),
             },
             contract: id("patch-compiles"),
             state: DischargeState::Residual {
@@ -299,6 +304,85 @@ async fn obligations_are_projected_so_outstanding_work_is_queryable() {
             .await
             .expect("count obligations"),
         1
+    );
+}
+
+#[tokio::test]
+async fn a_models_endorsement_or_dispute_is_projected_as_outstanding() {
+    // A model endorses or disputes and never discharges, so both states land in
+    // the projection and both count as work still to do.
+    let store = store().await;
+    let tenant = unique_id("tenant");
+    let project = unique_id("project");
+    let definition = definition(&unique_id("definition"));
+    let record = admission(&definition);
+    let reading = |name: &str, state: DischargeState| Obligation {
+        statement: ObligationStatement::new(
+            id(name),
+            format!("`{name}` reads faithfully"),
+            RepairOwner::Human,
+        ),
+        contract: id("patch-compiles"),
+        state,
+    };
+    let modelled = certify(Assembly {
+        id: id(&unique_id("cert")),
+        subject: Subject {
+            definition: *record.definition(),
+            definition_version: "1".to_string(),
+            run: None,
+            inputs: vec![],
+            outputs: vec![],
+        },
+        admission: record,
+        mode: AssuranceMode::Enforce,
+        policy_version: "release-policy/4".to_string(),
+        contracts: vec![id("patch-compiles")],
+        verifiers: vec![VerifierRecord {
+            identity: Identity::new(id("second-reader"), "1"),
+            environment: Digest::of(b"a model"),
+            inputs: vec![],
+            outputs: vec![],
+            trust: VerifierTrust::ModelJudgment {
+                family: "other".to_string(),
+                independent_of_proposer: true,
+                calibration: None,
+            },
+            verdict: CheckerVerdict::Conditional,
+        }],
+        obligations: vec![
+            reading(
+                "summary-is-faithful",
+                DischargeState::Endorsed {
+                    by: id("second-reader"),
+                    evidence: vec![],
+                },
+            ),
+            reading(
+                "clause-is-unqualified",
+                DischargeState::Disputed {
+                    by: id("second-reader"),
+                    reason: "section 12 qualifies it".to_string(),
+                    evidence: vec![],
+                },
+            ),
+        ],
+        evidence: vec![],
+        loops: vec![],
+    })
+    .expect("the certificate seals");
+    assert_eq!(modelled.verdict(), AssuranceVerdict::Conditional);
+
+    store
+        .insert_assurance_certificate(&tenant, &project, &modelled)
+        .await
+        .expect("record a certificate a model read");
+    assert_eq!(
+        store
+            .count_outstanding_obligations(&tenant, &project)
+            .await
+            .expect("count obligations"),
+        2
     );
 }
 

@@ -264,7 +264,7 @@ impl PostgresStore {
             SELECT COUNT(*) AS outstanding
             FROM assurance_obligations
             WHERE tenant_id = $1 AND project_id = $2
-              AND state IN ('assumed', 'waived', 'residual')
+              AND state IN ('assumed', 'waived', 'residual', 'endorsed', 'disputed')
             ",
         )
         .bind(tenant_id)

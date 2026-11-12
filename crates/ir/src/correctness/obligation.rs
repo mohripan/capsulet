@@ -51,6 +51,86 @@ impl RepairOwner {
     }
 }
 
+/// A kind of checker that may discharge an obligation.
+///
+/// A model is not one. A model-backed verifier endorses or disputes an
+/// obligation and leaves it outstanding (ADR 0021): one unreliable component
+/// agreeing with another is not a check, and a certificate that let it count as
+/// one would launder a score into a verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BasisKind {
+    /// A deterministic family a replayer re-decides offline from pinned inputs.
+    Mechanical,
+    /// An external tool with no network and no model, in an environment pinned
+    /// by digest: a compiler, a test runner, a policy engine. A replayer re-runs it.
+    ReplayableTool,
+    /// A named person, under the authority the obligation names.
+    HumanReview,
+}
+
+impl BasisKind {
+    /// A short name for messages and certificates.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mechanical => "mechanical",
+            Self::ReplayableTool => "replayable_tool",
+            Self::HumanReview => "human_review",
+        }
+    }
+}
+
+/// What kind of checker discharged an obligation, recorded beside who did.
+///
+/// "Discharged" from a recomputed sum and "discharged" from a person's judgement
+/// are different claims, and a reader should not have to look the checker up to
+/// tell them apart.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DischargeBasis {
+    /// Discharged before bases were recorded. It reads as it always did, with
+    /// the verifier record that discharged it, and is left out of the encoding
+    /// so a certificate sealed then still verifies.
+    #[default]
+    Unrecorded,
+    /// Re-decidable offline; the discharging verifier's record is deterministic.
+    Mechanical,
+    /// Re-runnable in a pinned environment; the record is a declared oracle.
+    ReplayableTool,
+    /// Decided by the person named as `by`, under `authority`, which must be the
+    /// authority the obligation names.
+    HumanReview { authority: Identifier },
+}
+
+impl DischargeBasis {
+    /// Whether nothing was recorded, which is left out of the encoding.
+    #[must_use]
+    pub const fn is_unrecorded(&self) -> bool {
+        matches!(self, Self::Unrecorded)
+    }
+
+    /// The kind of checker, when one was recorded.
+    #[must_use]
+    pub const fn kind(&self) -> Option<BasisKind> {
+        match self {
+            Self::Unrecorded => None,
+            Self::Mechanical => Some(BasisKind::Mechanical),
+            Self::ReplayableTool => Some(BasisKind::ReplayableTool),
+            Self::HumanReview { .. } => Some(BasisKind::HumanReview),
+        }
+    }
+
+    /// A short name for messages and certificates.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self.kind() {
+            Some(kind) => kind.as_str(),
+            None => "unrecorded",
+        }
+    }
+}
+
 /// A proposition a contract requires.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObligationStatement {
@@ -59,6 +139,40 @@ pub struct ObligationStatement {
     pub statement: String,
     /// Who has to act if it does not hold.
     pub owner: RepairOwner,
+    /// The authority a person must hold to discharge it by review. A review
+    /// under any other authority, or of an obligation naming none, is refused
+    /// at the seal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority: Option<Identifier>,
+    /// The kinds of checker whose discharge counts. Empty accepts any, as every
+    /// obligation did before bases were recorded. A certificate discharging it
+    /// any other way is refused at the seal: whoever assembles it records the
+    /// obligation as residual instead, saying why the discharge did not count.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepts: Vec<BasisKind>,
+}
+
+impl ObligationStatement {
+    /// A statement that names no review authority and accepts any checker.
+    #[must_use]
+    pub fn new(id: Identifier, statement: impl Into<String>, owner: RepairOwner) -> Self {
+        Self {
+            id,
+            statement: statement.into(),
+            owner,
+            authority: None,
+            accepts: Vec::new(),
+        }
+    }
+
+    /// Whether a discharge on `basis` counts for this obligation.
+    #[must_use]
+    pub fn accepts_basis(&self, basis: &DischargeBasis) -> bool {
+        self.accepts.is_empty()
+            || basis
+                .kind()
+                .is_some_and(|kind| self.accepts.contains(&kind))
+    }
 }
 
 /// What a contract requires and promises.
@@ -99,6 +213,24 @@ pub enum DischargeState {
     Discharged {
         by: Identifier,
         evidence: Vec<Digest>,
+        /// What kind of checker `by` is.
+        #[serde(default, skip_serializing_if = "DischargeBasis::is_unrecorded")]
+        basis: DischargeBasis,
+    },
+    /// A model-backed verifier, `by`, agreed that it holds. Still outstanding:
+    /// an endorsement orders a review queue and is measured against reviews, and
+    /// it never certifies.
+    Endorsed {
+        by: Identifier,
+        evidence: Vec<Digest>,
+    },
+    /// A model-backed verifier, `by`, said it does not hold. Still outstanding
+    /// rather than failed, because an unreliable checker's "no" is a reason to
+    /// look first, not a refutation. A boundary may refuse to cross over one.
+    Disputed {
+        by: Identifier,
+        reason: String,
+        evidence: Vec<Digest>,
     },
     /// Nobody checked it; the run proceeded on the stated assumption.
     Assumed { rationale: String },
@@ -122,6 +254,8 @@ impl DischargeState {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Discharged { .. } => "discharged",
+            Self::Endorsed { .. } => "endorsed",
+            Self::Disputed { .. } => "disputed",
             Self::Assumed { .. } => "assumed",
             Self::Waived { .. } => "waived",
             Self::Residual { .. } => "residual",
@@ -130,7 +264,8 @@ impl DischargeState {
     }
 
     /// Whether this state was reached by checking rather than by deciding not
-    /// to check.
+    /// to check. An endorsement or a dispute was looked at, by a model, and
+    /// decided nothing, so neither counts.
     #[must_use]
     pub const fn was_checked(&self) -> bool {
         matches!(self, Self::Discharged { .. } | Self::Failed { .. })
@@ -140,7 +275,10 @@ impl DischargeState {
     #[must_use]
     pub fn evidence(&self) -> &[Digest] {
         match self {
-            Self::Discharged { evidence, .. } | Self::Residual { evidence, .. } => evidence,
+            Self::Discharged { evidence, .. }
+            | Self::Endorsed { evidence, .. }
+            | Self::Disputed { evidence, .. }
+            | Self::Residual { evidence, .. } => evidence,
             Self::Assumed { .. } | Self::Waived { .. } | Self::Failed { .. } => &[],
         }
     }
@@ -164,7 +302,15 @@ impl Obligation {
             DischargeState::Assumed { .. }
                 | DischargeState::Waived { .. }
                 | DischargeState::Residual { .. }
+                | DischargeState::Endorsed { .. }
+                | DischargeState::Disputed { .. }
         )
+    }
+
+    /// Whether a model-backed verifier disputed it.
+    #[must_use]
+    pub const fn is_disputed(&self) -> bool {
+        matches!(self.state, DischargeState::Disputed { .. })
     }
 
     /// Whether this obligation failed.

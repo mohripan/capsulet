@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::correctness::certificate::{
-    AssuranceVerdict, Certificate, CheckerVerdict, VerifierRecord,
+    AssuranceVerdict, Certificate, CheckerVerdict, VerifierRecord, VerifierTrust,
 };
 use crate::correctness::evidence::RecordedTime;
 use crate::correctness::obligation::{DischargeState, Obligation};
@@ -227,6 +227,28 @@ pub struct BoundaryPolicy {
     /// to be fresh, so it does not cross a boundary that asks for freshness.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_age_ms: Option<i64>,
+    /// Whether a model's dispute of an obligation it gates keeps this boundary
+    /// shut. A dispute never fails an obligation, because a model's "no" is not
+    /// a refutation, but a policy may decide it is reason enough not to act yet.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub refuse_disputed: bool,
+    /// What a crossing needs from model verifiers, when it needs anything.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endorsement: Option<EndorsementRequirement>,
+}
+
+/// What a boundary needs from model verifiers before it lets a `conditional`
+/// result through.
+///
+/// It never lifts a verdict. A crossing still needs the boundary's `minimum`,
+/// and an endorsement leaves every obligation outstanding. What it adds is a
+/// condition: every obligation still open under the gated contract has been
+/// read by a model and endorsed, rather than left unread.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EndorsementRequirement {
+    /// Whether only a model of another family than the proposer's counts. One
+    /// model agreeing with itself is not a second reading.
+    pub independent: bool,
 }
 
 /// Which values may reach a named destination.
@@ -331,6 +353,18 @@ pub enum DenialReason {
         obligation: Identifier,
         authority: Identifier,
     },
+    /// A model disputed an obligation this boundary gates, and the boundary
+    /// refuses to cross over a dispute.
+    Disputed {
+        obligation: Identifier,
+        verifier: Identifier,
+    },
+    /// An obligation this boundary gates is still open and no model the policy
+    /// accepts has endorsed it: unread, endorsed only by the proposer's own
+    /// family, or disputed.
+    NotEndorsed {
+        obligation: Identifier,
+    },
     /// The evidence behind the certificate is older than the boundary allows.
     CertificateStale {
         age_ms: i64,
@@ -368,6 +402,8 @@ impl DenialReason {
             Self::VerifierEnvironmentMismatch { .. } => "verifier_environment_mismatch",
             Self::MissingApproval { .. } => "missing_approval",
             Self::WaiverNotAuthorised { .. } => "waiver_not_authorised",
+            Self::Disputed { .. } => "disputed",
+            Self::NotEndorsed { .. } => "not_endorsed",
             Self::CertificateStale { .. } => "certificate_stale",
             Self::CertificateUndatable => "certificate_undatable",
             Self::CertificateRevoked { .. } => "certificate_revoked",
@@ -514,32 +550,10 @@ pub fn decide_boundary(
         }
     }
 
-    // A waiver is only a waiver if the policy said that authority may grant it.
-    for obligation in &body.obligations {
-        if let DischargeState::Waived { authority, .. } = &obligation.state
-            && !policy.waiver_authorities.contains(authority)
-        {
-            return BoundaryDecision::Denied {
-                reason: DenialReason::WaiverNotAuthorised {
-                    obligation: obligation.statement.id.clone(),
-                    authority: authority.clone(),
-                },
-            };
-        }
-    }
-
-    if let Some(approval) = &required.requires_approval {
-        let granted = body.obligations.iter().any(|obligation| {
-            &obligation.statement.id == approval
-                && matches!(obligation.state, DischargeState::Discharged { .. })
-        });
-        if !granted {
-            return BoundaryDecision::Denied {
-                reason: DenialReason::MissingApproval {
-                    obligation: approval.clone(),
-                },
-            };
-        }
+    if let Some(reason) =
+        decided_reason(policy, required, body).or_else(|| model_reading_reason(required, body))
+    {
+        return BoundaryDecision::Denied { reason };
     }
 
     // Judged on the contract this boundary is about, under the mode the
@@ -561,6 +575,94 @@ pub fn decide_boundary(
             },
         }
     }
+}
+
+/// Why what people decided keeps this boundary shut, if it does.
+///
+/// A waiver is only a waiver if the policy said that authority may grant it,
+/// and an approval the boundary requires has to have been given.
+fn decided_reason(
+    policy: &AssurancePolicy,
+    required: &BoundaryPolicy,
+    body: &crate::correctness::certificate::CertificateBody,
+) -> Option<DenialReason> {
+    for obligation in &body.obligations {
+        if let DischargeState::Waived { authority, .. } = &obligation.state
+            && !policy.waiver_authorities.contains(authority)
+        {
+            return Some(DenialReason::WaiverNotAuthorised {
+                obligation: obligation.statement.id.clone(),
+                authority: authority.clone(),
+            });
+        }
+    }
+    let approval = required.requires_approval.as_ref()?;
+    let granted = body.obligations.iter().any(|obligation| {
+        &obligation.statement.id == approval
+            && matches!(obligation.state, DischargeState::Discharged { .. })
+    });
+    (!granted).then(|| DenialReason::MissingApproval {
+        obligation: approval.clone(),
+    })
+}
+
+/// Why what model verifiers said keeps this boundary shut, if it does.
+///
+/// Scoped like the verdict: to the boundary's contract when it names one, and to
+/// the whole run otherwise. A dispute is refused only where the boundary says
+/// so. An endorsement requirement asks that every obligation still open be
+/// endorsed, by an independent model when the policy says so; a waiver is a
+/// policy decision rather than an open reading, so it needs none.
+fn model_reading_reason(
+    required: &BoundaryPolicy,
+    body: &crate::correctness::certificate::CertificateBody,
+) -> Option<DenialReason> {
+    let gated = body.obligations.iter().filter(|obligation| {
+        required
+            .contract
+            .as_ref()
+            .is_none_or(|contract| &obligation.contract == contract)
+    });
+    for obligation in gated {
+        if let DischargeState::Disputed { by, .. } = &obligation.state
+            && required.refuse_disputed
+        {
+            return Some(DenialReason::Disputed {
+                obligation: obligation.statement.id.clone(),
+                verifier: by.clone(),
+            });
+        }
+        let Some(endorsement) = &required.endorsement else {
+            continue;
+        };
+        let endorsed = match &obligation.state {
+            DischargeState::Endorsed { by, .. } => {
+                !endorsement.independent
+                    || body.verifiers.iter().any(|record| {
+                        &record.identity.name == by
+                            && matches!(
+                                record.trust,
+                                VerifierTrust::ModelJudgment {
+                                    independent_of_proposer: true,
+                                    ..
+                                }
+                            )
+                    })
+            }
+            DischargeState::Assumed { .. }
+            | DischargeState::Residual { .. }
+            | DischargeState::Disputed { .. } => false,
+            DischargeState::Discharged { .. }
+            | DischargeState::Waived { .. }
+            | DischargeState::Failed { .. } => true,
+        };
+        if !endorsed {
+            return Some(DenialReason::NotEndorsed {
+                obligation: obligation.statement.id.clone(),
+            });
+        }
+    }
+    None
 }
 
 /// When the certificate last looked at the world, if it can be dated.

@@ -76,9 +76,35 @@ decides whether certificates already sealed can still be opened. Recording the r
 change the digest and break every existing seal, so it is pinned by test instead
 (`crates/ir/tests/verdict_rule.rs`, `CAP-ASSURANCE-006`).
 
-An obligation is discharged, assumed, waived, left residual, or failed. There is no absent case.
-Assumption and waiver are kept separate because one says nobody checked and the other says a named
-authority decided to release anyway.
+An obligation is discharged, assumed, waived, left residual, endorsed, disputed, or failed. There
+is no absent case. Assumption and waiver are kept separate because one says nobody checked and the
+other says a named authority decided to release anyway.
+
+A discharge records its **basis**, what kind of checker made it
+([ADR 0021](../adr/0021-the-verifier-protocol-boundary.md#3-every-discharge-says-what-kind-of-checker-made-it)):
+
+| Basis | Means | The seal checks |
+| --- | --- | --- |
+| `mechanical` | a deterministic family; replay re-decides it | `by` names a deterministic verifier record |
+| `replayable_tool` | a tool with no network and no model, in a pinned environment | `by` names a declared-oracle record |
+| `human_review` | the person `by`, under an `authority` | the obligation names that authority |
+| none recorded | a discharge sealed before bases existed | nothing more, so it reads as it always did |
+
+A model is not a basis. A verifier whose record says `model_judgment` (its family, whether that
+differs from the proposer's, and its calibration record) **endorses** or **disputes** an obligation,
+and both states stay outstanding, so no combination of them makes a certificate `accepted`. The seal
+refuses a certificate in which a model discharges anything, or in which an endorsement or dispute
+names no model.
+
+An obligation statement may name the `authority` a review needs, and the kinds of checker it
+`accepts`. A certificate discharging it any other way is refused at the seal, so whoever assembles
+one records the obligation as residual instead and says why the discharge did not count. A statement
+that lists nothing accepts any basis, as every statement did before.
+
+A boundary may go further with what models said. `refuse_disputed` keeps it shut over a dispute of
+an obligation it gates. `endorsement` lets a `conditional` result cross only when every obligation
+still open under its contract has been endorsed, and with `independent: true` only by a model of
+another family than the proposer's. Neither lifts a verdict (`CAP-ASSURANCE-009`).
 
 ## What replay proves, and what it does not
 

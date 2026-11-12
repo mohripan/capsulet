@@ -211,11 +211,14 @@ fn an_obligation_resting_on_evidence_the_run_never_carried_is_refused() {
             id: id("patch-compiles"),
             statement: "the patch compiles".to_string(),
             owner: RepairOwner::Verifier,
+            authority: None,
+            accepts: Vec::new(),
         },
         contract: id("patch-compiles"),
         state: DischargeState::Discharged {
             by: id("cargo-test"),
             evidence: vec![missing],
+            basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
         },
     };
 

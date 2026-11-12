@@ -607,12 +607,48 @@
           "selector": "a_verdict_the_obligations_do_not_justify_is_refused"
         },
         {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "a_boundary_may_refuse_to_cross_over_a_dispute"
+        },
+        {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "a_model_cannot_discharge_and_an_endorsement_must_name_one"
+        },
+        {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "a_recorded_basis_names_a_checker_of_that_kind"
+        },
+        {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "a_review_counts_only_under_the_authority_the_obligation_names"
+        },
+        {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "an_endorsement_requirement_counts_only_the_models_the_policy_accepts"
+        },
+        {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "an_obligation_refuses_a_discharge_of_a_kind_it_does_not_accept"
+        },
+        {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "an_unrecorded_basis_and_a_plain_statement_encode_as_they_always_did"
+        },
+        {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "no_combination_of_endorsements_makes_a_certificate_accepted"
+        },
+        {
           "path": "crates/ir/tests/loops.rs",
           "selector": "a_loop_without_an_iteration_bound_is_refused"
         },
         {
           "path": "crates/ir/tests/loops.rs",
           "selector": "exhausting_a_budget_is_never_completion"
+        },
+        {
+          "path": "crates/ir/tests/policy_is_read.rs",
+          "selector": "every_field_of_a_boundary_policy_is_accounted_for"
         },
         {
           "path": "crates/ir/tests/policy_is_read.rs",
@@ -867,6 +903,16 @@
         {
           "path": "crates/postgres/tests/postgres_integration.rs",
           "selector": "service_accounts_are_listed_and_revoked_only_in_their_own_project"
+        }
+      ]
+    },
+    {
+      "gate": "postgres",
+      "command": "cargo test -p capsulet-postgres --test ir_and_assurance --locked",
+      "tests": [
+        {
+          "path": "crates/postgres/tests/ir_and_assurance.rs",
+          "selector": "a_models_endorsement_or_dispute_is_projected_as_outstanding"
         }
       ]
     },

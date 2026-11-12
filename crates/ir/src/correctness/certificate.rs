@@ -17,7 +17,7 @@ use crate::admission::AdmissionRecord;
 use crate::canonical::CanonicalError;
 use crate::correctness::Identity;
 use crate::correctness::evidence::EvidenceRef;
-use crate::correctness::obligation::Obligation;
+use crate::correctness::obligation::{DischargeBasis, DischargeState, Obligation};
 use crate::definition::AssuranceMode;
 use crate::digest::Digest;
 use crate::id::Identifier;
@@ -122,6 +122,26 @@ pub enum VerifierTrust {
     /// environment pinned. Replay re-checks those and says plainly that it did
     /// not re-run the tool.
     DeclaredOracle { rationale: String },
+    /// A learned model. It can endorse or dispute an obligation and can never
+    /// discharge one, which the seal enforces.
+    ModelJudgment {
+        /// The model family, so an endorsement from the proposer's own family
+        /// can be told from a second reading.
+        family: String,
+        /// Whether its family differs from the proposer's.
+        independent_of_proposer: bool,
+        /// The calibration record it was admitted under, when there is one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        calibration: Option<Identifier>,
+    },
+}
+
+impl VerifierTrust {
+    /// Whether this is a learned model.
+    #[must_use]
+    pub const fn is_model(&self) -> bool {
+        matches!(self, Self::ModelJudgment { .. })
+    }
 }
 
 /// What a verifier did, in enough detail to check the claim later.
@@ -211,6 +231,52 @@ pub enum CertificateError {
         id: Identifier,
         obligation: Identifier,
     },
+    #[error(
+        "certificate `{id}` discharges obligation `{obligation}` by `{verifier}`, a model; a model \
+         endorses or disputes and never discharges"
+    )]
+    ModelCannotDischarge {
+        id: Identifier,
+        obligation: Identifier,
+        verifier: Identifier,
+    },
+    #[error(
+        "certificate `{id}` records `{verifier}` endorsing or disputing obligation `{obligation}`, \
+         and it has no model verifier record of that name"
+    )]
+    EndorsementWithoutAModel {
+        id: Identifier,
+        obligation: Identifier,
+        verifier: Identifier,
+    },
+    #[error(
+        "certificate `{id}` discharges obligation `{obligation}` on basis `{basis}`, and \
+         `{verifier}` has no verifier record of that kind"
+    )]
+    BasisWithoutAVerifier {
+        id: Identifier,
+        obligation: Identifier,
+        verifier: Identifier,
+        basis: &'static str,
+    },
+    #[error(
+        "certificate `{id}` discharges obligation `{obligation}` by review under `{authority}`, \
+         which is not the authority the obligation names"
+    )]
+    ReviewWithoutAuthority {
+        id: Identifier,
+        obligation: Identifier,
+        authority: Identifier,
+    },
+    #[error(
+        "certificate `{id}` discharges obligation `{obligation}` on basis `{basis}`, which the \
+         obligation does not accept"
+    )]
+    BasisNotAccepted {
+        id: Identifier,
+        obligation: Identifier,
+        basis: &'static str,
+    },
     #[error("certificate `{id}` has been altered since it was sealed")]
     SealBroken { id: Identifier },
     #[error("certificate could not be encoded: {source}")]
@@ -270,8 +336,95 @@ impl CertificateBody {
                     });
                 }
             }
+            self.check_basis(obligation)?;
         }
         Ok(())
+    }
+
+    /// Checks that an obligation was decided by the kind of checker it says.
+    ///
+    /// A model never discharges. An endorsement or dispute names a model. A
+    /// recorded mechanical or tool basis names a verifier record of that kind,
+    /// a review is under the authority the obligation names, and the obligation
+    /// accepts the basis it was discharged on. A discharge with no recorded basis
+    /// is checked only against models, as every discharge was read before bases
+    /// were recorded.
+    fn check_basis(&self, obligation: &Obligation) -> Result<(), CertificateError> {
+        let id = || self.id.clone();
+        let statement = || obligation.statement.id.clone();
+        match &obligation.state {
+            DischargeState::Discharged { by, basis, .. } => {
+                let records = self.records_named(by);
+                if records.iter().any(|record| record.trust.is_model()) {
+                    return Err(CertificateError::ModelCannotDischarge {
+                        id: id(),
+                        obligation: statement(),
+                        verifier: by.clone(),
+                    });
+                }
+                let backed = match basis {
+                    DischargeBasis::Mechanical => records
+                        .iter()
+                        .any(|record| matches!(record.trust, VerifierTrust::Deterministic)),
+                    DischargeBasis::ReplayableTool => records
+                        .iter()
+                        .any(|record| matches!(record.trust, VerifierTrust::DeclaredOracle { .. })),
+                    DischargeBasis::Unrecorded | DischargeBasis::HumanReview { .. } => true,
+                };
+                if !backed {
+                    return Err(CertificateError::BasisWithoutAVerifier {
+                        id: id(),
+                        obligation: statement(),
+                        verifier: by.clone(),
+                        basis: basis.as_str(),
+                    });
+                }
+                if let DischargeBasis::HumanReview { authority } = basis
+                    && obligation.statement.authority.as_ref() != Some(authority)
+                {
+                    return Err(CertificateError::ReviewWithoutAuthority {
+                        id: id(),
+                        obligation: statement(),
+                        authority: authority.clone(),
+                    });
+                }
+                if !obligation.statement.accepts_basis(basis) {
+                    return Err(CertificateError::BasisNotAccepted {
+                        id: id(),
+                        obligation: statement(),
+                        basis: basis.as_str(),
+                    });
+                }
+                Ok(())
+            }
+            DischargeState::Endorsed { by, .. } | DischargeState::Disputed { by, .. } => {
+                if self
+                    .records_named(by)
+                    .iter()
+                    .any(|record| record.trust.is_model())
+                {
+                    Ok(())
+                } else {
+                    Err(CertificateError::EndorsementWithoutAModel {
+                        id: id(),
+                        obligation: statement(),
+                        verifier: by.clone(),
+                    })
+                }
+            }
+            DischargeState::Assumed { .. }
+            | DischargeState::Waived { .. }
+            | DischargeState::Residual { .. }
+            | DischargeState::Failed { .. } => Ok(()),
+        }
+    }
+
+    /// The verifier records under `name`.
+    fn records_named(&self, name: &Identifier) -> Vec<&VerifierRecord> {
+        self.verifiers
+            .iter()
+            .filter(|record| &record.identity.name == name)
+            .collect()
     }
 
     /// Whether this certificate carries the named evidence.

@@ -278,6 +278,8 @@ fn definition() -> Definition {
                 id: id("compiles"),
                 statement: "the patch compiles and the named tests pass".to_string(),
                 owner: RepairOwner::Verifier,
+                authority: None,
+                accepts: Vec::new(),
             }],
         }],
     }
@@ -292,6 +294,8 @@ fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
             contract: Some(id("patch-compiles")),
             requires_approval: None,
             max_age_ms: None,
+            refuse_disputed: false,
+            endorsement: None,
         },
     );
     AssurancePolicy {
@@ -356,11 +360,14 @@ fn certificate(
                     id: id("compiles"),
                     statement: "the patch compiles and the named tests pass".to_string(),
                     owner: RepairOwner::Verifier,
+                    authority: None,
+                    accepts: Vec::new(),
                 },
                 contract: id("patch-compiles"),
                 state: DischargeState::Discharged {
                     by: id("cargo-test"),
                     evidence: vec![Digest::of(log)],
+                    basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
                 },
             },
             Obligation {
@@ -368,6 +375,8 @@ fn certificate(
                     id: id("changed-branch-is-covered"),
                     statement: "the changed branch is covered by a test".to_string(),
                     owner: RepairOwner::Human,
+                    authority: None,
+                    accepts: Vec::new(),
                 },
                 contract: id("patch-compiles"),
                 state: DischargeState::Residual {

@@ -3957,6 +3957,129 @@
       ]
     },
     {
+      "id": "CAP-ASSURANCE-009",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Assurance policy",
+      "statement": "A certificate records what kind of checker discharged each obligation: mechanical, a replayable tool, or a person reviewing under the authority the obligation names. A model-backed verifier only endorses or disputes, both of which leave the obligation outstanding, so no combination of them makes a certificate accepted, and the seal refuses a certificate in which a model discharges anything. An obligation may restrict which kinds of checker count. A boundary may refuse to cross over a dispute, or require every open obligation to be endorsed by a model of another family than the proposer's. Certificates sealed before bases existed read unchanged.",
+      "public_surfaces": [
+        "ARCHITECTURE.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-model-never-certifies",
+          "evidence_selectors": [
+            "no_combination_of_endorsements_makes_a_certificate_accepted",
+            "a_model_cannot_discharge_and_an_endorsement_must_name_one"
+          ]
+        },
+        {
+          "assertion": "a-basis-names-a-checker-of-its-kind",
+          "evidence_selectors": [
+            "a_recorded_basis_names_a_checker_of_that_kind",
+            "a_review_counts_only_under_the_authority_the_obligation_names",
+            "an_obligation_refuses_a_discharge_of_a_kind_it_does_not_accept"
+          ]
+        },
+        {
+          "assertion": "boundaries-read-what-models-said",
+          "evidence_selectors": [
+            "a_boundary_may_refuse_to_cross_over_a_dispute",
+            "an_endorsement_requirement_counts_only_the_models_the_policy_accepts",
+            "every_field_of_a_boundary_policy_is_accounted_for"
+          ]
+        },
+        {
+          "assertion": "the-projection-keeps-them-outstanding",
+          "evidence_selectors": [
+            "a_models_endorsement_or_dispute_is_projected_as_outstanding"
+          ]
+        },
+        {
+          "assertion": "legacy-certificates-read-unchanged",
+          "evidence_selectors": [
+            "an_unrecorded_basis_and_a_plain_statement_encode_as_they_always_did"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "no_combination_of_endorsements_makes_a_certificate_accepted"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_model_cannot_discharge_and_an_endorsement_must_name_one"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_recorded_basis_names_a_checker_of_that_kind"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_review_counts_only_under_the_authority_the_obligation_names"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "an_obligation_refuses_a_discharge_of_a_kind_it_does_not_accept"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_boundary_may_refuse_to_cross_over_a_dispute"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "an_endorsement_requirement_counts_only_the_models_the_policy_accepts"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/policy_is_read.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "every_field_of_a_boundary_policy_is_accounted_for"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "an_unrecorded_basis_and_a_plain_statement_encode_as_they_always_did"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/ir_and_assurance.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test ir_and_assurance --locked",
+          "selector": "a_models_endorsement_or_dispute_is_projected_as_outstanding"
+        },
+        {
+          "type": "source",
+          "path": "crates/ir/src/correctness/certificate.rs"
+        }
+      ]
+    },
+    {
       "id": "CAP-CORRECTNESS-003",
       "kind": "capability",
       "maturity": "implemented",

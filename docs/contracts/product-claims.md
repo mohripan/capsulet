@@ -19,6 +19,7 @@ This file is generated from `docs/contracts/product-claims.json`. Do not edit it
 | --- | --- | --- | --- |
 | `CAP-ASSURANCE-001` | implemented | capability | Under enforce, a protected boundary is denied when no certificate exists, because an absent certificate is unverified and unverified never satisfies a higher minimum. |
 | `CAP-ASSURANCE-002` | implemented | capability | A certificate's verdict is derived from its obligations under its recorded mode; a certificate recording a verdict its obligations do not justify cannot be sealed. |
+| `CAP-ASSURANCE-009` | implemented | capability | A certificate records what kind of checker discharged each obligation: mechanical, a replayable tool, or a person reviewing under the authority the obligation names. A model-backed verifier only endorses or disputes, both of which leave the obligation outstanding, so no combination of them makes a certificate accepted, and the seal refuses a certificate in which a model discharges anything. An obligation may restrict which kinds of checker count. A boundary may refuse to cross over a dispute, or require every open obligation to be endorsed by a model of another family than the proposer's. Certificates sealed before bases existed read unchanged. |
 
 ## Automations
 

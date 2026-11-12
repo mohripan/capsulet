@@ -137,6 +137,15 @@ pub enum ReplayNote {
     /// A declared oracle's word was taken. Its identity, version, and
     /// environment matched; the tool itself was not re-run.
     OracleNotReExecuted { identity: String, rationale: String },
+    /// A model endorsed or disputed something. It was not re-run, and it
+    /// decided nothing: the seal refuses a certificate in which a model
+    /// discharges an obligation, so its word is in the record and not in the
+    /// verdict.
+    ModelNotReExecuted {
+        identity: String,
+        family: String,
+        independent_of_proposer: bool,
+    },
     /// A different kernel build produced this certificate. The verdicts still
     /// agree, but the reader should know two builds were involved.
     KernelVersionDiffers { recorded: String, replaying: String },
@@ -357,6 +366,17 @@ fn check_verifiers(
                 notes.push(ReplayNote::OracleNotReExecuted {
                     identity,
                     rationale: rationale.clone(),
+                });
+            }
+            VerifierTrust::ModelJudgment {
+                family,
+                independent_of_proposer,
+                ..
+            } => {
+                notes.push(ReplayNote::ModelNotReExecuted {
+                    identity,
+                    family: family.clone(),
+                    independent_of_proposer: *independent_of_proposer,
                 });
             }
             VerifierTrust::Deterministic => {

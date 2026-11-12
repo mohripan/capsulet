@@ -19,8 +19,8 @@ mod fixtures;
 use std::collections::BTreeMap;
 
 use capsulet_ir::assurance::{
-    BoundaryDecision, BoundaryPolicy, DecisionContext, DenialReason, TrustRoute,
-    VerifierRequirement,
+    BoundaryDecision, BoundaryPolicy, DecisionContext, DenialReason, EndorsementRequirement,
+    TrustRoute, VerifierRequirement,
 };
 use capsulet_ir::correctness::certificate::{Subject, VerifierRecord, VerifierTrust};
 use capsulet_ir::correctness::evidence::EvidenceRef;
@@ -62,6 +62,8 @@ fn obligation(state: DischargeState) -> Obligation {
             id: id("compiles"),
             statement: "the patch compiles".to_string(),
             owner: RepairOwner::Verifier,
+            authority: None,
+            accepts: Vec::new(),
         },
         contract: id("patch-compiles"),
         state,
@@ -89,14 +91,30 @@ fn certificate(obligations: Vec<Obligation>) -> Certificate {
         policy_version: "release-policy/3".to_string(),
         kernel_version: "capsulet-kernel 0.1.0".to_string(),
         contracts: vec![id("patch-compiles")],
-        verifiers: vec![VerifierRecord {
-            identity: Identity::new(id("cargo-test"), "1.96"),
-            environment: Digest::of(b"an image"),
-            inputs: vec![],
-            outputs: vec![],
-            trust: VerifierTrust::Deterministic,
-            verdict: CheckerVerdict::Accepted,
-        }],
+        verifiers: vec![
+            VerifierRecord {
+                identity: Identity::new(id("cargo-test"), "1.96"),
+                environment: Digest::of(b"an image"),
+                inputs: vec![],
+                outputs: vec![],
+                trust: VerifierTrust::Deterministic,
+                verdict: CheckerVerdict::Accepted,
+            },
+            // A second reading by a model of another family, which endorses or
+            // disputes and never discharges.
+            VerifierRecord {
+                identity: Identity::new(id("second-reader"), "1"),
+                environment: Digest::of(b"a model"),
+                inputs: vec![],
+                outputs: vec![],
+                trust: VerifierTrust::ModelJudgment {
+                    family: "other".to_string(),
+                    independent_of_proposer: true,
+                    calibration: None,
+                },
+                verdict: CheckerVerdict::Conditional,
+            },
+        ],
         evidence: vec![evidence()],
         obligations,
         loops: vec![],
@@ -109,6 +127,7 @@ fn discharged() -> Certificate {
     certificate(vec![obligation(DischargeState::Discharged {
         by: id("cargo-test"),
         evidence: vec![evidence().content],
+        basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
     })])
 }
 
@@ -126,6 +145,8 @@ fn governing() -> AssurancePolicy {
                 contract: Some(id("patch-compiles")),
                 requires_approval: None,
                 max_age_ms: None,
+                refuse_disputed: false,
+                endorsement: None,
             },
         )]),
         waiver_authorities: vec![],
@@ -296,6 +317,8 @@ fn every_field_of_a_boundary_policy_is_accounted_for() {
         contract,
         requires_approval,
         max_age_ms,
+        refuse_disputed,
+        endorsement,
     } = boundary;
 
     // Isolated with a certificate that *covers* the contract and reaches only
@@ -373,5 +396,64 @@ fn every_field_of_a_boundary_policy_is_accounted_for() {
             }
         ),
         "max_age_ms is read"
+    );
+
+    what_models_said_is_read(&policy, *refuse_disputed, endorsement.as_ref());
+}
+
+/// `refuse_disputed` and `endorsement`, read with a boundary lowered to `conditional`.
+fn what_models_said_is_read(
+    policy: &AssurancePolicy,
+    refuse_disputed: bool,
+    endorsement: Option<&EndorsementRequirement>,
+) {
+    // Both read with a boundary lowered to `conditional`, where a dispute or an
+    // unread obligation would otherwise cross.
+    let mut lowered = policy.clone();
+    lowered
+        .boundaries
+        .get_mut(&id("publish-boundary"))
+        .expect("boundary")
+        .minimum = AssuranceVerdict::Conditional;
+    let disputed = certificate(vec![obligation(DischargeState::Disputed {
+        by: id("second-reader"),
+        reason: "the cited clause is qualified elsewhere".to_string(),
+        evidence: vec![],
+    })]);
+    assert!(cross(&lowered, &disputed).permits_crossing());
+
+    assert!(!refuse_disputed);
+    let mut refusing = lowered.clone();
+    refusing
+        .boundaries
+        .get_mut(&id("publish-boundary"))
+        .expect("boundary")
+        .refuse_disputed = true;
+    assert!(
+        matches!(
+            cross(&refusing, &disputed),
+            BoundaryDecision::Denied {
+                reason: DenialReason::Disputed { .. }
+            }
+        ),
+        "refuse_disputed is read"
+    );
+
+    assert!(endorsement.is_none());
+    assert!(cross(&lowered, &conditional()).permits_crossing());
+    let mut endorsing = lowered;
+    endorsing
+        .boundaries
+        .get_mut(&id("publish-boundary"))
+        .expect("boundary")
+        .endorsement = Some(EndorsementRequirement { independent: true });
+    assert!(
+        matches!(
+            cross(&endorsing, &conditional()),
+            BoundaryDecision::Denied {
+                reason: DenialReason::NotEndorsed { .. }
+            }
+        ),
+        "endorsement is read"
     );
 }

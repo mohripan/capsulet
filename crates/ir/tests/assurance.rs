@@ -50,6 +50,8 @@ fn obligation(name: &str, state: DischargeState) -> Obligation {
             id: id(name),
             statement: format!("`{name}` holds"),
             owner: RepairOwner::Verifier,
+            authority: None,
+            accepts: Vec::new(),
         },
         contract: id("patch-compiles"),
         state,
@@ -62,6 +64,7 @@ fn discharged(name: &str) -> Obligation {
         DischargeState::Discharged {
             by: id("cargo-test"),
             evidence: vec![evidence().content],
+            basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
         },
     )
 }
@@ -182,6 +185,8 @@ fn policy(minimum: AssuranceVerdict, mode: AssuranceMode) -> AssurancePolicy {
             contract: Some(id("patch-compiles")),
             requires_approval: None,
             max_age_ms: None,
+            refuse_disputed: false,
+            endorsement: None,
         },
     );
     AssurancePolicy {
@@ -682,6 +687,8 @@ fn a_boundary_is_denied_when_the_required_contracts_obligations_are_unaccounted_
             contract: Some(id("scanned-under-named-rules")),
             requires_approval: None,
             max_age_ms: None,
+            refuse_disputed: false,
+            endorsement: None,
         },
     );
 
@@ -718,6 +725,8 @@ fn a_boundary_requiring_a_contract_the_definition_never_declared_is_denied() {
             contract: Some(id("no-secrets-leaked")),
             requires_approval: None,
             max_age_ms: None,
+            refuse_disputed: false,
+            endorsement: None,
         },
     );
 
@@ -1010,6 +1019,7 @@ fn a_certificate_with_nothing_to_date_it_by_is_not_fresh() {
         DischargeState::Discharged {
             by: id("cargo-test"),
             evidence: vec![],
+            basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
         },
     )];
     body.verdict = AssuranceVerdict::under_mode(AssuranceMode::Enforce, &body.obligations);

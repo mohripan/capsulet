@@ -188,6 +188,19 @@ fn describe_note(note: &ReplayNote) -> String {
             identity,
             rationale,
         } => format!("`{identity}` was not re-run; its word was taken because {rationale}"),
+        ReplayNote::ModelNotReExecuted {
+            identity,
+            family,
+            independent_of_proposer,
+        } => format!(
+            "`{identity}` is a model ({family}, {}); it endorses or disputes and decided nothing \
+             here, and it was not re-run",
+            if *independent_of_proposer {
+                "independent of the proposer"
+            } else {
+                "the proposer's own family"
+            }
+        ),
         ReplayNote::KernelVersionDiffers {
             recorded,
             replaying,

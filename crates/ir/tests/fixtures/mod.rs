@@ -138,6 +138,8 @@ pub fn contract() -> Contract {
             id: id("compiles"),
             statement: "the patch compiles against the pinned revision".to_string(),
             owner: RepairOwner::Verifier,
+            authority: None,
+            accepts: Vec::new(),
         }],
     }
 }
@@ -155,6 +157,8 @@ pub fn scan_contract() -> Contract {
             id: id("no-secrets-in-output"),
             statement: "the output carries no secrets".to_string(),
             owner: RepairOwner::Verifier,
+            authority: None,
+            accepts: Vec::new(),
         }],
     }
 }

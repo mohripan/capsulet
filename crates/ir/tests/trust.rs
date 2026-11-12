@@ -33,6 +33,8 @@ fn obligation(statement: &str, contract: &str, state: DischargeState) -> Obligat
             id: id(statement),
             statement: format!("`{statement}` holds"),
             owner: RepairOwner::Verifier,
+            authority: None,
+            accepts: Vec::new(),
         },
         contract: id(contract),
         state,
@@ -46,6 +48,7 @@ fn discharged(statement: &str, contract: &str) -> Obligation {
         DischargeState::Discharged {
             by: id("the-test-runner"),
             evidence: vec![],
+            basis: capsulet_ir::correctness::obligation::DischargeBasis::Unrecorded,
         },
     )
 }
