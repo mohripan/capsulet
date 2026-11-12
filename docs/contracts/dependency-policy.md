@@ -70,9 +70,11 @@ does. On 2026-11-08 `reqwest` 0.12 was the only duplicate the workspace caused, 
 - `syn` 2 through most proc-macro crates
 - `windows-sys` 0.48 and 0.52 through etcetera, winapi-util and ring
 
-`cargo deny check` still prints one warning: it never meets RUSTSEC-2023-0071, because `rsa` is
-reachable only through the uncompiled `sqlx-mysql`. `cargo-audit` reads the lockfile and does
-meet it, and the two ignore lists are held equal on purpose.
+`cargo deny check` still prints two warnings. It never meets RUSTSEC-2023-0071 (`rsa`) or
+RUSTSEC-2026-0459 (`libsqlite3-sys`), because both crates are reachable only through sqlx drivers
+the workspace does not compile (`sqlx-mysql`, `sqlx-sqlite`). `cargo-audit` reads the lockfile and
+does meet them, and the two ignore lists are held equal on purpose.
+`every_uncompiled_exception_is_uncompiled` fails the moment either crate enters the build graph.
 
 ## Scanner versions and regression checks
 

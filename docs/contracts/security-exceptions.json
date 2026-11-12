@@ -11,8 +11,22 @@
       "scope": "uncompiled-optional",
       "owner": "platform",
       "rationale": "rsa is present in Cargo.lock through optional sqlx-mysql, which is not compiled by this PostgreSQL-only workspace.",
-      "compensating_control": "Enabling MySQL or rsa requires removing this exception; review cargo tree when features change.",
-      "issue": "https://github.com/mohripan/capsulet/issues/99",
+      "compensating_control": "every_uncompiled_exception_is_uncompiled fails as soon as rsa enters the build graph, so enabling MySQL cannot happen with this exception still in place.",
+      "issue": "https://github.com/mohripan/capsulet/issues/104",
+      "expires": "2027-03-01"
+    },
+    {
+      "id": "RUSTSEC-2026-0459",
+      "ecosystem": "rust",
+      "package": "libsqlite3-sys",
+      "versions": [
+        "0.30.1"
+      ],
+      "scope": "uncompiled-optional",
+      "owner": "platform",
+      "rationale": "A CVE in the SQLite that libsqlite3-sys bundles. The crate is present in Cargo.lock only through optional sqlx-sqlite, which this PostgreSQL-only workspace does not compile; the fix (0.39) needs a newer sqlx major.",
+      "compensating_control": "every_uncompiled_exception_is_uncompiled fails as soon as libsqlite3-sys enters the build graph, so enabling SQLite cannot happen with this exception still in place.",
+      "issue": "https://github.com/mohripan/capsulet/issues/104",
       "expires": "2027-03-01"
     },
     {

@@ -381,6 +381,58 @@ fn numeric(version: &str) -> Vec<u64> {
         .collect()
 }
 
+/// An exception scoped `uncompiled-optional` claims its crate is in the lockfile
+/// and never built. That claim is checked here: `cargo tree -i` finds nothing for
+/// the crate in the workspace's build graph, or the exception is no longer true
+/// and this fails until someone reconsiders it.
+#[test]
+fn every_uncompiled_exception_is_uncompiled() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let registry: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("docs/contracts/security-exceptions.json"))
+            .expect("exception registry"),
+    )
+    .expect("registry JSON");
+    let uncompiled = registry["exceptions"]
+        .as_array()
+        .expect("exceptions")
+        .iter()
+        .filter(|entry| entry["scope"] == "uncompiled-optional")
+        .collect::<Vec<_>>();
+    assert!(
+        !uncompiled.is_empty(),
+        "no uncompiled-optional exception was read"
+    );
+    for entry in uncompiled {
+        let package = entry["package"].as_str().expect("package");
+        for version in entry["versions"].as_array().expect("versions") {
+            let spec = format!("{package}@{}", version.as_str().expect("version"));
+            let output = Command::new(env!("CARGO"))
+                .args([
+                    "tree",
+                    "--workspace",
+                    "--locked",
+                    "--target",
+                    "all",
+                    "-e",
+                    "normal,build,dev",
+                    "-i",
+                    &spec,
+                ])
+                .current_dir(&root)
+                .output()
+                .expect("cargo tree runs");
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success() && stdout.trim().is_empty(),
+                "{} says {spec} is never compiled, but the build graph has it:\n{stdout}{}",
+                entry["id"],
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+}
+
 /// Security exceptions must be owned and must expire.
 ///
 /// An advisory silenced in `.cargo/audit.toml` with no entry in the exceptions

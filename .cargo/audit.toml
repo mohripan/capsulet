@@ -7,7 +7,10 @@
 #
 # RUSTSEC-2023-0071 (rsa): reaches the lockfile only through sqlx-mysql, which
 # the workspace's postgres-only feature set never compiles.
+# RUSTSEC-2026-0459 (libsqlite3-sys): reaches the lockfile only through
+# sqlx-sqlite, which the same feature set never compiles. A verifier test fails
+# if either crate enters the build graph.
 # RUSTSEC-2024-0449 (unsafe-libyaml): unmaintained, not vulnerable, and reached
 # through serde_yaml, which reads only operator-written pool configuration.
 [advisories]
-ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2024-0449"]
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0459", "RUSTSEC-2024-0449"]
