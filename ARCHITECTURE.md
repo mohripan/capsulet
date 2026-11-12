@@ -466,11 +466,11 @@ The API exposes configured pool and host-group views. The worker resolves the se
 
 ### Docker Compose
 
-`compose.yaml` starts PostgreSQL, MinIO and its bucket initializer, API, scheduler, worker, dashboard, and Mailpit. The Compose worker uses the stub runner, so it exercises control-plane behavior without launching user containers.
+`compose.yaml` starts PostgreSQL, SeaweedFS as the S3 object store, Keycloak, API, scheduler, worker, graph worker, evaluator, dashboard, Mailpit, Prometheus and Grafana. The Compose worker runs each job's Python in its own container (`CAPSULET_RUNNER_MODE=process`), so the full job and artifact flow runs without launching user containers.
 
 ### Helm
 
-The chart deploys API, scheduler, evaluator, worker, and dashboard. It also renders migration and bucket Jobs, separated RBAC/service accounts, health and metrics services, execution-pool configuration, default-deny execution networking, and optional bundled PostgreSQL and MinIO. External PostgreSQL and S3-compatible storage are supported and are the production-shaped dependency mode.
+The chart deploys API, scheduler, evaluator, worker, and dashboard. It also renders the migration Job, separated RBAC/service accounts, health and metrics services, execution-pool configuration, default-deny execution networking, and optional bundled PostgreSQL and SeaweedFS. External PostgreSQL and S3-compatible storage are supported and are the production-shaped dependency mode.
 
 The worker service account can create, watch, and delete Kubernetes Jobs and inspect pods/logs in the execution namespace. Job pods use their own configured service-account/security settings.
 

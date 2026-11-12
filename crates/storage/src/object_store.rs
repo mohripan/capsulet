@@ -87,7 +87,7 @@ impl ObjectStore for FilesystemObjectStore {
     }
 }
 
-/// S3-compatible object store for `MinIO` and external S3 endpoints.
+/// S3-compatible object store: the bundled `SeaweedFS`, or any external S3 endpoint.
 #[derive(Clone)]
 pub struct S3ObjectStore {
     inner: Arc<dyn ObjectStoreBackend>,

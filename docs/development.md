@@ -163,10 +163,11 @@ The Compose worker uses `CAPSULET_RUNNER_MODE=process`, running each job's Pytho
 The Compose database URL, with the password generated for the stack, is in
 `.capsulet/stack/capsulet-local/database-url`.
 
-Compose stores script bundles, large logs and artifacts on the shared `capsulet-objects` volume, in
-filesystem mode. It used MinIO until MinIO stopped publishing community container images on
-2025-10-23, after which a fresh checkout could no longer pull them. To exercise the S3 adapter, point
-the `CAPSULET_OBJECT_STORAGE_*` variables at any S3-compatible store.
+Compose stores script bundles, large logs and artifacts in SeaweedFS, through the same S3 adapter a
+deployment uses. SeaweedFS runs in its single-process `mini` mode, creates the `capsulet-artifacts`
+bucket on start, admits only the stack's generated key, and is reachable from the host on
+`127.0.0.1:8333`. It replaced MinIO, whose community images stopped being published on 2025-10-23
+and whose repository is no longer maintained.
 
 To start only the data services for manual local backend work:
 

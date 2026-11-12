@@ -11,8 +11,10 @@ API:
 Migration job logs:
   kubectl logs job/{{ include "capsulet.fullname" . }}-migrate -n {{ .Release.Namespace }}
 
-{{- if eq .Values.minio.mode "bundled" }}
-Bundled MinIO console:
-  kubectl port-forward svc/{{ include "capsulet.minioName" . }} 9001:{{ .Values.minio.service.consolePort }} -n {{ .Release.Namespace }}
-  http://127.0.0.1:9001
+{{- if eq .Values.seaweedfs.mode "bundled" }}
+
+Bundled S3 object store (SeaweedFS), for any S3 client:
+  kubectl port-forward svc/{{ include "capsulet.seaweedfsName" . }} 8333:{{ .Values.seaweedfs.service.port }} -n {{ .Release.Namespace }}
+  endpoint http://127.0.0.1:8333, bucket {{ .Values.seaweedfs.bucket }}, path-style requests
+  credentials: kubectl get secret {{ include "capsulet.seaweedfsName" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data}'
 {{- end }}

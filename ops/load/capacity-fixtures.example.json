@@ -8,7 +8,7 @@
       { "role": "control-plane", "cpu": "4", "memory": "8Gi" }
     ],
     "database": "bundled-postgresql",
-    "object_storage": "bundled-minio"
+    "object_storage": "bundled-seaweedfs"
   },
   "capsulet": {
     "api_replicas": 2,

@@ -160,7 +160,7 @@
       },
       "required": ["mode", "image", "auth", "service", "persistence"]
     },
-    "minio": {
+    "seaweedfs": {
       "type": "object",
       "properties": {
         "mode": {
@@ -171,19 +171,8 @@
           "type": "object",
           "properties": {
             "repository": { "type": "string", "minLength": 1 },
-            "tag": { "type": "string", "minLength": 1 },
-            "pullPolicy": {
-              "type": "string",
-              "enum": ["Always", "IfNotPresent", "Never"]
-            }
-          },
-          "required": ["repository", "tag", "pullPolicy"]
-        },
-        "mcImage": {
-          "type": "object",
-          "properties": {
-            "repository": { "type": "string", "minLength": 1 },
-            "tag": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string", "minLength": 1, "not": { "const": "latest" } },
+            "digest": { "type": "string", "pattern": "^(sha256:[0-9a-f]{64})?$" },
             "pullPolicy": {
               "type": "string",
               "enum": ["Always", "IfNotPresent", "Never"]
@@ -194,21 +183,23 @@
         "auth": {
           "type": "object",
           "properties": {
-            "rootUser": { "type": "string", "minLength": 1 },
-            "rootPassword": { "type": "string", "minLength": 8 }
+            "accessKeyId": { "type": "string", "minLength": 1 },
+            "secretAccessKey": {
+              "type": "string",
+              "description": "Empty generates a key on install and keeps it on upgrade.",
+              "anyOf": [{ "maxLength": 0 }, { "minLength": 16 }]
+            }
           },
-          "required": ["rootUser", "rootPassword"]
+          "required": ["accessKeyId", "secretAccessKey"]
         },
-        "bucket": { "type": "string", "minLength": 1 },
+        "bucket": { "type": "string", "minLength": 3, "pattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$" },
         "region": { "type": "string", "minLength": 1 },
-        "pathStyle": { "type": "boolean" },
         "service": {
           "type": "object",
           "properties": {
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
-            "consolePort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
           },
-          "required": ["port", "consolePort"]
+          "required": ["port"]
         },
         "persistence": {
           "type": "object",
@@ -221,17 +212,9 @@
         },
         "securityContext": { "type": "object" },
         "containerSecurityContext": { "type": "object" },
-        "resources": { "type": "object" },
-        "bucketJob": {
-          "type": "object",
-          "properties": {
-            "enabled": { "type": "boolean" },
-            "backoffLimit": { "type": "integer", "minimum": 0 }
-          },
-          "required": ["enabled", "backoffLimit"]
-        }
+        "resources": { "type": "object" }
       },
-      "required": ["mode", "image", "mcImage", "auth", "bucket", "region", "pathStyle", "service", "persistence", "bucketJob"]
+      "required": ["mode", "image", "auth", "bucket", "region", "service", "persistence"]
     },
     "migrations": {
       "type": "object",
@@ -430,7 +413,7 @@
       }
     }
   },
-  "required": ["image", "executionPools", "postgresql", "minio", "migrations"],
+  "required": ["image", "executionPools", "postgresql", "seaweedfs", "migrations"],
   "allOf": [
     {
       "if": {
@@ -460,7 +443,7 @@
     {
       "if": {
         "properties": {
-          "minio": {
+          "seaweedfs": {
             "properties": {
               "mode": { "const": "external" }
             }

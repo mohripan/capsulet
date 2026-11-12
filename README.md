@@ -145,7 +145,7 @@ two projects with an identity per role ([test identities](docs/development/test-
 Open the dashboard at <http://127.0.0.1:3000> and the API at <http://127.0.0.1:8080>.
 `cargo run -p capsulet-xtask -- stack down` removes it, volumes and secrets included.
 
-The local stack includes PostgreSQL, Mailpit, API, worker, graph worker, scheduler, evaluator, and dashboard. Objects are stored on a shared volume, because MinIO no longer publishes the community images the stack used. Compose waits on dependency health and restarts long-running services after failure. Sign in with the admin login in `.capsulet/stack/capsulet-local/fixture.json`; no local credential is checked in.
+The local stack includes PostgreSQL, SeaweedFS as the S3 object store, Keycloak, Mailpit, API, worker, graph worker, scheduler, evaluator, dashboard, Prometheus and Grafana. Artifacts and logs go through the same S3 adapter a deployment uses. Compose waits on dependency health and restarts long-running services after failure. Sign in with the admin login in `.capsulet/stack/capsulet-local/fixture.json`; no local credential is checked in.
 
 Useful checks:
 

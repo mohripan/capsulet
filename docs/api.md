@@ -15,7 +15,7 @@ Memory records are tenant/project scoped and claim-first: claims, events, and re
 
 ## Run Locally
 
-For the full local stack, including PostgreSQL, MinIO, API, worker, and dashboard, run:
+For the full local stack, including PostgreSQL, SeaweedFS, API, worker, and dashboard, run:
 
 ```sh
 cargo run -p capsulet-xtask -- stack up
@@ -46,16 +46,17 @@ cargo run -p capsulet-api
 
 The API runs migrations on startup. With `CAPSULET_SEED_EXAMPLES=true`, it also upserts `job_hello_python`, `job_sleep_python`, `job_fail_python`, `job_timeout_python`, and `job_artifact_python`.
 
-For S3-compatible storage such as MinIO, set:
+To use the stack's S3 store instead, start it with `stack up seaweedfs` and set:
 
 ```powershell
+$stackEnv = Get-Content .capsulet/stack/capsulet-local/stack.env
 $env:CAPSULET_OBJECT_STORAGE_MODE = "s3"
 $env:CAPSULET_OBJECT_STORAGE_BUCKET = "capsulet-artifacts"
-$env:CAPSULET_OBJECT_STORAGE_ENDPOINT = "http://127.0.0.1:9000"
+$env:CAPSULET_OBJECT_STORAGE_ENDPOINT = "http://127.0.0.1:8333"
 $env:CAPSULET_OBJECT_STORAGE_REGION = "us-east-1"
 $env:CAPSULET_OBJECT_STORAGE_PATH_STYLE = "true"
 $env:CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID = "capsulet"
-$env:CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY = "capsuletpassword"
+$env:CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY = ($stackEnv | Select-String "^CAPSULET_OBJECT_STORE_SECRET_KEY='(.*)'$").Matches[0].Groups[1].Value
 ```
 
 ## Seed a Job Definition

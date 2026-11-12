@@ -159,16 +159,17 @@ $env:CAPSULET_OBJECT_STORAGE_MODE = "filesystem"
 $env:CAPSULET_OBJECT_STORAGE_PATH = ".capsulet-objects"
 ```
 
-For MinIO or another S3-compatible endpoint:
+For the stack's SeaweedFS (`stack up seaweedfs`) or another S3-compatible endpoint:
 
 ```powershell
+$stackEnv = Get-Content .capsulet/stack/capsulet-local/stack.env
 $env:CAPSULET_OBJECT_STORAGE_MODE = "s3"
 $env:CAPSULET_OBJECT_STORAGE_BUCKET = "capsulet-artifacts"
-$env:CAPSULET_OBJECT_STORAGE_ENDPOINT = "http://127.0.0.1:9000"
+$env:CAPSULET_OBJECT_STORAGE_ENDPOINT = "http://127.0.0.1:8333"
 $env:CAPSULET_OBJECT_STORAGE_REGION = "us-east-1"
 $env:CAPSULET_OBJECT_STORAGE_PATH_STYLE = "true"
 $env:CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID = "capsulet"
-$env:CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY = "capsuletpassword"
+$env:CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY = ($stackEnv | Select-String "^CAPSULET_OBJECT_STORE_SECRET_KEY='(.*)'$").Matches[0].Groups[1].Value
 ```
 
 The API and worker must point at the same storage backend. Filesystem mode is useful for single-process local smoke tests; S3 mode is the expected multi-process and Kubernetes configuration.
@@ -176,8 +177,8 @@ The API and worker must point at the same storage backend. Filesystem mode is us
 Troubleshooting checks:
 
 - `CAPSULET_OBJECT_STORAGE_BUCKET` must exist before the API or worker tries to write S3 objects.
-- `CAPSULET_OBJECT_STORAGE_ENDPOINT` must be reachable from the API and worker process or pod. In minikube, use `host.minikube.internal` for host-local MinIO.
-- Set `CAPSULET_OBJECT_STORAGE_PATH_STYLE=true` for MinIO.
+- `CAPSULET_OBJECT_STORAGE_ENDPOINT` must be reachable from the API and worker process or pod. In minikube, use `host.minikube.internal` for a store running on the host.
+- Set `CAPSULET_OBJECT_STORAGE_PATH_STYLE=true` for SeaweedFS and most self-hosted stores.
 - S3 credentials are read from `CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID` and `CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY`, or from the Helm credentials secret.
 - If artifact list succeeds but download fails, the metadata row exists but the referenced object key could not be read from storage.
 

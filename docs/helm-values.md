@@ -158,52 +158,67 @@ kubectl delete job capsulet-migrate -n capsulet
 helm upgrade --install capsulet charts/capsulet -n capsulet
 ```
 
-## MinIO And Object Storage
+## Object Storage
 
-Bundled MinIO is enabled by default for experimental local evaluation:
+The chart bundles SeaweedFS as its S3-compatible object store, for local evaluation and single-node
+installs:
 
 ```yaml
-minio:
+seaweedfs:
   mode: bundled
+  image:
+    repository: chrislusf/seaweedfs
+    tag: "4.53"
+    digest: sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0
   auth:
-    rootUser: capsulet
-    rootPassword: capsuletpassword
+    accessKeyId: capsulet
+    secretAccessKey: ""
   bucket: capsulet-artifacts
   region: us-east-1
-  pathStyle: true
   persistence:
     enabled: true
     size: 2Gi
-  bucketJob:
-    enabled: true
-    backoffLimit: 6
 ```
+
+It runs SeaweedFS's single-process `mini` mode, which creates the bucket when it starts, so no bucket
+Job is needed. WebDAV, the admin UI, the Iceberg and Lance endpoints and SeaweedFS's usage telemetry
+are switched off, and only the S3 port is exposed.
+
+Credentials are never chart defaults:
+
+- `seaweedfs.auth.secretAccessKey` left empty generates a key on first install and keeps it on every
+  upgrade. `helm template` cannot read the cluster, so it renders a new key each time; set the key
+  yourself when you render manifests rather than install them.
+- The chart also generates, and keeps, a volume-server and a filer signing key. Without them anything
+  that reaches the pod could write to SeaweedFS's volume server or filer directly, or create S3
+  identities through the filer's IAM service, around the access key.
 
 Bundled mode renders:
 
-- Secret: `<release>-minio`
-- Service: `<release>-minio`
-- StatefulSet: `<release>-minio`
-- bucket initialization Job: `<release>-minio-bucket`
+- Secret: `<release>-seaweedfs`, with `access-key-id`, `secret-access-key`, `volume-signing-key` and
+  `filer-signing-key`
+- Service: `<release>-seaweedfs`
+- StatefulSet: `<release>-seaweedfs`
 
-Bundled mode makes API and worker use:
+and makes the API, worker and evaluator use:
 
 ```yaml
 CAPSULET_OBJECT_STORAGE_MODE: s3
-CAPSULET_OBJECT_STORAGE_ENDPOINT: http://<release>-minio:9000
-CAPSULET_OBJECT_STORAGE_BUCKET: <minio.bucket>
+CAPSULET_OBJECT_STORAGE_ENDPOINT: http://<release>-seaweedfs:8333
+CAPSULET_OBJECT_STORAGE_BUCKET: <seaweedfs.bucket>
+CAPSULET_OBJECT_STORAGE_PATH_STYLE: "true"
 ```
 
 For external S3-compatible object storage:
 
 ```yaml
-minio:
+seaweedfs:
   mode: external
 config:
   objectStorage:
     mode: s3
     bucket: capsulet-artifacts
-    endpoint: http://minio.example:9000
+    endpoint: https://s3.example.com
     region: us-east-1
     pathStyle: true
     credentialsSecret:
@@ -217,7 +232,7 @@ The external bucket and credential Secret must already exist.
 Filesystem object storage is still available for narrow local tests:
 
 ```yaml
-minio:
+seaweedfs:
   mode: external
 config:
   objectStorage:
@@ -237,7 +252,7 @@ Capsulet API, worker, scheduler, evaluator, and dashboard defaults include:
 - read-only root filesystem
 - dropped Linux capabilities
 
-Bundled PostgreSQL and MinIO also run as non-root with dropped capabilities, but they keep `readOnlyRootFilesystem: false` because stateful database/object-storage images need writable runtime paths. Bundled dependencies are for experimental local evaluation; production-shaped installs should use external PostgreSQL and external S3-compatible storage.
+Bundled PostgreSQL and SeaweedFS also run as non-root with dropped capabilities, but they keep `readOnlyRootFilesystem: false` because stateful database/object-storage images need writable runtime paths. Bundled dependencies are for experimental local evaluation; production-shaped installs should use external PostgreSQL and external S3-compatible storage.
 
 The evaluator leases durable trigger events and uses durable state to deduplicate evaluations. It executes timezone-aware cron, named read-only SQL, signed webhook, and isolated custom-plugin triggers, and runs retention cleanup. Configure SQL connections and webhook secrets outside chart values as secrets in production.
 
@@ -349,15 +364,8 @@ helm template capsulet charts/capsulet
 helm template capsulet charts/capsulet \
   --set postgresql.mode=external \
   --set config.databaseUrlSecret.name=capsulet-db \
-  --set minio.mode=external \
+  --set seaweedfs.mode=external \
   --set config.objectStorage.mode=s3 \
-  --set config.objectStorage.endpoint=http://minio.example:9000 \
+  --set config.objectStorage.endpoint=https://s3.example.com \
   --set config.objectStorage.credentialsSecret.name=capsulet-object-storage
 ```
-
-## Bundled MinIO
-
-`minio.mode=bundled` installs the `minio/minio` and `minio/mc` images. MinIO stopped publishing
-community container images on 2025-10-23, so those images can no longer be pulled by a cluster that
-has not cached them. Until the chart bundles a replacement, set `minio.mode=external` and point
-`config.objectStorage` at an S3-compatible store you operate.

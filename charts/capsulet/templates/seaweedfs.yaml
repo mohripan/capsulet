@@ -1,0 +1,170 @@
+{{- if eq .Values.seaweedfs.mode "bundled" }}
+{{- $name := include "capsulet.seaweedfsName" . }}
+{{- /* Keep every key already installed and generate one only on first install,
+       so an upgrade never locks the components out of their own objects. An
+       access key given in values wins. The signing keys stop anything in the
+       cluster from writing to the volume server or the filer directly, or from
+       creating S3 identities through the filer's IAM service. */}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
+{{- $installed := dict }}
+{{- if and $existing $existing.data }}
+{{- $installed = $existing.data }}
+{{- end }}
+{{- $keys := dict }}
+{{- range $key := list "secret-access-key" "volume-signing-key" "filer-signing-key" }}
+{{- if hasKey $installed $key }}
+{{- $_ := set $keys $key (index $installed $key | b64dec) }}
+{{- else }}
+{{- $_ := set $keys $key (randAlphaNum 40) }}
+{{- end }}
+{{- end }}
+{{- with .Values.seaweedfs.auth.secretAccessKey }}
+{{- $_ := set $keys "secret-access-key" . }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+type: Opaque
+stringData:
+  access-key-id: {{ .Values.seaweedfs.auth.accessKeyId | quote }}
+  secret-access-key: {{ get $keys "secret-access-key" | quote }}
+  volume-signing-key: {{ get $keys "volume-signing-key" | quote }}
+  filer-signing-key: {{ get $keys "filer-signing-key" | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  type: ClusterIP
+  ports:
+    - name: s3
+      port: {{ .Values.seaweedfs.service.port }}
+      targetPort: s3
+      protocol: TCP
+  selector:
+    {{- include "capsulet.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "capsulet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "capsulet.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: seaweedfs
+  template:
+    metadata:
+      labels:
+        {{- include "capsulet.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: seaweedfs
+      annotations:
+        {{- /* Restart on a new key, which SeaweedFS reads only at startup. */}}
+        checksum/credentials: {{ toJson $keys | sha256sum | quote }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.seaweedfs.securityContext | nindent 8 }}
+      containers:
+        - name: seaweedfs
+          image: {{ include "capsulet.dependencyImage" .Values.seaweedfs.image | quote }}
+          imagePullPolicy: {{ .Values.seaweedfs.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.seaweedfs.containerSecurityContext | nindent 12 }}
+          # Master, volume server, filer and S3 gateway in one process. Only the
+          # S3 port leaves the pod; WebDAV, the admin UI, the Iceberg and Lance
+          # endpoints and the usage telemetry are all switched off.
+          args:
+            - mini
+            - -dir=/data
+            - -bucket={{ .Values.seaweedfs.bucket }}
+            - -s3.port=8333
+            - -master.telemetry=false
+            - -webdav=false
+            - -admin.ui=false
+            - -s3.port.iceberg=0
+            - -s3.port.lance=0
+          env:
+            # With these set and no other identity configured, SeaweedFS admits
+            # this one key and refuses anonymous requests.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: secret-access-key
+            - name: WEED_JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: volume-signing-key
+            - name: WEED_JWT_FILER_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: filer-signing-key
+          ports:
+            - name: s3
+              containerPort: 8333
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: s3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: s3
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - name: seaweedfs-data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.seaweedfs.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+  {{- if .Values.seaweedfs.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: seaweedfs-data
+        labels:
+          {{- include "capsulet.labels" . | nindent 10 }}
+          app.kubernetes.io/component: seaweedfs
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.seaweedfs.persistence.storageClass }}
+        storageClassName: {{ .Values.seaweedfs.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.seaweedfs.persistence.size | quote }}
+  {{- else }}
+        - name: seaweedfs-data
+          emptyDir: {}
+  {{- end }}
+{{- end }}

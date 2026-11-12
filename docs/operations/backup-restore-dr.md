@@ -31,7 +31,7 @@ for enterprise production environments.
 
 1. Provision a clean namespace and point the chart at a restored PostgreSQL instance.
 2. Restore object storage to the same bucket prefix used by the restored database.
-3. Install Capsulet with `postgresql.mode=external` and `minio.mode=external`.
+3. Install Capsulet with `postgresql.mode=external` and `seaweedfs.mode=external`.
 4. Run `capsulet-api` migrations once with `CAPSULET_MIGRATE_ONLY=true`.
 5. Start API, worker, scheduler, evaluator, and dashboard.
 6. Verify `/readyz`, `/metrics`, job definition listing, workflow run listing, and artifact download.

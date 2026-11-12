@@ -28,8 +28,10 @@ next-dev-*.log
 api-live*.log
 test-results/
 playwright-report/
-# Saved Playwright sessions hold a stack's tokens.
-playwright/.auth/
+# Saved Playwright sessions hold a stack's tokens. `**/` because a pattern with
+# a slash in it is otherwise anchored to this directory, and the sessions live
+# under dashboard/.
+**/playwright/.auth/
 *.tsbuildinfo
 
 # Python

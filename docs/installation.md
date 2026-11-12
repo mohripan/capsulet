@@ -11,11 +11,10 @@ installation path, not a public-alpha release. The default chart renders:
 - evaluator
 - dashboard
 - bundled PostgreSQL
-- bundled MinIO
+- bundled SeaweedFS, the S3 object store, which creates its bucket on start
 - database migration Job
-- MinIO bucket initialization Job
 
-Bundled PostgreSQL and MinIO are local evaluation defaults. For production-shaped installs, use external PostgreSQL and external S3-compatible object storage.
+Bundled PostgreSQL and SeaweedFS are local evaluation defaults. For production-shaped installs, use external PostgreSQL and external S3-compatible object storage.
 
 ## Local Kubernetes Install
 
@@ -56,8 +55,7 @@ Wait for the install:
 ```powershell
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=postgresql -n capsulet --timeout=180s
 kubectl wait --for=condition=complete job/capsulet-migrate -n capsulet --timeout=180s
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=minio -n capsulet --timeout=180s
-kubectl wait --for=condition=complete job/capsulet-minio-bucket -n capsulet --timeout=180s
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=seaweedfs -n capsulet --timeout=180s
 kubectl rollout status deployment/capsulet-api -n capsulet
 kubectl rollout status deployment/capsulet-worker -n capsulet
 kubectl rollout status deployment/capsulet-dashboard -n capsulet
@@ -104,9 +102,9 @@ Validate external dependency mode:
 helm template capsulet charts/capsulet \
   --set postgresql.mode=external \
   --set config.databaseUrlSecret.name=capsulet-db \
-  --set minio.mode=external \
+  --set seaweedfs.mode=external \
   --set config.objectStorage.mode=s3 \
-  --set config.objectStorage.endpoint=http://minio.example:9000 \
+  --set config.objectStorage.endpoint=https://s3.example.com \
   --set config.objectStorage.credentialsSecret.name=capsulet-object-storage
 ```
 
@@ -125,8 +123,8 @@ Create an object storage credentials Secret:
 ```powershell
 kubectl create secret generic capsulet-object-storage `
   --namespace capsulet `
-  --from-literal=access-key-id=capsulet `
-  --from-literal=secret-access-key=capsuletpassword
+  --from-literal=access-key-id=<access key id> `
+  --from-literal=secret-access-key=<secret access key>
 ```
 
 Install with external PostgreSQL and external S3-compatible storage:
@@ -137,10 +135,10 @@ helm upgrade --install capsulet charts/capsulet `
   --create-namespace `
   --set postgresql.mode=external `
   --set config.databaseUrlSecret.name=capsulet-db `
-  --set minio.mode=external `
+  --set seaweedfs.mode=external `
   --set config.objectStorage.mode=s3 `
   --set config.objectStorage.bucket=capsulet-artifacts `
-  --set config.objectStorage.endpoint=http://minio.example:9000 `
+  --set config.objectStorage.endpoint=https://s3.example.com `
   --set config.objectStorage.region=us-east-1 `
   --set config.objectStorage.pathStyle=true `
   --set config.objectStorage.credentialsSecret.name=capsulet-object-storage

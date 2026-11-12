@@ -13,10 +13,22 @@ Bundled PostgreSQL resource name.
 {{- end -}}
 
 {{/*
-Bundled MinIO resource name.
+Bundled SeaweedFS resource name.
 */}}
-{{- define "capsulet.minioName" -}}
-{{- printf "%s-minio" (include "capsulet.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- define "capsulet.seaweedfsName" -}}
+{{- printf "%s-seaweedfs" (include "capsulet.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+A third-party image from its values: repository:tag, with @digest when one is
+given, so the tag says what it is and the digest decides what runs.
+*/}}
+{{- define "capsulet.dependencyImage" -}}
+{{- if .digest -}}
+{{- printf "%s:%s@%s" .repository .tag .digest -}}
+{{- else -}}
+{{- printf "%s:%s" .repository .tag -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -45,7 +57,7 @@ DATABASE_URL
 Effective object storage mode.
 */}}
 {{- define "capsulet.objectStorageMode" -}}
-{{- if eq .Values.minio.mode "bundled" -}}
+{{- if eq .Values.seaweedfs.mode "bundled" -}}
 s3
 {{- else -}}
 {{- .Values.config.objectStorage.mode -}}
@@ -56,8 +68,8 @@ s3
 Effective object storage bucket.
 */}}
 {{- define "capsulet.objectStorageBucket" -}}
-{{- if eq .Values.minio.mode "bundled" -}}
-{{- .Values.minio.bucket -}}
+{{- if eq .Values.seaweedfs.mode "bundled" -}}
+{{- .Values.seaweedfs.bucket -}}
 {{- else -}}
 {{- .Values.config.objectStorage.bucket -}}
 {{- end -}}
@@ -67,8 +79,8 @@ Effective object storage bucket.
 Effective object storage endpoint.
 */}}
 {{- define "capsulet.objectStorageEndpoint" -}}
-{{- if eq .Values.minio.mode "bundled" -}}
-{{- printf "http://%s:%v" (include "capsulet.minioName" .) .Values.minio.service.port -}}
+{{- if eq .Values.seaweedfs.mode "bundled" -}}
+{{- printf "http://%s:%v" (include "capsulet.seaweedfsName" .) .Values.seaweedfs.service.port -}}
 {{- else -}}
 {{- .Values.config.objectStorage.endpoint -}}
 {{- end -}}
@@ -78,8 +90,8 @@ Effective object storage endpoint.
 Effective object storage region.
 */}}
 {{- define "capsulet.objectStorageRegion" -}}
-{{- if eq .Values.minio.mode "bundled" -}}
-{{- .Values.minio.region -}}
+{{- if eq .Values.seaweedfs.mode "bundled" -}}
+{{- .Values.seaweedfs.region -}}
 {{- else -}}
 {{- .Values.config.objectStorage.region -}}
 {{- end -}}
@@ -89,19 +101,19 @@ Effective object storage region.
 Effective object storage path style setting.
 */}}
 {{- define "capsulet.objectStoragePathStyle" -}}
-{{- if eq .Values.minio.mode "bundled" -}}
-{{- .Values.minio.pathStyle -}}
+{{- if eq .Values.seaweedfs.mode "bundled" -}}
+true
 {{- else -}}
 {{- .Values.config.objectStorage.pathStyle -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-Object storage credentials Secret name used by API, worker, and bucket job.
+Object storage credentials Secret name used by the API, worker and evaluator.
 */}}
 {{- define "capsulet.objectStorageCredentialsSecretName" -}}
-{{- if eq .Values.minio.mode "bundled" -}}
-{{- include "capsulet.minioName" . -}}
+{{- if eq .Values.seaweedfs.mode "bundled" -}}
+{{- include "capsulet.seaweedfsName" . -}}
 {{- else if eq (include "capsulet.objectStorageMode" .) "s3" -}}
 {{- required "config.objectStorage.credentialsSecret.name is required when using external S3-compatible object storage" .Values.config.objectStorage.credentialsSecret.name -}}
 {{- end -}}
@@ -111,8 +123,8 @@ Object storage credentials Secret name used by API, worker, and bucket job.
 Object storage access key Secret key.
 */}}
 {{- define "capsulet.objectStorageAccessKeyKey" -}}
-{{- if eq .Values.minio.mode "bundled" -}}
-root-user
+{{- if eq .Values.seaweedfs.mode "bundled" -}}
+access-key-id
 {{- else -}}
 {{- default "access-key-id" .Values.config.objectStorage.credentialsSecret.accessKeyKey -}}
 {{- end -}}
@@ -122,8 +134,8 @@ root-user
 Object storage secret key Secret key.
 */}}
 {{- define "capsulet.objectStorageSecretKeyKey" -}}
-{{- if eq .Values.minio.mode "bundled" -}}
-root-password
+{{- if eq .Values.seaweedfs.mode "bundled" -}}
+secret-access-key
 {{- else -}}
 {{- default "secret-access-key" .Values.config.objectStorage.credentialsSecret.secretKeyKey -}}
 {{- end -}}

@@ -76,6 +76,7 @@ pub(crate) struct Ports {
     pub(crate) mail_ui: u16,
     pub(crate) prometheus: u16,
     pub(crate) grafana: u16,
+    pub(crate) object_store: u16,
 }
 
 impl Ports {
@@ -89,12 +90,13 @@ impl Ports {
         mail_ui: 8025,
         prometheus: 9090,
         grafana: 3001,
+        object_store: 8333,
     };
 
     /// Ports nothing is listening on, so a verifier stack never collides with a
     /// developer's stack or with another verifier run.
     pub(crate) fn free() -> Result<Self, String> {
-        let listeners = (0..8)
+        let listeners = (0..9)
             .map(|_| TcpListener::bind("127.0.0.1:0"))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| format!("could not find a free port: {error}"))?;
@@ -112,6 +114,7 @@ impl Ports {
             mail_ui: ports[5],
             prometheus: ports[6],
             grafana: ports[7],
+            object_store: ports[8],
         })
     }
 
@@ -133,6 +136,9 @@ pub(crate) struct Secrets {
     keycloak_user_password: String,
     grafana_password: String,
     postgres_password: String,
+    object_store_secret_key: String,
+    object_store_volume_signing_key: String,
+    object_store_filer_signing_key: String,
     webhook_secret: String,
     expires_at_unix: u64,
 }
@@ -151,6 +157,9 @@ impl Secrets {
             keycloak_user_password: random_secret()?,
             grafana_password: random_secret()?,
             postgres_password: random_secret()?,
+            object_store_secret_key: random_secret()?,
+            object_store_volume_signing_key: random_secret()?,
+            object_store_filer_signing_key: random_secret()?,
             webhook_secret: random_secret()?,
             expires_at_unix: now_unix + CREDENTIAL_LIFETIME_SECONDS,
         })
@@ -190,6 +199,18 @@ impl Secrets {
             ),
             ("CAPSULET_POSTGRES_PASSWORD", self.postgres_password.clone()),
             (
+                "CAPSULET_OBJECT_STORE_SECRET_KEY",
+                self.object_store_secret_key.clone(),
+            ),
+            (
+                "CAPSULET_OBJECT_STORE_VOLUME_SIGNING_KEY",
+                self.object_store_volume_signing_key.clone(),
+            ),
+            (
+                "CAPSULET_OBJECT_STORE_FILER_SIGNING_KEY",
+                self.object_store_filer_signing_key.clone(),
+            ),
+            (
                 "CAPSULET_DASHBOARD_ADMIN_USERNAME",
                 BOOTSTRAP[0].principal.to_string(),
             ),
@@ -221,6 +242,7 @@ impl Secrets {
             ("CAPSULET_MAIL_UI_PORT", ports.mail_ui.to_string()),
             ("CAPSULET_PROMETHEUS_PORT", ports.prometheus.to_string()),
             ("CAPSULET_GRAFANA_PORT", ports.grafana.to_string()),
+            ("CAPSULET_OBJECT_STORE_PORT", ports.object_store.to_string()),
         ];
         let mut file = String::from(
             "# Generated for one Capsulet stack and deleted with it. Never commit this file.\n",

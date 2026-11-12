@@ -114,40 +114,35 @@ For S3-compatible mode, check:
 - `CAPSULET_OBJECT_STORAGE_BUCKET`
 - `CAPSULET_OBJECT_STORAGE_ENDPOINT`
 - `CAPSULET_OBJECT_STORAGE_REGION`
-- `CAPSULET_OBJECT_STORAGE_PATH_STYLE=true` for MinIO
+- `CAPSULET_OBJECT_STORAGE_PATH_STYLE=true` for SeaweedFS and most self-hosted stores
 - `CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID`
 - `CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY`
 
-The bucket must exist before Capsulet writes objects. The Docker Compose stack uses filesystem mode on
-the `capsulet-objects` volume, so it has no bucket. Check that volume is mounted into the API, worker
-and evaluator at `CAPSULET_OBJECT_STORAGE_PATH`.
+The bucket must exist before Capsulet writes objects. The bundled SeaweedFS creates it on start, in
+Compose and in the chart, and its health check passes only once the bucket is there. In Compose,
+check the store with `docker compose logs seaweedfs`.
 
-For Helm installs with bundled MinIO, inspect MinIO and the bucket initialization Job. The bundled
-`minio/minio` and `minio/mc` images can no longer be pulled on a machine that has not cached them, because
-MinIO stopped publishing community images; use `minio.mode=external` with an S3-compatible store you
-operate:
+For Helm installs with bundled SeaweedFS:
 
 ```powershell
-kubectl get pods,jobs -n capsulet
-kubectl describe pod -l app.kubernetes.io/component=minio -n capsulet
-kubectl logs job/capsulet-minio-bucket -n capsulet
+kubectl get pods -n capsulet
+kubectl describe pod -l app.kubernetes.io/component=seaweedfs -n capsulet
+kubectl logs statefulset/capsulet-seaweedfs -n capsulet
 ```
 
-The bundled MinIO Secret is `capsulet-minio` for a release named `capsulet`. API and worker read S3 credentials from its `root-user` and `root-password` keys.
+The bundled Secret is `capsulet-seaweedfs` for a release named `capsulet`. The API, worker and
+evaluator read S3 credentials from its `access-key-id` and `secret-access-key` keys. A `403` from the
+store after a reinstall usually means the pods kept an old key: the chart keeps the key across
+upgrades, but deleting the Secret makes it generate a new one, which SeaweedFS and the components only
+read when they restart.
 
-Forward the bundled MinIO console:
+The bundled store has no console; any S3 client works against a port-forward:
 
 ```powershell
-kubectl port-forward svc/capsulet-minio 9001:9001 -n capsulet
+kubectl port-forward svc/capsulet-seaweedfs 8333:8333 -n capsulet
 ```
 
-Open:
-
-```text
-http://127.0.0.1:9001
-```
-
-If `minio.mode=external`, confirm the configured credential Secret and bucket exist:
+If `seaweedfs.mode=external`, confirm the configured credential Secret and bucket exist:
 
 ```powershell
 kubectl get secret capsulet-object-storage -n capsulet
@@ -157,10 +152,11 @@ kubectl get secret capsulet-object-storage -n capsulet
 
 Artifact listing reads PostgreSQL metadata. Artifact download also reads object storage. If list works but download fails, the metadata row exists but the object key is missing or inaccessible.
 
-Check the bucket:
+List the bucket of the local stack, signing with its generated key:
 
 ```powershell
-docker run --rm --network capsulet_default --entrypoint /bin/sh minio/mc:latest -c "mc alias set local http://minio:9000 capsulet capsuletpassword >/dev/null && mc ls -r local/capsulet-artifacts"
+$key = (Select-String "^CAPSULET_OBJECT_STORE_SECRET_KEY='(.*)'$" .capsulet/stack/capsulet-local/stack.env).Matches[0].Groups[1].Value
+curl.exe --aws-sigv4 "aws:amz:us-east-1:s3" --user "capsulet:$key" "http://127.0.0.1:8333/capsulet-artifacts?list-type=2"
 ```
 
 ## Logs Are Truncated
@@ -179,7 +175,7 @@ cargo run -p capsulet-cli -- artifacts download <run-id> log_<run-id>_stdout --o
 
 ## Helm Template Does Not Include S3 Credentials
 
-With bundled MinIO, S3 credentials come from the rendered `<release>-minio` Secret automatically.
+With bundled SeaweedFS, S3 credentials come from the rendered `<release>-seaweedfs` Secret automatically.
 
 With external S3-compatible object storage, credentials are only mounted into API and worker pods when this value is set:
 

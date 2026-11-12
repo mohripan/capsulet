@@ -110,25 +110,25 @@ postgresql:
         cpu: 300m
         memory: 256Mi
 
-minio:
+# The bundled S3-compatible object store: SeaweedFS in its single-process `mini`
+# mode, which creates the bucket when it starts. For anything beyond one node,
+# set mode to external and point config.objectStorage at your own S3 service.
+seaweedfs:
   mode: bundled
   image:
-    repository: minio/minio
-    tag: latest
-    pullPolicy: IfNotPresent
-  mcImage:
-    repository: minio/mc
-    tag: latest
+    repository: chrislusf/seaweedfs
+    tag: "4.53"
+    digest: sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0
     pullPolicy: IfNotPresent
   auth:
-    rootUser: capsulet
-    rootPassword: capsuletpassword
+    accessKeyId: capsulet
+    # Left empty, the chart generates a key on install and keeps it on upgrade.
+    # Set it when rendering with `helm template`, which cannot read the cluster.
+    secretAccessKey: ""
   bucket: capsulet-artifacts
   region: us-east-1
-  pathStyle: true
   service:
-    port: 9000
-    consolePort: 9001
+    port: 8333
   persistence:
     enabled: true
     size: 2Gi
@@ -153,9 +153,6 @@ minio:
     limits:
       cpu: 500m
       memory: 512Mi
-  bucketJob:
-    enabled: true
-    backoffLimit: 6
 
 migrations:
   enabled: true

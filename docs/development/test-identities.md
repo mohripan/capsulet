@@ -54,7 +54,8 @@ which is what the isolation flows rely on.
 Every credential expires four hours after its stack's secrets were generated. Each seed revokes
 the previous service account and issues a fresh one, because its token is only ever shown once.
 The dashboard's temporary login is the admin (`dashboard_login` in `fixture.json`), and the
-Keycloak realm's `admin` user gets a generated password too.
+Keycloak realm's `admin` user gets a generated password too. So do SeaweedFS's S3 key and its
+volume-server and filer signing keys (`CAPSULET_OBJECT_STORE_*` in `stack.env`).
 
 ## `fixture.json`
 

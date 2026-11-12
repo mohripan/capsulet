@@ -13,6 +13,17 @@
 
 x-database-url: &database-url postgres://capsulet:${CAPSULET_POSTGRES_PASSWORD:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}@postgres:5432/capsulet
 
+# Artifacts and logs go through the S3 adapter to the bundled SeaweedFS, the
+# same path a deployment against any S3-compatible store takes.
+x-object-storage: &object-storage
+  CAPSULET_OBJECT_STORAGE_MODE: s3
+  CAPSULET_OBJECT_STORAGE_BUCKET: capsulet-artifacts
+  CAPSULET_OBJECT_STORAGE_ENDPOINT: http://seaweedfs:8333
+  CAPSULET_OBJECT_STORAGE_REGION: us-east-1
+  CAPSULET_OBJECT_STORAGE_PATH_STYLE: "true"
+  CAPSULET_OBJECT_STORAGE_ACCESS_KEY_ID: capsulet
+  CAPSULET_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${CAPSULET_OBJECT_STORE_SECRET_KEY:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+
 services:
   postgres:
     image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
@@ -29,6 +40,43 @@ services:
       retries: 10
     volumes:
       - capsulet-postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.53@sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0
+    # Master, volume server, filer and S3 gateway in one process, which creates
+    # the bucket on start. WebDAV, the admin UI, the Iceberg and Lance endpoints
+    # and the usage telemetry are switched off.
+    command:
+      - mini
+      - -dir=/data
+      - -bucket=capsulet-artifacts
+      - -s3.port=8333
+      - -master.telemetry=false
+      - -webdav=false
+      - -admin.ui=false
+      - -s3.port.iceberg=0
+      - -s3.port.lance=0
+    environment:
+      # This one key is admitted; anonymous requests are refused.
+      AWS_ACCESS_KEY_ID: capsulet
+      AWS_SECRET_ACCESS_KEY: ${CAPSULET_OBJECT_STORE_SECRET_KEY:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+      # Without these, anything on the network could write to the volume server
+      # or the filer directly, or create S3 identities through the filer's IAM
+      # service, around the key above.
+      WEED_JWT_SIGNING_KEY: ${CAPSULET_OBJECT_STORE_VOLUME_SIGNING_KEY:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+      WEED_JWT_FILER_SIGNING_KEY: ${CAPSULET_OBJECT_STORE_FILER_SIGNING_KEY:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
+    ports:
+      - "127.0.0.1:${CAPSULET_OBJECT_STORE_PORT:-8333}:8333"
+    volumes:
+      - capsulet-object-data:/data
+    healthcheck:
+      # Healthy once the bucket exists, which the S3 gateway answering does
+      # not prove yet. The filer port is not published.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8888/buckets/capsulet-artifacts/"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
     restart: unless-stopped
 
   smtp:
@@ -87,6 +135,8 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
     environment:
       CAPSULET_DATABASE_URL: *database-url
       CAPSULET_API_ADDR: 0.0.0.0:8080
@@ -97,11 +147,7 @@ services:
       CAPSULET_OIDC_JWKS_URL: http://keycloak:8080/realms/capsulet/protocol/openid-connect/certs
       CAPSULET_WEBHOOK_SECRETS: ${CAPSULET_WEBHOOK_SECRETS:?generate the stack secrets with `cargo run -p capsulet-xtask -- stack up`}
       CAPSULET_EXECUTION_POOLS: mini,large
-      # MinIO stopped publishing community images on 2025-10-23, so the local stack
-      # stores objects on a shared volume instead. Point these at any S3-compatible
-      # store to exercise the S3 adapter.
-      CAPSULET_OBJECT_STORAGE_MODE: filesystem
-      CAPSULET_OBJECT_STORAGE_PATH: /capsulet/objects
+      <<: *object-storage
       # The proposer runs outside the stack: correctness does not depend on it,
       # so it stays a replaceable box the kernel checks rather than a service.
       CAPSULET_OLLAMA_URL: http://host.docker.internal:11434
@@ -110,8 +156,6 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${CAPSULET_API_PORT:-8080}:8080"
-    volumes:
-      - capsulet-objects:/capsulet/objects
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/readyz"]
       interval: 5s
@@ -148,10 +192,7 @@ services:
       SMTP_PORT: "1025"
       SMTP_TLS: "false"
       SMTP_FROM: capsulet@example.local
-      CAPSULET_OBJECT_STORAGE_MODE: filesystem
-      CAPSULET_OBJECT_STORAGE_PATH: /capsulet/objects
-    volumes:
-      - capsulet-objects:/capsulet/objects
+      <<: *object-storage
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/readyz"]
       interval: 5s
@@ -234,12 +275,9 @@ services:
       CAPSULET_EVALUATOR_POLL_SECONDS: "2"
       CAPSULET_EVALUATOR_HEALTH_ADDR: 0.0.0.0:8083
       CAPSULET_SQL_CONNECTIONS: '{"control":"postgres://capsulet:${CAPSULET_POSTGRES_PASSWORD}@postgres:5432/capsulet"}'
-      CAPSULET_OBJECT_STORAGE_MODE: filesystem
-      CAPSULET_OBJECT_STORAGE_PATH: /capsulet/objects
+      <<: *object-storage
       CAPSULET_RETENTION_DAYS: "30"
       CAPSULET_AUDIT_RETENTION_DAYS: "365"
-    volumes:
-      - capsulet-objects:/capsulet/objects
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/readyz"]
       interval: 5s
@@ -327,6 +365,6 @@ services:
 
 volumes:
   capsulet-postgres-data:
-  capsulet-objects:
+  capsulet-object-data:
   capsulet-prometheus-data:
   capsulet-grafana-data:

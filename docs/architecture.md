@@ -179,7 +179,7 @@ Logs up to 64 KiB are stored inline. Larger logs keep a bounded inline preview a
 
 ## Deployment
 
-Docker Compose supplies PostgreSQL, MinIO, API, scheduler, evaluator, a stub-runner worker, dashboard, and Mailpit for local evaluation. The Helm chart deploys the platform services, migration/bucket initialization jobs, separated service accounts, health/metrics, static execution pools, default-deny execution networking, and optional bundled PostgreSQL/MinIO. External PostgreSQL and S3-compatible storage are the production-shaped dependency mode.
+Docker Compose supplies PostgreSQL, SeaweedFS as the S3 object store, Keycloak, API, scheduler, evaluator, graph worker, a process-runner worker, dashboard, and Mailpit for local evaluation. The Helm chart deploys the platform services, the migration job, separated service accounts, health/metrics, static execution pools, default-deny execution networking, and optional bundled PostgreSQL/SeaweedFS. External PostgreSQL and S3-compatible storage are the production-shaped dependency mode.
 
 API, scheduler, evaluator, and worker expose `/livez`, `/readyz`, and `/metrics`. Readiness depends on PostgreSQL connectivity.
 

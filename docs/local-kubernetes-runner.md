@@ -6,9 +6,9 @@ Capsulet can execute and control built-in Python job definitions as real Kuberne
 This flow uses:
 
 - minikube as the local Kubernetes cluster
-- Helm to install the API, worker, dashboard, bundled PostgreSQL, and bundled MinIO
+- Helm to install the API, worker, dashboard, bundled PostgreSQL, and bundled SeaweedFS
 - the Kubernetes runner for script execution
-- bundled MinIO for script bundles, large logs, and artifacts
+- bundled SeaweedFS, over S3, for script bundles, large logs, and artifacts
 
 ## Start minikube
 
@@ -56,8 +56,7 @@ Wait for bundled dependencies, migration, bucket creation, and app deployments:
 ```powershell
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=postgresql -n capsulet --timeout=180s
 kubectl wait --for=condition=complete job/capsulet-migrate -n capsulet --timeout=180s
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=minio -n capsulet --timeout=180s
-kubectl wait --for=condition=complete job/capsulet-minio-bucket -n capsulet --timeout=180s
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=seaweedfs -n capsulet --timeout=180s
 kubectl rollout status deployment/capsulet-api -n capsulet
 kubectl rollout status deployment/capsulet-worker -n capsulet
 kubectl rollout status deployment/capsulet-dashboard -n capsulet
@@ -198,7 +197,7 @@ Inspect bundled dependency jobs:
 
 ```powershell
 kubectl logs job/capsulet-migrate -n capsulet
-kubectl logs job/capsulet-minio-bucket -n capsulet
+kubectl logs statefulset/capsulet-seaweedfs -n capsulet
 ```
 
 Inspect script Jobs and pods:
