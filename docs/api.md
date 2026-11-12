@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015, CAP-CORRECTNESS-016 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015, CAP-CORRECTNESS-016, CAP-CORRECTNESS-017 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -91,6 +91,9 @@ The generated router inventory currently exposes:
 | `GET` | `/livez`, `/readyz`, `/healthz` | Process and database health |
 | `GET` | `/openapi.json` | Machine-readable OpenAPI document |
 | `POST` | `/v1/reasoning/ask` | Run the current propose-check-certify slice |
+| `GET` | `/v1/reasoning/readings` | The readings in recent certificates nobody has decided yet |
+| `GET` | `/v1/reasoning/certificates/{id}/review` | A certificate's outcome with the reviews of its readings |
+| `POST` | `/v1/reasoning/certificates/{id}/readings/{reading}/review` | Decide one reading, `holds` or `does_not_hold`, with a rationale |
 | `GET` | `/v1/reasoning/certificates` | List persisted kernel certificates |
 | `GET`, `POST` | `/v1/job-definitions` | List or create definitions |
 | `GET`, `PUT`, `DELETE` | `/v1/job-definitions/{id}` | Read, replace, or delete a definition |
@@ -541,6 +544,36 @@ derivation leaves out is a residual naming it. A citation's `read_with` lists ot
 text the clause is read with, and reading the qualifying provision too removes the residual for
 leaving it out, but not the reading (`CAP-CORRECTNESS-016`). A contract that declares none of this
 decides exactly as before. Nothing here decides whether a reading of the clause is right.
+
+### Reviewing readings
+
+A `conditional` certificate names exactly what to review: each residual is a reading the kernel could
+not make. A person holding `review:write` decides one at a time:
+
+```json
+POST /v1/reasoning/certificates/{id}/readings/{reading}/review
+{ "decision": "holds", "rationale": "read with section 12, the right survives the first year" }
+```
+
+`{reading}` is the reading's digest, as `GET /v1/reasoning/readings` and the review endpoint report
+it. It is computed over the residual and the certificate's replay digest, so a decision about one
+reading never applies to another or to the same words in another answer. The decision is recorded
+once, with the reviewer and the `review:write` authority. Deciding it again is `409
+reading_already_reviewed`, and nothing rewrites it. A review needs a rationale.
+
+`GET /v1/reasoning/certificates/{id}/review` reports the outcome, re-derived on every read from the
+kernel's certificate and the decisions recorded against it:
+
+| Outcome | When | `basis` |
+| --- | --- | --- |
+| `accepted` | the kernel accepted it | `mechanical` |
+| `accepted` | the kernel left readings, and every one was decided `holds` | `human_review` |
+| `rejected` | the kernel rejected it, or any reading was decided `does_not_hold` | absent |
+| `conditional` | readings are still open | absent |
+
+A rejected certificate stays rejected, and reviewing one of its readings is refused: a reviewer's word
+cannot repair a premise that failed. A certificate in another project is
+`reasoning_certificate_not_found` (`CAP-CORRECTNESS-017`).
 
 ### Holding an answer to its question
 

@@ -5093,6 +5093,95 @@
       ]
     },
     {
+      "id": "CAP-CORRECTNESS-017",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Correctness kernel",
+      "statement": "A reading a reasoning certificate leaves open can be decided by a person holding `review:write`: `POST /v1/reasoning/certificates/{id}/readings/{reading}/review` records `holds` or `does_not_hold` with a rationale, bound to that reading by a digest over it and its certificate. The outcome (`GET /v1/reasoning/certificates/{id}/review`) is re-derived from the kernel's certificate and the recorded reviews: every reading held is `accepted` on basis `human_review`, any reading refuted is `rejected`, and a rejected certificate stays rejected. `GET /v1/reasoning/readings` lists the open ones. A decision is recorded once and never rewritten, and another project's certificate is not found.",
+      "public_surfaces": [
+        "docs/api.md"
+      ],
+      "verification": [
+        {
+          "assertion": "reviews-decide-readings-and-say-their-basis",
+          "evidence_selectors": [
+            "reviewing_every_reading_accepts_an_answer_by_review_and_a_decision_is_not_rewritten",
+            "a_reading_a_reviewer_refutes_rejects_the_answer",
+            "every_reading_held_accepts_by_review_and_one_refuted_rejects"
+          ]
+        },
+        {
+          "assertion": "a-review-decides-only-its-own-reading",
+          "evidence_selectors": [
+            "a_review_decides_only_its_own_reading_under_the_reading_authority",
+            "a_review_cannot_repair_a_rejected_certificate",
+            "a_review_has_to_decide_something_say_why_and_name_a_reading_of_this_projects_certificate"
+          ]
+        },
+        {
+          "assertion": "decided-once-kept-and-scoped",
+          "evidence_selectors": [
+            "a_reading_is_decided_once_kept_and_kept_in_its_own_project"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "reviewing_every_reading_accepts_an_answer_by_review_and_a_decision_is_not_rewritten"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_reading_a_reviewer_refutes_rejects_the_answer"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/src/review.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "every_reading_held_accepts_by_review_and_one_refuted_rejects"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/src/review.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_review_decides_only_its_own_reading_under_the_reading_authority"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/src/review.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_review_cannot_repair_a_rejected_certificate"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_review_has_to_decide_something_say_why_and_name_a_reading_of_this_projects_certificate"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/ir_and_assurance.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test ir_and_assurance --locked",
+          "selector": "a_reading_is_decided_once_kept_and_kept_in_its_own_project"
+        },
+        {
+          "type": "source",
+          "path": "crates/kernel/src/review.rs"
+        }
+      ]
+    },
+    {
       "id": "CAP-IR-003",
       "kind": "capability",
       "maturity": "implemented",

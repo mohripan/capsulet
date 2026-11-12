@@ -1358,6 +1358,39 @@ const ENDPOINTS: &[EndpointContract] = &[
     ),
     endpoint!(
         "GET",
+        "/v1/reasoning/certificates/{id}/review",
+        "getReviewedCertificate",
+        "certificates:read",
+        true,
+        true,
+        None,
+        crate::reasoning::ReviewedCertificateResponse,
+        "200"
+    ),
+    endpoint!(
+        "POST",
+        "/v1/reasoning/certificates/{id}/readings/{reading}/review",
+        "reviewReading",
+        "review:write",
+        true,
+        true,
+        Some(crate::reasoning::ReviewReadingRequest),
+        crate::reasoning::ReviewedCertificateResponse,
+        "201"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/reasoning/readings",
+        "listOpenReadings",
+        "review:read",
+        true,
+        true,
+        None,
+        crate::reasoning::OpenReadingsResponse,
+        "200"
+    ),
+    endpoint!(
+        "GET",
         "/v1/memory/sources",
         "listMemorySources",
         "memory:read",

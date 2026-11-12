@@ -290,6 +290,21 @@
     "ownership": "selected_project"
   },
   {
+    "operation_id": "getReviewedCertificate",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "reviewReading",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listOpenReadings",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
     "operation_id": "listMemorySources",
     "minimum_role": "viewer",
     "ownership": "selected_project"

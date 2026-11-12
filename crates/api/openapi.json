@@ -4139,6 +4139,40 @@
         "additionalProperties": true,
         "type": "object"
       },
+      "OpenReadingResponse": {
+        "description": "A reading no one with the authority has decided yet.",
+        "properties": {
+          "certificate_id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "reading": {
+            "$ref": "#/components/schemas/ReadingResponse"
+          }
+        },
+        "required": [
+          "certificate_id",
+          "question",
+          "reading"
+        ],
+        "type": "object"
+      },
+      "OpenReadingsResponse": {
+        "properties": {
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/OpenReadingResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "readings"
+        ],
+        "type": "object"
+      },
       "PrincipalMembershipResponse": {
         "description": "A project the principal belongs to, and its role there.",
         "properties": {
@@ -4332,6 +4366,68 @@
           "asks_subject",
           "asks_object",
           "asks_rationale"
+        ],
+        "type": "object"
+      },
+      "ReadingResponse": {
+        "description": "One reading a certificate carries, and where it stands.",
+        "properties": {
+          "authority": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "The attributed content the reading starts from, or the question asked.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "`source` for a reading of a cited source, `question` for a reading of\nthe question the answer was asked.",
+            "type": "string"
+          },
+          "rationale": {
+            "description": "Why the proposer read it so, or what the kernel says it depends on.",
+            "type": "string"
+          },
+          "reading": {
+            "description": "The reading's digest, which is what a review names.",
+            "type": "string"
+          },
+          "review_rationale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "description": "`open`, `holds` or `does_not_hold`.",
+            "type": "string"
+          },
+          "to": {
+            "$ref": "#/components/schemas/Proposition"
+          }
+        },
+        "required": [
+          "reading",
+          "kind",
+          "from",
+          "to",
+          "rationale",
+          "evidence_ids",
+          "state"
         ],
         "type": "object"
       },
@@ -4581,6 +4677,24 @@
         ],
         "type": "object"
       },
+      "ReviewReadingRequest": {
+        "description": "A decision on one reading.",
+        "properties": {
+          "decision": {
+            "description": "`holds` or `does_not_hold`.",
+            "type": "string"
+          },
+          "rationale": {
+            "description": "Why, in words whoever reads the outcome can check against the evidence.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "rationale"
+        ],
+        "type": "object"
+      },
       "ReviewSourceResponse": {
         "properties": {
           "authority": {
@@ -4607,6 +4721,46 @@
           "kind",
           "title",
           "authority"
+        ],
+        "type": "object"
+      },
+      "ReviewedCertificateResponse": {
+        "description": "A certificate's outcome once the reviews recorded against it are read.",
+        "properties": {
+          "basis": {
+            "description": "`mechanical` when the kernel accepted it alone, `human_review` when\nreviews of its readings did, and absent while it is not accepted.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "certificate_id": {
+            "type": "string"
+          },
+          "kernel_verdict": {
+            "$ref": "#/components/schemas/KernelVerdict",
+            "description": "What the kernel decided."
+          },
+          "question": {
+            "type": "string"
+          },
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingResponse"
+            },
+            "type": "array"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/KernelVerdict",
+            "description": "What the kernel's decision and the reviews together support. Re-derived\non every read, never stored."
+          }
+        },
+        "required": [
+          "certificate_id",
+          "question",
+          "kernel_verdict",
+          "verdict",
+          "readings"
         ],
         "type": "object"
       },
@@ -12935,6 +13089,227 @@
         ],
         "x-capsulet-required-scope": "certificates:read",
         "x-capsulet-resource": "certificates",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/reasoning/certificates/{id}/readings/{reading}/review": {
+      "post": {
+        "operationId": "reviewReading",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reading",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewReadingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewedCertificateResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "review reading",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "review:write",
+        "x-capsulet-resource": "review",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/reasoning/certificates/{id}/review": {
+      "get": {
+        "operationId": "getReviewedCertificate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewedCertificateResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "get reviewed certificate",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "certificates:read",
+        "x-capsulet-resource": "certificates",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/reasoning/readings": {
+      "get": {
+        "operationId": "listOpenReadings",
+        "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenReadingsResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "list open readings",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "review:read",
+        "x-capsulet-resource": "review",
         "x-capsulet-stability": "experimental"
       }
     },

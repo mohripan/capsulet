@@ -1,6 +1,6 @@
 //! Durable storage for kernel certificates.
 
-use capsulet_kernel::{Certificate, Verdict};
+use capsulet_kernel::{Certificate, ReadingDecision, ReadingReview, Verdict};
 use serde_json::Value;
 use sqlx::Row;
 
@@ -16,6 +16,15 @@ pub struct CertificateRecord {
     pub certificate: Certificate,
     pub alphabet_digest: String,
     pub model: String,
+}
+
+/// A person's decision on one reading of a stored certificate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadingReviewRecord {
+    pub tenant_id: String,
+    pub project_id: String,
+    pub certificate_id: String,
+    pub review: ReadingReview,
 }
 
 impl PostgresStore {
@@ -84,6 +93,120 @@ impl PostgresStore {
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_certificate).collect()
+    }
+
+    /// One certificate, when it belongs to this project.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the query fails or the row cannot be
+    /// reconstructed.
+    pub async fn find_certificate(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        id: &str,
+    ) -> Result<Option<CertificateRecord>, PostgresStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, tenant_id, project_id, question, verdict, goal,
+                   discharged, residuals, errors, alphabet_digest, replay_digest, model
+            FROM reasoning_certificates
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_certificate).transpose()
+    }
+
+    /// Records a decision on one reading, unless that reading already has one.
+    ///
+    /// Returns whether it was recorded. A reading is decided once: the table
+    /// refuses to change a decision, so a second one is reported, not written.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the insert fails, including when the
+    /// certificate is not in the project the review names.
+    pub async fn insert_reading_review(
+        &self,
+        record: &ReadingReviewRecord,
+    ) -> Result<bool, PostgresStoreError> {
+        let review = &record.review;
+        let inserted = sqlx::query(
+            r"
+            INSERT INTO reasoning_reading_reviews (
+                tenant_id, project_id, certificate_id, reading, decision, reviewer, authority, rationale
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (tenant_id, project_id, certificate_id, reading) DO NOTHING
+            ",
+        )
+        .bind(&record.tenant_id)
+        .bind(&record.project_id)
+        .bind(&record.certificate_id)
+        .bind(&review.reading)
+        .bind(review.decision.as_str())
+        .bind(&review.reviewer)
+        .bind(&review.authority)
+        .bind(&review.rationale)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        Ok(inserted == 1)
+    }
+
+    /// The decisions recorded on these certificates' readings, in this project.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresStoreError`] when the query fails or a stored decision
+    /// is not one this build knows.
+    pub async fn list_reading_reviews(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        certificate_ids: &[String],
+    ) -> Result<Vec<ReadingReviewRecord>, PostgresStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT certificate_id, reading, decision, reviewer, authority, rationale
+            FROM reasoning_reading_reviews
+            WHERE tenant_id = $1 AND project_id = $2 AND certificate_id = ANY($3)
+            ORDER BY created_at ASC, certificate_id ASC, reading ASC
+            ",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(certificate_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                let decision: String = row.try_get("decision")?;
+                let decision = ReadingDecision::parse(&decision).ok_or_else(|| {
+                    PostgresStoreError::InvalidPersistedValue(format!(
+                        "unknown reading decision {decision}"
+                    ))
+                })?;
+                Ok(ReadingReviewRecord {
+                    tenant_id: tenant_id.to_string(),
+                    project_id: project_id.to_string(),
+                    certificate_id: row.try_get("certificate_id")?,
+                    review: ReadingReview {
+                        reading: row.try_get("reading")?,
+                        decision,
+                        reviewer: row.try_get("reviewer")?,
+                        authority: row.try_get("authority")?,
+                        rationale: row.try_get("rationale")?,
+                    },
+                })
+            })
+            .collect()
     }
 }
 

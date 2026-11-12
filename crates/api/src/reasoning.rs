@@ -7,7 +7,7 @@
 
 use axum::{
     Extension, Json,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
 };
 use capsulet_core::{
@@ -15,10 +15,11 @@ use capsulet_core::{
     MemoryScope, Source, SourceContent, SourceId,
 };
 use capsulet_kernel::{
-    Certificate, NameGroup, Phrasebook, Query, Question, Slot, Snapshot, check,
-    confirmed_name_groups,
+    Certificate, NameGroup, Phrasebook, Proposition, Query, Question, READING_AUTHORITY,
+    ReadingDecision, ReadingReview, ReadingState, ResidualKind, Slot, Snapshot, Verdict, check,
+    confirmed_name_groups, reviewed,
 };
-use capsulet_postgres::CertificateRecord;
+use capsulet_postgres::{CertificateRecord, ReadingReviewRecord};
 use capsulet_proposer::{EvidenceAlphabet, OllamaProposer, RawProposal, chunk_into_spans};
 use capsulet_storage::ObjectStore;
 use serde::{Deserialize, Serialize};
@@ -145,6 +146,308 @@ pub struct CertificateSummary {
     pub alphabet_digest: String,
     #[schema(value_type = crate::wire_schemas::KernelCertificate)]
     pub certificate: Certificate,
+}
+
+/// One reading a certificate carries, and where it stands.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReadingResponse {
+    /// The reading's digest, which is what a review names.
+    pub reading: String,
+    /// `source` for a reading of a cited source, `question` for a reading of
+    /// the question the answer was asked.
+    pub kind: String,
+    /// The attributed content the reading starts from, or the question asked.
+    pub from: String,
+    #[schema(value_type = crate::wire_schemas::Proposition)]
+    pub to: Proposition,
+    /// Why the proposer read it so, or what the kernel says it depends on.
+    pub rationale: String,
+    pub evidence_ids: Vec<String>,
+    /// `open`, `holds` or `does_not_hold`.
+    pub state: String,
+    pub reviewer: Option<String>,
+    pub authority: Option<String>,
+    pub review_rationale: Option<String>,
+}
+
+/// A certificate's outcome once the reviews recorded against it are read.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReviewedCertificateResponse {
+    pub certificate_id: String,
+    pub question: String,
+    /// What the kernel decided.
+    #[schema(value_type = crate::wire_schemas::KernelVerdict)]
+    pub kernel_verdict: String,
+    /// What the kernel's decision and the reviews together support. Re-derived
+    /// on every read, never stored.
+    #[schema(value_type = crate::wire_schemas::KernelVerdict)]
+    pub verdict: String,
+    /// `mechanical` when the kernel accepted it alone, `human_review` when
+    /// reviews of its readings did, and absent while it is not accepted.
+    pub basis: Option<String>,
+    pub readings: Vec<ReadingResponse>,
+}
+
+/// A reading no one with the authority has decided yet.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenReadingResponse {
+    pub certificate_id: String,
+    pub question: String,
+    pub reading: ReadingResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenReadingsResponse {
+    pub readings: Vec<OpenReadingResponse>,
+}
+
+/// A decision on one reading.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReviewReadingRequest {
+    /// `holds` or `does_not_hold`.
+    pub decision: String,
+    /// Why, in words whoever reads the outcome can check against the evidence.
+    pub rationale: String,
+}
+
+/// The readings in this project's recent certificates that nobody has decided.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the caller lacks permission or the store fails.
+pub(crate) async fn list_open_readings<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<OpenReadingsResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
+    let records = state
+        .store
+        .list_certificates(&context.tenant_id, &context.project_id, 100)
+        .await
+        .map_err(ApiError::store)?;
+    let ids: Vec<String> = records.iter().map(|record| record.id.clone()).collect();
+    let reviews = state
+        .store
+        .list_reading_reviews(&context.tenant_id, &context.project_id, &ids)
+        .await
+        .map_err(ApiError::store)?;
+    let mut readings = Vec::new();
+    for record in &records {
+        if record.certificate.verdict == Verdict::Rejected {
+            continue;
+        }
+        let response = reviewed_response(record, &reviews_of(&reviews, &record.id));
+        readings.extend(
+            response
+                .readings
+                .into_iter()
+                .filter(|reading| reading.state == "open")
+                .map(|reading| OpenReadingResponse {
+                    certificate_id: record.id.clone(),
+                    question: record.question.clone(),
+                    reading,
+                }),
+        );
+    }
+    Ok(Json(OpenReadingsResponse { readings }))
+}
+
+/// A certificate's outcome with the reviews recorded against it.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the caller lacks permission, the certificate is not
+/// in the caller's project, or the store fails.
+pub(crate) async fn get_reviewed_certificate<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<ReviewedCertificateResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, crate::ProjectRole::Viewer)?;
+    let record = certificate_in_project(&state, &context, &id).await?;
+    let reviews = reviews_for(&state, &context, &record.id).await?;
+    Ok(Json(reviewed_response(&record, &reviews)))
+}
+
+/// Records a decision on one reading, under the reading authority.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the caller lacks the authority, the decision or its
+/// rationale is missing, the certificate or the reading is not in the caller's
+/// project, the certificate is rejected, or the reading was already decided.
+pub(crate) async fn review_reading<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path((id, reading)): Path<(String, String)>,
+    Json(request): Json<ReviewReadingRequest>,
+) -> Result<(StatusCode, Json<ReviewedCertificateResponse>), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, crate::ProjectRole::Admin)?;
+    let Some(decision) = ReadingDecision::parse(request.decision.trim()) else {
+        return Err(ApiError::validation(
+            "decision must be holds or does_not_hold".to_string(),
+        ));
+    };
+    if request.rationale.trim().is_empty() {
+        return Err(ApiError::validation(
+            "a review has to say why: rationale cannot be empty".to_string(),
+        ));
+    }
+    let record = certificate_in_project(&state, &context, &id).await?;
+    let known = reviewed(&record.certificate, &[])
+        .readings
+        .iter()
+        .any(|(digest, _)| digest == &reading);
+    if !known {
+        return Err(ApiError::ReasoningCertificateNotFound(format!(
+            "{id} reading {reading}"
+        )));
+    }
+    if record.certificate.verdict == Verdict::Rejected {
+        return Err(ApiError::validation(
+            "the certificate is rejected; a premise failed, and no review of a reading can change that"
+                .to_string(),
+        ));
+    }
+    let inserted = state
+        .store
+        .insert_reading_review(&ReadingReviewRecord {
+            tenant_id: context.tenant_id.clone(),
+            project_id: context.project_id.clone(),
+            certificate_id: record.id.clone(),
+            review: ReadingReview {
+                reading: reading.clone(),
+                decision,
+                reviewer: principal.name.to_string(),
+                authority: READING_AUTHORITY.to_string(),
+                rationale: request.rationale.trim().to_string(),
+            },
+        })
+        .await
+        .map_err(ApiError::store)?;
+    if !inserted {
+        return Err(ApiError::ReadingAlreadyReviewed(format!(
+            "reading {reading} of certificate {id} has already been decided, and a decision is not \
+             rewritten"
+        )));
+    }
+    let reviews = reviews_for(&state, &context, &record.id).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(reviewed_response(&record, &reviews)),
+    ))
+}
+
+/// A reasoning certificate, when it is in the caller's project. One elsewhere
+/// reports as missing, so the id space stays opaque.
+async fn certificate_in_project<S, O>(
+    state: &AppState<S, O>,
+    context: &ProjectContext,
+    id: &str,
+) -> Result<CertificateRecord, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    state
+        .store
+        .find_certificate(&context.tenant_id, &context.project_id, id)
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::ReasoningCertificateNotFound(id.to_string()))
+}
+
+async fn reviews_for<S, O>(
+    state: &AppState<S, O>,
+    context: &ProjectContext,
+    id: &str,
+) -> Result<Vec<ReadingReview>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let records = state
+        .store
+        .list_reading_reviews(&context.tenant_id, &context.project_id, &[id.to_string()])
+        .await
+        .map_err(ApiError::store)?;
+    Ok(reviews_of(&records, id))
+}
+
+fn reviews_of(records: &[ReadingReviewRecord], id: &str) -> Vec<ReadingReview> {
+    records
+        .iter()
+        .filter(|record| record.certificate_id == id)
+        .map(|record| record.review.clone())
+        .collect()
+}
+
+fn reviewed_response(
+    record: &CertificateRecord,
+    reviews: &[ReadingReview],
+) -> ReviewedCertificateResponse {
+    let certificate = &record.certificate;
+    let outcome = reviewed(certificate, reviews);
+    let basis = match (outcome.verdict, outcome.by_review) {
+        (Verdict::Accepted, true) => Some("human_review".to_string()),
+        (Verdict::Accepted, false) => Some("mechanical".to_string()),
+        _ => None,
+    };
+    let readings = certificate
+        .residuals
+        .iter()
+        .zip(outcome.readings)
+        .map(|(residual, (digest, state))| {
+            let (state, review) = match state {
+                ReadingState::Open => ("open".to_string(), None),
+                ReadingState::Decided(review) => {
+                    (review.decision.as_str().to_string(), Some(review))
+                }
+            };
+            ReadingResponse {
+                reading: digest,
+                kind: match residual.kind {
+                    ResidualKind::Source => "source",
+                    ResidualKind::Question => "question",
+                }
+                .to_string(),
+                from: residual.from.clone(),
+                to: residual.to.clone(),
+                rationale: residual.rationale.clone(),
+                evidence_ids: residual.evidence_ids.clone(),
+                state,
+                reviewer: review.as_ref().map(|review| review.reviewer.clone()),
+                authority: review.as_ref().map(|review| review.authority.clone()),
+                review_rationale: review.map(|review| review.rationale),
+            }
+        })
+        .collect();
+    ReviewedCertificateResponse {
+        certificate_id: record.id.clone(),
+        question: record.question.clone(),
+        kernel_verdict: certificate.verdict.as_str().to_string(),
+        verdict: outcome.verdict.as_str().to_string(),
+        basis,
+        readings,
+    }
 }
 
 /// Runs the full loop and returns the kernel's decision.

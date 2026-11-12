@@ -333,6 +333,12 @@ where
         .operation("askReasoning", crate::reasoning::ask)
         .operation("listCertificates", crate::reasoning::list_certificates)
         .operation(
+            "getReviewedCertificate",
+            crate::reasoning::get_reviewed_certificate,
+        )
+        .operation("reviewReading", crate::reasoning::review_reading)
+        .operation("listOpenReadings", crate::reasoning::list_open_readings)
+        .operation(
             "registerIrDefinition",
             crate::assurance::register_definition,
         )

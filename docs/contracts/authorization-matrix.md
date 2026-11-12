@@ -68,6 +68,9 @@ without membership or lacking action permission returns `403`. Webhooks require 
 | `getAssuranceCertificate` | GET | `/v1/assurance/certificates/{id}` | `certificates:read` | selected_project | allow | allow | allow |
 | `getAssuranceCertificateBundle` | GET | `/v1/assurance/certificates/{id}/bundle` | `certificates:read` | selected_project | allow | allow | allow |
 | `listCertificates` | GET | `/v1/reasoning/certificates` | `certificates:read` | selected_project | allow | allow | allow |
+| `getReviewedCertificate` | GET | `/v1/reasoning/certificates/{id}/review` | `certificates:read` | selected_project | allow | allow | allow |
+| `reviewReading` | POST | `/v1/reasoning/certificates/{id}/readings/{reading}/review` | `review:write` | selected_project | deny | deny | allow |
+| `listOpenReadings` | GET | `/v1/reasoning/readings` | `review:read` | selected_project | allow | allow | allow |
 | `listMemorySources` | GET | `/v1/memory/sources` | `memory:read` | selected_project | allow | allow | allow |
 | `createMemorySource` | POST | `/v1/memory/sources` | `memory:write` | selected_project | deny | deny | allow |
 | `getMemorySource` | GET | `/v1/memory/sources/{id}` | `memory:read` | selected_project | allow | allow | allow |

@@ -70,7 +70,15 @@
         },
         {
           "path": "crates/api/src/tests.rs",
+          "selector": "a_reading_a_reviewer_refutes_rejects_the_answer"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
           "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "a_review_has_to_decide_something_say_why_and_name_a_reading_of_this_projects_certificate"
         },
         {
           "path": "crates/api/src/tests.rs",
@@ -147,6 +155,10 @@
         {
           "path": "crates/api/src/tests.rs",
           "selector": "rejects_manual_automation_trigger_when_workflow_queue_is_overloaded"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "reviewing_every_reading_accepts_an_answer_by_review_and_a_decision_is_not_rewritten"
         },
         {
           "path": "crates/api/src/tests.rs",
@@ -239,6 +251,18 @@
         {
           "path": "crates/evaluator/src/sql_trigger.rs",
           "selector": "rejects_multiple_or_mutating_sql_statements"
+        },
+        {
+          "path": "crates/kernel/src/review.rs",
+          "selector": "a_review_cannot_repair_a_rejected_certificate"
+        },
+        {
+          "path": "crates/kernel/src/review.rs",
+          "selector": "a_review_decides_only_its_own_reading_under_the_reading_authority"
+        },
+        {
+          "path": "crates/kernel/src/review.rs",
+          "selector": "every_reading_held_accepts_by_review_and_one_refuted_rejects"
         },
         {
           "path": "crates/kernel/src/tests.rs",
@@ -945,6 +969,10 @@
         {
           "path": "crates/postgres/tests/ir_and_assurance.rs",
           "selector": "a_models_endorsement_or_dispute_is_projected_as_outstanding"
+        },
+        {
+          "path": "crates/postgres/tests/ir_and_assurance.rs",
+          "selector": "a_reading_is_decided_once_kept_and_kept_in_its_own_project"
         }
       ]
     },

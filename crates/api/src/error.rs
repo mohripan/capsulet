@@ -78,6 +78,10 @@ pub(crate) enum ApiError {
     IrDefinitionNotFound(String),
     #[error("assurance certificate not found: {0}")]
     AssuranceCertificateNotFound(String),
+    #[error("reasoning certificate or reading not found: {0}")]
+    ReasoningCertificateNotFound(String),
+    #[error("{0}")]
+    ReadingAlreadyReviewed(String),
     #[error("cited evidence is no longer retrievable: {0}")]
     AssuranceEvidenceMissing(String),
     /// A definition that did not pass structural admission. The rule and its
@@ -127,7 +131,8 @@ impl ApiError {
             | Self::ProjectUnavailable(_)
             | Self::RunAlreadyExists(_)
             | Self::AgentRunAlreadyExists(_)
-            | Self::AgentRunStateConflict(_) => StatusCode::CONFLICT,
+            | Self::AgentRunStateConflict(_)
+            | Self::ReadingAlreadyReviewed(_) => StatusCode::CONFLICT,
             Self::UnknownJobDefinition(_)
             | Self::UnknownExecutionPool(_)
             | Self::AdmissionRefused { .. }
@@ -148,6 +153,7 @@ impl ApiError {
             | Self::ArtifactObjectNotFound(_)
             | Self::IrDefinitionNotFound(_)
             | Self::AssuranceCertificateNotFound(_)
+            | Self::ReasoningCertificateNotFound(_)
             | Self::AssuranceEvidenceMissing(_) => StatusCode::NOT_FOUND,
             Self::AdmissionUnavailable(_) | Self::Proposer(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::MissingEndpointContract(_) | Self::Store(_) | Self::ObjectStore(_) => {
@@ -191,6 +197,8 @@ impl ApiError {
             Self::ArtifactObjectNotFound(_) => "job_artifact_object_not_found",
             Self::IrDefinitionNotFound(_) => "ir_definition_not_found",
             Self::AssuranceCertificateNotFound(_) => "assurance_certificate_not_found",
+            Self::ReasoningCertificateNotFound(_) => "reasoning_certificate_not_found",
+            Self::ReadingAlreadyReviewed(_) => "reading_already_reviewed",
             Self::AssuranceEvidenceMissing(_) => "assurance_evidence_missing",
             Self::AdmissionRefused { .. } => "admission_refused",
             Self::ObjectStore(_) => "object_store_error",

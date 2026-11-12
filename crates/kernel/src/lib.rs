@@ -30,6 +30,7 @@ pub mod phrasing;
 pub mod quantity;
 pub mod question;
 pub mod replay;
+pub mod review;
 pub mod snapshot;
 pub mod snapshot_document;
 pub mod text;
@@ -51,6 +52,10 @@ pub use phrasing::{Phrasebook, Phrasing};
 pub use quantity::{MAX_SCALE, Quantity, QuantityError};
 pub use question::{Query, Question, QuestionReading, Slot};
 pub use replay::{EvidenceMap, EvidenceSource, ReplayFinding, ReplayNote, ReplayOutcome, replay};
+pub use review::{
+    READING_AUTHORITY, ReadingDecision, ReadingReview, ReadingState, Reviewed, reading_digest,
+    reviewed,
+};
 pub use snapshot::Snapshot;
 pub use snapshot_document::{NameGroupDocument, SnapshotDocument};
 pub use value::ValueType;

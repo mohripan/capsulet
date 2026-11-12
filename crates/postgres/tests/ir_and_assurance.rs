@@ -420,3 +420,119 @@ async fn evidence_metadata_records_where_the_bytes_live() {
         "the object key is derived from the digest so it cannot point at other bytes"
     );
 }
+
+fn reasoning_record(tenant: &str, project: &str, id: &str) -> capsulet_postgres::CertificateRecord {
+    let goal = capsulet_kernel::Proposition::new("either party", "may_terminate", "this agreement");
+    capsulet_postgres::CertificateRecord {
+        id: id.to_string(),
+        tenant_id: tenant.to_string(),
+        project_id: project.to_string(),
+        question: "May either party terminate?".to_string(),
+        certificate: capsulet_kernel::Certificate {
+            verdict: capsulet_kernel::Verdict::Conditional,
+            goal: goal.clone(),
+            discharged: Vec::new(),
+            residuals: vec![capsulet_kernel::Residual {
+                kind: capsulet_kernel::ResidualKind::Source,
+                from: "mentions(contract,either party|may_terminate|this agreement)".to_string(),
+                to: goal,
+                rationale: "qualified by provision 12".to_string(),
+                evidence_ids: vec!["ev_termination".to_string()],
+            }],
+            errors: Vec::new(),
+            replay_digest: format!("sha256:{id}"),
+            derivation_depth_limit: None,
+        },
+        alphabet_digest: "sha256:alphabet".to_string(),
+        model: "mini".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn a_reading_is_decided_once_kept_and_kept_in_its_own_project() {
+    let store = store().await;
+    let tenant = unique_id("tenant");
+    let project = unique_id("project");
+    let record = reasoning_record(&tenant, &project, &unique_id("certificate"));
+    store
+        .insert_certificate(&record)
+        .await
+        .expect("record the certificate");
+    let found = store
+        .find_certificate(&tenant, &project, &record.id)
+        .await
+        .expect("find the certificate")
+        .expect("it is in its project");
+    let reading =
+        capsulet_kernel::reading_digest(&found.certificate, &found.certificate.residuals[0]);
+    assert_eq!(
+        reading,
+        capsulet_kernel::reading_digest(&record.certificate, &record.certificate.residuals[0]),
+        "a reading's digest survives the round trip through the store"
+    );
+    assert!(
+        store
+            .find_certificate(&tenant, &unique_id("elsewhere"), &record.id)
+            .await
+            .expect("query")
+            .is_none(),
+        "another project does not see it"
+    );
+
+    let review = |project: &str, decision: capsulet_kernel::ReadingDecision| {
+        capsulet_postgres::ReadingReviewRecord {
+            tenant_id: tenant.clone(),
+            project_id: project.to_string(),
+            certificate_id: record.id.clone(),
+            review: capsulet_kernel::ReadingReview {
+                reading: reading.clone(),
+                decision,
+                reviewer: "dana".to_string(),
+                authority: capsulet_kernel::READING_AUTHORITY.to_string(),
+                rationale: "read with provision 12".to_string(),
+            },
+        }
+    };
+    assert!(
+        store
+            .insert_reading_review(&review(&project, capsulet_kernel::ReadingDecision::Holds))
+            .await
+            .expect("record the review")
+    );
+    assert!(
+        !store
+            .insert_reading_review(&review(
+                &project,
+                capsulet_kernel::ReadingDecision::DoesNotHold
+            ))
+            .await
+            .expect("a second decision is reported, not written"),
+    );
+    // The foreign key ties a review to its certificate's own project.
+    store
+        .insert_reading_review(&review(
+            &unique_id("elsewhere"),
+            capsulet_kernel::ReadingDecision::Holds,
+        ))
+        .await
+        .expect_err("a review in another project names no certificate there");
+
+    let reviews = store
+        .list_reading_reviews(&tenant, &project, std::slice::from_ref(&record.id))
+        .await
+        .expect("list reviews");
+    assert_eq!(reviews.len(), 1);
+    assert_eq!(
+        reviews[0].review.decision,
+        capsulet_kernel::ReadingDecision::Holds
+    );
+
+    let rewrite = sqlx::query(
+        "UPDATE reasoning_reading_reviews SET decision = 'does_not_hold' WHERE certificate_id = $1",
+    )
+    .bind(&record.id)
+    .execute(store.pool())
+    .await
+    .expect_err("a decision cannot be rewritten");
+    assert!(rewrite.to_string().contains("append-only"), "{rewrite}");
+}

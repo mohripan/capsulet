@@ -83,7 +83,11 @@ could change it is decidable. A contract can declare:
 
 - qualifier cues;
 - a reference grammar;
-- the document's defined terms, extracted by a deterministic parser and pinned as evidence.
+- how the document marks out its provisions and defines its terms.
+
+The kernel applies those templates to the stored text itself, so no external parser is needed and
+the extraction is re-decided offline like every other mechanical step. An earlier draft of this
+decision had a separate parser produce that map and pin it as evidence (#157).
 
 The kernel then leaves a residual naming each qualifying provision or definition the span depends on
 and the derivation does not cite. The mechanism is generic. Every cue, pattern and term comes from

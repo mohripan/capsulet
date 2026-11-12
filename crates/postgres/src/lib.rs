@@ -40,7 +40,7 @@ pub use agent_runs::{
 pub use artifacts::UpstreamArtifact;
 pub use assurance::{EvidenceLocation, StoredCertificate};
 pub use audit::{AuditEvent, AuditScope, NewAuditEvent};
-pub use certificates::CertificateRecord;
+pub use certificates::{CertificateRecord, ReadingReviewRecord};
 pub use ir_definitions::IrDefinitionVersion;
 pub use ir_effects::IrEffectClaim;
 pub use ir_runs::IrRunRecord;

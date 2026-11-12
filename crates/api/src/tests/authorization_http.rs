@@ -386,6 +386,12 @@ authorization_operation!(
     "getAssuranceCertificateBundle"
 );
 authorization_operation!(authorization_list_certificates, "listCertificates");
+authorization_operation!(
+    authorization_get_reviewed_certificate,
+    "getReviewedCertificate"
+);
+authorization_operation!(authorization_review_reading, "reviewReading");
+authorization_operation!(authorization_list_open_readings, "listOpenReadings");
 authorization_operation!(authorization_list_memory_sources, "listMemorySources");
 authorization_operation!(authorization_create_memory_source, "createMemorySource");
 authorization_operation!(authorization_get_memory_source, "getMemorySource");

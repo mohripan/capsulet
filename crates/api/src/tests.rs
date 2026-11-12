@@ -18,8 +18,9 @@ use capsulet_core::{
     WorkflowStatus, WorkflowStep, WorkflowStepId, WorkflowStepRun, WorkflowStepRunId,
 };
 use capsulet_postgres::{
-    AdmissionSnapshot, IrDefinitionVersion, IrRunRecord, NewProjectMembership,
-    ProjectMembershipRecord, ProjectRecord, ServiceAccountRecord, TriggerEvent,
+    AdmissionSnapshot, CertificateRecord, IrDefinitionVersion, IrRunRecord, NewProjectMembership,
+    ProjectMembershipRecord, ProjectRecord, ReadingReviewRecord, ServiceAccountRecord,
+    TriggerEvent,
 };
 use capsulet_runtime::{RecordedEvent, RunEvent, event::Epoch};
 use capsulet_storage::ObjectStore;
@@ -54,6 +55,8 @@ struct FakeStore {
     agents: Arc<Mutex<Vec<AgentDefinition>>>,
     agent_runs: Arc<Mutex<Vec<AgentRunRecord>>>,
     memory_sources: Arc<Mutex<Vec<Source>>>,
+    reasoning_certificates: Arc<Mutex<Vec<CertificateRecord>>>,
+    reading_reviews: Arc<Mutex<Vec<ReadingReviewRecord>>>,
     memory_evidence: Arc<Mutex<Vec<Evidence>>>,
     memory_entities: Arc<Mutex<Vec<Entity>>>,
     memory_claims: Arc<Mutex<Vec<Claim>>>,
@@ -237,6 +240,90 @@ impl FakeStore {
 #[async_trait::async_trait]
 impl ApiStore for FakeStore {
     type Error = String;
+
+    async fn insert_certificate(&self, record: &CertificateRecord) -> Result<(), Self::Error> {
+        let mut certificates = self
+            .reasoning_certificates
+            .lock()
+            .expect("certificates mutex");
+        if !certificates.iter().any(|stored| stored.id == record.id) {
+            certificates.push(record.clone());
+        }
+        Ok(())
+    }
+
+    async fn list_certificates(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<CertificateRecord>, Self::Error> {
+        Ok(self
+            .reasoning_certificates
+            .lock()
+            .expect("certificates mutex")
+            .iter()
+            .rev()
+            .filter(|record| record.tenant_id == tenant_id && record.project_id == project_id)
+            .take(usize::try_from(limit).unwrap_or(0))
+            .cloned()
+            .collect())
+    }
+
+    async fn find_certificate(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        id: &str,
+    ) -> Result<Option<CertificateRecord>, Self::Error> {
+        Ok(self
+            .reasoning_certificates
+            .lock()
+            .expect("certificates mutex")
+            .iter()
+            .find(|record| {
+                record.id == id && record.tenant_id == tenant_id && record.project_id == project_id
+            })
+            .cloned())
+    }
+
+    async fn insert_reading_review(
+        &self,
+        record: &ReadingReviewRecord,
+    ) -> Result<bool, Self::Error> {
+        let mut reviews = self.reading_reviews.lock().expect("reviews mutex");
+        let decided = reviews.iter().any(|stored| {
+            stored.tenant_id == record.tenant_id
+                && stored.project_id == record.project_id
+                && stored.certificate_id == record.certificate_id
+                && stored.review.reading == record.review.reading
+        });
+        if decided {
+            return Ok(false);
+        }
+        reviews.push(record.clone());
+        Ok(true)
+    }
+
+    async fn list_reading_reviews(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        certificate_ids: &[String],
+    ) -> Result<Vec<ReadingReviewRecord>, Self::Error> {
+        Ok(self
+            .reading_reviews
+            .lock()
+            .expect("reviews mutex")
+            .iter()
+            .filter(|record| {
+                record.tenant_id == tenant_id
+                    && record.project_id == project_id
+                    && certificate_ids.contains(&record.certificate_id)
+            })
+            .cloned()
+            .collect())
+    }
 
     fn is_scope_mismatch(error: &Self::Error) -> bool {
         error == "scope mismatch"
@@ -6494,6 +6581,234 @@ async fn reasoning_under_another_project_s_contract_finds_no_contract_and_stores
             .expect("memory sources mutex")
             .is_empty(),
         "nothing should be stored for a request refused at its contract"
+    );
+}
+
+/// A reasoning certificate in the default project that leaves `readings` readings
+/// open, or that the kernel rejected.
+fn reasoning_certificate(
+    id: &str,
+    verdict: capsulet_kernel::Verdict,
+    readings: usize,
+) -> CertificateRecord {
+    let goal = capsulet_kernel::Proposition::new("either party", "may_terminate", "this agreement");
+    CertificateRecord {
+        id: id.to_string(),
+        tenant_id: "default".to_string(),
+        project_id: "default".to_string(),
+        question: "May either party terminate the agreement?".to_string(),
+        certificate: capsulet_kernel::Certificate {
+            verdict,
+            goal: goal.clone(),
+            discharged: Vec::new(),
+            residuals: (0..readings)
+                .map(|index| capsulet_kernel::Residual {
+                    kind: capsulet_kernel::ResidualKind::Source,
+                    from: "mentions(contract,either party|may_terminate|this agreement)"
+                        .to_string(),
+                    to: goal.clone(),
+                    rationale: format!("the clause is qualified by provision 12 ({index})"),
+                    evidence_ids: vec!["ev_termination".to_string()],
+                })
+                .collect(),
+            errors: Vec::new(),
+            replay_digest: format!("sha256:{id}"),
+            derivation_depth_limit: None,
+        },
+        alphabet_digest: "sha256:alphabet".to_string(),
+        model: "mini".to_string(),
+    }
+}
+
+async fn reasoning_request(
+    app: &axum::Router,
+    method: Method,
+    uri: &str,
+    project: &str,
+    body: Option<Value>,
+) -> (axum::http::StatusCode, Value) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(method)
+                .uri(uri)
+                .header(
+                    "authorization",
+                    "Bearer admin-token-0123456789-abcdefghijkl",
+                )
+                .header("x-capsulet-project-id", project)
+                .header("content-type", "application/json")
+                .body(body.map_or_else(Body::empty, |body| Body::from(body.to_string())))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let status = response.status();
+    (status, response_json(response).await)
+}
+
+fn reading_of(record: &CertificateRecord, index: usize) -> String {
+    capsulet_kernel::reading_digest(&record.certificate, &record.certificate.residuals[index])
+}
+
+#[tokio::test]
+async fn reviewing_every_reading_accepts_an_answer_by_review_and_a_decision_is_not_rewritten() {
+    let store = FakeStore::default();
+    let record = reasoning_certificate(
+        "certificate_terms",
+        capsulet_kernel::Verdict::Conditional,
+        2,
+    );
+    store.insert_certificate(&record).await.expect("store");
+    let app = authenticated_app(store.clone());
+
+    let (status, open) =
+        reasoning_request(&app, Method::GET, "/v1/reasoning/readings", "default", None).await;
+    assert_eq!(status, axum::http::StatusCode::OK, "{open}");
+    assert_eq!(open["readings"].as_array().map(Vec::len), Some(2), "{open}");
+    assert_eq!(open["readings"][0]["certificate_id"], "certificate_terms");
+
+    let review = |index: usize| {
+        format!(
+            "/v1/reasoning/certificates/certificate_terms/readings/{}/review",
+            reading_of(&record, index)
+        )
+    };
+    let holds =
+        json!({ "decision": "holds", "rationale": "read with provision 12, it still holds" });
+    let (status, first) = reasoning_request(
+        &app,
+        Method::POST,
+        &review(0),
+        "default",
+        Some(holds.clone()),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::CREATED, "{first}");
+    assert_eq!(first["verdict"], "conditional");
+    assert_eq!(first["readings"][0]["state"], "holds");
+    assert_eq!(first["readings"][0]["authority"], "review:write");
+    assert_eq!(first["readings"][1]["state"], "open");
+
+    let (status, second) = reasoning_request(
+        &app,
+        Method::POST,
+        &review(1),
+        "default",
+        Some(holds.clone()),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::CREATED, "{second}");
+    assert_eq!(second["kernel_verdict"], "conditional");
+    assert_eq!(second["verdict"], "accepted");
+    assert_eq!(second["basis"], "human_review");
+
+    let (status, again) =
+        reasoning_request(&app, Method::POST, &review(1), "default", Some(holds)).await;
+    assert_eq!(status, axum::http::StatusCode::CONFLICT, "{again}");
+    assert_eq!(again["code"], "reading_already_reviewed");
+
+    let (status, read) = reasoning_request(
+        &app,
+        Method::GET,
+        "/v1/reasoning/certificates/certificate_terms/review",
+        "default",
+        None,
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::OK, "{read}");
+    assert_eq!(read["verdict"], "accepted");
+    let (_, open) =
+        reasoning_request(&app, Method::GET, "/v1/reasoning/readings", "default", None).await;
+    assert_eq!(open["readings"].as_array().map(Vec::len), Some(0), "{open}");
+}
+
+#[tokio::test]
+async fn a_reading_a_reviewer_refutes_rejects_the_answer() {
+    let store = FakeStore::default();
+    let record = reasoning_certificate(
+        "certificate_refuted",
+        capsulet_kernel::Verdict::Conditional,
+        1,
+    );
+    store.insert_certificate(&record).await.expect("store");
+    let app = authenticated_app(store);
+    let (status, body) = reasoning_request(
+        &app,
+        Method::POST,
+        &format!(
+            "/v1/reasoning/certificates/certificate_refuted/readings/{}/review",
+            reading_of(&record, 0)
+        ),
+        "default",
+        Some(json!({ "decision": "does_not_hold", "rationale": "section 12 bars termination in year one" })),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::CREATED, "{body}");
+    assert_eq!(body["verdict"], "rejected");
+    assert!(body["basis"].is_null(), "{body}");
+}
+
+#[tokio::test]
+async fn a_review_has_to_decide_something_say_why_and_name_a_reading_of_this_projects_certificate()
+{
+    let store = FakeStore::default();
+    let record = reasoning_certificate(
+        "certificate_scoped",
+        capsulet_kernel::Verdict::Conditional,
+        1,
+    );
+    store.insert_certificate(&record).await.expect("store");
+    let rejected =
+        reasoning_certificate("certificate_failed", capsulet_kernel::Verdict::Rejected, 1);
+    store.insert_certificate(&rejected).await.expect("store");
+    let app = authenticated_app(store.clone());
+    let uri = format!(
+        "/v1/reasoning/certificates/certificate_scoped/readings/{}/review",
+        reading_of(&record, 0)
+    );
+
+    for body in [
+        json!({ "decision": "probably", "rationale": "it reads fine" }),
+        json!({ "decision": "holds", "rationale": "   " }),
+    ] {
+        let (status, refused) =
+            reasoning_request(&app, Method::POST, &uri, "default", Some(body)).await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{refused}");
+    }
+
+    let holds = json!({ "decision": "holds", "rationale": "it reads fine" });
+    let (status, missing) = reasoning_request(
+        &app,
+        Method::POST,
+        &uri,
+        "another-project",
+        Some(holds.clone()),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::NOT_FOUND, "{missing}");
+    assert_eq!(missing["code"], "reasoning_certificate_not_found");
+
+    let unknown = "/v1/reasoning/certificates/certificate_scoped/readings/sha256:nothing/review";
+    let (status, _) =
+        reasoning_request(&app, Method::POST, unknown, "default", Some(holds.clone())).await;
+    assert_eq!(status, axum::http::StatusCode::NOT_FOUND);
+
+    let failed = format!(
+        "/v1/reasoning/certificates/certificate_failed/readings/{}/review",
+        reading_of(&rejected, 0)
+    );
+    let (status, refused) =
+        reasoning_request(&app, Method::POST, &failed, "default", Some(holds)).await;
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{refused}");
+    assert!(
+        store
+            .reading_reviews
+            .lock()
+            .expect("reviews mutex")
+            .is_empty(),
+        "nothing refused should be recorded"
     );
 }
 
