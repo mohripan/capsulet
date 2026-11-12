@@ -1,0 +1,28 @@
+[package]
+name = "capsulet-verifier"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The verifier protocol: what a validator receives and returns, how it is run, and how its result enters a certificate."
+
+# A validator the tests run as a real process. It decides each obligation by the
+# first word of its statement, so a test can ask for every way a validator can
+# behave, including the ways it can misbehave.
+[[bin]]
+name = "fixture-validator"
+path = "src/bin/fixture-validator.rs"
+test = false
+doc = false
+
+[dependencies]
+capsulet-ir = { path = "../ir" }
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3"
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -4092,6 +4092,103 @@
       ]
     },
     {
+      "id": "CAP-ASSURANCE-010",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Assurance policy",
+      "statement": "A validator speaks `capsulet.verifier/v1`: one request in, naming the obligations and the read-only inputs by digest, and one response out with `holds`, `does_not_hold` or `cannot_decide` for each. The host checks its registration first, so a replayable tool granted the network or a model, a model not declared as one, or an image not pinned by digest is refused. It then holds the run to its limits, refuses changed inputs, oversized outputs and anything but one result per obligation as typed failures owned by the verifier, digests the outputs itself, and builds the verifier record. An isolated tool's `holds` discharges on basis `replayable_tool`, a model's endorses or disputes, and an unisolated development run decides nothing. Container isolation is not implemented yet.",
+      "public_surfaces": [
+        "ARCHITECTURE.md"
+      ],
+      "verification": [
+        {
+          "assertion": "results-enter-certificates-by-basis",
+          "evidence_selectors": [
+            "an_isolated_tools_answers_discharge_fail_or_stay_residual_and_seal",
+            "a_models_holds_endorses_and_its_does_not_hold_disputes_and_neither_decides",
+            "an_unisolated_development_run_decides_nothing_and_says_so"
+          ]
+        },
+        {
+          "assertion": "misbehaviour-is-a-typed-failure",
+          "evidence_selectors": [
+            "every_way_a_validator_misbehaves_is_a_typed_failure_owned_by_the_verifier",
+            "a_registration_that_cannot_run_and_an_input_that_is_not_a_file_name_are_refused_first"
+          ]
+        },
+        {
+          "assertion": "a-basis-comes-from-the-registration",
+          "evidence_selectors": [
+            "a_tool_granted_the_network_or_a_model_is_not_a_replayable_tool",
+            "an_image_has_to_be_pinned_by_digest",
+            "a_model_has_to_be_granted_the_model_it_is"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/host.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_isolated_tools_answers_discharge_fail_or_stay_residual_and_seal"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/host.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_models_holds_endorses_and_its_does_not_hold_disputes_and_neither_decides"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/host.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_unisolated_development_run_decides_nothing_and_says_so"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/host.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "every_way_a_validator_misbehaves_is_a_typed_failure_owned_by_the_verifier"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/host.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_registration_that_cannot_run_and_an_input_that_is_not_a_file_name_are_refused_first"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/src/registration.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_tool_granted_the_network_or_a_model_is_not_a_replayable_tool"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/src/registration.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_image_has_to_be_pinned_by_digest"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/src/registration.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_model_has_to_be_granted_the_model_it_is"
+        },
+        {
+          "type": "source",
+          "path": "crates/verifier/src/host.rs"
+        }
+      ]
+    },
+    {
       "id": "CAP-CORRECTNESS-003",
       "kind": "capability",
       "maturity": "implemented",

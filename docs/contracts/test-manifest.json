@@ -573,6 +573,38 @@
           "selector": "renders_run_label_on_job_and_pod_template"
         },
         {
+          "path": "crates/verifier/src/registration.rs",
+          "selector": "a_model_has_to_be_granted_the_model_it_is"
+        },
+        {
+          "path": "crates/verifier/src/registration.rs",
+          "selector": "a_tool_granted_the_network_or_a_model_is_not_a_replayable_tool"
+        },
+        {
+          "path": "crates/verifier/src/registration.rs",
+          "selector": "an_image_has_to_be_pinned_by_digest"
+        },
+        {
+          "path": "crates/verifier/tests/host.rs",
+          "selector": "a_models_holds_endorses_and_its_does_not_hold_disputes_and_neither_decides"
+        },
+        {
+          "path": "crates/verifier/tests/host.rs",
+          "selector": "a_registration_that_cannot_run_and_an_input_that_is_not_a_file_name_are_refused_first"
+        },
+        {
+          "path": "crates/verifier/tests/host.rs",
+          "selector": "an_isolated_tools_answers_discharge_fail_or_stay_residual_and_seal"
+        },
+        {
+          "path": "crates/verifier/tests/host.rs",
+          "selector": "an_unisolated_development_run_decides_nothing_and_says_so"
+        },
+        {
+          "path": "crates/verifier/tests/host.rs",
+          "selector": "every_way_a_validator_misbehaves_is_a_typed_failure_owned_by_the_verifier"
+        },
+        {
           "path": "crates/worker/src/tests.rs",
           "selector": "offloads_large_logs_as_artifact"
         },

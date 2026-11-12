@@ -17,6 +17,7 @@ members = [
     "crates/runtime",
     "crates/scheduler",
     "crates/storage",
+    "crates/verifier",
     "crates/worker",
     "crates/xtask",
 ]

@@ -615,6 +615,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "capsulet-verifier"
+version = "0.1.0"
+dependencies = [
+ "capsulet-ir",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "capsulet-worker"
 version = "0.1.0"
 dependencies = [
