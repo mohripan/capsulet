@@ -116,8 +116,9 @@ check` holds this table to the plan, to the gate catalog and to the record.
 - **Images are not reproducible.** Two builds of one commit have different image IDs, from build
   timestamps in the image configuration and the dashboard's generated build id. The released digest
   is the tested one, because it is built once. A rebuild cannot confirm it.
-- **Branch protection on `main` still requires only `PostgreSQL`.** `Required` covers every gate,
-  but until the ruleset requires it, a push can land with `Required` red.
+- **Branch protection on `main` required only `PostgreSQL` when M1 closed.** Since 2026-11-13, ahead
+  of M4, the ruleset requires `Required`, which covers every gate. Repository admins can still bypass
+  it, so a direct push is held to `Required` by practice rather than by the ruleset.
 - **One Kubernetes shape.** The Kind gate installs on one node, Kubernetes 1.35, with persistence
   off. Upgrade, rollback, backup and restore are untested; that is M6's gate.
 - **Wrong-project resources.** The HTTP matrix calls every operation as a member of another project
@@ -179,7 +180,7 @@ and needs, before its first change lands:
   gate;
 - every M1 gate staying in the full profile, and this report's check passing, whatever M4 adds;
 - an ADR fixing the verifier protocol's boundary: what a validator receives and returns, how it is
-  isolated, and how its result enters a certificate;
+  isolated, and how its result enters a certificate ([ADR 0021](../adr/0021-the-verifier-protocol-boundary.md));
 - the exceptions above renewed or retired before they expire, rather than by the gate failing in
   the middle of M4 work.
 
