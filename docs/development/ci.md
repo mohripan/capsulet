@@ -142,6 +142,10 @@ the run that failed, under its run directory.
 - the passed, failed and ignored tests of every test binary;
 - the path and SHA-256 of its log.
 
+Runs are written to `.capsulet/verify/<run>/`, or below `CAPSULET_VERIFY_RUNS` when it is set. The
+verifier's own tests set it, so the runs they fail on purpose never reach a job's upload, where
+Required would count them as failed gates.
+
 Download a run's `verification-*` artifacts and check them as Required does:
 
 ```powershell

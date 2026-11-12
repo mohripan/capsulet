@@ -1,7 +1,42 @@
-use std::{path::Path, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
+
+/// Where these tests' runs go. Many fail on purpose; in `.capsulet/verify` they
+/// would sit beside the job's real run, and CI uploads every summary there.
+fn runs() -> PathBuf {
+    Path::new(env!("CARGO_TARGET_TMPDIR")).join("verify-runs")
+}
 
 fn xtask() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_capsulet-xtask"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_capsulet-xtask"));
+    command.env("CAPSULET_VERIFY_RUNS", runs());
+    command
+}
+
+/// A run made by a test leaves nothing where CI collects summaries.
+#[test]
+fn a_run_is_written_where_capsulet_verify_runs_points() {
+    let directory = tempfile::tempdir().expect("temp directory");
+    let result = Command::new(env!("CARGO_BIN_EXE_capsulet-xtask"))
+        .args(["verify", "--gate", "format"])
+        .env("CAPSULET_VERIFY_TEST_COMMAND", "fail")
+        .env("CAPSULET_VERIFY_RUNS", directory.path())
+        .output()
+        .expect("xtask runs");
+    assert!(!result.status.success());
+    let runs: Vec<_> = std::fs::read_dir(directory.path())
+        .expect("runs")
+        .map(|entry| entry.expect("run").path())
+        .collect();
+    assert_eq!(runs.len(), 1, "{runs:?}");
+    assert!(runs[0].join("verification-summary.json").is_file());
+    assert!(
+        stderr(&result).contains(&directory.path().display().to_string()),
+        "{}",
+        stderr(&result)
+    );
 }
 
 fn output(arguments: &[&str]) -> std::process::Output {

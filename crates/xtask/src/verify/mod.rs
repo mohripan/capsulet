@@ -611,16 +611,21 @@ pub(crate) fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// Where run directories go instead of `.capsulet/verify`. The verifier's own
+/// tests set it, so the failing runs they make on purpose never sit beside the
+/// real ones, which CI uploads for `verify summary` to check.
+const RUNS_VARIABLE: &str = "CAPSULET_VERIFY_RUNS";
+
 fn log_directory(root: &Path) -> Result<PathBuf, String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
         .as_millis();
-    let directory = root
-        .join(".capsulet")
-        .join("verify")
-        .join(format!("{timestamp}-{}", std::process::id()));
-    fs::create_dir_all(root.join(".capsulet").join("verify")).map_err(|error| error.to_string())?;
+    let runs = env::var_os(RUNS_VARIABLE)
+        .filter(|runs| !runs.is_empty())
+        .map_or_else(|| root.join(".capsulet").join("verify"), PathBuf::from);
+    let directory = runs.join(format!("{timestamp}-{}", std::process::id()));
+    fs::create_dir_all(&runs).map_err(|error| format!("{}: {error}", runs.display()))?;
     // Never append a new run's evidence to an existing run, even on a naming collision.
     fs::create_dir(&directory).map_err(|error| {
         format!(
