@@ -20,7 +20,7 @@ use k8s_openapi::{
         },
     },
     apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::ObjectMeta},
-    chrono::Utc,
+    jiff::Timestamp,
 };
 use kube::{
     Api, Client, ResourceExt,
@@ -1711,7 +1711,7 @@ fn job_within_grace_period(job: &Job) -> bool {
         .creation_timestamp
         .as_ref()
         .is_some_and(|created| {
-            Utc::now().signed_duration_since(created.0).num_seconds() < ORPHAN_GRACE_SECONDS
+            Timestamp::now().duration_since(created.0).as_secs() < ORPHAN_GRACE_SECONDS
         })
 }
 

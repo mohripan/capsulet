@@ -19,8 +19,8 @@ path = "src/lib.rs"
 async-trait.workspace = true
 base64 = "0.22"
 capsulet-core = { path = "../core" }
-k8s-openapi = { version = "0.26.1", features = ["latest"] }
-kube = { version = "2.0.1", default-features = false, features = ["client", "config", "rustls-tls"] }
+k8s-openapi = { version = "0.29", features = ["latest"] }
+kube = { version = "5.0.0", default-features = false, features = ["client", "config", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 serde.workspace = true
 serde_yaml.workspace = true

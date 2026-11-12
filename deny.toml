@@ -63,6 +63,7 @@ skip = [
   { crate = "winnow@0.7.15", reason = "cron 0.17's expression parser (capsulet-evaluator), the newest cron; toml 1 (capsulet-xtask's release checks) uses winnow 1. Clears when cron moves to winnow 1" },
   { crate = "thiserror@1.0.69", reason = "via forwarded-header-value (tower_governor's client-IP extraction); everything else uses thiserror 2" },
   { crate = "thiserror-impl@1.0.69", reason = "derive of thiserror 1 (forwarded-header-value, tower_governor)" },
+  { crate = "base64@0.22.1", reason = "k8s-openapi 0.29 and jsonwebtoken use base64 0.22; kube 5 moved to 0.23. Clears when k8s-openapi and jsonwebtoken move to 0.23" },
   { crate = "tower-http@0.6.11", reason = "kube-client and reqwest 0.13 use tower-http 0.6; capsulet-api uses 0.7" },
   { crate = "untrusted@0.7.1", reason = "via aws-lc-rs, jsonwebtoken's crypto backend; ring and rustls-webpki use 0.9" },
   { crate = "redox_syscall@0.5.18", reason = "Redox-only, via parking_lot_core; libredox uses 0.9. Never built for these targets" },
