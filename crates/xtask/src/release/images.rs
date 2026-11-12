@@ -92,25 +92,11 @@ pub(super) fn build_all(
     built: &mut Vec<String>,
 ) -> Result<(), String> {
     for entry in entries {
-        // A local name nobody pulls or pushes, unique to this process and
-        // carrying the verifier run's id, by which the run finds it if it was
-        // left behind.
-        let run = std::env::var(crate::verify::RUN_VARIABLE).unwrap_or_default();
-        let tag = if run.is_empty() {
-            format!(
-                "capsulet-verify/{}:{}-{}",
-                entry.title,
-                entry.version,
-                std::process::id()
-            )
-        } else {
-            format!(
-                "capsulet-verify/{}:{}-{run}-{}",
-                entry.title,
-                entry.version,
-                std::process::id()
-            )
-        };
+        let tag = format!(
+            "capsulet-verify/{}:{}",
+            entry.title,
+            local_tag(&entry.version)
+        );
         let mut command = Command::new("docker");
         command
             .env("DOCKER_BUILDKIT", "1")
@@ -136,6 +122,18 @@ pub(super) fn build_all(
         println!("[release] {} carries its release labels: {id}", entry.image);
     }
     Ok(())
+}
+
+/// The tag of an image this process builds: a local name nobody pulls or
+/// pushes, `<version>-<run>-<pid>` inside a verifier run (by which the run
+/// finds it if it was left behind) and `<version>-<pid>` outside one.
+pub(crate) fn local_tag(version: &str) -> String {
+    let run = std::env::var(crate::verify::RUN_VARIABLE).unwrap_or_default();
+    if run.is_empty() {
+        format!("{version}-{}", std::process::id())
+    } else {
+        format!("{version}-{run}-{}", std::process::id())
+    }
 }
 
 /// The image ID (its configuration's digest) of what was just built, which a

@@ -215,8 +215,10 @@ pub(crate) use chart::{
     workload_images,
 };
 
+pub(crate) use images::local_tag;
+
 /// Builds every component's image as the `containers` gate does, tagged
-/// `capsulet-verify/<image>:<version>-<pid>`, and checks each one's labels and
+/// `capsulet-verify/<image>:<local_tag>`, and checks each one's labels and
 /// user. Every reference it built is in `built`, even when a later one fails,
 /// so the caller can remove them.
 pub(crate) fn build_verified(root: &Path, built: &mut Vec<String>) -> Result<(), String> {

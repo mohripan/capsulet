@@ -214,7 +214,7 @@ impl Cluster {
         identity: &BuildIdentity,
         credentials: &Credentials,
     ) -> Result<PathBuf, String> {
-        let tag = format!("{}-{}", identity.version, std::process::id());
+        let tag = crate::release::local_tag(&identity.version);
         let values = format!(
             "# Generated for one Kind cluster and deleted with it.\n\
              image:\n  registry: \"\"\n  namespace: capsulet-verify\n  tag: \"{tag}\"\n  pullPolicy: Never\n\
@@ -605,10 +605,9 @@ fn exercise(
 ) -> Result<(), String> {
     cluster.build_images()?;
     let api_image = format!(
-        "capsulet-verify/{}:{}-{}",
+        "capsulet-verify/{}:{}",
         release.images.components["api"].image,
-        identity.version,
-        std::process::id()
+        crate::release::local_tag(&identity.version)
     );
     if !cluster.images.contains(&api_image) {
         return Err(format!("the API image {api_image} was not built"));
