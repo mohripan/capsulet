@@ -320,7 +320,10 @@ fn a_reversible_effect_that_happened_is_compensated_before_the_run_ends() {
         },
     ));
     let settled = RunState::fold(&events).expect("folds");
-    assert!(failure::pending_compensations(&definition, &settled).is_empty());
+    assert_eq!(
+        failure::pending_compensations(&definition, &settled),
+        [] as [capsulet_runtime::Compensation; 0]
+    );
     assert_eq!(
         decide(&definition, &settled, at(0)),
         Decision::Cancel { by: id("operator") }

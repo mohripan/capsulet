@@ -280,7 +280,7 @@ fn a_finalized_effect_is_never_performed_again() {
     ));
 
     let state = RunState::fold(&events).expect("folds");
-    assert!(state.outstanding_effects().is_empty());
+    assert_eq!(state.outstanding_effects(), []);
     assert!(state.effect_completed(&id("publish"), &id("open-pull-request")));
 
     let decision = decide(&definition, &state, at(0));

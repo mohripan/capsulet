@@ -510,7 +510,7 @@ mod tests {
     fn without_a_contract_the_predicate_is_left_open() {
         let phrasebook = Phrasebook::new();
         let predicates = super::declared_predicates(&phrasebook);
-        assert!(predicates.is_empty());
+        assert_eq!(predicates, [] as [&str; 0]);
         assert!(
             super::output_schema(&predicates)["properties"]["predicate"]
                 .get("enum")

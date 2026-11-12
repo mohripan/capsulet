@@ -4137,12 +4137,8 @@ async fn local_text_connector_run_creates_candidate_memory() {
             .len(),
         1
     );
-    assert!(
-        !body["outputs"]["evidence"]
-            .as_array()
-            .expect("evidence")
-            .is_empty()
-    );
+    let evidence = body["outputs"]["evidence"].as_array().expect("evidence");
+    assert!(!evidence.is_empty(), "{evidence:?}");
     assert_eq!(
         body["outputs"]["claims"].as_array().expect("claims").len(),
         2

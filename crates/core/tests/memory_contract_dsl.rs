@@ -240,8 +240,8 @@ fn a_phrasing_that_would_state_any_relation_is_refused_where_it_is_written() {
 #[test]
 fn a_relation_without_phrasings_states_nothing() {
     let contract = parse(CONTRACT).expect("the contract parses");
-    assert!(contract.ast().relation_types()[0].phrasings().is_empty());
-    assert!(contract.ast().statement_policy().cues().is_empty());
+    assert_eq!(contract.ast().relation_types()[0].phrasings(), []);
+    assert_eq!(contract.ast().statement_policy().cues(), [] as [String; 0]);
 }
 
 #[test]

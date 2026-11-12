@@ -150,7 +150,7 @@ fn list_gates(format: Option<&str>) -> Result<(), String> {
 /// supports (`docs/contracts/verification-matrix.md`). A tool with no minimum is
 /// only required to run: kubectl has to match its cluster, not a release of ours.
 const SUPPORTED_TOOLS: &[(&str, &str, &[&str], Option<&str>)] = &[
-    ("cargo", "cargo", &["--version"], Some("1.96")),
+    ("cargo", "cargo", &["--version"], Some("1.99")),
     ("docker", "docker", &["--version"], Some("27")),
     (
         "docker compose",

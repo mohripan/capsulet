@@ -226,12 +226,12 @@ async fn a_certificate_from_another_project_is_not_visible() {
             .is_none(),
         "project scope is part of the key, not a filter applied afterwards"
     );
-    assert!(
+    assert_eq!(
         store
             .list_assurance_certificates(&tenant, &theirs, 10)
             .await
-            .expect("list across projects")
-            .is_empty()
+            .expect("list across projects"),
+        [] as [capsulet_postgres::StoredCertificate; 0]
     );
 }
 

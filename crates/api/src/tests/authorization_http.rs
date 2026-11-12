@@ -44,12 +44,8 @@ async fn authorization_audit_events_follow_the_project_in_the_url() {
     );
     let other = app.oneshot(read("default")).await.expect("default audit");
     assert_eq!(other.status(), 200);
-    assert!(
-        response_json(other).await["audit_events"]
-            .as_array()
-            .expect("events")
-            .is_empty()
-    );
+    let events = response_json(other).await["audit_events"].clone();
+    assert_eq!(events, serde_json::json!([]));
 }
 
 #[tokio::test]
@@ -84,12 +80,8 @@ async fn authorization_audit_events_follow_the_writes_selected_project() {
     assert_eq!(own["audit_events"][0]["path"], "/v1/job-definitions");
     let other = app.oneshot(read("default")).await.expect("default audit");
     assert_eq!(other.status(), 200);
-    assert!(
-        response_json(other).await["audit_events"]
-            .as_array()
-            .expect("events")
-            .is_empty()
-    );
+    let events = response_json(other).await["audit_events"].clone();
+    assert_eq!(events, serde_json::json!([]));
 }
 
 const ACTORS: [(&str, Option<&str>, u8); 8] = [

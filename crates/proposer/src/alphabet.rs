@@ -152,7 +152,7 @@ mod tests {
             // reject citations this module created.
             assert!(content.text().is_char_boundary(start));
             assert!(content.text().is_char_boundary(end));
-            assert!(!content.text()[start..end].trim().is_empty());
+            assert_ne!(content.text()[start..end].trim(), "");
         }
     }
 

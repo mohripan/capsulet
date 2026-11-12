@@ -2073,7 +2073,7 @@ async fn a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content(
     assert_eq!(explained.status, Ok(RunStatus::Completed));
     assert!(explained.definition_matches);
     assert_eq!(explained.spent.tokens, 10);
-    assert!(explained.unfinished.is_empty());
+    assert_eq!(explained.unfinished, [] as [capsulet_ir::Identifier; 0]);
     let model = explained
         .nodes
         .iter()

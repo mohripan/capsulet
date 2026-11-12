@@ -495,7 +495,8 @@ fn validate_sql_config(config: &Value) -> Result<(), ApiError> {
             "sql triggers require connection_name".to_string(),
         ));
     }
-    for field in ["query"] {
+    {
+        let field = "query";
         if config
             .get(field)
             .and_then(Value::as_str)

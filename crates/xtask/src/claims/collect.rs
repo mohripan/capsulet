@@ -587,7 +587,7 @@ mod tests {
         );
         // A value is never mistaken for a filter.
         let invocation = CargoInvocation::parse(&["--test", "agent_runs", "--exclude", "x"]);
-        assert!(invocation.filters.is_empty());
+        assert_eq!(invocation.filters, [] as [std::string::String; 0]);
     }
 
     #[test]

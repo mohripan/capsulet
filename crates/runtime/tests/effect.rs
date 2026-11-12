@@ -184,7 +184,7 @@ fn the_protocol_records_the_claim_before_the_outcome() {
     ordered.push(event(1, attempt.claimed()));
     ordered.push(event(2, attempt.finalized(Digest::of(b"pull request 41"))));
     let state = RunState::fold(&ordered).expect("folds");
-    assert!(state.outstanding_effects().is_empty());
+    assert_eq!(state.outstanding_effects(), []);
     assert!(state.effect_completed(&id("publish"), &id("open-pull-request")));
 }
 
@@ -262,7 +262,7 @@ fn an_effect_the_far_side_refused_outright_is_abandoned_rather_than_doubted() {
     ));
 
     let state = RunState::fold(&events).expect("folds");
-    assert!(state.outstanding_effects().is_empty());
+    assert_eq!(state.outstanding_effects(), []);
     assert!(!state.effect_completed(&id("publish"), &id("open-pull-request")));
     assert!(
         state.uncertain_effects().is_empty(),

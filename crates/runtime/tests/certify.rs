@@ -200,7 +200,7 @@ fn a_loop_that_is_still_running_is_not_reported_as_having_stopped() {
         &events,
         vec![],
     );
-    assert!(evidence.loops.is_empty());
+    assert_eq!(evidence.loops, [] as [capsulet_ir::LoopOutcome; 0]);
 }
 
 #[test]

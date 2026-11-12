@@ -920,12 +920,12 @@ async fn finalizing_takes_the_effect_out_of_the_outstanding_set() {
         Some(receipt.to_string()).as_deref()
     );
 
-    assert!(
+    assert_eq!(
         store
             .list_outstanding_ir_effects(Some(&tenant), 10)
             .await
-            .expect("list outstanding")
-            .is_empty()
+            .expect("list outstanding"),
+        [] as [capsulet_postgres::IrEffectClaim; 0]
     );
 }
 

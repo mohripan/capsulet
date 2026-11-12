@@ -459,7 +459,7 @@ fn writing_a_version_moves_every_manifest_and_only_its_version() {
                 && !line.starts_with("---")
         })
         .collect();
-    assert!(!changed.is_empty());
+    assert_ne!(changed, [] as [&str; 0]);
     for line in &changed {
         assert!(line.contains("0.1.1") || line.contains("0.1.0"), "{line}");
     }

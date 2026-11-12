@@ -482,12 +482,12 @@ async fn another_project_can_neither_read_nor_change_a_run_by_its_id() {
             .expect("reads")
             .is_none()
     );
-    assert!(
+    assert_eq!(
         store
             .list_workflow_step_runs(&run_id, "default", &foreign)
             .await
-            .expect("reads")
-            .is_empty()
+            .expect("reads"),
+        [] as [capsulet_core::WorkflowStepRun; 0]
     );
     assert!(
         store
@@ -531,12 +531,12 @@ async fn another_project_can_neither_read_nor_change_a_run_by_its_id() {
             .expect("reads")
             .is_none()
     );
-    assert!(
+    assert_eq!(
         store
             .list_job_artifacts_in_project(&job_run, "default", &foreign)
             .await
-            .expect("reads")
-            .is_empty()
+            .expect("reads"),
+        [] as [capsulet_core::JobArtifact; 0]
     );
 
     // The owner sees it as it was left, and can act on it.

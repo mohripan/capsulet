@@ -348,11 +348,8 @@ mod tests {
             WorkflowGraph::new(&workflow, &steps, &[edge("a", "merge"), edge("b", "merge")])
                 .unwrap();
         let started = BTreeSet::from([id("a"), id("b")]);
-        assert!(
-            graph
-                .ready_steps(&started, &BTreeSet::from([id("a")]))
-                .is_empty()
-        );
+        let ready = graph.ready_steps(&started, &BTreeSet::from([id("a")]));
+        assert!(ready.is_empty(), "{ready:?}");
         assert_eq!(
             graph.ready_steps(&started, &BTreeSet::from([id("a"), id("b")]))[0]
                 .id()

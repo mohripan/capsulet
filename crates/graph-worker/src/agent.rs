@@ -1276,7 +1276,7 @@ mod tests {
         ]);
         let problems = run_rules(&parameters, "too long").expect("known rules");
         assert_eq!(problems.len(), 2);
-        assert!(run_rules(&parameters, "cit").expect("known rules").len() == 1);
+        assert_eq!(run_rules(&parameters, "cit").expect("known rules").len(), 1);
     }
 
     #[test]
@@ -1294,10 +1294,9 @@ mod tests {
     #[test]
     fn valid_json_means_it_parses() {
         let parameters = BTreeMap::from([("rule.valid_json".to_string(), "true".to_string())]);
-        assert!(
-            run_rules(&parameters, r#"{"a":1}"#)
-                .expect("known")
-                .is_empty()
+        assert_eq!(
+            run_rules(&parameters, r#"{"a":1}"#).expect("known"),
+            [] as [std::string::String; 0]
         );
         assert_eq!(run_rules(&parameters, "{a:1}").expect("known").len(), 1);
     }

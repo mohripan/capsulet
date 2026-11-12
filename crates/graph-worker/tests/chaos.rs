@@ -193,7 +193,14 @@ async fn assert_run_is_intact(
     );
 
     let performed = executor.effects_performed();
-    assert!(!performed.is_empty());
+    assert_ne!(
+        performed,
+        [] as [(
+            std::string::String,
+            u32,
+            std::option::Option<std::string::String>
+        ); 0]
+    );
     let keys: Vec<Option<String>> = performed.iter().map(|(_, _, key)| key.clone()).collect();
     assert!(
         keys.windows(2).all(|pair| pair[0] == pair[1]),
@@ -210,7 +217,7 @@ async fn assert_run_is_intact(
     );
 
     // The ledger agrees with the log about what is outstanding.
-    assert!(state.outstanding_effects().is_empty());
+    assert_eq!(state.outstanding_effects(), []);
     let claims = store
         .ir_effect_claims_for_run(tenant, project, run_id)
         .await

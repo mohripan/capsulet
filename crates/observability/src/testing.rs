@@ -140,11 +140,14 @@ struct Unreachable {
 }
 
 impl SpanExporter for Unreachable {
-    async fn export(&self, _batch: Vec<SpanData>) -> OTelSdkResult {
+    fn export(
+        &self,
+        _batch: Vec<SpanData>,
+    ) -> impl std::future::Future<Output = OTelSdkResult> + Send {
         self.attempts.fetch_add(1, Ordering::SeqCst);
-        Err(OTelSdkError::InternalFailure(
+        std::future::ready(Err(OTelSdkError::InternalFailure(
             "the collector is unreachable".to_string(),
-        ))
+        )))
     }
 }
 

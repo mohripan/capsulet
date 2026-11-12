@@ -8,7 +8,7 @@ and runtime-wide enforcement remain planned.
 
 ## Required Tools
 
-- Rust 1.96.0 (installed automatically by `rustup` from `rust-toolchain.toml`)
+- Rust 1.99.0 (installed automatically by `rustup` from `rust-toolchain.toml`)
 - Cargo
 - Node.js 20 or newer, with npm 10 (24 for the `claims-evidence` gate)
 - Python 3.12 or newer

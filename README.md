@@ -349,7 +349,7 @@ full profile ran and passed; see [CI](docs/development/ci.md). The
 public claim, endpoint, status or client call, read the [public contracts](docs/contracts/README.md)
 and the [development guide](docs/development.md).
 
-Rust is pinned to 1.96.0; the dashboard needs Node.js 20 or newer, and `claims-evidence` needs 24.
+Rust is pinned to 1.99.0; the dashboard needs Node.js 20 or newer, and `claims-evidence` needs 24.
 A version change goes through `release set`; see the
 [release process](docs/contracts/release-process.md).
 

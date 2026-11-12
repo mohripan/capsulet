@@ -1853,7 +1853,7 @@ mod untrusted_input_tests {
 
         let (logs, artifacts) = split_artifact_markers(Some(cut.to_string()));
 
-        assert!(artifacts.is_empty());
+        assert_eq!(artifacts, vec![]);
         assert!(
             logs.unwrap_or_default()
                 .contains("cut off by the log limit")

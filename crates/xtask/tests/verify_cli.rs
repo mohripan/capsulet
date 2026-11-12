@@ -308,7 +308,7 @@ fn the_doctor_states_the_minimum_it_holds_each_tool_to() {
     let output = output(&["verify", "doctor"]);
     let report = String::from_utf8_lossy(&output.stdout).into_owned();
     for (tool, minimum) in [
-        ("cargo", "1.96"),
+        ("cargo", "1.99"),
         ("node", "20"),
         ("python", "3.12"),
         ("helm", "3.18"),

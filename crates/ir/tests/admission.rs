@@ -193,7 +193,7 @@ fn every_code_has_a_distinct_name_owner_and_description() {
     assert_eq!(names.len(), AdmissionCode::all().len());
 
     for code in AdmissionCode::all() {
-        assert!(!code.description().is_empty());
+        assert_ne!(code.description(), "");
         assert_ne!(code.owner().as_str(), "");
     }
 }

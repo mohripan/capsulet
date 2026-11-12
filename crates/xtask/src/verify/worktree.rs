@@ -136,7 +136,10 @@ mod tests {
         assert!(before.is_clean());
         fs::create_dir_all(root.join("ignored")).expect("directory");
         fs::write(root.join("ignored/log"), "evidence").expect("write");
-        assert!(Snapshot::take(root).changes_since(&before).is_empty());
+        assert_eq!(
+            Snapshot::take(root).changes_since(&before),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]

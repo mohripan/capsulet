@@ -59,7 +59,7 @@ The clean-checkout rehearsal remains open under
 [the integrity tracker](https://github.com/mohripan/capsulet/issues/104). Do not infer M1 completion
 from the current `full` summary.
 
-Supported baseline tools are Rust 1.96, Node.js 20/npm 10 or newer compatible releases, Python
+Supported baseline tools are Rust 1.99, Node.js 20/npm 10 or newer compatible releases, Python
 3.12 or newer, Docker Engine 27 or newer with Compose v2, Helm 3.18 or newer, Kind 0.30 or newer,
 and a kubectl release compatible with the target cluster. `verify doctor` asks each of these tools,
 plus Git, PowerShell, `cargo-audit` and `cargo-deny`, for its version without changing anything, and

@@ -121,9 +121,9 @@ fn accepts_a_citation_that_re_derives_and_states_its_proposition() {
     let certificate = check(&proposal, &snapshot);
 
     assert_eq!(certificate.verdict, Verdict::Accepted);
-    assert!(certificate.residuals.is_empty());
+    assert_eq!(certificate.residuals, vec![]);
     assert_eq!(certificate.discharged.len(), 2);
-    assert!(!certificate.replay_digest.is_empty());
+    assert_ne!(certificate.replay_digest, "");
 }
 
 #[test]
@@ -239,7 +239,7 @@ fn returns_conditional_when_the_derivation_needed_a_reading() {
     assert_eq!(certificate.verdict, Verdict::Conditional);
     assert_eq!(certificate.residuals.len(), 1);
     assert_eq!(certificate.residuals[0].evidence_ids, vec!["ev_1"]);
-    assert!(certificate.errors.is_empty());
+    assert_eq!(certificate.errors, vec![]);
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn a_reading_of_a_fabricated_citation_is_still_rejected() {
     let certificate = check(&proposal, &snapshot);
 
     assert_eq!(certificate.verdict, Verdict::Rejected);
-    assert!(certificate.residuals.is_empty());
+    assert_eq!(certificate.residuals, vec![]);
 }
 
 #[test]
@@ -543,7 +543,7 @@ fn every_error_routes_to_a_repair_owner() {
 
     let certificate = check(&proposal, &snapshot);
 
-    assert!(!certificate.errors.is_empty());
+    assert_ne!(certificate.errors, vec![]);
     for error in &certificate.errors {
         assert!(
             [

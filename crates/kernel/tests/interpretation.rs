@@ -135,7 +135,7 @@ fn the_residual_names_the_premise_the_conclusion_and_the_evidence() {
         vec!["ev_1".to_string()],
         "and where to go to check"
     );
-    assert!(!residual.rationale.trim().is_empty());
+    assert_ne!(residual.rationale.trim(), "");
 }
 
 #[test]

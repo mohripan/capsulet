@@ -50,8 +50,8 @@ fn local_text_ingestion_creates_evidence_and_candidate_claims() {
 
     assert_eq!(output.run().status(), IngestionRunStatus::Succeeded);
     assert_eq!(output.sources().len(), 1);
-    assert!(!output.evidence().is_empty());
-    assert!(!output.entities().is_empty());
+    assert_ne!(output.evidence(), []);
+    assert_ne!(output.entities(), []);
     assert_eq!(output.claims().len(), 2);
     assert!(
         output

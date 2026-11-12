@@ -207,7 +207,7 @@ fn every_field_of_an_assurance_policy_is_accounted_for() {
         "and an observing policy leaves it observing"
     );
 
-    assert!(required_contracts.is_empty());
+    assert_eq!(required_contracts.as_slice(), []);
     let mut demanding_contract = policy.clone();
     demanding_contract.required_contracts = vec![id("scanned-under-named-rules")];
     assert!(
@@ -218,7 +218,7 @@ fn every_field_of_an_assurance_policy_is_accounted_for() {
         "required_contracts is read: this is the field that was dead"
     );
 
-    assert!(required_verifiers.is_empty());
+    assert_eq!(required_verifiers.as_slice(), []);
     let mut demanding_verifier = policy.clone();
     demanding_verifier.required_verifiers = vec![VerifierRequirement::named(id("cargo-audit"))];
     assert_eq!(
@@ -244,7 +244,7 @@ fn every_field_of_an_assurance_policy_is_accounted_for() {
         "boundaries is read: an ungoverned boundary is not implicitly open"
     );
 
-    assert!(waiver_authorities.is_empty());
+    assert_eq!(waiver_authorities.as_slice(), []);
     let waived = certificate(vec![obligation(DischargeState::Waived {
         policy: id("release-policy"),
         authority: id("platform-admin"),
@@ -270,7 +270,7 @@ fn every_field_of_an_assurance_policy_is_accounted_for() {
         "and a listed one can"
     );
 
-    assert!(trust_routes.is_empty());
+    assert_eq!(trust_routes.as_slice(), []);
     let mut routed = policy.clone();
     routed.trust_routes = vec![TrustRoute {
         into: id("governed-memory"),

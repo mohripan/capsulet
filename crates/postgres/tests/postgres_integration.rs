@@ -489,12 +489,12 @@ async fn audit_listing_excludes_foreign_projects_and_tenants_before_limit() {
         .expect("list");
     assert_eq!(visible.len(), 1);
     assert_eq!(visible[0].path, "/v1/owned-operation");
-    assert!(
+    assert_eq!(
         store
             .list_audit_events_in_project("foreign-tenant", &project, 10)
             .await
-            .expect("list")
-            .is_empty()
+            .expect("list"),
+        [] as [capsulet_postgres::AuditEvent; 0]
     );
 }
 
@@ -627,12 +627,12 @@ async fn workflow_listing_applies_tenant_and_project_scope_before_limit() {
         .expect("list");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id(), owned.id());
-    assert!(
+    assert_eq!(
         store
             .list_workflows_in_project("foreign-tenant", &project, 10)
             .await
-            .expect("list")
-            .is_empty()
+            .expect("list"),
+        [] as [capsulet_core::WorkflowDefinition; 0]
     );
 }
 
@@ -1003,12 +1003,9 @@ async fn a_project_id_belongs_to_one_tenant() {
             .collect::<Vec<_>>(),
         [project("default", "Renamed")]
     );
-    assert!(
-        store
-            .list_all_projects(&other_tenant)
-            .await
-            .expect("list")
-            .is_empty()
+    assert_eq!(
+        store.list_all_projects(&other_tenant).await.expect("list"),
+        [] as [capsulet_postgres::ProjectRecord; 0]
     );
 }
 
@@ -1446,12 +1443,12 @@ async fn connector_upsert_cannot_take_over_another_projects_identifier() {
             .expect("list"),
         vec![original]
     );
-    assert!(
+    assert_eq!(
         store
             .list_ingestion_connectors(other_scope.tenant_id(), other_scope.project_id(), 10)
             .await
-            .expect("list")
-            .is_empty()
+            .expect("list"),
+        [] as [capsulet_core::IngestionConnector; 0]
     );
 }
 
@@ -1497,19 +1494,19 @@ async fn service_accounts_are_listed_and_revoked_only_in_their_own_project() {
             .expect("list"),
         vec![saved]
     );
-    assert!(
+    assert_eq!(
         store
             .list_service_accounts("other-tenant", &account.project_id, 10)
             .await
-            .expect("list")
-            .is_empty()
+            .expect("list"),
+        [] as [capsulet_postgres::ServiceAccountRecord; 0]
     );
-    assert!(
+    assert_eq!(
         store
             .list_service_accounts(&account.tenant_id, "other-project", 10)
             .await
-            .expect("list")
-            .is_empty()
+            .expect("list"),
+        [] as [capsulet_postgres::ServiceAccountRecord; 0]
     );
     assert!(
         !store

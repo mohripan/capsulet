@@ -45,7 +45,7 @@ fn every_operation_should_have_stable_metadata_and_complete_shapes() {
     for endpoint in endpoint_contracts() {
         let operation = &document["paths"][endpoint.path][endpoint.method.as_lowercase()];
         let operation_id = operation["operationId"].as_str().expect("operationId");
-        assert!(!operation_id.is_empty());
+        assert_ne!(operation_id, "");
         assert!(operation_ids.insert(operation_id));
         assert_eq!(
             operation["x-capsulet-stability"],
