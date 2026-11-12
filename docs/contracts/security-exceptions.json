@@ -12,7 +12,7 @@
       "owner": "platform",
       "rationale": "rsa is present in Cargo.lock through optional sqlx-mysql, which is not compiled by this PostgreSQL-only workspace.",
       "compensating_control": "every_uncompiled_exception_is_uncompiled fails as soon as rsa enters the build graph, so enabling MySQL cannot happen with this exception still in place.",
-      "issue": "https://github.com/mohripan/capsulet/issues/104",
+      "issue": "https://github.com/mohripan/capsulet/issues/143",
       "expires": "2027-03-01"
     },
     {
@@ -26,7 +26,7 @@
       "owner": "platform",
       "rationale": "A CVE in the SQLite that libsqlite3-sys bundles. The crate is present in Cargo.lock only through optional sqlx-sqlite, which this PostgreSQL-only workspace does not compile; the fix (0.39) needs a newer sqlx major.",
       "compensating_control": "every_uncompiled_exception_is_uncompiled fails as soon as libsqlite3-sys enters the build graph, so enabling SQLite cannot happen with this exception still in place.",
-      "issue": "https://github.com/mohripan/capsulet/issues/104",
+      "issue": "https://github.com/mohripan/capsulet/issues/143",
       "expires": "2027-03-01"
     },
     {
