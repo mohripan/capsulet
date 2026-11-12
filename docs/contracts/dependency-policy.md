@@ -79,7 +79,7 @@ does meet them, and the two ignore lists are held equal on purpose.
 ## Scanner versions and regression checks
 
 CI installs `cargo-audit` 0.22.2 and `cargo-deny` 0.20.2 by exact version
-(`.github/workflows/supply-chain.yml`), so a scanner release cannot change what passes without a
+(`.github/workflows/ci.yml`), so a scanner release cannot change what passes without a
 commit. `verify doctor` holds a developer machine to those versions as minimums. `pip-audit` is
 pinned to 2.10.1 as above. Bump a pin in a commit of its own, with the gate's result.
 

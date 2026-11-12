@@ -3,8 +3,14 @@ name: CI
 # Every job here calls `capsulet-xtask verify --gate ...`, never a hand-rolled
 # command. What passes or fails is decided by repository code that a developer
 # runs identically on their own machine; this file only schedules the work and
-# provides the services it needs. A workflow that reimplements a check is a
+# provides the tools it needs. A workflow that reimplements a check is a
 # second definition of "green" that drifts from the first.
+#
+# Each job uploads its run's verification-summary.json, and `required` fails
+# unless every gate of the full profile ran and passed in some job and every
+# job succeeded. `required` is the check branch protection asks for, so adding
+# a job here needs no settings change. `ci check` (the ci-contract gate) holds
+# this file to all of that; docs/development/ci.md describes it.
 
 on:
   push:
@@ -43,6 +49,14 @@ jobs:
           verify --gate verifier --gate format --gate lint --gate unit --gate ir
           --gate replay
 
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-rust
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
   contracts:
     name: Product contracts
     runs-on: ubuntu-latest
@@ -79,6 +93,15 @@ jobs:
           cargo run -p capsulet-xtask --locked --
           verify --gate claims --gate api-contracts --gate authorization --gate sdk
           --gate claims-evidence --gate release --gate supply-chain-contract
+          --gate ci-contract
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-contracts
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
 
   postgres:
     name: PostgreSQL
@@ -113,6 +136,14 @@ jobs:
           path: .capsulet/verify/*/test-counts.json
           if-no-files-found: error
 
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-postgres
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
   dashboard:
     name: Dashboard
     runs-on: ubuntu-latest
@@ -140,6 +171,14 @@ jobs:
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate dashboard
 
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-dashboard
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
   helm:
     name: Helm
     runs-on: ubuntu-latest
@@ -155,8 +194,18 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v4.1.4
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate helm
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-helm
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
 
   compose:
     name: Compose
@@ -173,6 +222,14 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate compose
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-compose
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
 
   dashboard-e2e:
     name: Dashboard end-to-end
@@ -205,6 +262,14 @@ jobs:
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate dashboard-e2e
 
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-dashboard-e2e
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
       # The gate log carries the stack's service logs when anything failed. The
       # stack, and every credential in it, is gone by the time this runs.
       - name: Upload the gate log
@@ -217,7 +282,7 @@ jobs:
 
   # Every component's image, built from the plan release.toml defines, with
   # its labels and non-root user checked, then removed. The Rust targets share
-  # one build stage, so the workspace compiles once for all five.
+  # one build stage, so the workspace compiles once for all of them.
   containers:
     name: Container images
     runs-on: ubuntu-latest
@@ -233,3 +298,230 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Verify
         run: cargo run -p capsulet-xtask --locked -- verify --gate containers
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-containers
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
+  # The chart on a Kind cluster of the run's own: images built from this
+  # checkout and loaded into it, generated test credentials, Helm tests, an
+  # in-cluster smoke over Kubernetes service names, and an uninstall that must
+  # leave nothing behind. The gate deletes the cluster however it ends.
+  kind:
+    name: Kind
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Install Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v4.1.4
+
+      # Pinned by checksum, so a release of either cannot change what the gate
+      # runs without a commit that says so; the node image is pinned by digest
+      # in tests/kind/cluster.yaml. Downloaded outside the checkout, which the
+      # images' labels would otherwise call dirty.
+      - name: Install Kind and kubectl
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fsSLo kind https://github.com/kubernetes-sigs/kind/releases/download/v0.31.0/kind-linux-amd64
+          echo "eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa  kind" | sha256sum --check
+          curl -fsSLo kubectl https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl
+          echo "a2e984a18a0c063279d692533031c1eff93a262afcc0afdc517375432d060989  kubectl" | sha256sum --check
+          sudo install -m 0755 kind kubectl /usr/local/bin/
+
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate kind
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-kind
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
+      # On failure the gate log holds the namespace's events, every pod's
+      # description and logs, and the Helm release's status. No credential is
+      # printed, and the cluster is gone by the time this runs.
+      - name: Upload the gate log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: kind-log
+          path: .capsulet/verify/*/kind.log
+          if-no-files-found: ignore
+
+  security:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # gate-regressions shows the lint gate failing on a Clippy warning.
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component clippy
+          rustup default 1.96.0
+
+      # Pinned, so a scanner release cannot change what passes without a
+      # commit that says so. `verify doctor` holds a developer machine to the
+      # same versions as minimums.
+      - name: Install scanners
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-audit@0.22.2,cargo-deny@0.20.2
+
+      - name: Install Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      # gate-regressions runs the dashboard's own ESLint against a crashing
+      # configuration, so the dashboard's dependencies have to be installed.
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      # The exceptions live in docs/contracts/security-exceptions.json,
+      # .cargo/audit.toml and deny.toml, each owned and expiring.
+      # gate-regressions shows the lint, dashboard and security gates failing
+      # on the defects they exist to catch.
+      - name: Verify
+        run: >
+          cargo run -p capsulet-xtask --locked --
+          verify --gate security --gate gate-regressions
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-security
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
+  secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      # The whole history, because a secret removed from the tree is still in
+      # every clone of the commit that added it.
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate secrets
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-secrets
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
+  # The third-party images the chart and Compose pull, each scanned by the
+  # digest they pin, under trivy.yaml. Capsulet cannot rebuild them, so a
+  # finding no newer pin fixes is a registered, expiring exception in
+  # docs/contracts/security-exceptions.json; anything else fails. Trivy runs
+  # in Docker, pinned by digest, and the gate writes its version, database and
+  # result to the job summary.
+  dependency-images:
+    name: Dependency images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate dependency-images
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-dependency-images
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
+  # The one check branch protection requires. It runs even when a job it
+  # waits for failed or was cancelled, and passes only when every one of them
+  # succeeded and their summaries show every gate of the full profile ran and
+  # passed: a job that went green without running its gate cannot hide here.
+  required:
+    name: Required
+    if: always()
+    needs:
+      - rust
+      - contracts
+      - postgres
+      - dashboard
+      - helm
+      - compose
+      - dashboard-e2e
+      - containers
+      - kind
+      - security
+      - secrets
+      - dependency-images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Download the verification summaries
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: verification-*
+          path: ${{ runner.temp }}/verification
+
+      - name: Check every gate ran and passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: >
+          cargo run -p capsulet-xtask --locked --
+          verify summary --require full --needs "$NEEDS" "$RUNNER_TEMP/verification"

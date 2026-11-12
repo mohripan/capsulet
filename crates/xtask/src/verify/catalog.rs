@@ -650,6 +650,16 @@ pub(crate) fn gates() -> Vec<Gate> {
             )],
         ),
         gate(
+            "ci-contract",
+            "CI runs every check through the verifier: no job runs its own checks or skips one \
+             silently, every Full gate runs in some job, each job uploads its summary, and \
+             `required` waits for every job and checks those summaries",
+            &["cargo"],
+            300,
+            &[Fast, Full],
+            vec![xtask(&["ci", "check"])],
+        ),
+        gate(
             "secrets",
             "gitleaks over the whole Git history; every finding a registered, unexpired test \
              fixture",
@@ -711,7 +721,9 @@ pub(crate) fn gates() -> Vec<Gate> {
         ),
         gate(
             "helm",
-            "Helm lint and render, and every workload's image against release.toml",
+            "Helm lint and render; every workload's image against release.toml, and its pod held \
+             to non-root, seccomp, no escalation, no capabilities, probes, tokens only where \
+             used, and secrets the chart renders or its values name",
             &["helm", "cargo"],
             300,
             &[Full],
@@ -735,7 +747,9 @@ pub(crate) fn gates() -> Vec<Gate> {
         // Not in a profile: this one needs a Wasmtime runtime and a WASI Python
         // build that a normal checkout does not have. It runs nightly by name,
         // so its pass/fail still lives here rather than in YAML.
-        gate(
+        // The test is `#[ignore]`d, so it shows as not run anywhere else; here
+        // it has to run, and fails without the runtime.
+        every_test_must_run(gate(
             "wasm-python",
             "WASI Python runner integration",
             &["cargo", "wasmtime"],
@@ -751,17 +765,32 @@ pub(crate) fn gates() -> Vec<Gate> {
                     "wasm_python_runner",
                     "--locked",
                     "--",
+                    "--ignored",
                     "--nocapture",
                 ],
             )],
-        ),
-        gate(
-            "kind",
-            "Kind cluster discovery (install/smoke pending #102)",
-            &["kind", "kubectl", "helm", "docker"],
-            1_800,
-            &[Full],
-            vec![command("kind", &["get", "clusters"])],
-        ),
+        )),
+        // A cluster of the run's own, named for it, which the teardown deletes
+        // even when the smoke did not get that far; see `kind.rs`.
+        Gate {
+            teardown: vec![xtask(&["kind", "delete"])],
+            ..gate(
+                "kind",
+                "The chart installed on a Kind cluster of its own from images built here, its \
+                 Helm tests, and a smoke that logs in, runs a job and an agent and checks project \
+                 isolation; then uninstalled with nothing left behind",
+                &["kind", "kubectl", "helm", "docker", "cargo", "git"],
+                3_600,
+                &[Full],
+                vec![xtask(&["kind", "smoke"])],
+            )
+        },
     ]
+}
+
+/// `cargo run -p capsulet-xtask --locked -- <arguments>`.
+fn xtask(arguments: &[&str]) -> CommandSpec {
+    let mut all = vec!["run", "-p", "capsulet-xtask", "--locked", "--"];
+    all.extend_from_slice(arguments);
+    command("cargo", &all)
 }

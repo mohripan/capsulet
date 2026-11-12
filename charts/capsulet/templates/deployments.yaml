@@ -31,6 +31,9 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "capsulet.serviceAccountName" $root }}
+      {{- /* Only the worker and the evaluator use the Kubernetes API: they create the
+             execution and plugin Jobs. Every other component runs without a token. */}}
+      automountServiceAccountToken: {{ has $name (list "worker" "evaluator") }}
       securityContext:
         {{- toYaml $root.Values.securityContext | nindent 8 }}
       {{- if or $root.Values.highAvailability.podAntiAffinity.enabled $root.Values.highAvailability.topologySpread.enabled }}
@@ -197,6 +200,24 @@ spec:
                   name: {{ include "capsulet.objectStorageCredentialsSecretName" $root }}
                   key: {{ include "capsulet.objectStorageSecretKeyKey" $root }}
             {{- end }}
+          {{- end }}
+          {{- if and (eq $name "dashboard") $root.Values.dashboard.temporaryAdmin.existingSecret }}
+          env:
+            - name: CAPSULET_TEMP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.dashboard.temporaryAdmin.existingSecret | quote }}
+                  key: username
+            - name: CAPSULET_TEMP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.dashboard.temporaryAdmin.existingSecret | quote }}
+                  key: password
+            - name: CAPSULET_TEMP_ADMIN_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.dashboard.temporaryAdmin.existingSecret | quote }}
+                  key: token
           {{- end }}
           {{- if or (eq $name "worker") (eq $name "dashboard") (and (eq $name "api") (eq (include "capsulet.objectStorageMode" $root) "filesystem")) }}
           volumeMounts:

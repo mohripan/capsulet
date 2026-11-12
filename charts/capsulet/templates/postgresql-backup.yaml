@@ -41,6 +41,7 @@ spec:
         spec:
           restartPolicy: OnFailure
           serviceAccountName: {{ include "capsulet.serviceAccountName" . }}
+          automountServiceAccountToken: false
           securityContext:
             {{- toYaml .Values.postgresql.securityContext | nindent 12 }}
           containers:

@@ -15,7 +15,7 @@ use serde_json::Value;
 use super::{BuildIdentity, Release};
 
 #[derive(Serialize)]
-struct Entry {
+pub(super) struct Entry {
     component: String,
     /// `<registry>/<namespace>/<image>`, without a tag.
     image: String,
@@ -29,7 +29,7 @@ struct Entry {
     build_args: String,
 }
 
-fn plan(release: &Release, identity: &BuildIdentity) -> Vec<Entry> {
+pub(super) fn plan(release: &Release, identity: &BuildIdentity) -> Vec<Entry> {
     let build_args = identity
         .build_args()
         .iter()
@@ -84,7 +84,7 @@ pub(super) fn build_and_check(root: &Path, release: &Release) -> Result<(), Stri
     result
 }
 
-fn build_all(
+pub(super) fn build_all(
     root: &Path,
     release: &Release,
     identity: &BuildIdentity,

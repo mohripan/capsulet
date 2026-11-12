@@ -340,10 +340,12 @@ The gates cover:
 - the Python SDK and the dashboard;
 - dependency, license and secret policy;
 - Compose and Playwright on stacks of their own;
-- the chart;
+- the chart, rendered and checked, then installed and exercised on a Kind cluster of its own;
 - the release identity, the container images and the supply-chain workflows.
 
-The [verification matrix](docs/contracts/verification-matrix.md) lists them all. Before changing a
+In CI each job runs some of these gates, and the `Required` job passes only when every gate of the
+full profile ran and passed; see [CI](docs/development/ci.md). The
+[verification matrix](docs/contracts/verification-matrix.md) lists them all. Before changing a
 public claim, endpoint, status or client call, read the [public contracts](docs/contracts/README.md)
 and the [development guide](docs/development.md).
 

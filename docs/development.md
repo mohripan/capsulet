@@ -362,6 +362,19 @@ defaults and with each component's digest set, it holds every workload to:
 - readiness and liveness probes;
 - only the secrets the chart renders or its values name.
 
+The `kind` gate then installs the chart on a Kind cluster of its own and exercises it there:
+
+```sh
+cargo run -p capsulet-xtask --locked -- verify --gate helm --gate kind
+```
+
+It builds every image from the checkout and loads it into a cluster named for the verifier run,
+with a kubeconfig of its own, so your kubeconfig and your other clusters are never touched. It
+generates the test credentials, validates every manifest against the API server before installing,
+runs `helm test` and an in-cluster smoke, and uninstalls. Whatever happens, it deletes that cluster.
+[CI](development/ci.md#the-kind-gate) describes each step, how CI runs the gates, and how to
+reproduce a failed job.
+
 See [local Kubernetes](local-kubernetes-runner.md) to install it on minikube.
 
 ## Architecture Rules

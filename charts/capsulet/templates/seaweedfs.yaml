@@ -76,6 +76,7 @@ spec:
         {{- /* Restart on a new key, which SeaweedFS reads only at startup. */}}
         checksum/credentials: {{ toJson $keys | sha256sum | quote }}
     spec:
+      automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.seaweedfs.securityContext | nindent 8 }}
       containers:

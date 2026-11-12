@@ -17,6 +17,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `claims` | yes | yes | Claims, lifecycle, and public surfaces | PowerShell |
 | `release` | yes | yes | `release.toml` against every crate, the Python SDK, the dashboard, the chart, OpenAPI, Compose and the Dockerfiles, and every image and repository reference in tracked files ([release process](release-process.md)) | Cargo, Git |
 | `supply-chain-contract` | yes | yes | Every workflow pins its actions by SHA, gives pull request code no write permission, builds each image once, and scans, attests, signs and verifies the pushed digest before tagging it; base images are pinned by digest and refreshed by Dependabot ([supply chain](../security/supply-chain.md)) | Cargo, Git |
+| `ci-contract` | yes | yes | CI only schedules gates: no workflow step runs a check itself or behind an `if:`, a `ci.yml` matrix varies only platforms or toolchains, every Full gate runs in some job that uploads its `verification-summary.json`, and `Required` waits for every job, runs `if: always()` and checks the summaries ([CI](../development/ci.md)) | Cargo |
 | `claims-evidence` | yes | yes | Every claim's test evidence is collected, and not ignored or skipped, by the gate command it names; `docs/contracts/test-manifest.json` matches that collection | Cargo, Python, Node.js 24+ with npm, PowerShell |
 | `sdk` | yes | yes | Python and dashboard transports | Python, npm |
 | `dashboard` | no | yes | ESLint and production build | npm |
@@ -29,10 +30,10 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `gate-regressions` | no | yes | The `lint`, `dashboard` and `security` gates' own commands fail on a fixture with a Clippy warning, a crashing ESLint configuration, an unreviewed duplicate dependency and a crate with a published advisory, and pass on a clean one | Cargo with Clippy, cargo-audit, cargo-deny, npm with the dashboard installed |
 | `compose` | no | yes | On a stack of its own (every service built and healthy, seeded alike twice): Compose configuration, agents run over HTTP with the graph worker killed mid-run, and a job leaves logs and a downloadable artifact; reseeding afterwards must leave the fixture as it was | Docker, PowerShell |
 | `dashboard-e2e` | no | yes | On a stack of its own, seeded the same way: Playwright as admin, operator, viewer and service account, including the project-isolation flows for artifacts, memory review, agents and audit events; reseeding afterwards must leave the fixture as it was | Docker, npm |
-| `helm` | no | yes | Chart lint and deterministic render; every workload runs the image `release.toml` names, by tag and by digest | Helm, Cargo |
+| `helm` | no | yes | Chart lint and deterministic render; every workload runs the image `release.toml` names, by tag and by digest, in a non-root, seccomp-confined pod with no privilege escalation, every capability dropped, read-only root filesystems for Capsulet's own containers, probes, a service-account token only where it uses the Kubernetes API, and only secrets the chart renders or its values name | Helm, Cargo |
 | `containers` | no | yes | Every component image built from `release.toml`'s plan as CI builds it, its OCI labels and non-root user checked, then removed | Cargo, Docker, Git |
-| `kind` | no | yes | Cluster discovery only; install/smoke pending [#102](https://github.com/mohripan/capsulet/issues/102) | Kind, kubectl, Helm, Docker |
-| `wasm-python` | no | no | WASI Python runner, nightly by name | Cargo, Wasmtime |
+| `kind` | no | yes | On a Kind cluster of its own, named for the run: images built here and loaded into it, generated test credentials, the workload rules and a server-side dry run before install, `helm test`, and an in-cluster smoke over Service names (health, dashboard login, a job run as a Kubernetes Job, an agent run under the correctness kernel, cross-project and role denial); then an uninstall that must leave nothing, diagnostics on failure, and the cluster deleted ([CI](../development/ci.md#the-kind-gate)) | Kind, kubectl, Helm, Docker, Cargo, Git |
+| `wasm-python` | no | no | WASI Python runner, nightly by name; its test is ignored elsewhere and must run here. The runner's command line and validation are tested in `unit` | Cargo, Wasmtime |
 
 `fast` prints its exact omissions at both the start and end. `full` cannot report success unless
 every full-profile gate ran successfully. Per-gate logs are written below `.capsulet/verify/`.
@@ -41,15 +42,16 @@ executable's target directory so Windows does not block replacing an executable 
 Run directories include a timestamp and process ID and must be newly created, preventing
 concurrent verifier commands from merging or overwriting their captured evidence.
 
-The current graph is provisional, not the complete M1 release gate. In particular, a green `kind`
-result does not prove a deployment was built, installed, exercised, or uninstalled. The `compose`
+In CI, every job uploads its run's `verification-summary.json`, and the `Required` job fails
+unless `verify summary --require full` finds every Full gate there and passed, and every job it
+waited for succeeded ([CI](../development/ci.md)). The `compose`
 and `dashboard-e2e` stacks, their seed and their teardown are described in
 [test identities](../development/test-identities.md). Disposable PostgreSQL containers are isolated from host data, and each database-backed
 test gets a database of its own on them. The `postgres`, `migrations` and `chaos` gates fail when a
 test binary ran nothing, or ignored or filtered out any test. Every run writes each binary's counts
 to `.capsulet/verify/<run>/test-counts.json`; CI keeps that file as an artifact and shows the counts
 in the job summary.
-Required-job aggregation and the clean-checkout rehearsal remain open under
+The clean-checkout rehearsal remains open under
 [the integrity tracker](https://github.com/mohripan/capsulet/issues/104). Do not infer M1 completion
 from the current `full` summary.
 

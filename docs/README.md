@@ -35,6 +35,7 @@ Current docs:
 - [Security](security.md), [secrets and rotation](security/secrets-rotation.md) and the
   [supply chain](security/supply-chain.md)
 - [Test identities and the stack fixture](development/test-identities.md)
+- [CI](development/ci.md): the jobs, the `Required` check, the Kind gate, and reproducing a failure
 - [Public contracts](contracts/README.md), including the [release process](contracts/release-process.md)
   and the [verification matrix](contracts/verification-matrix.md)
 

@@ -210,6 +210,22 @@ fn is_image_segment(value: &str) -> bool {
         && value.ends_with(|character: char| character.is_ascii_alphanumeric())
 }
 
+pub(crate) use chart::{
+    referenced_secrets as secrets_read, render as chart_documents, workload_findings,
+    workload_images,
+};
+
+/// Builds every component's image as the `containers` gate does, tagged
+/// `capsulet-verify/<image>:<version>-<pid>`, and checks each one's labels and
+/// user. Every reference it built is in `built`, even when a later one fails,
+/// so the caller can remove them.
+pub(crate) fn build_verified(root: &Path, built: &mut Vec<String>) -> Result<(), String> {
+    let release = Release::load(root)?;
+    let identity = BuildIdentity::current(root)?;
+    let entries = images::plan(&release, &identity);
+    images::build_all(root, &release, &identity, &entries, built)
+}
+
 /// What an image built from this checkout is labelled with.
 pub(crate) struct BuildIdentity {
     pub(crate) version: String,

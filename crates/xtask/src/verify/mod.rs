@@ -1,18 +1,28 @@
 pub(crate) mod catalog;
 mod compose;
 mod counts;
+mod kind;
 mod postgres;
 pub(crate) mod process;
+mod summary;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
     env, fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use catalog::{Gate, Profile, gates};
+
+/// The variable that tells a gate's steps which verifier run they belong to.
+pub(crate) const RUN_VARIABLE: &str = "CAPSULET_VERIFY_RUN";
 use process::{ProcessFailure, run_command};
+
+/// `xtask kind smoke|delete`.
+pub(crate) fn kind(arguments: &[String]) -> Result<(), String> {
+    kind::run(arguments)
+}
 
 /// `xtask stack up|down`.
 pub(crate) fn stack(arguments: &[String]) -> Result<(), String> {
@@ -25,6 +35,12 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     };
     if command != "verify" {
         return Err(format!("unknown xtask command: {command}"));
+    }
+    if arguments
+        .get(1)
+        .is_some_and(|argument| argument == "summary")
+    {
+        return summary::run(&arguments[2..]);
     }
     let options = Options::parse(&arguments[1..])?;
     if options.doctor {
@@ -138,7 +154,7 @@ const SUPPORTED_TOOLS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("kubectl", "kubectl", &["version", "--client"], None),
     // Only required to run: the release gates read the commit an image is built from.
     ("git", "git", &["--version"], None),
-    // The versions CI pins in .github/workflows/supply-chain.yml.
+    // The versions CI pins in .github/workflows/ci.yml.
     ("cargo-audit", "cargo-audit", &["--version"], Some("0.22.2")),
     ("cargo-deny", "cargo-deny", &["--version"], Some("0.20.2")),
 ];
@@ -218,7 +234,15 @@ fn execute(options: &Options) -> Result<(), String> {
     let log_directory = log_directory(&root)?;
     let mut passed = Vec::new();
     let mut ran = Vec::new();
-    let result = run_selected(&selected, &root, &log_directory, &mut passed, &mut ran);
+    let mut records = Vec::new();
+    let result = run_selected(
+        &selected,
+        &root,
+        &log_directory,
+        &mut passed,
+        &mut ran,
+        &mut records,
+    );
     publish_summary(&ran);
     result?;
     if options.profile == Some(Profile::Fast) {
@@ -239,13 +263,48 @@ fn run_selected(
     log_directory: &Path,
     passed: &mut Vec<&'static str>,
     ran: &mut Vec<counts::GateCounts>,
+    records: &mut Vec<summary::GateRecord>,
 ) -> Result<(), String> {
     for gate in selected {
         println!("[verify] {:<16} running", gate.name);
-        check_prerequisites(gate)?;
         let log_path = log_directory.join(format!("{}.log", gate.name));
+        if let Err(missing) = check_prerequisites(gate) {
+            records.push(summary::GateRecord::new(
+                gate,
+                "missing_prerequisite",
+                0.0,
+                &[],
+                &log_path,
+            ));
+            summary::write(log_directory, records)?;
+            return Err(missing);
+        }
+        let started = Instant::now();
         let mut commands = Vec::new();
         let outcome = run_gate(gate, root, &log_path, &mut commands);
+        let status = match &outcome {
+            Ok(()) => "passed",
+            Err(ProcessFailure::Failed) => "failed",
+            Err(ProcessFailure::TimedOut) => "timed_out",
+            Err(ProcessFailure::Io(_)) => "error",
+        };
+        let mut record = summary::GateRecord::new(
+            gate,
+            status,
+            started.elapsed().as_secs_f64(),
+            &commands,
+            &log_path,
+        );
+        // A gate whose every test must run fails below even though its commands
+        // passed; the record must not say otherwise.
+        let incomplete = outcome.is_ok()
+            && gate.every_test_runs
+            && counts::require_every_test_ran(gate.name, &commands).is_err();
+        if incomplete {
+            record.status = "failed".to_string();
+        }
+        records.push(record);
+        summary::write(log_directory, records)?;
         ran.push(counts::GateCounts {
             gate: gate.name,
             passed: outcome.is_ok(),
@@ -357,12 +416,33 @@ fn run_gate(
     recorded: &mut Vec<counts::CommandCounts>,
 ) -> Result<(), ProcessFailure> {
     let _cleanup = CleanupMarker::from_environment();
+    // Every step learns which verifier run it belongs to, so a gate that makes
+    // something named for the run (the Kind cluster) can find exactly that
+    // again in its teardown, and nothing another run made.
+    let run_id = log_path
+        .parent()
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let with_run = |specification: &catalog::CommandSpec| {
+        let mut specification = specification.clone();
+        specification
+            .environment
+            .insert(RUN_VARIABLE.to_string(), run_id.clone());
+        specification
+    };
+    let provision: Vec<catalog::CommandSpec> = gate.provision.iter().map(with_run).collect();
+    let teardown_steps: Vec<catalog::CommandSpec> = gate.teardown.iter().map(with_run).collect();
     let mut fixture = if matches!(gate.name, "postgres" | "migrations" | "chaos") {
         Some(postgres::PostgresFixture::start().map_err(ProcessFailure::Io)?)
     } else {
         None
     };
-    let mut commands = effective_commands(gate).map_err(ProcessFailure::Io)?;
+    let mut commands: Vec<catalog::CommandSpec> = effective_commands(gate)
+        .map_err(ProcessFailure::Io)?
+        .iter()
+        .map(with_run)
+        .collect();
     let mut stack = match gate.stack {
         Some(services) => Some(
             compose::ComposeStack::for_gate(
@@ -393,9 +473,9 @@ fn run_gate(
             );
         }
     }
-    let outcome = run_steps(&gate.provision, gate, root, log_path)
+    let outcome = run_steps(&provision, gate, root, log_path)
         .and_then(|()| run_counted_steps(&commands, gate, root, log_path, recorded));
-    let teardown = run_steps(&gate.teardown, gate, root, log_path);
+    let teardown = run_steps(&teardown_steps, gate, root, log_path);
     let stack_cleanup = stack.as_mut().map_or(Ok(()), |stack| {
         stack
             .finish(outcome.is_ok(), root, log_path, gate.timeout_seconds)

@@ -12,7 +12,9 @@ metadata:
            pre-upgrade so the schema is migrated before the new images roll out. */}}
     helm.sh/hook: post-install,pre-upgrade
     helm.sh/hook-weight: "-5"
-    helm.sh/hook-delete-policy: before-hook-creation
+    {{- /* Deleted once it succeeds, so `helm uninstall` leaves nothing behind; a
+           failed run is kept for its logs until the next release replaces it. */}}
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   backoffLimit: {{ .Values.migrations.backoffLimit }}
   template:
@@ -23,6 +25,7 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ include "capsulet.serviceAccountName" . }}
+      automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       containers:

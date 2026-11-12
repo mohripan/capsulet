@@ -1,14 +1,13 @@
 name: Supply Chain
 
-# The unprivileged half of the supply chain, run for every pull request and on
-# main: dependency policy, secret scanning over the whole history, and, for a
-# pull request, every image built and scanned without being published. Nothing
-# here can push, sign or attest: the workflow holds read access and a
-# code-scanning upload. release.yml publishes, and only from main and tags.
+# Every image of a pull request, built and scanned without being published.
+# Nothing here can push, sign or attest: the workflow holds read access and a
+# code-scanning upload. On main, release.yml builds each image once, scans it
+# and publishes that build, so a second build here would be a different
+# artifact from the one released. Dependency policy, secret scanning and the
+# third-party image scan are gates, run by ci.yml with every other gate.
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
@@ -16,107 +15,11 @@ permissions:
   contents: read
 
 jobs:
-  rust-security:
-    name: dependency policy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-
-      # gate-regressions shows the lint gate failing on a Clippy warning.
-      - name: Install Rust
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal --component clippy
-          rustup default 1.96.0
-
-      # Pinned, so a scanner release cannot change what passes without a
-      # commit that says so. `verify doctor` holds a developer machine to the
-      # same versions as minimums.
-      - name: Install scanners
-        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
-        with:
-          tool: cargo-audit@0.22.2,cargo-deny@0.20.2
-
-      - name: Install Node.js
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: dashboard/package-lock.json
-
-      - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: "3.12"
-
-      # gate-regressions runs the dashboard's own ESLint against a crashing
-      # configuration, so the dashboard's dependencies have to be installed.
-      - name: Install dashboard dependencies
-        working-directory: dashboard
-        run: npm ci
-
-      # One gate graph, so CI and a developer machine check the same things
-      # against the same exceptions. Those live in docs/contracts/
-      # security-exceptions.json, .cargo/audit.toml and deny.toml, each owned
-      # and expiring. gate-regressions shows the lint, dashboard and security
-      # gates failing on the defects they exist to catch.
-      - name: Verify
-        run: >
-          cargo run -p capsulet-xtask --locked --
-          verify --gate security --gate gate-regressions
-
-  secrets:
-    name: secret scanning
-    runs-on: ubuntu-latest
-    steps:
-      # The whole history, because a secret removed from the tree is still in
-      # every clone of the commit that added it.
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-
-      - name: Verify
-        run: cargo run -p capsulet-xtask --locked -- verify --gate secrets
-
-  # The third-party images the chart and Compose pull, each scanned by the
-  # digest they pin, under trivy.yaml. Capsulet cannot rebuild them, so a
-  # finding no newer pin fixes is a registered, expiring exception in
-  # docs/contracts/security-exceptions.json; anything else fails. Trivy runs
-  # in Docker, pinned by digest, and the gate writes its version, database and
-  # result to the job summary.
-  dependency-images:
-    name: dependency images
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-
-      - name: Install Rust
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-
-      - name: Verify
-        run: cargo run -p capsulet-xtask --locked -- verify --gate dependency-images
-
   # The image matrix is release.toml's, through the plan the `containers`
   # gate builds too: each component's image name, Dockerfile, target and the
   # build arguments its OCI labels come from. A matrix written here would be a
   # second definition of the images that drifts from the first.
   image-plan:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -136,11 +39,8 @@ jobs:
         id: plan
         run: echo "matrix=$(cargo run --quiet -p capsulet-xtask --locked -- release images --plan)" >> "$GITHUB_OUTPUT"
 
-  # On main, release.yml builds each image once and publishes that build; a
-  # second build here would be a different artifact from the one released.
   images:
     name: image (${{ matrix.component }})
-    if: github.event_name == 'pull_request'
     needs: image-plan
     strategy:
       fail-fast: false

@@ -74,6 +74,26 @@ dashboard:
 
 When `dashboard.apiBaseUrl` is empty, the chart renders an in-cluster default of `http://<release-name>-api`.
 
+To sign in to the dashboard with a username and password before an OIDC provider is configured,
+name a Secret that holds that login and the API token its session uses:
+
+```yaml
+dashboard:
+  temporaryAdmin:
+    existingSecret: capsulet-dashboard-login
+```
+
+```powershell
+kubectl create secret generic capsulet-dashboard-login -n capsulet `
+  --from-literal=username=admin `
+  --from-literal=password=<a generated password> `
+  --from-literal=token=<an API token the API accepts>
+```
+
+The dashboard reads the keys `username`, `password` and `token`. With the value empty, the default,
+it offers no password sign-in. The `kind` gate installs the chart this way, with a login and token it
+generates for that cluster.
+
 ## Worker Runner
 
 The worker exposes Kubernetes runner settings:

@@ -366,6 +366,13 @@
     "dashboard": {
       "type": "object",
       "properties": {
+        "temporaryAdmin": {
+          "type": "object",
+          "description": "A bootstrap password sign-in: a Secret with username, password and token keys.",
+          "properties": {
+            "existingSecret": { "type": "string" }
+          }
+        },
         "image": { "$ref": "#/definitions/componentImage" },
         "apiBaseUrl": { "type": "string" }
       }

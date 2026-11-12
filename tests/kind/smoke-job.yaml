@@ -1,0 +1,51 @@
+# The Kind smoke, run inside the cluster. The Capsulet API image, which carries
+# Python, runs tests/kind/smoke.py against the release's Services. The `kind`
+# gate fills in the image it built and the release name, and creates the
+# `capsulet-smoke` ConfigMap (the script) and Secret (its credentials).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: capsulet-smoke
+  labels:
+    app.kubernetes.io/name: capsulet-smoke
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: capsulet-smoke
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: smoke
+          image: "@IMAGE@"
+          imagePullPolicy: Never
+          command: ["python3", "-u", "/smoke/smoke.py"]
+          envFrom:
+            - secretRef:
+                name: capsulet-smoke
+          env:
+            - name: CAPSULET_SMOKE_RELEASE
+              value: "@RELEASE@"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: smoke
+              mountPath: /smoke
+              readOnly: true
+      volumes:
+        - name: smoke
+          configMap:
+            name: capsulet-smoke

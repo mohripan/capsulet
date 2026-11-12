@@ -51,6 +51,7 @@ spec:
         {{- include "capsulet.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgresql
     spec:
+      automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.postgresql.securityContext | nindent 8 }}
       containers:
@@ -89,6 +90,15 @@ spec:
                 - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 5
             periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
           volumeMounts:
             - name: postgresql-data
               mountPath: /var/lib/postgresql/data

@@ -100,7 +100,7 @@ verified.
 | Images Compose and the chart pull | digest, the same in both (`release check`), and scanned by that digest ([`dependency-images`](#dependency-images)) | review |
 | Trivy | the version the pinned `trivy-action` installs; the `dependency-images` gate runs the same release by image digest, in `crates/xtask/src/security/images.rs` | its Dependabot update for the action, review for the image |
 | gitleaks | image digest, in `crates/xtask/src/security.rs` | review |
-| cargo-audit, cargo-deny | exact versions in `supply-chain.yml` | review |
+| cargo-audit, cargo-deny | exact versions in `ci.yml` | review |
 
 A tag can be moved to other code after it was reviewed; a commit SHA or a digest cannot. This
 happened to `trivy-action`'s own tags in 2026. The rebuilt Debian runtime still runs `apt-get
@@ -171,8 +171,8 @@ pin, or whose image nothing pulls any more.
 cargo run -p capsulet-xtask -- verify --gate dependency-images
 ```
 
-The `dependency images` job in `supply-chain.yml` runs the gate for every pull request and on
-`main`.
+The `Dependency images` job in `ci.yml` runs the gate for every pull request and on `main`, and
+`Required` fails without it.
 
 ## Summaries and failures
 

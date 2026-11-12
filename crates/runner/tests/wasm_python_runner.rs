@@ -7,12 +7,14 @@ use capsulet_runner::{
     WasmPythonConfig, WasmPythonRunner,
 };
 
+// Ignored, so `cargo test` without a WASI Python build reports it as not run
+// rather than passing it. The `wasm-python` gate runs it with `--ignored` and
+// fails unless it ran, and it fails here without the runtime.
 #[tokio::test]
+#[ignore = "needs Wasmtime and a WASI Python build; run by the wasm-python gate"]
 async fn wasm_python_runner_executes_script_and_collects_artifact() {
-    let Some(runtime_path) = std::env::var_os("CAPSULET_WASM_RUNTIME_PATH") else {
-        eprintln!("skipping WASI Python integration test; CAPSULET_WASM_RUNTIME_PATH is not set");
-        return;
-    };
+    let runtime_path = std::env::var_os("CAPSULET_WASM_RUNTIME_PATH")
+        .expect("CAPSULET_WASM_RUNTIME_PATH names the WASI Python runtime to run");
     let wasmtime_bin =
         std::env::var("CAPSULET_WASMTIME_BIN").unwrap_or_else(|_| "wasmtime".to_string());
     let runner =

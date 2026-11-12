@@ -1898,7 +1898,7 @@
           "type": "test",
           "path": "crates/runner/tests/wasm_python_runner.rs",
           "gate": "wasm-python",
-          "command": "cargo test -p capsulet-runner --test wasm_python_runner --locked -- --nocapture",
+          "command": "cargo test -p capsulet-runner --test wasm_python_runner --locked -- --ignored --nocapture",
           "selector": "wasm_python_runner_executes_script_and_collects_artifact"
         }
       ]

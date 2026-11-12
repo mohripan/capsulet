@@ -11,6 +11,7 @@ use std::{
 const IMAGE_RELEASE: &str = ".github/workflows/image-release.yml";
 const RELEASE: &str = ".github/workflows/release.yml";
 const SUPPLY_CHAIN: &str = ".github/workflows/supply-chain.yml";
+const CI: &str = ".github/workflows/ci.yml";
 
 fn repository() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -286,7 +287,7 @@ fn a_scan_allowed_to_fail_is_refused() {
 fn a_gate_turned_into_a_warning_is_refused() {
     let fixture = Fixture::new();
     fixture.edit(
-        SUPPLY_CHAIN,
+        CI,
         "        run: cargo run -p capsulet-xtask --locked -- verify --gate secrets",
         "        run: cargo run -p capsulet-xtask --locked -- verify --gate secrets || true",
     );
@@ -297,7 +298,7 @@ fn a_gate_turned_into_a_warning_is_refused() {
 fn secret_scanning_of_only_the_latest_commit_is_refused() {
     let fixture = Fixture::new();
     fixture.edit(
-        SUPPLY_CHAIN,
+        CI,
         "          fetch-depth: 0\n",
         "          fetch-depth: 1\n",
     );
@@ -308,7 +309,7 @@ fn secret_scanning_of_only_the_latest_commit_is_refused() {
 fn ci_that_never_scans_the_dependency_images_is_refused() {
     let fixture = Fixture::new();
     fixture.edit(
-        SUPPLY_CHAIN,
+        CI,
         "        run: cargo run -p capsulet-xtask --locked -- verify --gate dependency-images",
         "        run: cargo run -p capsulet-xtask --locked -- release dependency-images",
     );

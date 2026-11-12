@@ -303,6 +303,11 @@ evaluator:
 dashboard:
   enabled: true
   replicaCount: 2
+  # A username-and-password sign-in for bootstrapping, before an OIDC provider
+  # is configured: the name of a Secret with `username`, `password` and the API
+  # `token` the signed-in session uses. Empty offers no password sign-in.
+  temporaryAdmin:
+    existingSecret: ""
   autoscaling:
     enabled: false
     minReplicas: 2

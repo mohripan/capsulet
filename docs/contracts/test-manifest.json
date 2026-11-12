@@ -1024,7 +1024,7 @@
     },
     {
       "gate": "wasm-python",
-      "command": "cargo test -p capsulet-runner --test wasm_python_runner --locked -- --nocapture",
+      "command": "cargo test -p capsulet-runner --test wasm_python_runner --locked -- --ignored --nocapture",
       "tests": [
         {
           "path": "crates/runner/tests/wasm_python_runner.rs",

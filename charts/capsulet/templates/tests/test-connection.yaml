@@ -6,12 +6,29 @@ metadata:
     {{- include "capsulet.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: wget
       image: {{ include "capsulet.dependencyImage" .Values.tests.image | quote }}
       command:
         - wget
       args:
+        - "-q"
+        - "-O"
+        - "-"
         - "{{ include "capsulet.fullname" . }}-api:{{ .Values.api.service.port }}/healthz"
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
