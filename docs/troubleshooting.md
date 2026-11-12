@@ -18,9 +18,12 @@ generated password:
 Get-Content .capsulet/stack/capsulet-local/database-url
 ```
 
-If migrations fail, confirm PostgreSQL is running and reachable:
+If migrations fail, confirm PostgreSQL is running and reachable. Compose needs the stack's project
+name and environment file, because `compose.yaml` holds no default credential:
 
 ```powershell
+$env:COMPOSE_PROJECT_NAME = "capsulet-local"
+$env:COMPOSE_ENV_FILES = ".capsulet/stack/capsulet-local/stack.env"
 docker compose ps postgres
 docker compose logs postgres
 docker compose logs api
@@ -120,7 +123,7 @@ For S3-compatible mode, check:
 
 The bucket must exist before Capsulet writes objects. The bundled SeaweedFS creates it on start, in
 Compose and in the chart, and its health check passes only once the bucket is there. In Compose,
-check the store with `docker compose logs seaweedfs`.
+check the store with `docker compose logs seaweedfs`, with the two variables above set.
 
 For Helm installs with bundled SeaweedFS:
 

@@ -10,10 +10,11 @@ and runtime-wide enforcement remain planned.
 
 - Rust 1.96.0 (installed automatically by `rustup` from `rust-toolchain.toml`)
 - Cargo
-- Node.js 20.x
-- npm 10.x
+- Node.js 20 or newer, with npm 10 (24 for the `claims-evidence` gate)
+- Python 3.12 or newer
+- Docker 27 or newer, with Compose v2
 - Helm 3.18 or newer
-- Docker
+- Kind 0.30 or newer and kubectl, for the `kind` gate
 
 Check the current machine without changing it:
 
@@ -25,18 +26,15 @@ Run deterministic service-free verification with `verify --profile fast`, or the
 suite with `verify --profile full`. The executable gate graph and supported-tool matrix are in
 [`docs/contracts/verification-matrix.md`](contracts/verification-matrix.md).
 
-Optional later tools:
-
-- kind or minikube
-- kubectl
-
-If Windows reserves the default PostgreSQL host port, select another free port without changing
-the container-to-container configuration:
+If Windows reserves the default PostgreSQL host port, choose another before the stack starts.
+Containers still reach each other on their own ports:
 
 ```powershell
 $env:CAPSULET_POSTGRES_HOST_PORT = "56432"
-docker compose up -d
+cargo run -p capsulet-xtask -- stack up
 ```
+
+Every host port has such a variable; `compose.yaml` lists them.
 
 ## Changing public contracts
 
@@ -102,25 +100,32 @@ documentation impact explicitly.
 Run from the repository root:
 
 ```sh
-cargo metadata --no-deps --format-version 1
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo run -p capsulet-xtask --locked -- verify --gate format --gate lint --gate unit
 ```
 
-The backend workspace lives in `crates/`.
-
-Current crates:
+These are rustfmt, Clippy with every warning an error, and the workspace's tests;
+`verify --list` shows each gate's exact command. The backend workspace lives in `crates/`, and every
+crate inherits its version, license and repository from the workspace (see the
+[release process](contracts/release-process.md)):
 
 - `capsulet-core`: typed execution graph, agent, workflow compatibility, and execution domain model
+- `capsulet-application`: application services, agent runtime use cases, and ports
+- `capsulet-ir`, `capsulet-ir-adapters`, `capsulet-runtime`: the verified-computation IR, the
+  translation into it, and its execution runtime
+- `capsulet-kernel`: the deterministic correctness kernel
+- `capsulet-proposer`: untrusted proposers, including a local Ollama adapter
+- `capsulet-replay`: offline certificate replay
 - `capsulet-postgres`: PostgreSQL persistence adapter and embedded migrations
 - `capsulet-storage`: filesystem and S3-compatible object storage adapter
 - `capsulet-api`: HTTP control plane for graphs, agents, runs, jobs, and compatibility workflows
 - `capsulet-worker`: job leasing and runner coordination
+- `capsulet-graph-worker`: durable execution of agent runs and IR runs
 - `capsulet-scheduler`: interval automation polling and compatibility workflow-DAG reconciliation
 - `capsulet-evaluator`: durable cron, SQL, webhook, and custom-trigger evaluation plus retention cleanup
-- `capsulet-runner`: execution boundary with stub, trusted local-process, and Kubernetes Job runners
+- `capsulet-runner`: execution boundary with stub, trusted local-process, WASI Python and Kubernetes Job runners
+- `capsulet-observability`: tracing and metrics
 - `capsulet-cli`: operator and developer CLI for the HTTP API
+- `capsulet-xtask`: the verifier, the stack fixture, and the release and supply-chain checks
 
 ## Local Docker Compose Stack
 
@@ -136,13 +141,18 @@ tenant with two projects and an identity per role. Nothing it uses is checked in
 removes the stack, its volumes and its secrets. It starts:
 
 - PostgreSQL on `localhost:55432`
+- SeaweedFS, the S3 object store, on `localhost:8333`
 - Keycloak on `localhost:18080` with realm `capsulet`
 - Capsulet API on `localhost:8080`
 - Capsulet dashboard on `localhost:3000`
-- Capsulet worker in continuous stub-runner mode
-- Capsulet scheduler in continuous polling mode
-- Capsulet evaluator in continuous polling mode
-- Mailpit SMTP/Web UI for the send-email example
+- Capsulet worker, running each job's Python in its own container (process runner)
+- Capsulet graph worker, which executes agent runs and IR runs
+- Capsulet scheduler and evaluator in continuous polling mode
+- Mailpit SMTP on `localhost:1025` and its web UI on `localhost:8025`, for the send-email example
+- Prometheus on `localhost:9090` and Grafana on `localhost:3001`
+
+Every image it builds is labelled with this checkout's release version and commit, and once it is
+healthy the API and the dashboard must report the version `release.toml` names.
 
 Open the live dashboard:
 
@@ -203,10 +213,10 @@ Run through the verifier, the `postgres`, `migrations` and `chaos` gates also fa
 binary ran no tests, or ignored or filtered out any. Each run records every binary's counts in
 `.capsulet/verify/<run>/test-counts.json`, and in the job summary on CI.
 
-Stop the local database when you are done:
+Remove the stack, its volumes and its secrets when you are done:
 
 ```sh
-docker compose down
+cargo run -p capsulet-xtask -- stack down
 ```
 
 Use timestamped SQL migration files in `migrations/`:
@@ -313,11 +323,15 @@ See `docs/worker-runner.md` for the manual flow.
 Run from `dashboard/`:
 
 ```sh
-npm install
+npm ci
 npm run dev
-npm test
-npx tsc --noEmit
-npm run build
+```
+
+The `dashboard` gate runs ESLint and the production build, and the `sdk` gate the dashboard's
+transport tests and `tsc`; `dashboard-e2e` runs Playwright against a stack of its own:
+
+```sh
+cargo run -p capsulet-xtask --locked -- verify --gate dashboard --gate sdk --gate dashboard-e2e
 ```
 
 Point the dashboard at a local API:
@@ -334,11 +348,21 @@ The dashboard uses the live API for authored jobs, workflows, automations, runs,
 Run from the repository root:
 
 ```sh
-helm lint charts/capsulet
-helm template capsulet charts/capsulet
+cargo run -p capsulet-xtask --locked -- verify --gate helm
 ```
 
-The chart can install the API and worker runtime path when local images, a PostgreSQL secret, and object storage settings are provided. See `docs/local-kubernetes-runner.md`.
+That lints and renders the chart, and `release check-chart` then renders it twice. With the
+defaults and with each component's digest set, it holds every workload to:
+
+- the image `release.toml` names;
+- a non-root, seccomp-confined pod whose containers cannot escalate privileges and hold no
+  capabilities;
+- read-only root filesystems for Capsulet's own containers;
+- service-account tokens only where a pod uses the Kubernetes API;
+- readiness and liveness probes;
+- only the secrets the chart renders or its values name.
+
+See [local Kubernetes](local-kubernetes-runner.md) to install it on minikube.
 
 ## Architecture Rules
 

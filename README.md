@@ -37,14 +37,16 @@ is `verify --profile full`; inspect its machine-readable definition with
 - bearer authentication with viewer/operator/admin authorization and durable mutation auditing
 - durable PostgreSQL agent, graph, job, attempt, workflow-step, log, and artifact metadata
 - stub, trusted local process, WASI Python, and Kubernetes Job runners
-- S3-compatible or filesystem artifact storage
+- S3-compatible or filesystem artifact storage, with SeaweedFS bundled as the S3 store in Compose and the chart
 - enforced execution-pool concurrency, cancellation, timeouts, delayed retry, and stale-lease recovery
 - owner-bound worker heartbeats and finalization that fence stale workers after lease adoption
 - workflow resume from successful step checkpoints after failure or timeout
 - Kubernetes Job reattachment after worker failure
 - API, worker, scheduler, and evaluator health and Prometheus metrics endpoints
 - configurable artifact, log, trigger-event, and audit retention cleanup
-- Docker Compose for local use and a Helm chart for Kubernetes
+- a Docker Compose stack whose secrets and seeded identities are generated for each stack, and a hardened Helm chart
+- one release identity, `release.toml`, that every crate, the Python SDK, the dashboard, the chart and every image is checked against
+- container images built once per release, scanned, and published by digest with SLSA build provenance, an SBOM attestation and a keyless Sigstore signature
 
 ## Product layers
 
@@ -147,19 +149,18 @@ Open the dashboard at <http://127.0.0.1:3000> and the API at <http://127.0.0.1:8
 
 The local stack includes PostgreSQL, SeaweedFS as the S3 object store, Keycloak, Mailpit, API, worker, graph worker, scheduler, evaluator, dashboard, Prometheus and Grafana. Artifacts and logs go through the same S3 adapter a deployment uses. Compose waits on dependency health and restarts long-running services after failure. Sign in with the admin login in `.capsulet/stack/capsulet-local/fixture.json`; no local credential is checked in.
 
-Useful checks:
+`stack up` uses the ports above. To move one, set its variable first, for example
+`CAPSULET_POSTGRES_HOST_PORT` when Windows reserves 55432; `compose.yaml` lists each one.
 
-```sh
-curl http://127.0.0.1:8080/livez
+Compose itself needs the stack's project name and environment file, because nothing in
+`compose.yaml` is a default credential:
+
+```powershell
+$env:COMPOSE_PROJECT_NAME = "capsulet-local"
+$env:COMPOSE_ENV_FILES = ".capsulet/stack/capsulet-local/stack.env"
 curl http://127.0.0.1:8080/readyz
-curl http://127.0.0.1:8080/metrics
 docker compose logs -f api worker graph-worker scheduler evaluator
-```
-
-Stop the stack without deleting persisted volumes:
-
-```sh
-docker compose down
+docker compose stop    # keeps the volumes; `stack up` starts it again
 ```
 
 ## Agent execution graph API
@@ -277,7 +278,14 @@ kubectl wait --for=condition=available deployment \
 kubectl port-forward service/capsulet-dashboard 3000:80 --namespace capsulet
 ```
 
-Production deployments should use external managed PostgreSQL and object storage, immutable image tags, network policies, and dedicated execution capacity. Capsulet constrains execution pods but does not claim to be a complete sandbox for hostile code.
+The chart runs `ghcr.io/mohripan/capsulet-<component>:<version>`, the images a `v<version>` tag
+publishes. Each build of `main` is published as `main` and `sha-<commit>`, so until a version is
+tagged, install with `--set image.tag=main`, or better, pin each component's
+`<component>.image.digest` from that run's release manifest. Every published image is signed and
+carries SLSA provenance and an SBOM; the [supply chain](docs/security/supply-chain.md) shows how to
+verify one before you run it.
+
+Production deployments should use external managed PostgreSQL and object storage, images pinned by digest, network policies, and dedicated execution capacity. Capsulet constrains execution pods but does not claim to be a complete sandbox for hostile code.
 
 See [installation](docs/installation.md), [Helm values](docs/helm-values.md), and [worker/runner design](docs/worker-runner.md) for configuration details.
 
@@ -285,65 +293,83 @@ See [installation](docs/installation.md), [Helm values](docs/helm-values.md), an
 
 ```text
 crates/
-  application/  application services, agent runtime use cases, and ports
-  api/          HTTP control plane
-  core/         domain types, state machines, and validation rules
-  postgres/     SQLx persistence and migrations
-  runner/       runner contracts plus stub, process, WASI, and Kubernetes adapters
-  scheduler/    compatibility automation triggering and DAG reconciliation
-  evaluator/    durable trigger evaluation and retention cleanup
-  worker/       lower-level job runtime loop, runner selection, and health endpoints
-  graph-worker/ durable worker that executes agent runs and IR runs
-  storage/      filesystem and S3-compatible object storage
-  cli/          command-line client
-dashboard/      Next.js dashboard
-sdk/python/     decorator-based Python workflow SDK
-charts/capsulet Helm chart
-migrations/     PostgreSQL schema history
+  api/           HTTP control plane and its generated OpenAPI contract
+  application/   application services, agent runtime use cases, and ports
+  core/          domain types, state machines, and validation rules
+  ir/            the verified-computation IR: canonical encoding, digests, schema versions
+  ir-adapters/   translation of workflows, agent graphs and governed memory into the IR
+  kernel/        the deterministic correctness kernel that decides and certifies
+  proposer/      untrusted proposers, including a local Ollama adapter
+  replay/        offline certificate replay and tamper detection
+  runtime/       IR execution runtime
+  postgres/      SQLx persistence and migrations
+  runner/        runner contracts plus stub, process, WASI, and Kubernetes adapters
+  scheduler/     compatibility automation triggering and DAG reconciliation
+  evaluator/     durable trigger evaluation and retention cleanup
+  worker/        job runtime loop, runner selection, and health endpoints
+  graph-worker/  durable worker that executes agent runs and IR runs
+  storage/       filesystem and S3-compatible object storage
+  observability/ tracing and metrics
+  cli/           command-line client
+  xtask/         the verifier, the stack fixture, and the release and supply-chain checks
+dashboard/       Next.js dashboard
+sdk/python/      decorator-based Python workflow SDK
+charts/capsulet/ Helm chart
+migrations/      PostgreSQL schema history
+release.toml     the release identity
 ```
 
 ## Development and verification
 
-The repository's product vocabulary and public contract inventory have one local/CI gate:
+Every check is a gate of the verifier, defined once in `crates/xtask` and run the same way on a
+laptop and in CI:
 
 ```powershell
-pwsh ./scripts/check-contracts.ps1
+cargo run -p capsulet-xtask --locked -- verify --profile fast   # no service containers
+cargo run -p capsulet-xtask --locked -- verify --profile full   # every gate CI requires
+cargo run -p capsulet-xtask --locked -- verify --gate <name>    # one gate
+cargo run -p capsulet-xtask --locked -- verify --list           # what each gate runs
+cargo run -p capsulet-xtask --locked -- verify doctor           # tool versions against the minimums
 ```
 
-It checks claim evidence and generated claim docs, lifecycle/assurance mappings, accepted ADR
-evidence, generated OpenAPI/runtime parity, authorization metadata, deterministic artifacts, and
-the experimental Python/dashboard operation maps. See the [public contracts](docs/contracts/README.md)
-and [development guide](docs/development.md) before changing a public claim, endpoint, status, or
-client call.
+The gates cover:
+
+- formatting, Clippy and the workspace's tests;
+- PostgreSQL, migrations and crash recovery against disposable databases;
+- the claim registry and the generated OpenAPI and authorization contracts;
+- the Python SDK and the dashboard;
+- dependency, license and secret policy;
+- Compose and Playwright on stacks of their own;
+- the chart;
+- the release identity, the container images and the supply-chain workflows.
+
+The [verification matrix](docs/contracts/verification-matrix.md) lists them all. Before changing a
+public claim, endpoint, status or client call, read the [public contracts](docs/contracts/README.md)
+and the [development guide](docs/development.md).
+
+Rust is pinned to 1.96.0; the dashboard needs Node.js 20 or newer, and `claims-evidence` needs 24.
+A version change goes through `release set`; see the
+[release process](docs/contracts/release-process.md).
 
 ### Python workflow authoring
 
 Python workflows are still available as a compatibility authoring path and as a useful substrate for deterministic agent tools. They can be authored as decorated Python functions or as Python cells in the dashboard notebook. The [CSV artifact pipeline](examples/workflows/csv_pipeline.py) creates a CSV in one task, passes it to a dependent task, and downloads the transformed artifact. See the [example instructions](examples/workflows/README.md) for the end-to-end commands.
 
-Rust is pinned to version 1.96.0. The dashboard requires Node.js 20 or newer.
-
-```sh
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-targets --locked
-
-cd dashboard
-npm ci
-npm test
-npm run build
-npm run test:e2e
-```
-
-Database integration tests require `CAPSULET_TEST_DATABASE_URL`, naming a server on which each test creates a database of its own. Full local and Kubernetes validation steps are documented in [development](docs/development.md).
+The `postgres`, `migrations` and `chaos` gates start disposable PostgreSQL containers and give
+each database test a database of its own; to run those tests by hand against a server of yours, set
+`CAPSULET_TEST_DATABASE_URL`.
 
 ## Documentation
 
 - [Architecture](ARCHITECTURE.md)
 - [Correctness architecture (direction)](docs/design/correctness-architecture.md)
 - [API](docs/api.md)
-- [Development](docs/development.md)
-- [Installation](docs/installation.md)
+- [Development](docs/development.md) and [test identities](docs/development/test-identities.md)
+- [Installation](docs/installation.md) and [Helm values](docs/helm-values.md)
 - [Persistence](docs/persistence.md)
+- [Security](docs/security.md) and the [supply chain](docs/security/supply-chain.md)
+- [Release process](docs/contracts/release-process.md)
+- [Verification matrix](docs/contracts/verification-matrix.md)
 
 ## License
 

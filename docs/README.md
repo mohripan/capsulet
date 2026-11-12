@@ -32,8 +32,12 @@ Current docs:
 - [Worker and runner](worker-runner.md)
 - [Local Kubernetes runner](local-kubernetes-runner.md)
 - [Troubleshooting](troubleshooting.md)
-- [Public contracts](contracts/README.md)
+- [Security](security.md), [secrets and rotation](security/secrets-rotation.md) and the
+  [supply chain](security/supply-chain.md)
+- [Test identities and the stack fixture](development/test-identities.md)
+- [Public contracts](contracts/README.md), including the [release process](contracts/release-process.md)
+  and the [verification matrix](contracts/verification-matrix.md)
 
 Contributors should start with the [contract change workflow](development.md#changing-public-contracts)
-and run `pwsh ./scripts/check-contracts.ps1`. Generated claim and OpenAPI artifacts must be changed
+and run `cargo run -p capsulet-xtask --locked -- verify --profile fast`. Generated claim and OpenAPI artifacts must be changed
 through their render/export commands, never by hand.

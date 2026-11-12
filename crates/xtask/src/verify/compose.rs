@@ -413,7 +413,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
                 project: LOCAL_PROJECT.to_string(),
                 directory,
                 secrets,
-                ports: Ports::STANDARD,
+                ports: Ports::local()?,
             };
             let mut stack = ComposeStack::start(plan, &services, &root, &log_path, 3_600)?;
             // The developer's stack stays up; only `stack down` removes it.

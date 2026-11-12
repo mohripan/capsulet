@@ -95,6 +95,31 @@ impl Ports {
         object_store: 8333,
     };
 
+    /// A developer's stack: the standard ports, except where the variable that
+    /// `stack.env` sets for one is already set, such as
+    /// `CAPSULET_POSTGRES_HOST_PORT` when Windows reserves 55432.
+    pub(crate) fn local() -> Result<Self, String> {
+        let port = |variable: &str, standard: u16| match std::env::var(variable) {
+            Ok(value) if !value.trim().is_empty() => value
+                .trim()
+                .parse::<u16>()
+                .map_err(|error| format!("{variable}={value} is not a port: {error}")),
+            _ => Ok(standard),
+        };
+        let standard = Self::STANDARD;
+        Ok(Self {
+            api: port("CAPSULET_API_PORT", standard.api)?,
+            dashboard: port("CAPSULET_DASHBOARD_PORT", standard.dashboard)?,
+            keycloak: port("CAPSULET_KEYCLOAK_PORT", standard.keycloak)?,
+            postgres: port("CAPSULET_POSTGRES_HOST_PORT", standard.postgres)?,
+            smtp: port("CAPSULET_SMTP_PORT", standard.smtp)?,
+            mail_ui: port("CAPSULET_MAIL_UI_PORT", standard.mail_ui)?,
+            prometheus: port("CAPSULET_PROMETHEUS_PORT", standard.prometheus)?,
+            grafana: port("CAPSULET_GRAFANA_PORT", standard.grafana)?,
+            object_store: port("CAPSULET_OBJECT_STORE_PORT", standard.object_store)?,
+        })
+    }
+
     /// Ports nothing is listening on, so a verifier stack never collides with a
     /// developer's stack or with another verifier run.
     pub(crate) fn free() -> Result<Self, String> {
@@ -314,7 +339,7 @@ impl Secrets {
 }
 
 /// 32 random bytes, hex encoded: comfortably over the API's 32-byte minimum.
-fn random_secret() -> Result<String, String> {
+pub(crate) fn random_secret() -> Result<String, String> {
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes)
         .map_err(|error| format!("no randomness for a test secret: {error}"))?;

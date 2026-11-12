@@ -106,14 +106,12 @@ Document results with the Capsulet version, database size, worker replica count,
 
 Before an alpha release:
 
-- `cargo test --workspace --all-targets`
-- `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo fmt --check`
-- dashboard lint/test/build
-- `helm lint charts/capsulet`
-- `helm template capsulet charts/capsulet`
-- `.\scripts\compose-smoke.ps1`
-- minikube smoke from `docs/minikube-smoke.md`
+- `cargo run -p capsulet-xtask --locked -- verify --profile full` passes. That covers formatting,
+  Clippy, every test suite, the dashboard, the Compose and Playwright stacks, the chart, the
+  container images, dependency and secret policy, and the release identity; the
+  [verification matrix](contracts/verification-matrix.md) lists each gate.
+- The release follows the [release process](contracts/release-process.md), and its images verify
+  as the [supply chain](security/supply-chain.md) describes.
 - `/openapi.json` validates in a client generator
 - Keycloak login and temporary admin login both exercised successfully
 - threat model reviewed against deployment settings
