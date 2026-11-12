@@ -1192,6 +1192,17 @@ const ENDPOINTS: &[EndpointContract] = &[
         "200"
     ),
     endpoint!(
+        "GET",
+        "/v1/agent-runs/{id}/explanation",
+        "explainAgentRun",
+        "agents:read",
+        true,
+        true,
+        None,
+        crate::models::AgentRunExplanationResponse,
+        "200"
+    ),
+    endpoint!(
         "POST",
         "/v1/agent-runs/{id}/erase",
         "eraseAgentRunPayloads",

@@ -216,6 +216,115 @@
         ],
         "type": "object"
       },
+      "AgentRunExplanationResponse": {
+        "description": "What a run did, read from its own log the way `capsulet-replay` reads its\nbundle.\n\nIt is made from the same bundle `exportAgentRunBundle` seals, by the same code,\nso this account and an offline replay of the export cannot differ. Every label is\nan observed fact, and none certifies a result: a check that held says only that\nits rules held on its input.",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "agrees": {
+            "description": "Whether the log supports what was reported and every decision in it is one\nthe runtime makes again.",
+            "type": "boolean"
+          },
+          "assurance_mode": {
+            "description": "`observe`, `verify` or `enforce`; absent when the log records no admission.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decisions": {
+            "$ref": "#/components/schemas/DecisionReplayResponse"
+          },
+          "definition_matches": {
+            "description": "Whether the definition is the version the run was admitted with.",
+            "type": "boolean"
+          },
+          "disagreements": {
+            "description": "Where the log and what was reported disagree.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "effects": {
+            "items": {
+              "$ref": "#/components/schemas/EffectExplanationResponse"
+            },
+            "type": "array"
+          },
+          "ended_because": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fold_error": {
+            "description": "Why the log does not fold, when it does not.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeExplanationResponse"
+            },
+            "type": "array"
+          },
+          "result": {
+            "description": "What the run's result amounts to: `unverified` (completed in observe mode,\nnothing certified it), `see_certificate` (completed under a mode that\ncertifies), `abstained` (ended without a result) or `pending`.",
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "spent": {
+            "$ref": "#/components/schemas/AgentRunUsageResponse"
+          },
+          "status": {
+            "description": "The status the log folds to; absent when it does not fold.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "description": "The trace the run's spans were recorded under, when it was traced.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unfinished": {
+            "description": "Nodes started and not finished when the log ends.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "waiting_on": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "run_id",
+          "agent_id",
+          "result",
+          "agrees",
+          "disagreements",
+          "definition_matches",
+          "decisions",
+          "spent",
+          "unfinished",
+          "nodes",
+          "effects"
+        ],
+        "type": "object"
+      },
       "AgentRunResponse": {
         "properties": {
           "agent_id": {
@@ -753,6 +862,21 @@
           "model",
           "alphabet_digest",
           "certificate"
+        ],
+        "type": "object"
+      },
+      "CheckRuleResponse": {
+        "properties": {
+          "rule": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "value"
         ],
         "type": "object"
       },
@@ -1880,6 +2004,43 @@
         ],
         "type": "object"
       },
+      "DecisionReplayResponse": {
+        "description": "Every decision in a run's log, made again from the log before it.",
+        "properties": {
+          "consequences": {
+            "description": "Events a decision's own work wrote after it.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "divergences": {
+            "description": "Events the runtime would not have written.",
+            "items": {
+              "$ref": "#/components/schemas/DivergenceResponse"
+            },
+            "type": "array"
+          },
+          "external": {
+            "description": "Events the outside world wrote: admission, inputs, answered signals.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "replayed": {
+            "description": "Events recording a decision the runtime makes again.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "replayed",
+          "external",
+          "consequences",
+          "divergences"
+        ],
+        "type": "object"
+      },
       "DefinitionVersionResponse": {
         "description": "One stored definition version.",
         "properties": {
@@ -1930,6 +2091,56 @@
           "rule",
           "concluded",
           "detail"
+        ],
+        "type": "object"
+      },
+      "DivergenceResponse": {
+        "properties": {
+          "decided": {
+            "description": "What deciding again from the log before it produces instead.",
+            "type": "string"
+          },
+          "position": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "recorded": {
+            "description": "The event the log records there.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "recorded",
+          "decided"
+        ],
+        "type": "object"
+      },
+      "EffectExplanationResponse": {
+        "description": "One effect's attempts, and how the last one came out.",
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "effect": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "outcome": {
+            "description": "`performed`, `refused`, `uncertain`, or `outstanding`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "effect",
+          "attempts",
+          "outcome"
         ],
         "type": "object"
       },
@@ -2037,6 +2248,21 @@
         "format": "event-stream",
         "type": "string"
       },
+      "EvidenceDigestResponse": {
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "digest"
+        ],
+        "type": "object"
+      },
       "ExecutionPoolResponse": {
         "properties": {
           "description": {
@@ -2057,6 +2283,37 @@
           "description",
           "is_default",
           "host_group"
+        ],
+        "type": "object"
+      },
+      "ExplainedEventResponse": {
+        "description": "One event, with what the replay made of it and the evidence it names.",
+        "properties": {
+          "evidence": {
+            "description": "The content digests the event names: inputs, outputs, receipts.",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceDigestResponse"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "position": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "role": {
+            "description": "`decision`, `external`, `consequence` or `divergent`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "kind",
+          "role",
+          "evidence"
         ],
         "type": "object"
       },
@@ -3773,6 +4030,73 @@
           "project_id",
           "name",
           "status"
+        ],
+        "type": "object"
+      },
+      "NodeExplanationResponse": {
+        "description": "One node's part in a run, and what its last attempt amounts to.",
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "events": {
+            "description": "What the node was observed to do: its events, in order.",
+            "items": {
+              "$ref": "#/components/schemas/ExplainedEventResponse"
+            },
+            "type": "array"
+          },
+          "failures": {
+            "description": "The kind of each failed attempt, in order.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "finished": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "meaning": {
+            "description": "What the result label does and does not say.",
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "result": {
+            "description": "`proposed`, `checked`, `waived`, `disputed`, `verdict_unrecorded`,\n`unverified`, `failed`, `interrupted`, `not_run` or `structural`.",
+            "type": "string"
+          },
+          "rework": {
+            "description": "What doing the node's work again would need: `recorded in the log`, a\nmodel, the project's memory, the world, or only its inputs.",
+            "type": "string"
+          },
+          "rules": {
+            "description": "A check's rules, as its definition states them: what `checked` or\n`disputed` is about.",
+            "items": {
+              "$ref": "#/components/schemas/CheckRuleResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "node",
+          "kind",
+          "attempts",
+          "finished",
+          "failures",
+          "rework",
+          "result",
+          "meaning",
+          "rules",
+          "events"
         ],
         "type": "object"
       },
@@ -5624,6 +5948,77 @@
           }
         ],
         "summary": "get agent run events",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "agents:read",
+        "x-capsulet-resource": "agents",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/agent-runs/{id}/explanation": {
+      "get": {
+        "operationId": "explainAgentRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunExplanationResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "explain agent run",
         "x-capsulet-ownership": "selected_project",
         "x-capsulet-project-context": true,
         "x-capsulet-project-roles": [

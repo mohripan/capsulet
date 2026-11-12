@@ -13,7 +13,9 @@ use capsulet_ir::definition::Definition;
 use capsulet_ir::id::Identifier;
 use capsulet_ir_adapters::from_agent;
 use capsulet_postgres::{AgentRunStart, MAX_IR_RUN_VALUE_BYTES, PayloadErasure};
-use capsulet_runtime::bundle::{ReportedRun, RunBundle};
+use capsulet_runtime::bundle::{
+    Explanation, ReportedRun, RunBundle, evidence_of, explain, node_of,
+};
 use capsulet_runtime::values::check_value;
 use capsulet_runtime::{RunState, Signal};
 use capsulet_storage::ObjectStore;
@@ -25,9 +27,12 @@ use crate::{
     error::ApiError,
     http::{generated_id, internal::ProjectContext, project_context, require_resource_project},
     models::{
-        AgentResponse, AgentRunBundleResponse, AgentRunErasureResponse, AgentRunResponse,
-        CreateAgentRequest, CreateGraphRequest, DecideAgentRunRequest, GraphResponse,
-        ListAgentRunsResponse, ListAgentsResponse, ListGraphsResponse, StartAgentRunRequest,
+        AgentResponse, AgentRunBundleResponse, AgentRunErasureResponse,
+        AgentRunExplanationResponse, AgentRunResponse, AgentRunUsageResponse, CheckRuleResponse,
+        CreateAgentRequest, CreateGraphRequest, DecideAgentRunRequest, DecisionReplayResponse,
+        DivergenceResponse, EffectExplanationResponse, EvidenceDigestResponse,
+        ExplainedEventResponse, GraphResponse, ListAgentRunsResponse, ListAgentsResponse,
+        ListGraphsResponse, NodeExplanationResponse, StartAgentRunRequest,
         termination_policy_from_conditions,
     },
     state::AppState,
@@ -413,7 +418,155 @@ where
 {
     let context = project_context(&headers, &principal)?;
     let id = AgentRunId::new(id).map_err(ApiError::validation)?;
-    let run = find_run(&state.store, &id, &context).await?;
+    let bundle = run_bundle(&state, &context, &id).await?;
+    let sealed = bundle
+        .seal()
+        .map_err(|error| ApiError::store(error.to_string()))?;
+    Ok(Json(AgentRunBundleResponse {
+        kind: sealed.kind,
+        bundle_version: sealed.bundle_version,
+        digest: sealed.digest,
+        body: sealed.body,
+    }))
+}
+
+/// Says what a run did, read from its own log as an offline replay of its bundle
+/// would: each node's attempts and what its last one amounts to, what each was
+/// observed to do and the evidence that names, every decision made again, and what
+/// the run's result amounts to. The same bundle and the same code as the export, so
+/// the two cannot disagree. A read: it changes nothing and carries no content.
+pub(crate) async fn explain_agent_run<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<AgentRunExplanationResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    let id = AgentRunId::new(id).map_err(ApiError::validation)?;
+    let bundle = run_bundle(&state, &context, &id).await?;
+    let explanation = explain(&bundle);
+    Ok(Json(explanation_response(&bundle, &explanation)))
+}
+
+fn explanation_response(
+    bundle: &RunBundle,
+    explanation: &Explanation,
+) -> AgentRunExplanationResponse {
+    let roles = &explanation.decisions.roles;
+    let nodes = explanation
+        .nodes
+        .iter()
+        .map(|node| NodeExplanationResponse {
+            node: node.node.as_str().to_string(),
+            kind: node.kind.clone(),
+            attempts: node.attempts,
+            finished: node.finished,
+            failures: node.failures.clone(),
+            rework: node.rework.as_str().to_string(),
+            result: node.result.as_str().to_string(),
+            meaning: node.result.meaning().to_string(),
+            rules: node
+                .rules
+                .iter()
+                .map(|(rule, value)| CheckRuleResponse {
+                    rule: rule.clone(),
+                    value: value.clone(),
+                })
+                .collect(),
+            events: bundle
+                .events
+                .iter()
+                .zip(roles)
+                .filter(|(recorded, _)| node_of(&recorded.event) == Some(&node.node))
+                .map(|(recorded, role)| ExplainedEventResponse {
+                    position: recorded.position,
+                    kind: recorded.event.as_str().to_string(),
+                    role: role.as_str().to_string(),
+                    evidence: evidence_of(&recorded.event)
+                        .into_iter()
+                        .map(|(name, digest)| EvidenceDigestResponse {
+                            name,
+                            digest: digest.to_string(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        })
+        .collect();
+    AgentRunExplanationResponse {
+        run_id: bundle.run_id.clone(),
+        agent_id: bundle.agent_id.clone(),
+        trace_id: bundle.trace_id.clone(),
+        assurance_mode: explanation.assurance.map(|mode| mode.as_str().to_string()),
+        result: explanation.result.as_str().to_string(),
+        status: explanation
+            .status
+            .as_ref()
+            .ok()
+            .map(|status| status.as_str().to_string()),
+        fold_error: explanation.status.as_ref().err().cloned(),
+        agrees: explanation.agrees(),
+        disagreements: explanation.disagreements.clone(),
+        definition_matches: explanation.definition_matches,
+        decisions: DecisionReplayResponse {
+            replayed: explanation.decisions.replayed,
+            external: explanation.decisions.external,
+            consequences: explanation.decisions.consequences,
+            divergences: explanation
+                .decisions
+                .divergences
+                .iter()
+                .map(|divergence| DivergenceResponse {
+                    position: divergence.position,
+                    recorded: divergence.recorded.clone(),
+                    decided: divergence.decided.clone(),
+                })
+                .collect(),
+        },
+        spent: AgentRunUsageResponse {
+            tokens: explanation.spent.tokens,
+            cost_micro_units: explanation.spent.cost_micro_units,
+            effects: explanation.spent.effects,
+            unmeasured: explanation.spent.unmeasured,
+        },
+        ended_because: explanation.ended_because.clone(),
+        waiting_on: explanation.waiting_on.clone(),
+        unfinished: explanation
+            .unfinished
+            .iter()
+            .map(|node| node.as_str().to_string())
+            .collect(),
+        nodes,
+        effects: explanation
+            .effects
+            .iter()
+            .map(|effect| EffectExplanationResponse {
+                node: effect.node.as_str().to_string(),
+                effect: effect.effect.as_str().to_string(),
+                attempts: effect.attempts,
+                outcome: effect.outcome.to_string(),
+            })
+            .collect(),
+    }
+}
+
+/// The bundle of a run in the caller's project: its definition, whole log, what
+/// this installation reports about it and its trace id, and nothing it was given or
+/// produced. Another project's run is not found.
+async fn run_bundle<S, O>(
+    state: &AppState<S, O>,
+    context: &ProjectContext,
+    id: &AgentRunId,
+) -> Result<RunBundle, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let run = find_run(&state.store, id, context).await?;
     // A run from before agent runs executed has no definition or log to pack.
     let Some(execution) = &run.execution else {
         return Err(ApiError::AgentRunStateConflict(id.as_str().to_string()));
@@ -474,15 +627,7 @@ where
             "credentials and the installation's configuration".to_string(),
         ],
     };
-    let sealed = bundle
-        .seal()
-        .map_err(|error| ApiError::store(error.to_string()))?;
-    Ok(Json(AgentRunBundleResponse {
-        kind: sealed.kind,
-        bundle_version: sealed.bundle_version,
-        digest: sealed.digest,
-        body: sealed.body,
-    }))
+    Ok(bundle)
 }
 
 /// Erases what a finished run was given and produced, keeping the record that it ran.

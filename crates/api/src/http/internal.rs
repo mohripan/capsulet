@@ -329,6 +329,7 @@ where
             "exportAgentRunBundle",
             crate::graphs::export_agent_run_bundle,
         )
+        .operation("explainAgentRun", crate::graphs::explain_agent_run)
         .operation("askReasoning", crate::reasoning::ask)
         .operation("listCertificates", crate::reasoning::list_certificates)
         .operation(

@@ -690,6 +690,125 @@ pub(crate) struct AgentRunBundleResponse {
     pub(crate) body: String,
 }
 
+/// What a run did, read from its own log the way `capsulet-replay` reads its
+/// bundle.
+///
+/// It is made from the same bundle `exportAgentRunBundle` seals, by the same code,
+/// so this account and an offline replay of the export cannot differ. Every label is
+/// an observed fact, and none certifies a result: a check that held says only that
+/// its rules held on its input.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AgentRunExplanationResponse {
+    pub(crate) run_id: String,
+    pub(crate) agent_id: String,
+    /// The trace the run's spans were recorded under, when it was traced.
+    pub(crate) trace_id: Option<String>,
+    /// `observe`, `verify` or `enforce`; absent when the log records no admission.
+    pub(crate) assurance_mode: Option<String>,
+    /// What the run's result amounts to: `unverified` (completed in observe mode,
+    /// nothing certified it), `see_certificate` (completed under a mode that
+    /// certifies), `abstained` (ended without a result) or `pending`.
+    pub(crate) result: String,
+    /// The status the log folds to; absent when it does not fold.
+    pub(crate) status: Option<String>,
+    /// Why the log does not fold, when it does not.
+    pub(crate) fold_error: Option<String>,
+    /// Whether the log supports what was reported and every decision in it is one
+    /// the runtime makes again.
+    pub(crate) agrees: bool,
+    /// Where the log and what was reported disagree.
+    pub(crate) disagreements: Vec<String>,
+    /// Whether the definition is the version the run was admitted with.
+    pub(crate) definition_matches: bool,
+    pub(crate) decisions: DecisionReplayResponse,
+    pub(crate) spent: AgentRunUsageResponse,
+    pub(crate) ended_because: Option<String>,
+    pub(crate) waiting_on: Option<String>,
+    /// Nodes started and not finished when the log ends.
+    pub(crate) unfinished: Vec<String>,
+    pub(crate) nodes: Vec<NodeExplanationResponse>,
+    pub(crate) effects: Vec<EffectExplanationResponse>,
+}
+
+/// Every decision in a run's log, made again from the log before it.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct DecisionReplayResponse {
+    /// Events recording a decision the runtime makes again.
+    pub(crate) replayed: u32,
+    /// Events the outside world wrote: admission, inputs, answered signals.
+    pub(crate) external: u32,
+    /// Events a decision's own work wrote after it.
+    pub(crate) consequences: u32,
+    /// Events the runtime would not have written.
+    pub(crate) divergences: Vec<DivergenceResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct DivergenceResponse {
+    pub(crate) position: u64,
+    /// The event the log records there.
+    pub(crate) recorded: String,
+    /// What deciding again from the log before it produces instead.
+    pub(crate) decided: String,
+}
+
+/// One node's part in a run, and what its last attempt amounts to.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct NodeExplanationResponse {
+    pub(crate) node: String,
+    pub(crate) kind: String,
+    pub(crate) attempts: u32,
+    pub(crate) finished: u32,
+    /// The kind of each failed attempt, in order.
+    pub(crate) failures: Vec<String>,
+    /// What doing the node's work again would need: `recorded in the log`, a
+    /// model, the project's memory, the world, or only its inputs.
+    pub(crate) rework: String,
+    /// `proposed`, `checked`, `waived`, `disputed`, `verdict_unrecorded`,
+    /// `unverified`, `failed`, `interrupted`, `not_run` or `structural`.
+    pub(crate) result: String,
+    /// What the result label does and does not say.
+    pub(crate) meaning: String,
+    /// A check's rules, as its definition states them: what `checked` or
+    /// `disputed` is about.
+    pub(crate) rules: Vec<CheckRuleResponse>,
+    /// What the node was observed to do: its events, in order.
+    pub(crate) events: Vec<ExplainedEventResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct CheckRuleResponse {
+    pub(crate) rule: String,
+    pub(crate) value: String,
+}
+
+/// One event, with what the replay made of it and the evidence it names.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct ExplainedEventResponse {
+    pub(crate) position: u64,
+    pub(crate) kind: String,
+    /// `decision`, `external`, `consequence` or `divergent`.
+    pub(crate) role: String,
+    /// The content digests the event names: inputs, outputs, receipts.
+    pub(crate) evidence: Vec<EvidenceDigestResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct EvidenceDigestResponse {
+    pub(crate) name: String,
+    pub(crate) digest: String,
+}
+
+/// One effect's attempts, and how the last one came out.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct EffectExplanationResponse {
+    pub(crate) node: String,
+    pub(crate) effect: String,
+    pub(crate) attempts: u32,
+    /// `performed`, `refused`, `uncertain`, or `outstanding`.
+    pub(crate) outcome: String,
+}
+
 /// What erasing an agent run's payloads did.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AgentRunErasureResponse {

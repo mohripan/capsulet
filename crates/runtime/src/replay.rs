@@ -63,6 +63,19 @@ pub enum Role {
     Divergent,
 }
 
+impl Role {
+    /// The role's name, for a report or a wire format.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Decision => "decision",
+            Self::External => "external",
+            Self::Consequence => "consequence",
+            Self::Divergent => "divergent",
+        }
+    }
+}
+
 impl DecisionReplay {
     /// Whether every decision in the log is the one `decide` makes again.
     #[must_use]

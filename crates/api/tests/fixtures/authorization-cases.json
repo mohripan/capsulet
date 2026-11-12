@@ -225,6 +225,11 @@
     "ownership": "selected_project"
   },
   {
+    "operation_id": "explainAgentRun",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
     "operation_id": "askReasoning",
     "minimum_role": "operator",
     "ownership": "selected_project"

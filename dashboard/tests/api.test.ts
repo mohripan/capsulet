@@ -13,6 +13,8 @@ import {
   createSubgraphEdge,
   formatBytes,
   getErrorMessage,
+  resultTone,
+  roleLabel,
   isTerminalStatus,
   dismissClaimConflict,
   downloadArtifact,
@@ -578,3 +580,24 @@ function jsonResponse(body: unknown, status = 200) {
     headers: { "content-type": "application/json" }
   });
 }
+
+describe("agent run explanations", () => {
+  it("colours a result by what it says, never by whether it looks good", () => {
+    assert.equal(resultTone("checked"), "succeeded");
+    assert.equal(resultTone("disputed"), "failed");
+    assert.equal(resultTone("abstained"), "failed");
+    assert.equal(resultTone("proposed"), "leased");
+    // Nothing checked it, so it must not read as passed.
+    assert.equal(resultTone("unverified"), "queued");
+    assert.equal(resultTone("verdict_unrecorded"), "queued");
+    assert.equal(resultTone("structural"), "cancelled");
+  });
+
+  it("names how each event came to be in the log", () => {
+    assert.equal(roleLabel("decision"), "decision");
+    assert.equal(roleLabel("external"), "outside");
+    assert.equal(roleLabel("consequence"), "work");
+    assert.equal(roleLabel("divergent"), "diverges");
+  });
+});
+

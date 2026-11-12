@@ -1069,6 +1069,64 @@
       ]
     },
     {
+      "id": "CAP-AGENT-010",
+      "kind": "capability",
+      "maturity": "implemented",
+      "area": "Graphs and agents",
+      "statement": "An agent run's explanation (`GET /v1/agent-runs/{id}/explanation`, shown on the run's dashboard page) is made from the same bundle, by the same code, as an offline replay of its export. It labels each node's last attempt as proposed, checked, waived, disputed, unverified, failed, interrupted or not run, with a check's rules and the verdict the log records for it; lists what each node was observed to do and the evidence digests that names; and says whether the run's result is unverified, abstained or pending. No label certifies a result, and another project's run is not found.",
+      "public_surfaces": [
+        "docs/api.md",
+        "dashboard/app/agent-runs/[id]/agent-run-detail-client.tsx"
+      ],
+      "verification": [
+        {
+          "assertion": "labels-agree-with-the-export",
+          "evidence_selectors": [
+            "an_explanation_labels_what_each_node_did_and_agrees_with_the_export"
+          ]
+        },
+        {
+          "assertion": "a-failed-check-is-disputed",
+          "evidence_selectors": [
+            "an_explanation_says_a_failed_check_disputed_the_answer_and_the_run_abstained"
+          ]
+        },
+        {
+          "assertion": "another-project-cannot-see-it",
+          "evidence_selectors": [
+            "another_projects_explanation_of_a_run_is_not_found"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
+          "selector": "an_explanation_labels_what_each_node_did_and_agrees_with_the_export"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
+          "selector": "an_explanation_says_a_failed_check_disputed_the_answer_and_the_run_abstained"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
+          "selector": "another_projects_explanation_of_a_run_is_not_found"
+        },
+        {
+          "type": "source",
+          "path": "crates/runtime/src/bundle.rs"
+        }
+      ]
+    },
+    {
       "id": "CAP-MEMORY-001",
       "kind": "capability",
       "maturity": "implemented",

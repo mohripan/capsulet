@@ -22,7 +22,7 @@ use capsulet_core::{
 };
 use capsulet_ir::agent::{
     AGENT_CONTINUE, AGENT_ENTER, AGENT_LEAVE, CHECK_PORT_PREFIX, DISTINCT_RESULTS, KEEP_GOING,
-    KIND_PARAMETER, RETRY_PARAMETER, SEEN_RESULTS,
+    KIND_PARAMETER, RETRY_PARAMETER, SEEN_RESULTS, VERDICT_PASSED, VERDICT_WAIVED,
 };
 use capsulet_ir::digest::Digest;
 use capsulet_ir::graph::Combine;
@@ -691,26 +691,32 @@ impl AgentExecutor {
             .map_err(|detail| Failure::new(FailureKind::SchemaMismatch, detail))?;
 
         if problems.is_empty() {
-            return self.finish(request, &json!({ "passed": true }), None).await;
+            let finished = self
+                .finish(request, &json!({ "passed": true }), None)
+                .await?;
+            return Ok(verdict(finished, true, false));
         }
         let detail = problems.join("; ");
 
         if let Some(by) = request.approved_by {
-            return self
+            let finished = self
                 .finish(
                     request,
                     &json!({ "passed": true, "detail": format!("waived by {by}: {detail}") }),
                     None,
                 )
-                .await;
+                .await?;
+            return Ok(verdict(finished, true, true));
         }
 
         match request.node.parameters.get("on_fail").map(String::as_str) {
             Some("safety") => Err(Failure::new(FailureKind::UnsafeEffect, detail)),
             Some("escalate") => Err(Failure::new(FailureKind::InterpretationResidual, detail)),
             Some("retry") | None => {
-                self.finish(request, &json!({ "passed": false, "detail": detail }), None)
-                    .await
+                let finished = self
+                    .finish(request, &json!({ "passed": false, "detail": detail }), None)
+                    .await?;
+                Ok(verdict(finished, false, false))
             }
             Some(other) => Err(Failure::new(
                 FailureKind::SchemaMismatch,
@@ -1233,6 +1239,37 @@ fn claim_from_value(id: &str, tenant: &str, project: &str, value: &Value) -> Res
         None,
     )
     .map_err(|error| error.to_string())
+}
+
+/// A validator's finish, carrying its verdict as control readings: whether the
+/// check passed, and whether a person's waiver is what passed it. The log then says
+/// how every check came out, which a bundle and its replay can show without the
+/// value that was checked.
+fn verdict(outcome: NodeOutcome, passed: bool, waived: bool) -> NodeOutcome {
+    match outcome {
+        NodeOutcome::Finished {
+            outputs,
+            mut control,
+            usage,
+        } => {
+            control.insert(
+                VERDICT_PASSED.to_string(),
+                ControlValue::Bool { value: passed },
+            );
+            if waived {
+                control.insert(
+                    VERDICT_WAIVED.to_string(),
+                    ControlValue::Bool { value: true },
+                );
+            }
+            NodeOutcome::Finished {
+                outputs,
+                control,
+                usage,
+            }
+        }
+        failed @ NodeOutcome::Failed { .. } => failed,
+    }
 }
 
 #[cfg(test)]

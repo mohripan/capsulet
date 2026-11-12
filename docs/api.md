@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -140,6 +140,7 @@ The generated router inventory currently exposes:
 | `POST` | `/v1/agent-runs/{id}/cancel` | Ask a run to stop at its next safe point |
 | `POST` | `/v1/agent-runs/{id}/decisions` | Approve or refuse at the gate a run is waiting on |
 | `POST` | `/v1/agent-runs/{id}/debug-bundle` | Export a digest-checked bundle of a run's definition and log, with none of its content |
+| `GET` | `/v1/agent-runs/{id}/explanation` | What a run did and what its result amounts to, read from its log as an offline replay of its bundle reads it |
 | `POST` | `/v1/agent-runs/{id}/erase` | Erase what a finished run was given and produced, keeping its record (`agents:write`) |
 | `GET`, `POST` | `/v1/workflows` | List or create workflow DAGs |
 | `GET`, `PUT`, `DELETE` | `/v1/workflows/{id}` | Read, replace, or delete a workflow DAG |
@@ -439,6 +440,41 @@ with, and no credentials or configuration. `capsulet agent-runs bundle <id> --pr
 --output run.json` makes the call and checks the digest before writing the file. Read one offline
 with `capsulet-replay`, which also makes every decision in the log again; see
 [troubleshooting](troubleshooting.md#an-agent-run-did-something-unexpected).
+
+`GET /v1/agent-runs/{id}/explanation` (`agents:read`) is that account over the API. It comes from
+the same bundle, by the same code, so it cannot say anything an offline replay of the export would
+not. The response has three parts.
+
+- **Each node's last attempt**, labelled:
+
+  | Label | Meaning |
+  | --- | --- |
+  | `proposed` | a model's answer, which nothing has certified |
+  | `checked` | a check whose rules held on its input |
+  | `waived` | a check that failed and that a person waived at a gate |
+  | `disputed` | a check whose rules did not hold |
+  | `unverified` | finished work that nothing checked |
+  | `failed` | its last attempt failed |
+  | `interrupted` | started, and not finished when the log ends |
+  | `not_run` | never started |
+
+  A check's label comes from the verdict the validator records in the log (`verdict.passed`, and
+  `verdict.waived` for a waiver), so it is part of the run's record rather than its content. The
+  response also gives the check's rules, as its definition states them.
+- **What each node was observed to do:** its events, each marked as a decision made again, an outside
+  event, or a decision's own work, with the content digests they name.
+- **The run's `result`:**
+
+  | Result | Meaning |
+  | --- | --- |
+  | `unverified` | it completed in observe mode, and nothing certified its outputs, whatever its checks found |
+  | `see_certificate` | it completed under a mode that certifies |
+  | `abstained` | it ended without a result |
+  | `pending` | it has not ended |
+
+No label is a proof. A check that held says only that its rules held on its input, not that the
+answer is right. A run in another project is not found. The dashboard's run page shows the same
+response.
 
 ## Current correctness certificate API
 

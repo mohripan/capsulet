@@ -247,6 +247,20 @@ fn report_run(bundle: &RunBundle, explanation: &Explanation) -> ExitCode {
         "spent: {} tokens, {} cost micro-units, {} effects, {} unmeasured",
         spent.tokens, spent.cost_micro_units, spent.effects, spent.unmeasured
     );
+    println!(
+        "result: {}{}",
+        explanation.result.as_str(),
+        match explanation.result {
+            capsulet_runtime::bundle::RunResult::Unverified => {
+                ", completed in observe mode: its outputs were captured and nothing certified them"
+            }
+            capsulet_runtime::bundle::RunResult::SeeCertificate => {
+                ", completed under a mode that certifies: its certificate says what it amounts to"
+            }
+            capsulet_runtime::bundle::RunResult::Abstained => ", ended without a result",
+            capsulet_runtime::bundle::RunResult::Pending => ", has not ended",
+        }
+    );
     if let Some(reason) = &explanation.ended_because {
         println!("ended because: {reason}");
     }
@@ -301,13 +315,24 @@ fn print_steps(explanation: &Explanation) {
         } else {
             format!(", failed with {}", node.failures.join(", "))
         };
+        let rules = if node.rules.is_empty() {
+            String::new()
+        } else {
+            let stated: Vec<String> = node
+                .rules
+                .iter()
+                .map(|(rule, value)| format!("{rule}={value}"))
+                .collect();
+            format!(" ({})", stated.join(", "))
+        };
         println!(
-            "  {} ({}): {} started, {} finished{failures}; {}",
+            "  {} ({}): {} started, {} finished{failures}; {}; {}{rules}",
             node.node,
             node.kind,
             node.attempts,
             node.finished,
-            node.rework.as_str()
+            node.rework.as_str(),
+            node.result.as_str()
         );
     }
     if !explanation.effects.is_empty() {

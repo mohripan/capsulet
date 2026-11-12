@@ -2297,3 +2297,148 @@ async fn payloads_past_retention_are_erased_and_newer_ones_kept() {
         assert!(!held.contains(SHARED), "still held: {held}");
     }
 }
+
+/// The run's own export, opened as an offline reader opens it.
+async fn exported(stack: &Stack, id: &str) -> RunBundle {
+    let (status, body) = stack
+        .post(&format!("/v1/agent-runs/{id}/debug-bundle"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let sealed: SealedRunBundle = serde_json::from_value(body).expect("a sealed bundle");
+    sealed.open().expect("the bundle matches its digest")
+}
+
+fn explained_node(explained: &Value, name: &str) -> Value {
+    explained["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node"] == name)
+        .cloned()
+        .unwrap_or_else(|| panic!("no node {name} in {explained}"))
+}
+
+/// Over HTTP, a run's explanation is its bundle's, read by the same code: a check
+/// that held is `checked` with the rule it held, the model's answer `proposed`, and
+/// the run, which completed in observe mode, `unverified`. An offline reader of the
+/// run's own export says the same of every node.
+#[tokio::test]
+async fn an_explanation_labels_what_each_node_did_and_agrees_with_the_export() {
+    let stack = Stack::new(Some(ScriptedModel::answering(&["an answer"]))).await;
+    let agent = answering_agent(&stack).await;
+    let id = stack
+        .start(&agent, json!({ "query": "what?", "answer": "" }))
+        .await;
+    stack.run_to_rest().await;
+
+    let (status, explained) = stack.get(&format!("/v1/agent-runs/{id}/explanation")).await;
+    assert_eq!(status, StatusCode::OK, "{explained}");
+    assert_eq!(explained["result"], "unverified", "{explained}");
+    assert_eq!(explained["assurance_mode"], "observe", "{explained}");
+    assert_eq!(explained["agrees"], true, "{explained}");
+    let check = explained_node(&explained, "check");
+    assert_eq!(check["result"], "checked", "{explained}");
+    assert_eq!(
+        check["rules"],
+        json!([{ "rule": "non_empty", "value": "true" }])
+    );
+    assert_eq!(explained_node(&explained, "model")["result"], "proposed");
+    assert_eq!(
+        explained_node(&explained, "normalize")["result"],
+        "unverified"
+    );
+    // Evidence is named by digest, never carried.
+    assert!(
+        explained_node(&explained, "model")["events"]
+            .as_array()
+            .expect("events")
+            .iter()
+            .flat_map(|event| event["evidence"].as_array().cloned().unwrap_or_default())
+            .any(|evidence| evidence["digest"]
+                .as_str()
+                .is_some_and(|digest| digest.starts_with("sha256:"))),
+        "{explained}"
+    );
+    assert!(!explained.to_string().contains("an answer"), "{explained}");
+
+    let offline = explain(&exported(&stack, &id).await);
+    assert!(offline.agrees(), "{offline:?}");
+    assert_eq!(
+        explained["decisions"]["replayed"],
+        offline.decisions.replayed
+    );
+    for account in &offline.nodes {
+        assert_eq!(
+            explained_node(&explained, account.node.as_str())["result"],
+            account.result.as_str(),
+            "{}",
+            account.node
+        );
+    }
+}
+
+/// A check whose rules did not hold is `disputed`, and a run that ended on it
+/// without an answer `abstained`.
+#[tokio::test]
+async fn an_explanation_says_a_failed_check_disputed_the_answer_and_the_run_abstained() {
+    let stack = Stack::new(Some(ScriptedModel::answering(&["no sources"]))).await;
+    let agent = stack
+        .agent(
+            answering_graph(&json!({ "rule.contains": "cited" })),
+            generous(),
+            &["safety_failure"],
+        )
+        .await;
+    let id = stack
+        .start(&agent, json!({ "query": "why?", "answer": "" }))
+        .await;
+    stack.run_to_rest().await;
+
+    let (status, explained) = stack.get(&format!("/v1/agent-runs/{id}/explanation")).await;
+    assert_eq!(status, StatusCode::OK, "{explained}");
+    assert_eq!(
+        explained_node(&explained, "check")["result"],
+        "disputed",
+        "{explained}"
+    );
+    assert_eq!(explained["result"], "abstained", "{explained}");
+    assert!(explained["ended_because"].is_string(), "{explained}");
+    assert_eq!(explained["agrees"], true, "{explained}");
+}
+
+/// Another project cannot read a run's explanation, or tell that the run exists.
+#[tokio::test]
+async fn another_projects_explanation_of_a_run_is_not_found() {
+    let stack = Stack::new(Some(ScriptedModel::answering(&["an answer"]))).await;
+    let agent = answering_agent(&stack).await;
+    let id = stack
+        .start(&agent, json!({ "query": "what?", "answer": "" }))
+        .await;
+    stack.run_to_rest().await;
+
+    let response = stack
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/v1/agent-runs/{id}/explanation"))
+                .header("authorization", format!("Bearer {}", stack.token))
+                .header("x-capsulet-project-id", "another-project")
+                .body(Body::empty())
+                .expect("a valid request"),
+        )
+        .await
+        .expect("a response");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("a body")
+        .to_bytes();
+    assert!(
+        !String::from_utf8_lossy(&body).contains(&id),
+        "the answer names the run"
+    );
+}

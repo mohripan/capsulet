@@ -136,6 +136,15 @@ and fails with `verifier_unavailable`. That is what the verifier protocol in M4 
 A worker holds its lease for as long as a node takes, by heartbeating while the work runs. Without
 that, any node slower than its lease is taken over and run a second time.
 
+A validator's `node_finished` carries its verdict as control readings:
+
+- `verdict.passed`: whether its rules held;
+- `verdict.waived`: present, and true, when a person waived a failure at a gate.
+
+That makes a check's outcome part of the run's record rather than its content. A bundle, its
+replay and the run's explanation can say whether each check held without carrying the value it
+checked. A log written before verdicts were recorded reads as `verdict_unrecorded`.
+
 Checked by: `verify --gate postgres` (`crates/graph-worker/tests/agent_runs.rs` and `execution.rs`).
 
 ## What is not claimed

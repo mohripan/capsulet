@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 
 use capsulet_ir::definition::AssuranceMode;
 use capsulet_ir::id::Identifier;
-use capsulet_runtime::bundle::{Explanation, RunBundle};
+use capsulet_runtime::bundle::{Explanation, RunBundle, evidence_of, node_of};
 use capsulet_runtime::replay::Role;
 use capsulet_runtime::{RecordedEvent, RunEvent};
 
@@ -149,8 +149,11 @@ fn verification(page: &mut String, bundle: &RunBundle, explanation: &Explanation
     };
     let _ = write!(
         page,
-        "<h2>Verification</h2>\n<p>{}</p>\n<p>Definition: {}.</p>\n",
+        "<h2>Verification</h2>\n<p>{}</p>\n<p>Result: <span class=\"result {}\">{}</span>.</p>\n\
+         <p>Definition: {}.</p>\n",
         escape(said),
+        explanation.result.as_str(),
+        explanation.result.as_str().replace('_', " "),
         if explanation.definition_matches {
             "the version the run was admitted with"
         } else {
@@ -168,17 +171,40 @@ fn nodes(page: &mut String, bundle: &RunBundle, explanation: &Explanation) {
         } else {
             format!(", failed with {}", node.failures.join(", "))
         };
-        let _ = write!(
+        let _ = writeln!(
             page,
-            "<details class=\"node\"><summary><code>{}</code> <span class=\"kind\">{}</span> {} \
-             started, {} finished{}; {}</summary>\n<ol class=\"events\">\n",
+            "<details class=\"node\"><summary><code>{}</code> <span class=\"kind\">{}</span> \
+             <span class=\"result {}\" title=\"{}\">{}</span> {} started, {} finished{}; \
+             {}</summary>",
             escape(node.node.as_str()),
             escape(&node.kind),
+            node.result.as_str(),
+            escape(node.result.meaning()),
+            node.result.as_str().replace('_', " "),
             node.attempts,
             node.finished,
             escape(&failures),
             escape(node.rework.as_str())
         );
+        let _ = writeln!(
+            page,
+            "<p class=\"meaning\">{}.</p>",
+            escape(node.result.meaning())
+        );
+        if !node.rules.is_empty() {
+            let stated: Vec<String> = node
+                .rules
+                .iter()
+                .map(|(rule, value)| format!("{rule} = {value}"))
+                .collect();
+            let _ = writeln!(
+                page,
+                "<p class=\"rules\">Rules: <code>{}</code>. A check proves these rules held \
+                 on its input, and nothing more.</p>",
+                escape(&stated.join("; "))
+            );
+        }
+        page.push_str("<ol class=\"events\">\n");
         for (recorded, role) in bundle
             .events
             .iter()
@@ -286,19 +312,7 @@ fn event_item(page: &mut String, recorded: &RecordedEvent, role: Role, place: Pl
 
 /// Whether `event` is about `node`.
 fn concerns(event: &RunEvent, node: &Identifier) -> bool {
-    match event {
-        RunEvent::NodeStarted { node: of }
-        | RunEvent::NodeFinished { node: of, .. }
-        | RunEvent::NodeFailed { node: of, .. }
-        | RunEvent::ResourcesConsumed { node: of, .. }
-        | RunEvent::EffectClaimed { node: of, .. }
-        | RunEvent::EffectFinalized { node: of, .. }
-        | RunEvent::EffectAbandoned { node: of, .. }
-        | RunEvent::EffectUncertain { node: of, .. }
-        | RunEvent::GateRejected { node: of, .. }
-        | RunEvent::Compensated { node: of, .. } => of == node,
-        _ => false,
-    }
+    node_of(event) == Some(node)
 }
 
 /// A short account of what the event says, beyond its kind.
@@ -360,26 +374,12 @@ fn detail(event: &RunEvent) -> String {
     }
 }
 
-/// The evidence an event names by digest: the run's inputs, a node's outputs, an
-/// effect's receipt, the run's outputs.
+/// The evidence an event names by digest, as text for the page.
 fn evidence(event: &RunEvent) -> Vec<(String, String)> {
-    match event {
-        RunEvent::InputsBound { inputs } => inputs
-            .iter()
-            .map(|(name, digest)| (format!("input {name}"), digest.to_string()))
-            .collect(),
-        RunEvent::NodeFinished { outputs, .. } | RunEvent::Completed { outputs } => outputs
-            .iter()
-            .map(|(name, digest)| (format!("output {name}"), digest.to_string()))
-            .collect(),
-        RunEvent::EffectFinalized { receipt, .. } | RunEvent::Compensated { receipt, .. } => {
-            vec![("receipt".to_string(), receipt.to_string())]
-        }
-        RunEvent::Admitted { definition, .. } => {
-            vec![("definition".to_string(), definition.to_string())]
-        }
-        _ => Vec::new(),
-    }
+    evidence_of(event)
+        .into_iter()
+        .map(|(name, digest)| (name, digest.to_string()))
+        .collect()
 }
 
 fn join(identifiers: &[Identifier]) -> String {
@@ -430,4 +430,9 @@ border:1px solid currentColor;margin:0 .25rem}.role.decision{color:var(--decisio
 .role.external{color:var(--external)}.role.consequence{color:var(--work)}\
 .role.divergent{color:var(--bad);font-weight:600}\
 .evidence{margin-left:7.75rem;color:var(--muted)}.digest{font-size:12px}\
-.legend{color:var(--muted);font-size:13px}";
+.legend{color:var(--muted);font-size:13px}\
+.result{display:inline-block;font-size:12px;border-radius:10px;padding:0 .5rem;\
+background:var(--code);margin:0 .25rem}.result.checked{color:var(--ok)}\
+.result.disputed,.result.failed,.result.abstained{color:var(--bad)}\
+.result.proposed,.result.waived{color:var(--external)}\
+.meaning,.rules{color:var(--muted);font-size:13px;margin:.25rem 0}";

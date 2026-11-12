@@ -3956,3 +3956,82 @@ select {
     scroll-behavior: auto;
   }
 }
+
+/* A run's explanation: each node, what it amounts to, and what it was observed to do. */
+.explanationNote {
+  color: var(--soft);
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.explanationProblems {
+  color: var(--red);
+  margin: 8px 0;
+}
+
+.explanationNodes {
+  display: grid;
+  gap: 6px;
+}
+
+.explanationNode {
+  border: 1px solid rgba(143, 168, 195, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.explanationNode summary {
+  cursor: pointer;
+}
+
+.explanationNode .state {
+  display: inline-block;
+  width: auto;
+  padding: 0 8px;
+}
+
+.explanationKind {
+  color: var(--soft);
+}
+
+.explanationEvents {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.explanationEvents li {
+  border-top: 1px solid rgba(143, 168, 195, 0.15);
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.explanationRole {
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.role-decision {
+  color: #66b8ff;
+}
+
+.role-external {
+  color: var(--violet);
+}
+
+.role-consequence {
+  color: var(--soft);
+}
+
+.role-divergent {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.explanationEvidence {
+  color: var(--soft);
+  font-size: 12px;
+  margin-left: 48px;
+}

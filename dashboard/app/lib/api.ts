@@ -593,6 +593,7 @@ export const DASHBOARD_OPERATIONS = {
   listAgentRuns: clientOperation("GET", "/v1/agent-runs", "listAgentRuns", null, "ListAgentRunsResponse"),
   getAgentRun: clientOperation("GET", "/v1/agent-runs/{id}", "getAgentRun", null, "AgentRunResponse"),
   getAgentRunEvents: clientOperation("GET", "/v1/agent-runs/{id}/events", "getAgentRunEvents", null, "IrRunEventsResponse"),
+  explainAgentRun: clientOperation("GET", "/v1/agent-runs/{id}/explanation", "explainAgentRun", null, "AgentRunExplanationResponse"),
   cancelAgentRun: clientOperation("POST", "/v1/agent-runs/{id}/cancel", "cancelAgentRun", null, "AgentRunResponse"),
   decideAgentRun: clientOperation("POST", "/v1/agent-runs/{id}/decisions", "decideAgentRun", "DecideAgentRunRequest", "AgentRunResponse"),
   getCurrentPrincipal: clientOperation("GET", "/v1/auth/me", "getCurrentPrincipal", null, "PrincipalResponse", false),
@@ -1180,6 +1181,95 @@ export async function getAgentRun(id: string) {
 
 export async function getAgentRunEvents(id: string) {
   return apiFetch<{ run_id: string; events: AgentRunEvent[] }>(`/v1/agent-runs/${encodeURIComponent(id)}/events`);
+}
+
+/** One node's part in a run: what its last attempt amounts to, and what it was observed to do. */
+export type AgentRunNodeExplanation = {
+  node: string;
+  kind: string;
+  attempts: number;
+  finished: number;
+  failures: string[];
+  rework: string;
+  /** proposed, checked, waived, disputed, verdict_unrecorded, unverified, failed, interrupted, not_run or structural. */
+  result: string;
+  /** What the label does and does not say. */
+  meaning: string;
+  /** A check's rules, as its definition states them. */
+  rules: { rule: string; value: string }[];
+  events: { position: number; kind: string; role: string; evidence: { name: string; digest: string }[] }[];
+};
+
+/**
+ * What a run did, read from its own log by the same code as an offline replay of its bundle.
+ * Every label is an observed fact; none certifies a result.
+ */
+export type AgentRunExplanation = {
+  run_id: string;
+  agent_id: string;
+  trace_id: string | null;
+  assurance_mode: string | null;
+  /** unverified, see_certificate, abstained or pending. */
+  result: string;
+  status: string | null;
+  fold_error: string | null;
+  agrees: boolean;
+  disagreements: string[];
+  definition_matches: boolean;
+  decisions: {
+    replayed: number;
+    external: number;
+    consequences: number;
+    divergences: { position: number; recorded: string; decided: string }[];
+  };
+  spent: AgentRunUsage;
+  ended_because: string | null;
+  waiting_on: string | null;
+  unfinished: string[];
+  nodes: AgentRunNodeExplanation[];
+  effects: { node: string; effect: string; attempts: number; outcome: string }[];
+};
+
+export async function explainAgentRun(id: string) {
+  return apiFetch<AgentRunExplanation>(`/v1/agent-runs/${encodeURIComponent(id)}/explanation`);
+}
+
+/** The badge tone for a result label: what held, what did not, what a model proposed, and what nothing checked. */
+export function resultTone(result: string) {
+  switch (result) {
+    case "checked":
+      return "succeeded";
+    case "disputed":
+    case "failed":
+    case "abstained":
+      return "failed";
+    case "proposed":
+    case "waived":
+      return "leased";
+    case "unverified":
+    case "verdict_unrecorded":
+    case "see_certificate":
+    case "pending":
+      return "queued";
+    default:
+      return "cancelled";
+  }
+}
+
+/** How an event came to be in the log, in words. */
+export function roleLabel(role: string) {
+  switch (role) {
+    case "decision":
+      return "decision";
+    case "external":
+      return "outside";
+    case "consequence":
+      return "work";
+    case "divergent":
+      return "diverges";
+    default:
+      return role;
+  }
 }
 
 export async function cancelAgentRun(id: string) {

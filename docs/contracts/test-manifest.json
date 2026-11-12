@@ -1014,7 +1014,19 @@
         },
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "an_explanation_labels_what_each_node_did_and_agrees_with_the_export"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "an_explanation_says_a_failed_check_disputed_the_answer_and_the_run_abstained"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
           "selector": "another_project_can_see_none_of_it"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "selector": "another_projects_explanation_of_a_run_is_not_found"
         },
         {
           "path": "crates/graph-worker/tests/agent_runs.rs",

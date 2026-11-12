@@ -18,14 +18,17 @@
 
 use std::collections::BTreeMap;
 
-use capsulet_ir::agent::{AGENT_CONTINUE, AGENT_ENTER, AGENT_LEAVE, KIND_PARAMETER};
+use capsulet_ir::agent::{
+    AGENT_CONTINUE, AGENT_ENTER, AGENT_LEAVE, KIND_PARAMETER, VERDICT_PASSED, VERDICT_WAIVED,
+};
+use capsulet_ir::definition::AssuranceMode;
 use capsulet_ir::definition::Definition;
 use capsulet_ir::digest::Digest;
 use capsulet_ir::id::Identifier;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::event::{RecordedEvent, RunEvent};
+use crate::event::{ControlValue, RecordedEvent, RunEvent};
 use crate::replay::{DecisionReplay, replay_decisions};
 use crate::state::{RunState, RunStatus, Spent};
 
@@ -169,6 +172,102 @@ impl Rework {
     }
 }
 
+/// What a node's last attempt amounts to, from what the log records of it.
+///
+/// Every label is an observed fact. None says a result is correct: a check that
+/// held says only that its rules held on its input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeResult {
+    /// A model's answer: a proposal that nothing has certified.
+    Proposed,
+    /// A check whose rules held on its input.
+    Checked,
+    /// A check whose rules did not hold, which passed because a person waived
+    /// the failure at a gate.
+    Waived,
+    /// A check whose rules did not hold.
+    Disputed,
+    /// A check that finished without recording its verdict: a log written
+    /// before checks recorded one.
+    VerdictUnrecorded,
+    /// Work that finished and that nothing checked: a deterministic step, a
+    /// retrieval, an effect.
+    Unverified,
+    /// The last attempt failed.
+    Failed,
+    /// Started, and not finished when the log ends.
+    Interrupted,
+    /// Never started.
+    NotRun,
+    /// The agent loop's own structure, which decides rather than produces.
+    Structural,
+}
+
+impl NodeResult {
+    /// The label, for a report or a wire format.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Proposed => "proposed",
+            Self::Checked => "checked",
+            Self::Waived => "waived",
+            Self::Disputed => "disputed",
+            Self::VerdictUnrecorded => "verdict_unrecorded",
+            Self::Unverified => "unverified",
+            Self::Failed => "failed",
+            Self::Interrupted => "interrupted",
+            Self::NotRun => "not_run",
+            Self::Structural => "structural",
+        }
+    }
+
+    /// What the label does and does not say.
+    #[must_use]
+    pub const fn meaning(self) -> &'static str {
+        match self {
+            Self::Proposed => "a model's answer, which nothing has certified",
+            Self::Checked => {
+                "its rules held on its input; that is all a check says, not that the input is right"
+            }
+            Self::Waived => "its rules did not hold, and a person waived the failure at a gate",
+            Self::Disputed => "its rules did not hold on its input",
+            Self::VerdictUnrecorded => "finished, in a log from before checks recorded a verdict",
+            Self::Unverified => "finished, and nothing checked what it produced",
+            Self::Failed => "its last attempt failed",
+            Self::Interrupted => "started, and not finished when the log ends",
+            Self::NotRun => "never started",
+            Self::Structural => "the agent loop's own step",
+        }
+    }
+}
+
+/// What the run's result amounts to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunResult {
+    /// It completed in observe mode: its outputs were captured and nothing
+    /// certified them, whatever its checks found.
+    Unverified,
+    /// It completed in a mode that issues a certificate. The certificate says
+    /// what the result amounts to, and a run bundle does not carry it.
+    SeeCertificate,
+    /// It ended without a result: it failed or was cancelled.
+    Abstained,
+    /// It has not ended.
+    Pending,
+}
+
+impl RunResult {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unverified => "unverified",
+            Self::SeeCertificate => "see_certificate",
+            Self::Abstained => "abstained",
+            Self::Pending => "pending",
+        }
+    }
+}
+
 /// One node's part in the run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeAccount {
@@ -179,6 +278,11 @@ pub struct NodeAccount {
     /// The kind of each failed attempt, in order.
     pub failures: Vec<String>,
     pub rework: Rework,
+    /// What its last attempt amounts to.
+    pub result: NodeResult,
+    /// A check's rules, as its definition states them (`non_empty`, `true`): what
+    /// `Checked` or `Disputed` is about.
+    pub rules: Vec<(String, String)>,
 }
 
 /// One effect's attempts, and how the last one came out.
@@ -211,6 +315,10 @@ pub struct Explanation {
     pub waiting_on: Option<String>,
     /// Every decision in the log, made again from the log before it.
     pub decisions: DecisionReplay,
+    /// The mode the run was admitted in.
+    pub assurance: Option<AssuranceMode>,
+    /// What the run's result amounts to.
+    pub result: RunResult,
 }
 
 impl Explanation {
@@ -240,6 +348,13 @@ pub fn explain(bundle: &RunBundle) -> Explanation {
     let definition_matches =
         admitted.is_some() && capsulet_ir::digest_of(&bundle.definition).ok() == admitted;
 
+    let assurance = bundle
+        .events
+        .iter()
+        .find_map(|recorded| match &recorded.event {
+            RunEvent::Admitted { mode, .. } => Some(*mode),
+            _ => None,
+        });
     let folded = RunState::fold(&bundle.events).map_err(|error| error.to_string());
     let mut disagreements = Vec::new();
     let mut spent = Spent::default();
@@ -285,6 +400,7 @@ pub fn explain(bundle: &RunBundle) -> Explanation {
         waiting_on = state.waiting_on().map(crate::event::Wait::describe);
     }
 
+    let folded_status = folded.as_ref().ok().map(RunState::status);
     Explanation {
         status: folded.map(|state| state.status()),
         disagreements,
@@ -296,6 +412,21 @@ pub fn explain(bundle: &RunBundle) -> Explanation {
         ended_because,
         waiting_on,
         decisions: replay_decisions(&bundle.definition, &bundle.events),
+        assurance,
+        result: run_result(folded_status, assurance),
+    }
+}
+
+fn run_result(status: Option<RunStatus>, assurance: Option<AssuranceMode>) -> RunResult {
+    match status {
+        Some(RunStatus::Completed) => match assurance {
+            Some(AssuranceMode::Observe) | None => RunResult::Unverified,
+            Some(AssuranceMode::Verify | AssuranceMode::Enforce) => RunResult::SeeCertificate,
+        },
+        Some(RunStatus::Failed | RunStatus::Cancelled) => RunResult::Abstained,
+        Some(RunStatus::Queued | RunStatus::Running | RunStatus::Waiting) | None => {
+            RunResult::Pending
+        }
     }
 }
 
@@ -311,6 +442,14 @@ fn node_accounts(bundle: &RunBundle) -> Vec<NodeAccount> {
                 .cloned()
                 .unwrap_or_else(|| "none".to_string());
             let rework = rework_of(&kind);
+            let rules = node
+                .parameters
+                .iter()
+                .filter_map(|(name, value)| {
+                    name.strip_prefix("rule.")
+                        .map(|rule| (rule.to_string(), value.clone()))
+                })
+                .collect();
             (
                 node.id.clone(),
                 NodeAccount {
@@ -320,31 +459,117 @@ fn node_accounts(bundle: &RunBundle) -> Vec<NodeAccount> {
                     finished: 0,
                     failures: Vec::new(),
                     rework,
+                    result: NodeResult::NotRun,
+                    rules,
                 },
             )
         })
         .collect();
+    // What each node's last attempt came to, as the log records it.
+    let mut last: BTreeMap<Identifier, Last> = BTreeMap::new();
     for recorded in &bundle.events {
         match &recorded.event {
             RunEvent::NodeStarted { node } => {
                 if let Some(account) = accounts.get_mut(node) {
                     account.attempts = account.attempts.saturating_add(1);
                 }
+                last.insert(node.clone(), Last::Started);
             }
-            RunEvent::NodeFinished { node, .. } => {
+            RunEvent::NodeFinished { node, control, .. } => {
                 if let Some(account) = accounts.get_mut(node) {
                     account.finished = account.finished.saturating_add(1);
                 }
+                let reading = |name: &str| match control.get(name) {
+                    Some(ControlValue::Bool { value }) => Some(*value),
+                    _ => None,
+                };
+                last.insert(
+                    node.clone(),
+                    Last::Finished {
+                        passed: reading(VERDICT_PASSED),
+                        waived: reading(VERDICT_WAIVED) == Some(true),
+                    },
+                );
             }
             RunEvent::NodeFailed { node, failure, .. } => {
                 if let Some(account) = accounts.get_mut(node) {
                     account.failures.push(failure.as_str().to_string());
                 }
+                last.insert(node.clone(), Last::Failed);
             }
             _ => {}
         }
     }
+    for account in accounts.values_mut() {
+        account.result = node_result(account, last.get(&account.node).copied());
+    }
     accounts.into_values().collect()
+}
+
+/// A node's last attempt, as the log records it.
+#[derive(Debug, Clone, Copy)]
+enum Last {
+    Started,
+    Finished { passed: Option<bool>, waived: bool },
+    Failed,
+}
+
+fn node_result(account: &NodeAccount, last: Option<Last>) -> NodeResult {
+    if account.rework == Rework::Recorded {
+        return NodeResult::Structural;
+    }
+    match last {
+        None => NodeResult::NotRun,
+        Some(Last::Started) => NodeResult::Interrupted,
+        Some(Last::Failed) => NodeResult::Failed,
+        Some(Last::Finished { passed, waived }) if account.kind == "validator" => match passed {
+            Some(true) if waived => NodeResult::Waived,
+            Some(true) => NodeResult::Checked,
+            Some(false) => NodeResult::Disputed,
+            None => NodeResult::VerdictUnrecorded,
+        },
+        Some(Last::Finished { .. }) if account.rework == Rework::Model => NodeResult::Proposed,
+        Some(Last::Finished { .. }) => NodeResult::Unverified,
+    }
+}
+
+/// The node an event is about, when it is about one.
+#[must_use]
+pub fn node_of(event: &RunEvent) -> Option<&Identifier> {
+    match event {
+        RunEvent::NodeStarted { node }
+        | RunEvent::NodeFinished { node, .. }
+        | RunEvent::NodeFailed { node, .. }
+        | RunEvent::ResourcesConsumed { node, .. }
+        | RunEvent::EffectClaimed { node, .. }
+        | RunEvent::EffectFinalized { node, .. }
+        | RunEvent::EffectAbandoned { node, .. }
+        | RunEvent::EffectUncertain { node, .. }
+        | RunEvent::GateRejected { node, .. }
+        | RunEvent::Compensated { node, .. } => Some(node),
+        _ => None,
+    }
+}
+
+/// The evidence an event names by digest: the definition the run was admitted
+/// against, its inputs, a node's or the run's outputs, an effect's receipt.
+#[must_use]
+pub fn evidence_of(event: &RunEvent) -> Vec<(String, Digest)> {
+    match event {
+        RunEvent::Admitted { definition, .. } => vec![("definition".to_string(), *definition)],
+        RunEvent::InputsBound { inputs } => inputs
+            .iter()
+            .map(|(name, digest)| (format!("input {name}"), *digest))
+            .collect(),
+        RunEvent::NodeFinished { outputs, .. } | RunEvent::Completed { outputs } => outputs
+            .iter()
+            .map(|(name, digest)| (format!("output {name}"), *digest))
+            .collect(),
+        RunEvent::EffectFinalized { receipt, .. } | RunEvent::Compensated { receipt, .. } => {
+            vec![("receipt".to_string(), *receipt)]
+        }
+        _ => Vec::new(),
+    }
 }
 
 fn rework_of(kind: &str) -> Rework {

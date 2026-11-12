@@ -28,3 +28,12 @@ pub const KIND_PARAMETER: &str = "capsulet.kind";
 pub const RETRY_PARAMETER: &str = "capsulet.retry-on-failed-check";
 /// The authority an agent's human gate names.
 pub const HUMAN_REVIEWER: &str = "human-reviewer";
+/// The control reading a validator's finish carries: whether its check passed.
+///
+/// A check's verdict is part of the run's record rather than its content, so the
+/// log, and every bundle of it, says how each check came out without carrying what
+/// it checked.
+pub const VERDICT_PASSED: &str = "verdict.passed";
+/// Present, and true, when the check passed because a person waived its failure at
+/// a gate rather than because its rules held.
+pub const VERDICT_WAIVED: &str = "verdict.waived";

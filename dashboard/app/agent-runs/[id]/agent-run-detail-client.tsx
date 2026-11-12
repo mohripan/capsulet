@@ -1,23 +1,31 @@
 "use client";
 
-// capsulet-claims: CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-004, CAP-DASHBOARD-001
+// capsulet-claims: CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-004, CAP-AGENT-010, CAP-DASHBOARD-001
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Ban, Bot, Check, History, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, Ban, Bot, Check, History, ListChecks, RefreshCw, X } from "lucide-react";
 import { DashboardShell, PageHeader, PanelTitle, ResizableGridTable, StateBadge } from "../../components";
 import {
   AgentRun,
   AgentRunEvent,
+  AgentRunExplanation,
   cancelAgentRun,
   decideAgentRun,
   describeAgentRunEvent,
+  explainAgentRun,
   getAgentRun,
   getAgentRunEvents,
   getErrorMessage,
   isFinishedAgentRun,
+  resultTone,
+  roleLabel,
   tokensLabel
 } from "../../lib/api";
+
+function ResultBadge({ result }: { result: string }) {
+  return <span className={`state state-${resultTone(result)}`}>{result.replace(/_/g, " ")}</span>;
+}
 
 const eventColumns = [
   { label: "#", width: 70, minWidth: 50 },
@@ -29,6 +37,7 @@ const eventColumns = [
 export default function AgentRunDetailClient({ id }: { id: string }) {
   const [run, setRun] = useState<AgentRun | null>(null);
   const [events, setEvents] = useState<AgentRunEvent[]>([]);
+  const [explanation, setExplanation] = useState<AgentRunExplanation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isActing, setIsActing] = useState(false);
@@ -39,6 +48,8 @@ export default function AgentRunDetailClient({ id }: { id: string }) {
       const [nextRun, log] = await Promise.all([getAgentRun(id), getAgentRunEvents(id)]);
       setRun(nextRun);
       setEvents(log.events);
+      // A run from before agent runs executed has no log to explain.
+      setExplanation(nextRun.execution ? await explainAgentRun(id) : null);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -155,6 +166,81 @@ export default function AgentRunDetailClient({ id }: { id: string }) {
             ) : (
               <pre className="terminal logBlock">{JSON.stringify(run.state, null, 2)}</pre>
             )}
+          </section>
+        ) : null}
+
+        {explanation ? (
+          <section className="panel span12">
+            <PanelTitle
+              icon={ListChecks}
+              title="What the run amounts to"
+              action={explanation.agrees ? "Every decision replays" : "Disagrees with its log"}
+            />
+            <div className="detailGrid">
+              <span>Result</span>
+              <ResultBadge result={explanation.result} />
+              <span>Assurance</span>
+              <strong>{explanation.assurance_mode ?? "not recorded"}</strong>
+              <span>Decisions</span>
+              <strong>
+                {`${explanation.decisions.replayed} made again from the log before them, ${explanation.decisions.external} from outside, ${explanation.decisions.consequences} by a decision's own work`}
+              </strong>
+              {explanation.trace_id ? (
+                <>
+                  <span>Trace</span>
+                  <strong className="mono">{explanation.trace_id}</strong>
+                </>
+              ) : null}
+            </div>
+            {explanation.disagreements.length > 0 || explanation.decisions.divergences.length > 0 ? (
+              <ul className="explanationProblems">
+                {explanation.disagreements.map((disagreement) => (
+                  <li key={disagreement}>{disagreement}</li>
+                ))}
+                {explanation.decisions.divergences.map((divergence) => (
+                  <li key={divergence.position}>
+                    {`Event ${divergence.position} records ${divergence.recorded}; deciding again gives: ${divergence.decided}`}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="explanationNote">
+              Each label is what the run&apos;s log records, read the way an offline replay of its bundle reads it. None
+              certifies a result: a check that held proves only that its rules held on its input.
+            </p>
+            <div className="explanationNodes">
+              {explanation.nodes
+                .filter((node) => node.result !== "structural")
+                .map((node) => (
+                  <details className="explanationNode" key={node.node}>
+                    <summary>
+                      <span className="mono">{node.node}</span> <span className="explanationKind">{node.kind}</span>{" "}
+                      <ResultBadge result={node.result} />{" "}
+                      <span className="explanationKind">{`${node.attempts} started, ${node.finished} finished`}</span>
+                    </summary>
+                    <p className="explanationNote">{`${node.meaning}.`}</p>
+                    {node.rules.length > 0 ? (
+                      <p className="explanationNote">
+                        Rules: <span className="mono">{node.rules.map((rule) => `${rule.rule} = ${rule.value}`).join("; ")}</span>
+                      </p>
+                    ) : null}
+                    <ol className="explanationEvents">
+                      {node.events.map((event) => (
+                        <li key={event.position}>
+                          <span className="mono">{`#${event.position}`}</span>{" "}
+                          <span className={`explanationRole role-${event.role}`}>{roleLabel(event.role)}</span>{" "}
+                          <span className="mono">{event.kind}</span>
+                          {event.evidence.map((evidence) => (
+                            <div className="explanationEvidence" key={`${event.position}-${evidence.name}`}>
+                              <span>{evidence.name}</span> <span className="mono">{evidence.digest}</span>
+                            </div>
+                          ))}
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                ))}
+            </div>
           </section>
         ) : null}
 
