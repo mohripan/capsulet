@@ -278,8 +278,8 @@ kubectl wait --for=condition=available deployment \
 kubectl port-forward service/capsulet-dashboard 3000:80 --namespace capsulet
 ```
 
-The chart runs `ghcr.io/mohripan/capsulet-<component>:<version>`, the images a `v<version>` tag
-publishes. Each build of `main` is published as `main` and `sha-<commit>`, so until a version is
+The chart runs one image per component, such as `ghcr.io/mohripan/capsulet-api` at the chart's
+version: the images a `v<version>` tag publishes. Each build of `main` is published as `main` and `sha-<commit>`, so until a version is
 tagged, install with `--set image.tag=main`, or better, pin each component's
 `<component>.image.digest` from that run's release manifest. Every published image is signed and
 carries SLSA provenance and an SBOM; the [supply chain](docs/security/supply-chain.md) shows how to
