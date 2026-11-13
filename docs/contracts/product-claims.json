@@ -4763,6 +4763,130 @@
       ]
     },
     {
+      "id": "CAP-ASSURANCE-014",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Assurance policy",
+      "statement": "Unrelated workloads are decided and certified on a stack through one IR and one certificate protocol. `POST /v1/ir/runs` binds a run's inputs in its log before any worker can lease it, and refuses one its definition does not declare. A verifier node either runs the validators of a pack its definition pins, as the project installed it, over the files its inputs hold, or decides a proposal against a snapshot with the kernel's claim-reasoning family; either leaves on its `decision` output what it decided, the record of each checker, and the evidence with its bytes. `POST /v1/ir/runs/{id}/certificate` seals a finished run's certificate from its log and those decisions, once: every obligation the definition's contracts state is in it, as the last node to decide it left it, or residual when none did. On a stack of its own, the M4 gate installs the contract-clauses, code-changes and infrastructure-policy packs signed under the project's trust store, and runs a clause question, two code changes and two infrastructure changes. The clause answer is decided by the kernel and its references by a tool, and its reading waits for `review:legal`. A change that does not build and a public bucket are `rejected`, a sound fix is `conditional` on its review, and a compliant change is `accepted`. Each certificate's bundle, read back from the API, replays offline to its verdict, and every tool runs again to its record.",
+      "public_surfaces": [
+        "ARCHITECTURE.md"
+      ],
+      "verification": [
+        {
+          "assertion": "runs-take-inputs-and-seal-from-their-logs",
+          "evidence_selectors": [
+            "a_run_starts_with_its_inputs_bound_and_refuses_one_the_definition_does_not_declare",
+            "a_run_that_has_not_finished_has_no_certificate_to_seal_yet",
+            "every_obligation_is_in_the_certificate_as_the_last_node_left_it_or_residual",
+            "a_decision_whose_bytes_are_not_what_it_cites_does_not_assemble"
+          ]
+        },
+        {
+          "assertion": "three-packs-end-to-end-on-a-stack",
+          "evidence_selectors": [
+            "three_unrelated_packs_run_end_to_end_on_a_stack_and_their_certificates_replay_offline"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/api/src/tests/ir.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_run_starts_with_its_inputs_bound_and_refuses_one_the_definition_does_not_declare"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests/ir.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_run_that_has_not_finished_has_no_certificate_to_seal_yet"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/decision.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "every_obligation_is_in_the_certificate_as_the_last_node_left_it_or_residual"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/decision.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_decision_whose_bytes_are_not_what_it_cites_does_not_assemble"
+        },
+        {
+          "type": "test",
+          "path": "crates/graph-worker/tests/m4_gate.rs",
+          "gate": "m4",
+          "command": "cargo test -p capsulet-graph-worker --features stack-tests --test m4_gate --locked",
+          "selector": "three_unrelated_packs_run_end_to_end_on_a_stack_and_their_certificates_replay_offline"
+        },
+        {
+          "type": "source",
+          "path": "crates/kernel/src/decision.rs"
+        },
+        {
+          "type": "source",
+          "path": "crates/graph-worker/src/agent/verify.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-015",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Assurance policy",
+      "statement": "The kernel, the runtime and the graph worker name nothing a domain pack declares. `capsulet-xtask domain check`, the `domain-free` gate, reads every pack's vocabulary (its name, its tools, authorities and obligation ids, and its contracts' relations, phrasings, cues and declarations) and fails when that source names any of it in a string literal or an identifier, outside comments and test code. A one-word term a pack shares with the platform's own vocabulary is listed in the check, with why.",
+      "public_surfaces": [
+        "ARCHITECTURE.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-domain-named-in-code-is-found",
+          "evidence_selectors": [
+            "a_cue_a_relation_a_pack_or_an_authority_named_in_code_is_found",
+            "comments_tests_and_words_inside_other_words_are_not_naming"
+          ]
+        },
+        {
+          "assertion": "the-reference-packs-are-not-named",
+          "evidence_selectors": [
+            "the_reference_packs_vocabulary_reads_and_the_kernel_and_runtime_name_none_of_it"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/xtask/src/domain.rs",
+          "gate": "verifier",
+          "command": "cargo test -p capsulet-xtask --locked --target-dir .capsulet/verify/xtask-tests",
+          "selector": "a_cue_a_relation_a_pack_or_an_authority_named_in_code_is_found"
+        },
+        {
+          "type": "test",
+          "path": "crates/xtask/src/domain.rs",
+          "gate": "verifier",
+          "command": "cargo test -p capsulet-xtask --locked --target-dir .capsulet/verify/xtask-tests",
+          "selector": "comments_tests_and_words_inside_other_words_are_not_naming"
+        },
+        {
+          "type": "test",
+          "path": "crates/xtask/src/domain.rs",
+          "gate": "verifier",
+          "command": "cargo test -p capsulet-xtask --locked --target-dir .capsulet/verify/xtask-tests",
+          "selector": "the_reference_packs_vocabulary_reads_and_the_kernel_and_runtime_name_none_of_it"
+        },
+        {
+          "type": "source",
+          "path": "crates/xtask/src/domain.rs"
+        }
+      ]
+    },
+    {
       "id": "CAP-CORRECTNESS-003",
       "kind": "capability",
       "maturity": "implemented",
@@ -5916,7 +6040,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "Across a labelled corpus of answers to questions about one agreement the project wrote, no answer a reader marks misread or non-responsive reaches accepted, apart from the one recorded limitation it names, and each case is caught by the mechanism it names: a qualifier, a defined term, a cue, or the pinned query. Both sound answers reach accepted. This is a fixture, not a measurement on real contracts or questions.",
+      "statement": "Across a labelled corpus of answers to questions about one agreement the project wrote, no answer a reader marks misread or non-responsive reaches accepted, apart from the one recorded limitation it names, and each case is caught by the mechanism it names: a qualifier, a defined term, a cue, or the pinned query. Both sound answers reach accepted. By verdict, the ten cases come to three accepted, one conditional and six rejected, by the kernel alone and under the contract-clauses pack alike. This is a fixture, not a measurement on real contracts or questions.",
       "public_surfaces": [
         "README.md"
       ],
@@ -5937,6 +6061,13 @@
           "assertion": "the-counts-are-pinned",
           "evidence_selectors": [
             "the_counts_are_what_was_recorded"
+          ]
+        },
+        {
+          "assertion": "the-verdicts-are-pinned",
+          "evidence_selectors": [
+            "the_verdicts_the_completion_report_states_are_what_the_corpus_measures",
+            "the_verdicts_the_completion_report_states_under_the_pack_are_what_the_corpus_measures"
           ]
         }
       ],
@@ -5961,6 +6092,20 @@
           "gate": "unit",
           "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "the_counts_are_what_was_recorded"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_verdicts_the_completion_report_states_are_what_the_corpus_measures"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_verdicts_the_completion_report_states_under_the_pack_are_what_the_corpus_measures"
         }
       ]
     },

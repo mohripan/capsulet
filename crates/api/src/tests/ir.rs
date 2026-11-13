@@ -154,3 +154,144 @@ async fn an_ir_run_remembers_the_trace_of_the_request_that_started_it() {
         "the workers' spans will continue the caller's trace: {parent}"
     );
 }
+
+/// The fixture definition, taking one graph input, `change`, into its node.
+fn definition_taking_a_change() -> Value {
+    let mut definition = ir_definition_body(capsulet_ir::definition::AssuranceMode::Enforce);
+    let graph: capsulet_ir::Graph =
+        serde_json::from_value(definition["graph"].clone()).expect("the fixture graph reads");
+    let identifier = |value: &str| capsulet_ir::Identifier::parse(value).expect("identifier");
+    let opaque = capsulet_ir::ValueSchema::Json {
+        reason: "a change, as files".to_string(),
+    };
+    let mut node = graph
+        .node(&identifier("prepare"))
+        .expect("the fixture node")
+        .clone();
+    node.inputs = vec![capsulet_ir::InputPort::new(
+        identifier("change"),
+        opaque.clone(),
+    )];
+    let taking = capsulet_ir::Graph::new(capsulet_ir::GraphBuilder {
+        nodes: vec![node],
+        edges: vec![capsulet_ir::graph::Hyperedge {
+            id: identifier("change-in"),
+            sources: vec![capsulet_ir::graph::Endpoint::GraphInput {
+                name: identifier("change"),
+            }],
+            targets: vec![capsulet_ir::graph::Endpoint::Port {
+                node: identifier("prepare"),
+                port: identifier("change"),
+            }],
+            combine: capsulet_ir::graph::Combine::Forward,
+            trust: capsulet_ir::graph::TrustDerivation::Weakest,
+        }],
+        inputs: vec![capsulet_ir::OutputPort::new(identifier("change"), opaque)],
+        ..capsulet_ir::GraphBuilder::default()
+    })
+    .expect("the graph is valid");
+    definition["graph"] = serde_json::to_value(taking).expect("encodes");
+    definition
+}
+
+async fn registered(app: &axum::Router, definition: Value) -> String {
+    let (status, body) = send(
+        app,
+        admin_request(
+            Method::POST,
+            "/v1/ir/definitions",
+            Some(json!({ "definition": definition })),
+        ),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::CREATED, "{body}");
+    body["digest"].as_str().expect("a digest").to_string()
+}
+
+#[tokio::test]
+async fn a_run_starts_with_its_inputs_bound_and_refuses_one_the_definition_does_not_declare() {
+    let app = authenticated_app(FakeStore::default());
+    let digest = registered(&app, definition_taking_a_change()).await;
+
+    let (status, body) = send(
+        &app,
+        admin_request(
+            Method::POST,
+            "/v1/ir/runs",
+            Some(json!({
+                "definition_digest": digest,
+                "id": "ir_run_stray",
+                "inputs": { "patch": "an input nobody declared" }
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "validation_error");
+
+    let change = json!({ "change/plan.json": "{\"format_version\": \"1.2\"}" });
+    let (status, body) = send(
+        &app,
+        admin_request(
+            Method::POST,
+            "/v1/ir/runs",
+            Some(json!({
+                "definition_digest": digest,
+                "id": "ir_run_change",
+                "inputs": { "change": change }
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::CREATED, "{body}");
+    let (_, events) = send(
+        &app,
+        admin_request(Method::GET, "/v1/ir/runs/ir_run_change/events", None),
+    )
+    .await;
+    let log = events["events"].as_array().expect("events");
+    assert_eq!(
+        log[1]["kind"], "inputs_bound",
+        "the inputs are bound before anything runs"
+    );
+    let bound = serde_json::to_string(&change).expect("encodes");
+    assert_eq!(
+        log[1]["event"]["inputs_bound"]["inputs"]["change"],
+        capsulet_ir::Digest::of(bound.as_bytes()).to_string()
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_has_not_finished_has_no_certificate_to_seal_yet() {
+    let app = authenticated_app(FakeStore::default());
+    let digest = registered(
+        &app,
+        ir_definition_body(capsulet_ir::definition::AssuranceMode::Enforce),
+    )
+    .await;
+    let (status, _) = send(
+        &app,
+        admin_request(
+            Method::POST,
+            "/v1/ir/runs",
+            Some(json!({ "definition_digest": digest, "id": "ir_run_queued" })),
+        ),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::CREATED);
+
+    let (status, body) = send(
+        &app,
+        admin_request(Method::POST, "/v1/ir/runs/ir_run_queued/certificate", None),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["code"], "run_not_finished");
+
+    let (status, _) = send(
+        &app,
+        admin_request(Method::POST, "/v1/ir/runs/ir_run_nobody/certificate", None),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::NOT_FOUND);
+}

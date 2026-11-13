@@ -37,8 +37,9 @@ pub const INPUT_PREFIX: &str = "inputs/";
 /// Where a validator finds the pack's files it reads, among its inputs.
 pub const PACK_INPUT_PREFIX: &str = "pack/";
 
-/// The media type a pack file is handed over as, by its extension.
-pub(crate) fn media_type_of(path: &str) -> &'static str {
+/// The media type a file is handed to a validator as, by its extension.
+#[must_use]
+pub fn media_type_of(path: &str) -> &'static str {
     match path.rsplit_once('.').map(|(_, extension)| extension) {
         Some("rego") => "text/x-rego",
         Some("json") => "application/json",

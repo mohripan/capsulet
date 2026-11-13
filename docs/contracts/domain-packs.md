@@ -118,6 +118,15 @@ policy text decided it, and a replay hands each tool exactly what it read. A cha
 not reach under `pack/`: `decide` refuses one that does, with `reserved_input`. `capsulet pack test`
 hands each case the files its validator reads, the same way.
 
+## Running a pack in a run
+
+A definition that pins a pack runs its validators in a verifier node whose `capsulet.kind` is `pack`
+and whose `capsulet.pack` names it ([durable run execution](durable-run-execution.md)). The node
+hands the validators the files its inputs hold, and keeps from the decision the obligations the
+pack's validators decide; the run's certificate, sealed from its log, holds every other one residual
+unless another node of the run decides it. The `m4` gate runs all three reference packs this way, on
+a stack of its own, and replays every certificate from the bundle the API serves.
+
 ## Waiving a failure
 
 `capsulet_pack::waive` applies waivers to what a decision failed. A waiver names:
@@ -156,7 +165,9 @@ this project already held exactly this pack. A refusal is `422 pack_refused`, wi
 code in the message.
 
 Each project's trust store is the file `<CAPSULET_PACK_TRUST_DIR>/<tenant>/<project>.json`, supplied
-by the operator. With no directory configured, or no file for the project, no signer is trusted, so
+by the operator. It lists each key once, with every pack it is trusted for; a store listing a key
+twice is refused with `trust_store`. The Compose stack mounts the host directory `CAPSULET_PACK_TRUST_HOST_DIR` there,
+read-only; `stack up` and every gate's stack make one of their own. With no directory configured, or no file for the project, no signer is trusted, so
 no pack installs. `GET /v1/packs` and `GET /v1/packs/{name}/{version}` (`memory:read`) report what a
 project holds. An installed version is stored as it arrived and never changes, which the database
 enforces.

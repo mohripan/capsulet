@@ -119,6 +119,7 @@ async fn run(store: &PostgresStore) -> (String, String, String, Digest) {
             &digest,
             AssuranceMode::Enforce,
             None,
+            &std::collections::BTreeMap::new(),
             at(1_772_000_000_000),
         )
         .await
@@ -520,6 +521,7 @@ async fn two_workers_leasing_at_once_take_different_runs() {
                 &digest,
                 AssuranceMode::Enforce,
                 None,
+                &std::collections::BTreeMap::new(),
                 at(1_772_000_000_000 + index),
             )
             .await
@@ -807,6 +809,7 @@ async fn effect_run(
             &digest,
             AssuranceMode::Enforce,
             None,
+            &std::collections::BTreeMap::new(),
             at(1_772_000_000_000),
         )
         .await

@@ -373,6 +373,7 @@ authorization_operation!(authorization_start_ir_run, "startIrRun");
 authorization_operation!(authorization_list_ir_runs, "listIrRuns");
 authorization_operation!(authorization_get_ir_run, "getIrRun");
 authorization_operation!(authorization_get_ir_run_events, "getIrRunEvents");
+authorization_operation!(authorization_certify_ir_run, "certifyIrRun");
 authorization_operation!(
     authorization_list_assurance_certificates,
     "listAssuranceCertificates"

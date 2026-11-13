@@ -746,7 +746,7 @@ async fn claim_run_id(
     })
 }
 
-fn checked_digest(content: &str) -> Result<Digest, PostgresStoreError> {
+pub(crate) fn checked_digest(content: &str) -> Result<Digest, PostgresStoreError> {
     if content.len() > MAX_IR_RUN_VALUE_BYTES {
         return Err(PostgresStoreError::InvalidPersistedValue(format!(
             "a value of {} bytes is larger than the {MAX_IR_RUN_VALUE_BYTES} a run may store",
@@ -756,7 +756,7 @@ fn checked_digest(content: &str) -> Result<Digest, PostgresStoreError> {
     Ok(Digest::of(content.as_bytes()))
 }
 
-async fn insert_value<'e, E>(
+pub(crate) async fn insert_value<'e, E>(
     executor: E,
     tenant_id: &str,
     project_id: &str,
@@ -867,7 +867,7 @@ async fn release_values(
 }
 
 /// Records that a run holds a value.
-async fn hold_value(
+pub(crate) async fn hold_value(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     tenant_id: &str,
     project_id: &str,
@@ -895,7 +895,7 @@ async fn hold_value(
 /// Storing takes the lock shared, so runs store side by side; erasing takes it
 /// alone, so the values it decides nobody holds cannot gain a holder before it
 /// commits. Held to the end of the transaction.
-async fn lock_project_values(
+pub(crate) async fn lock_project_values(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     tenant_id: &str,
     project_id: &str,

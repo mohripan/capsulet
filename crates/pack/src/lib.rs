@@ -40,7 +40,7 @@ use capsulet_verifier::harness::{CaseInput, CaseReport, Cases, run_cases};
 use thiserror::Error;
 
 pub use decide::{
-    Decision, INPUT_PREFIX, PACK_INPUT_PREFIX, Run, ToolReplay, decide, replay_tools,
+    Decision, INPUT_PREFIX, PACK_INPUT_PREFIX, Run, ToolReplay, decide, media_type_of, replay_tools,
 };
 pub use keys::{PrivateKey, Signature, TrustStore, TrustedKey, generate};
 pub use manifest::{FileEntry, Manifest, PACK_SCHEMA, ValidatorEntry, is_pack_name, is_pack_path};

@@ -306,3 +306,21 @@ fn the_counts_are_what_was_recorded() {
     // Sound answers that still reach `accepted`: the cost side.
     assert_eq!((count(Sound, true), count(Sound, false)), (2, 0));
 }
+
+/// What the corpus measured, by verdict: the figures the M4 completion report
+/// states (`docs/contracts/m4-completion.md`). Pinned, so the report and the
+/// kernel cannot drift apart without a change someone looks at.
+#[test]
+fn the_verdicts_the_completion_report_states_are_what_the_corpus_measures() {
+    let corpus = corpus();
+    let mut verdicts = (0, 0, 0);
+    for case in &corpus.cases {
+        match certificate_of(&corpus.agreement, case).verdict {
+            Verdict::Accepted => verdicts.0 += 1,
+            Verdict::Conditional => verdicts.1 += 1,
+            Verdict::Rejected => verdicts.2 += 1,
+        }
+    }
+    // (accepted, conditional, rejected)
+    assert_eq!(verdicts, (3, 1, 6));
+}

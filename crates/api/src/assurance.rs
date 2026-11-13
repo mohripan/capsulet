@@ -16,6 +16,7 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
 };
+use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use capsulet_ir::admission::admit;
@@ -374,6 +375,13 @@ pub struct StartIrRunRequest {
     /// rather than a second run; omitting it has the server generate one.
     #[serde(default)]
     pub id: Option<String>,
+    /// The run's graph inputs, by the names the definition declares, each any
+    /// JSON value. Each is stored as a value the run holds and bound in its log
+    /// before any worker can lease it. A name the definition does not declare
+    /// is refused.
+    #[serde(default)]
+    #[schema(value_type = Object)]
+    pub inputs: BTreeMap<String, serde_json::Value>,
 }
 
 /// One stored run.
@@ -482,6 +490,23 @@ where
         .parse()
         .map_err(|error: capsulet_ir::digest::DigestError| ApiError::store(error.to_string()))?;
 
+    let mut inputs = BTreeMap::new();
+    for (name, value) in &request.inputs {
+        if !definition
+            .graph
+            .inputs()
+            .any(|declared| declared.id.as_str() == name)
+        {
+            return Err(ApiError::Validation(format!(
+                "the definition declares no graph input `{name}`"
+            )));
+        }
+        inputs.insert(
+            name.clone(),
+            serde_json::to_string(value).map_err(ApiError::store)?,
+        );
+    }
+
     let run_id = request.id.clone().unwrap_or_else(|| generated_id("ir_run"));
     if state
         .store
@@ -504,6 +529,7 @@ where
             &digest,
             definition.assurance,
             trace_parent.as_deref(),
+            &inputs,
             recorded_now(),
         )
         .await
@@ -568,6 +594,189 @@ where
         .ok_or_else(|| ApiError::RunNotFound(run_id.clone()))?;
 
     Ok(Json(run_response(record)))
+}
+
+/// Seals a finished run's certificate from its log, or returns the one already
+/// sealed.
+///
+/// Everything it is sealed from is what the log names: the run's inputs and
+/// outputs, its loops, and the decision each verifier node left on its
+/// `decision` output. So the same log always seals the same certificate,
+/// whoever asks and however often, and a run interrupted and resumed seals the
+/// one an uninterrupted run would. Every obligation the definition's contracts
+/// state is in it: as the last node to decide it left it, or residual when no
+/// node did. The evidence those decisions cite is stored with it, so its
+/// bundle can be read back.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the caller lacks permission, the run is not in
+/// this project or has not finished, a decision does not read, the certificate
+/// does not seal, or the store fails.
+pub(crate) async fn certify_ir_run<S, O>(
+    State(state): State<AppState<S, O>>,
+    headers: HeaderMap,
+    Extension(principal): Extension<Principal>,
+    Path(run_id): Path<String>,
+) -> Result<Json<AssuranceCertificateResponse>, ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let context = project_context(&headers, &principal)?;
+    require_project_role(&context, crate::ProjectRole::Operator)?;
+    let (tenant, project) = (&context.tenant_id, &context.project_id);
+
+    let run = state
+        .store
+        .get_ir_run(tenant, project, &run_id)
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::RunNotFound(run_id.clone()))?;
+    let certificate_id = format!("certificate-{run_id}");
+    if let Some(stored) = state
+        .store
+        .get_assurance_certificate(tenant, project, &certificate_id)
+        .await
+        .map_err(ApiError::store)?
+    {
+        return Ok(Json(to_response(stored)));
+    }
+
+    let events = state
+        .store
+        .load_ir_run_events(tenant, project, &run_id)
+        .await
+        .map_err(ApiError::store)?;
+    let folded = capsulet_runtime::RunState::fold(&events)
+        .map_err(|error| ApiError::store(error.to_string()))?;
+    if !folded.status().is_terminal() {
+        return Err(ApiError::RunNotFinished(run_id));
+    }
+    let version = state
+        .store
+        .get_ir_definition_version(tenant, project, &run.definition_digest)
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::IrDefinitionNotFound(run.definition_digest.clone()))?;
+    let definition = version
+        .definition()
+        .map_err(|error| ApiError::store(error.to_string()))?;
+    let admission = admit(&definition).map_err(|error| ApiError::store(error.to_string()))?;
+
+    let (inputs, decisions) = decisions_of(&state, &context, &definition, &events).await?;
+
+    let run_identifier = capsulet_ir::Identifier::parse(run_id.clone())
+        .map_err(|error| ApiError::store(error.to_string()))?;
+    let evidence = capsulet_runtime::certify::evidence_of(
+        &definition,
+        admission,
+        &run_identifier,
+        &folded,
+        &events,
+        inputs,
+    );
+    let (assembly, bytes) = capsulet_kernel::assemble(capsulet_kernel::RunRecord {
+        id: capsulet_ir::Identifier::parse(certificate_id.clone())
+            .map_err(|error| ApiError::store(error.to_string()))?,
+        definition: &definition,
+        admission: evidence.admission,
+        mode: folded.mode(),
+        subject: evidence.subject,
+        loops: evidence.loops,
+        decisions: &decisions,
+    })
+    .map_err(ApiError::store)?;
+    let certificate =
+        capsulet_kernel::certify(assembly).map_err(|error| ApiError::store(error.to_string()))?;
+    store_evidence(&state, &certificate, &bytes).await?;
+    state
+        .store
+        .insert_assurance_certificate(tenant, project, &certificate)
+        .await
+        .map_err(ApiError::store)?;
+    let stored = state
+        .store
+        .get_assurance_certificate(tenant, project, &certificate_id)
+        .await
+        .map_err(ApiError::store)?
+        .ok_or_else(|| ApiError::store("the sealed certificate was not stored"))?;
+    Ok(Json(to_response(stored)))
+}
+
+/// What a run's log says it was given, and what each of its verifier nodes
+/// decided, in the order they finished.
+async fn decisions_of<S, O>(
+    state: &AppState<S, O>,
+    context: &crate::http::ProjectContext,
+    definition: &Definition,
+    events: &[capsulet_runtime::RecordedEvent],
+) -> Result<(Vec<Digest>, Vec<capsulet_kernel::NodeDecision>), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    let mut inputs = Vec::new();
+    let mut decisions = Vec::new();
+    for recorded in events {
+        match &recorded.event {
+            RunEvent::InputsBound { inputs: bound } => inputs.extend(bound.values().copied()),
+            RunEvent::NodeFinished { node, outputs, .. } => {
+                let verifier = definition
+                    .graph
+                    .node(node)
+                    .is_some_and(|node| node.kind == capsulet_ir::node::NodeKind::Verifier);
+                let Some(digest) = outputs.get(capsulet_kernel::DECISION_PORT) else {
+                    continue;
+                };
+                if !verifier {
+                    continue;
+                }
+                let value = state
+                    .store
+                    .get_ir_run_value(&context.tenant_id, &context.project_id, &digest.to_string())
+                    .await
+                    .map_err(ApiError::store)?
+                    .ok_or_else(|| {
+                        ApiError::store(format!("the decision of `{node}` is no longer stored"))
+                    })?;
+                let decision: capsulet_kernel::NodeDecision = serde_json::from_str(&value)
+                    .map_err(|error| {
+                        ApiError::store(format!("the decision of `{node}` does not read: {error}"))
+                    })?;
+                decisions.push(decision);
+            }
+            _ => {}
+        }
+    }
+    Ok((inputs, decisions))
+}
+
+/// Puts every piece of evidence `certificate` cites where its bundle reads it.
+async fn store_evidence<S, O>(
+    state: &AppState<S, O>,
+    certificate: &capsulet_ir::correctness::certificate::Certificate,
+    bytes: &capsulet_kernel::EvidenceMap,
+) -> Result<(), ApiError>
+where
+    S: ApiStore,
+    O: ObjectStore,
+{
+    for reference in &certificate.body().evidence {
+        let found =
+            capsulet_kernel::EvidenceSource::bytes(bytes, &reference.content).ok_or_else(|| {
+                ApiError::store(format!("evidence `{}` was not decided with", reference.id))
+            })?;
+        state
+            .object_store
+            .put(
+                &capsulet_postgres::EvidenceLocation::key_for(&reference.content.to_string()),
+                found.to_vec(),
+            )
+            .await
+            .map_err(ApiError::object_store)?;
+    }
+    Ok(())
 }
 
 /// Reads a run's event log.

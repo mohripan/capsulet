@@ -60,6 +60,8 @@ pub(crate) enum ApiError {
     TriggerPluginNotFound(String),
     #[error("job run not found: {0}")]
     RunNotFound(String),
+    #[error("run {0} has not finished, so there is nothing to certify yet")]
+    RunNotFinished(String),
     #[error("project id {0} is held by another tenant, or this tenant does not exist")]
     ProjectUnavailable(String),
     #[error("job run already exists: {0}")]
@@ -142,6 +144,7 @@ impl ApiError {
             | Self::RunAlreadyExists(_)
             | Self::AgentRunAlreadyExists(_)
             | Self::AgentRunStateConflict(_)
+            | Self::RunNotFinished(_)
             | Self::ReadingAlreadyReviewed(_) => StatusCode::CONFLICT,
             Self::UnknownJobDefinition(_)
             | Self::UnknownExecutionPool(_)
@@ -204,6 +207,7 @@ impl ApiError {
             Self::AgentRunAlreadyExists(_) => "agent_run_already_exists",
             Self::AgentNotRunnable(_) => "agent_not_runnable",
             Self::AgentRunStateConflict(_) => "agent_run_state_conflict",
+            Self::RunNotFinished(_) => "run_not_finished",
             Self::Proposer(_) => "proposer_unavailable",
             Self::RunLogsNotFound(_) => "job_run_logs_not_found",
             Self::ArtifactNotFound(_) => "job_artifact_not_found",

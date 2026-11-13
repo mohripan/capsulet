@@ -16,8 +16,8 @@ Capsulet's public-contract layer keeps product language tied to inspectable evid
 - `durable-run-execution.md` defines how an IR run is stored, advanced, and recovered.
 - `security-exceptions.json` and its schema define owned, scoped, expiring dependency exceptions;
   `security-exceptions.md` explains their review context and remaining scanner findings.
-- `m0-baseline.md`, `m1-completion.md`, `m2-completion.md`, and `m3-completion.md` record what
-  each milestone delivered and what its gates actually prove.
+- `m0-baseline.md`, `m1-completion.md`, `m2-completion.md`, `m3-completion.md` and
+  `m4-completion.md` record what each milestone delivered and what its gates actually prove.
 - `clean-checkout-rehearsal.json` is the record of the latest `verify --profile full` run in a fresh
   clone, made by `verify record`. `m1-completion.md` links each M1 criterion to its gates and to it,
   and the `completion` gate holds the two together.

@@ -51,7 +51,7 @@ jobs:
         run: >
           cargo run -p capsulet-xtask --locked --
           verify --gate verifier --gate format --gate lint --gate unit --gate ir
-          --gate replay
+          --gate replay --gate domain-free
 
       - name: Keep the verification summary
         if: always()
@@ -228,6 +228,30 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verification-compose
+          path: .capsulet/verify/*/verification-summary.json
+          if-no-files-found: error
+
+  m4:
+    name: M4 gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          rustup default 1.99.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Verify
+        run: cargo run -p capsulet-xtask --locked -- verify --gate m4
+
+      - name: Keep the verification summary
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verification-m4
           path: .capsulet/verify/*/verification-summary.json
           if-no-files-found: error
 
@@ -490,6 +514,7 @@ jobs:
       - dashboard
       - helm
       - compose
+      - m4
       - dashboard-e2e
       - containers
       - kind

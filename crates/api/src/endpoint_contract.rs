@@ -1346,6 +1346,17 @@ const ENDPOINTS: &[EndpointContract] = &[
         "200"
     ),
     endpoint!(
+        "POST",
+        "/v1/ir/runs/{id}/certificate",
+        "certifyIrRun",
+        "jobs:run",
+        true,
+        true,
+        None,
+        crate::assurance::AssuranceCertificateResponse,
+        "200"
+    ),
+    endpoint!(
         "GET",
         "/v1/assurance/certificates",
         "listAssuranceCertificates",

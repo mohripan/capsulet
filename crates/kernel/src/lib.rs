@@ -22,6 +22,7 @@
 pub mod bundle;
 pub mod certificate;
 pub mod context;
+pub mod decision;
 pub mod error;
 pub mod family;
 pub mod ir;
@@ -44,6 +45,7 @@ pub use certificate::{
     Certificate, CertificateError, DischargedStep, Residual, ResidualKind, Verdict,
 };
 pub use context::{ContextPolicy, ReadingNeeds, reading_needs};
+pub use decision::{DECISION_PORT, NodeDecision, RunRecord, assemble};
 pub use error::{CheckError, RepairOwner};
 pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};
 pub use ir::{ArithOp, Judgment, Proposal, Proposition, Rule};

@@ -1,6 +1,8 @@
 //! IR definitions, IR runs and their events, and assurance certificates with the evidence they
 //! cite.
 
+use std::collections::BTreeMap;
+
 use async_trait::async_trait;
 use capsulet_ir::admission::AdmissionRecord;
 use capsulet_ir::correctness::certificate::Certificate as AssuranceCertificate;
@@ -68,6 +70,7 @@ pub trait IrStore: StoreBase {
         _definition_digest: &Digest,
         _mode: AssuranceMode,
         _trace_parent: Option<&str>,
+        _inputs: &BTreeMap<String, String>,
         _at: RecordedTime,
     ) -> Result<Option<IrRunRecord>, Self::Error> {
         Ok(None)
@@ -98,6 +101,16 @@ pub trait IrStore: StoreBase {
         _run_id: &str,
     ) -> Result<Vec<RecordedEvent>, Self::Error> {
         Ok(Vec::new())
+    }
+
+    /// A value a run holds, by digest, as the JSON text it was stored as.
+    async fn get_ir_run_value(
+        &self,
+        _tenant_id: &str,
+        _project_id: &str,
+        _digest: &str,
+    ) -> Result<Option<String>, Self::Error> {
+        Ok(None)
     }
 
     async fn insert_assurance_certificate(
@@ -179,6 +192,7 @@ impl IrStore for PostgresStore {
         definition_digest: &Digest,
         mode: AssuranceMode,
         trace_parent: Option<&str>,
+        inputs: &BTreeMap<String, String>,
         at: RecordedTime,
     ) -> Result<Option<IrRunRecord>, Self::Error> {
         self.create_ir_run(
@@ -188,6 +202,7 @@ impl IrStore for PostgresStore {
             definition_digest,
             mode,
             trace_parent,
+            inputs,
             at,
         )
         .await
@@ -219,6 +234,20 @@ impl IrStore for PostgresStore {
         run_id: &str,
     ) -> Result<Vec<RecordedEvent>, Self::Error> {
         self.load_ir_run_events(tenant_id, project_id, run_id).await
+    }
+
+    async fn get_ir_run_value(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        digest: &str,
+    ) -> Result<Option<String>, Self::Error> {
+        let digest: Digest = digest.parse().map_err(|_| {
+            capsulet_postgres::PostgresStoreError::InvalidPersistedValue(format!(
+                "`{digest}` is not a digest"
+            ))
+        })?;
+        self.get_ir_run_value(tenant_id, project_id, &digest).await
     }
 
     async fn insert_assurance_certificate(

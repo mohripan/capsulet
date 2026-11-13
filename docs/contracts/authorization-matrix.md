@@ -67,6 +67,7 @@ without membership or lacking action permission returns `403`. Webhooks require 
 | `listIrRuns` | GET | `/v1/ir/runs` | `memory:read` | selected_project | allow | allow | allow |
 | `getIrRun` | GET | `/v1/ir/runs/{id}` | `memory:read` | selected_project | allow | allow | allow |
 | `getIrRunEvents` | GET | `/v1/ir/runs/{id}/events` | `memory:read` | selected_project | allow | allow | allow |
+| `certifyIrRun` | POST | `/v1/ir/runs/{id}/certificate` | `jobs:run` | selected_project | deny | allow | allow |
 | `listAssuranceCertificates` | GET | `/v1/assurance/certificates` | `certificates:read` | selected_project | allow | allow | allow |
 | `getAssuranceCertificate` | GET | `/v1/assurance/certificates/{id}` | `certificates:read` | selected_project | allow | allow | allow |
 | `getAssuranceCertificateBundle` | GET | `/v1/assurance/certificates/{id}/bundle` | `certificates:read` | selected_project | allow | allow | allow |

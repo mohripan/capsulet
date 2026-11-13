@@ -49,12 +49,13 @@ What a run keeps on purpose:
 
 | Job | Gates |
 | --- | --- |
-| Rust and IR | `verifier`, `format`, `lint`, `unit`, `ir`, `replay` |
+| Rust and IR | `verifier`, `format`, `lint`, `unit`, `ir`, `replay`, `domain-free` |
 | Product contracts | `claims`, `api-contracts`, `authorization`, `sdk`, `claims-evidence`, `release`, `supply-chain-contract`, `ci-contract` |
 | PostgreSQL | `postgres`, `migrations`, `chaos`, `verifier-isolation` |
 | Dashboard | `dashboard` |
 | Helm | `helm` |
 | Compose | `compose` |
+| M4 gate | `m4` |
 | Dashboard end-to-end | `dashboard-e2e` |
 | Container images | `containers` |
 | Dependency policy | `security`, `gate-regressions` |

@@ -108,7 +108,7 @@ fn the_pack_lists_its_files_and_once_signed_installs() {
     let admitted = admit(&signed, &trust, &[]).expect("installs");
     assert_eq!(
         (admitted.name.as_str(), admitted.version.as_str()),
-        ("contract-clauses", "1.0.0")
+        ("contract-clauses", "1.1.0")
     );
 
     let contracts = obligations(&signed).expect("its obligations hold together");
@@ -579,7 +579,7 @@ fn enforced() -> (Contract, capsulet_ir::Definition) {
     definition.contracts.push(contract.clone());
     definition.packs = vec![PackPin {
         name: "contract-clauses".to_string(),
-        version: "1.0.0".to_string(),
+        version: "1.1.0".to_string(),
         manifest: pack.manifest.digest().expect("a digest"),
     }];
     (contract, definition)
@@ -769,4 +769,25 @@ fn under_enforce_a_reading_is_discharged_by_a_legal_review_and_nothing_else() {
         assert_eq!(certificate.verdict(), AssuranceVerdict::Conditional);
         assert!(!crossing(&certificate).permits_crossing());
     }
+}
+
+/// The corpus's verdicts under this pack's contract: the figures the M4
+/// completion report states beside the kernel's own
+/// (`docs/contracts/m4-completion.md`).
+#[test]
+fn the_verdicts_the_completion_report_states_under_the_pack_are_what_the_corpus_measures() {
+    let corpus: Corpus = serde_json::from_str(include_str!(
+        "../../kernel/tests/fixtures/misreading-corpus.json"
+    ))
+    .expect("the corpus reads");
+    let mut verdicts = (0, 0, 0);
+    for case in &corpus.cases {
+        match under_the_pack(&corpus, case).verdict {
+            Verdict::Accepted => verdicts.0 += 1,
+            Verdict::Conditional => verdicts.1 += 1,
+            Verdict::Rejected => verdicts.2 += 1,
+        }
+    }
+    // (accepted, conditional, rejected)
+    assert_eq!(verdicts, (3, 1, 6));
 }

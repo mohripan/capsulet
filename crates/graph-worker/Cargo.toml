@@ -22,6 +22,9 @@ axum.workspace = true
 capsulet-application = { path = "../application" }
 capsulet-core = { path = "../core" }
 capsulet-ir = { path = "../ir" }
+capsulet-kernel = { path = "../kernel" }
+capsulet-pack = { path = "../pack" }
+capsulet-verifier = { path = "../verifier" }
 capsulet-observability = { version = "0.1.0", path = "../observability" }
 capsulet-postgres = { path = "../postgres" }
 capsulet-runtime = { path = "../runtime" }
@@ -31,9 +34,19 @@ sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
+[features]
+# The M4 gate's test: it needs a stack and a container runtime, so only the
+# `m4` gate builds it, on a stack of its own.
+stack-tests = []
+
+[[test]]
+name = "m4_gate"
+required-features = ["stack-tests"]
+
 [dev-dependencies]
 capsulet-api = { path = "../api", features = ["contract-conformance"] }
-capsulet-kernel = { path = "../kernel" }
+capsulet-proposer = { path = "../proposer" }
+tempfile = "3"
 capsulet-observability = { path = "../observability", features = ["testing"] }
 capsulet-storage = { path = "../storage" }
 http-body-util.workspace = true

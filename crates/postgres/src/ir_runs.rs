@@ -17,6 +17,8 @@
 //! matches no row, and it finds out it is no longer the owner instead of
 //! corrupting a run somebody else is now advancing.
 
+use std::collections::BTreeMap;
+
 use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::AssuranceMode;
 use capsulet_ir::digest::Digest;
@@ -45,11 +47,16 @@ pub struct IrRunRecord {
 }
 
 impl PostgresStore {
-    /// Creates a run and writes its admission event.
+    /// Creates a run, writes its admission event, and binds its inputs.
     ///
-    /// Both happen in one transaction. A run row without its admission event
-    /// would be a run whose log does not fold, and there is no reason to let
-    /// that state exist even briefly.
+    /// All of it happens in one transaction. A run row without its admission
+    /// event would be a run whose log does not fold, and a run a worker could
+    /// lease before its inputs were bound would start without them; there is no
+    /// reason to let either state exist even briefly.
+    ///
+    /// `inputs` are the run's graph inputs, each a JSON value as text. Each is
+    /// stored as a value the run holds, and named by digest in one
+    /// `inputs_bound` event. A run with none writes no such event.
     ///
     /// `trace_parent` is the W3C `traceparent` of the request that asked for the
     /// run, so the workers' spans join its trace; `None` when nothing is traced.
@@ -70,9 +77,14 @@ impl PostgresStore {
         definition_digest: &Digest,
         mode: AssuranceMode,
         trace_parent: Option<&str>,
+        inputs: &BTreeMap<String, String>,
         at: RecordedTime,
     ) -> Result<IrRunRecord, PostgresStoreError> {
         let mut transaction = self.pool.begin().await?;
+        if !inputs.is_empty() {
+            crate::agent_runs::lock_project_values(&mut transaction, tenant_id, project_id, false)
+                .await?;
+        }
         insert_run_and_admission(
             &mut transaction,
             tenant_id,
@@ -84,6 +96,38 @@ impl PostgresStore {
             at,
         )
         .await?;
+        if !inputs.is_empty() {
+            let mut bound = BTreeMap::new();
+            for (name, content) in inputs {
+                let digest = crate::agent_runs::checked_digest(content)?;
+                crate::agent_runs::insert_value(
+                    &mut *transaction,
+                    tenant_id,
+                    project_id,
+                    &digest,
+                    content,
+                )
+                .await?;
+                crate::agent_runs::hold_value(
+                    &mut transaction,
+                    tenant_id,
+                    project_id,
+                    run_id,
+                    &digest,
+                )
+                .await?;
+                bound.insert(name.clone(), digest);
+            }
+            insert_event_unfenced(
+                &mut transaction,
+                tenant_id,
+                project_id,
+                run_id,
+                &RunEvent::InputsBound { inputs: bound },
+                at,
+            )
+            .await?;
+        }
         transaction.commit().await?;
 
         self.get_ir_run(tenant_id, project_id, run_id)

@@ -303,6 +303,7 @@ where
         .operation("listIrRuns", crate::assurance::list_ir_runs)
         .operation("getIrRun", crate::assurance::get_ir_run)
         .operation("getIrRunEvents", crate::assurance::get_ir_run_events)
+        .operation("certifyIrRun", crate::assurance::certify_ir_run)
         .operation(
             "listAssuranceCertificates",
             crate::assurance::list_certificates,

@@ -69,6 +69,11 @@ impl EvidenceMap {
         self.blobs.insert(digest, bytes);
     }
 
+    /// Adds every blob `other` holds.
+    pub fn merge(&mut self, other: Self) {
+        self.blobs.extend(other.blobs);
+    }
+
     /// How many blobs this source holds.
     #[must_use]
     pub fn len(&self) -> usize {

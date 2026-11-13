@@ -4982,6 +4982,10 @@
               "string",
               "null"
             ]
+          },
+          "inputs": {
+            "description": "The run's graph inputs, by the names the definition declares, each any\nJSON value. Each is stored as a value the run holds and bound in its log\nbefore any worker can lease it. A name the definition does not declare\nis refused.",
+            "type": "object"
           }
         },
         "required": [
@@ -9017,6 +9021,76 @@
         ],
         "x-capsulet-required-scope": "memory:read",
         "x-capsulet-resource": "memory",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/ir/runs/{id}/certificate": {
+      "post": {
+        "operationId": "certifyIrRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssuranceCertificateResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "certify ir run",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "jobs:run",
+        "x-capsulet-resource": "jobs",
         "x-capsulet-stability": "experimental"
       }
     },

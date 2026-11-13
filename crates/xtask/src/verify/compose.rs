@@ -101,9 +101,16 @@ impl ComposeStack {
         };
         // From here on, a failure still takes the stack down: `Drop` does that.
         let identity = BuildIdentity::current(root)?;
+        let trust = stack.pack_trust_directory();
+        fs::create_dir_all(&trust)
+            .map_err(|error| format!("could not create {}: {error}", trust.display()))?;
         fs::write(
             stack.env_file(),
-            stack.secrets.env_file(stack.ports, &identity),
+            format!(
+                "{}CAPSULET_PACK_TRUST_HOST_DIR='{}'\n",
+                stack.secrets.env_file(stack.ports, &identity),
+                forward_slashes(&trust)
+            ),
         )
         .map_err(|error| format!("could not write the stack's environment file: {error}"))?;
         fs::write(
@@ -195,6 +202,14 @@ impl ComposeStack {
             ),
             ("CAPSULET_API_URL".to_string(), self.ports.api_url()),
             (
+                "CAPSULET_DATABASE_URL".to_string(),
+                self.secrets.database_url(self.ports),
+            ),
+            (
+                "CAPSULET_PACK_TRUST_DIR".to_string(),
+                forward_slashes(&self.pack_trust_directory()),
+            ),
+            (
                 "PLAYWRIGHT_BASE_URL".to_string(),
                 self.ports.dashboard_url(),
             ),
@@ -259,6 +274,12 @@ impl ComposeStack {
 
     fn env_file(&self) -> PathBuf {
         self.directory.join("stack.env")
+    }
+
+    /// Where the API reads each project's pack trust store, mounted read-only.
+    fn pack_trust_directory(&self) -> PathBuf {
+        std::path::absolute(self.directory.join("pack-trust"))
+            .unwrap_or_else(|_| self.directory.join("pack-trust"))
     }
 
     fn fixture_file(&self) -> PathBuf {
@@ -470,4 +491,9 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         }
         _ => Err("usage: capsulet-xtask stack up [service ...] | stack down".to_string()),
     }
+}
+
+/// A path as Compose and a shell both read it.
+fn forward_slashes(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
 }

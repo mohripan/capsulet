@@ -130,8 +130,34 @@ Agents do. Starting an agent run compiles the agent into a definition, and the d
 executor runs what it says: deterministic nodes, local-model nodes, memory reads, validators, and job
 and memory-write effects. See [ADR 0019](../adr/0019-agent-runs-execute-on-the-durable-path.md).
 
-A definition registered directly, whose nodes were not compiled from an agent, still has no provider
-and fails with `verifier_unavailable`. That is what the verifier protocol in M4 is for.
+A definition registered directly runs its verifier nodes, and fails any other node with
+`verifier_unavailable`. A run of one takes its graph inputs on `POST /v1/ir/runs` as `inputs`, by
+the names the definition declares, each any JSON value. They are stored as values the run holds and
+bound in one `inputs_bound` event, in the transaction that creates the run, so no worker leases it
+without them. A name the definition does not declare is refused with `400`.
+
+A verifier node (`kind: verifier`) names what decides it in its `capsulet.kind` parameter:
+
+- `pack`: the validators of the pack its `capsulet.pack` parameter names. The definition has to pin
+  that pack, and the project has to hold it as pinned. Each input is a JSON object from a relative
+  path to that file's text, and the validators run in containers through the verifier host.
+- `claim_reasoning`: the kernel's claim-reasoning family, over the proposal on its `proposal` input
+  and the snapshot document on its `snapshot` input. It decides the obligations its
+  `capsulet.decides` parameter names: discharged, mechanically, when the kernel accepts, residual
+  when it is conditional, and failed when it rejects.
+
+Either leaves on its `decision` output what it decided and only that: the obligations, the record of
+every checker it ran, and the evidence those rest on, with its bytes. A worker with no container
+runtime runs a pack node and decides nothing: each obligation stays residual, saying its validator
+could not be started.
+
+`POST /v1/ir/runs/{id}/certificate` (`jobs:run`) seals a finished run's certificate, or returns the
+one already sealed. It is sealed from what the log names: the run's inputs, outputs and loops, and
+each verifier node's decision. Every obligation the definition's contracts state is in it, as the
+last node to decide it left it, or residual when no node did. So the same log always seals the same
+certificate, and a run that was interrupted and resumed seals the one an uninterrupted run would.
+The evidence is stored with it, so `GET /v1/assurance/certificates/{id}/bundle` reads it back. A run
+that has not finished is refused with `409 run_not_finished`.
 
 A worker holds its lease for as long as a node takes, by heartbeating while the work runs. Without
 that, any node slower than its lease is taken over and run a second time.
@@ -145,11 +171,14 @@ That makes a check's outcome part of the run's record rather than its content. A
 replay and the run's explanation can say whether each check held without carrying the value it
 checked. A log written before verdicts were recorded reads as `verdict_unrecorded`.
 
-Checked by: `verify --gate postgres` (`crates/graph-worker/tests/agent_runs/` and `execution.rs`).
+Checked by: `verify --gate postgres` (`crates/graph-worker/tests/agent_runs/` and `execution.rs`),
+and, for verifier nodes and sealing, `verify --gate m4` (`crates/graph-worker/tests/m4_gate.rs`).
 
 ## What is not claimed
 
-- Directly registered definitions have no node providers or effect transports. Only nodes compiled
-  from an agent run.
-- A certificate is assembled from the log, but obligations and verifier records are supplied by the
-  caller. Nothing here produces them, so an agent run is `observe` mode and reports `unverified`.
+- Directly registered definitions have no node providers or effect transports beyond verifier
+  nodes. Their other nodes run only when compiled from an agent.
+- An agent run declares no contracts, so it is `observe` mode and reports `unverified`.
+- A pack node's validators need a container runtime, and nothing on the deployed stack holds one.
+  The M4 gate drives its runs with the worker on the host, where Docker is. A verifier transport
+  the deployed stack can use, such as Kubernetes jobs, is not built yet.

@@ -147,8 +147,8 @@ impl TrustStore {
         }
     }
 
-    /// Checks the store is well formed: its schema, and every key's id is the
-    /// digest of its public key.
+    /// Checks the store is well formed: its schema, every key's id is the
+    /// digest of its public key, and no key is listed twice.
     ///
     /// # Errors
     ///
@@ -160,7 +160,18 @@ impl TrustStore {
                 self.schema_version
             )));
         }
-        for key in &self.keys {
+        for (index, key) in self.keys.iter().enumerate() {
+            // Verifying reads a key's first entry, so a second would be one the
+            // operator wrote and nothing ever read.
+            if self.keys[..index]
+                .iter()
+                .any(|earlier| earlier.id == key.id)
+            {
+                return Err(PackError::TrustStore(format!(
+                    "key {} is listed twice: list it once, with every pack it is trusted for",
+                    key.id
+                )));
+            }
             let bytes = hex::decode(&key.public_key)
                 .map_err(|_| PackError::TrustStore(format!("key {} is not hex", key.id)))?;
             if bytes.len() != 32 || key_id(&bytes) != key.id {

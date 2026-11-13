@@ -57,6 +57,7 @@ impl IrStore for FakeStore {
         definition_digest: &capsulet_ir::Digest,
         mode: capsulet_ir::definition::AssuranceMode,
         trace_parent: Option<&str>,
+        inputs: &std::collections::BTreeMap<String, String>,
         at: capsulet_ir::RecordedTime,
     ) -> Result<Option<IrRunRecord>, Self::Error> {
         // Mirrors the real store: the run and its admission event are written
@@ -69,7 +70,7 @@ impl IrStore for FakeStore {
             status: "queued".to_string(),
             epoch: Epoch(0),
             lease_owner: None,
-            next_position: 1,
+            next_position: if inputs.is_empty() { 1 } else { 2 },
             trace_parent: trace_parent.map(str::to_owned),
         };
         self.ir_runs
@@ -91,6 +92,24 @@ impl IrStore for FakeStore {
                     },
                 },
             ));
+        if !inputs.is_empty() {
+            let bound = inputs
+                .iter()
+                .map(|(name, content)| (name.clone(), capsulet_ir::Digest::of(content.as_bytes())))
+                .collect();
+            self.ir_run_events
+                .lock()
+                .map_err(|error| error.to_string())?
+                .push((
+                    run_id.to_string(),
+                    RecordedEvent {
+                        position: 1,
+                        epoch: Epoch(0),
+                        at,
+                        event: RunEvent::InputsBound { inputs: bound },
+                    },
+                ));
+        }
         Ok(Some(record))
     }
 

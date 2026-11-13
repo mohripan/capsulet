@@ -74,7 +74,15 @@ Quoted bare, without the document around it, a qualified clause is `rejected` as
 | --- | --- |
 | `clause-reading` | `human_review` only, under `review:legal` |
 | `answers-the-question` | `mechanical` against a typed query; `human_review` under `review:legal` for a question asked only in words |
-| `references-resolve` | `replayable_tool` only: the validator here |
+| `references-resolve` | `replayable_tool` only: the validator here, which `decides` it |
+
+Run over an agreement, `capsulet_pack::decide` hands the validator the agreement's text and
+discharges or fails `references-resolve` on its word. `clause-reading` and, for a question asked
+only in words, `answers-the-question` stay residual for a holder of `review:legal`. The kernel
+decides `answers-the-question` against a typed query.
+
+Version 1.1.0 says what the validator decides. 1.0.0 did not, so a run could not discharge
+`references-resolve` with it.
 
 A model verifier may endorse or dispute a reading and never discharges one. A boundary whose policy
 sets `refuse_disputed` stays shut while a model disputes a reading it gates.

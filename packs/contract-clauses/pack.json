@@ -1,7 +1,7 @@
 {
   "schema_version": "capsulet.pack/v1",
   "name": "contract-clauses",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Answers about contract clauses: relations for obligations, rights, conditions, terms and termination; the qualifiers, references and definitions that change what a clause means; every reading decided by a holder of review:legal.",
   "contracts": [
     "contracts/contract-clauses.contract"
@@ -9,7 +9,10 @@
   "validators": [
     {
       "registration": "validators/references-resolve.json",
-      "cases": "cases/references-resolve.json"
+      "cases": "cases/references-resolve.json",
+      "decides": [
+        "references-resolve"
+      ]
     }
   ],
   "obligations": [
@@ -18,7 +21,7 @@
   "files": [
     {
       "path": "README.md",
-      "digest": "sha256:728242e43f643bee730c1c2c7da850fbcf779da46a9d734643adb76bba1a78c9"
+      "digest": "sha256:9d77ee89230b663ac9c1b3b04f9f651ce5f9642d64e738dfe58890f940221461"
     },
     {
       "path": "cases/references-resolve.json",

@@ -43,6 +43,8 @@ use crate::model::{ModelClient, ModelError, ModelRequest};
 use crate::telemetry::{self, ModelCall};
 
 /// The default number of claims a retriever returns.
+pub mod verify;
+
 const DEFAULT_TOP_K: usize = 5;
 /// How many of a project's newest claims a lexical search looks through.
 const CLAIM_SEARCH_WINDOW: i64 = 500;
@@ -128,6 +130,8 @@ impl AgentExecutor {
             }
             "reranker" => self.rerank(request).await,
             "validator" => self.validate(request).await,
+            verify::PACK_KIND => self.decide_with_pack(request).await,
+            verify::CLAIM_REASONING_KIND => self.decide_claims(request).await,
             // An effect happens at most once in a run, however many times its loop
             // goes round, so a later iteration reads what the first one produced.
             "job" | "memory_write" => Ok(NodeOutcome::finished(request.previous_outputs.clone())),

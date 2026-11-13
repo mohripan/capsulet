@@ -160,6 +160,17 @@ fn only_a_key_the_project_trusts_for_this_pack_installs_it() {
     let mut lying = trusting(&key, &["sample"]);
     lying.keys[0].id = stranger.id.clone();
     assert_eq!(refused(directory.path(), &lying, &[]).code(), "trust_store");
+
+    // A key listed twice, once per pack, is refused for what it is, rather than
+    // the second entry being silently unread.
+    let mut twice = trusting(&key, &["other"]);
+    twice.keys.push(
+        key.trusted_for(vec!["sample".to_string()])
+            .expect("a public key"),
+    );
+    let error = refused(directory.path(), &twice, &[]);
+    assert_eq!(error.code(), "trust_store");
+    assert!(error.to_string().contains("listed twice"), "{error}");
 }
 
 #[test]

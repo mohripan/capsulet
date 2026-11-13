@@ -7,6 +7,18 @@
       "command": "cargo test -p capsulet-xtask --locked --target-dir .capsulet/verify/xtask-tests",
       "tests": [
         {
+          "path": "crates/xtask/src/domain.rs",
+          "selector": "a_cue_a_relation_a_pack_or_an_authority_named_in_code_is_found"
+        },
+        {
+          "path": "crates/xtask/src/domain.rs",
+          "selector": "comments_tests_and_words_inside_other_words_are_not_naming"
+        },
+        {
+          "path": "crates/xtask/src/domain.rs",
+          "selector": "the_reference_packs_vocabulary_reads_and_the_kernel_and_runtime_name_none_of_it"
+        },
+        {
           "path": "crates/xtask/tests/required_summary.rs",
           "selector": "a_job_that_was_skipped_cancelled_or_failed_is_refused"
         },
@@ -119,6 +131,14 @@
         {
           "path": "crates/api/src/tests/ir.rs",
           "selector": "a_run_of_a_definition_nobody_registered_is_refused"
+        },
+        {
+          "path": "crates/api/src/tests/ir.rs",
+          "selector": "a_run_starts_with_its_inputs_bound_and_refuses_one_the_definition_does_not_declare"
+        },
+        {
+          "path": "crates/api/src/tests/ir.rs",
+          "selector": "a_run_that_has_not_finished_has_no_certificate_to_seal_yet"
         },
         {
           "path": "crates/api/src/tests/memory.rs",
@@ -365,6 +385,14 @@
           "selector": "the_context_policy_travels_in_the_snapshot_document_and_a_hollow_template_is_refused"
         },
         {
+          "path": "crates/kernel/tests/decision.rs",
+          "selector": "a_decision_whose_bytes_are_not_what_it_cites_does_not_assemble"
+        },
+        {
+          "path": "crates/kernel/tests/decision.rs",
+          "selector": "every_obligation_is_in_the_certificate_as_the_last_node_left_it_or_residual"
+        },
+        {
           "path": "crates/kernel/tests/depth.rs",
           "selector": "a_derivation_far_past_the_bound_is_still_only_a_rejection"
         },
@@ -505,6 +533,10 @@
           "selector": "the_counts_are_what_was_recorded"
         },
         {
+          "path": "crates/kernel/tests/misreading_corpus.rs",
+          "selector": "the_verdicts_the_completion_report_states_are_what_the_corpus_measures"
+        },
+        {
           "path": "crates/kernel/tests/replay.rs",
           "selector": "a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly"
         },
@@ -643,6 +675,10 @@
         {
           "path": "crates/pack/tests/contract_clauses.rs",
           "selector": "the_pack_lists_its_files_and_once_signed_installs"
+        },
+        {
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "selector": "the_verdicts_the_completion_report_states_under_the_pack_are_what_the_corpus_measures"
         },
         {
           "path": "crates/pack/tests/contract_clauses.rs",
@@ -1557,6 +1593,16 @@
         {
           "path": "crates/pack/tests/reference_packs.rs",
           "selector": "the_infrastructure_policy_pack_passes_its_own_test"
+        }
+      ]
+    },
+    {
+      "gate": "m4",
+      "command": "cargo test -p capsulet-graph-worker --features stack-tests --test m4_gate --locked",
+      "tests": [
+        {
+          "path": "crates/graph-worker/tests/m4_gate.rs",
+          "selector": "three_unrelated_packs_run_end_to_end_on_a_stack_and_their_certificates_replay_offline"
         }
       ]
     },

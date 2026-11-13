@@ -270,6 +270,11 @@
     "ownership": "selected_project"
   },
   {
+    "operation_id": "certifyIrRun",
+    "minimum_role": "operator",
+    "ownership": "selected_project"
+  },
+  {
     "operation_id": "listAssuranceCertificates",
     "minimum_role": "viewer",
     "ownership": "selected_project"

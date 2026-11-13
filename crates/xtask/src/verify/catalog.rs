@@ -672,6 +672,45 @@ pub(crate) fn gates() -> Vec<Gate> {
             )
         },
         gate(
+            "domain-free",
+            "The kernel, the runtime and the graph worker name nothing a pack declares: no pack, \
+             tool, authority, obligation, relation, phrasing or cue in a string or an identifier",
+            &["cargo"],
+            300,
+            &[Fast, Full],
+            vec![xtask(&["domain", "check"])],
+        ),
+        // The M4 gate (#163), on a stack of its own: the API with PostgreSQL and
+        // the object store. The runs are driven by this checkout's worker, on
+        // the host, because a pack's validators run in containers and nothing
+        // on the stack holds a container runtime.
+        Gate {
+            stack: Some(&["api"]),
+            ..every_test_must_run(gate(
+                "m4",
+                "Three unrelated packs, contract clauses, code changes and infrastructure \
+                 policy, installed signed, run end to end as IR runs on a stack and certified \
+                 from their logs over the API; every bundle replays offline and every tool runs \
+                 again to its record",
+                &["cargo", "docker"],
+                3_600,
+                &[Full],
+                vec![command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-graph-worker",
+                        "--features",
+                        "stack-tests",
+                        "--test",
+                        "m4_gate",
+                        "--locked",
+                    ],
+                )],
+            ))
+        },
+        gate(
             "release",
             "release.toml against every crate, SDK, dashboard, chart, OpenAPI, Compose and \
              Dockerfile, and every image and repository reference",

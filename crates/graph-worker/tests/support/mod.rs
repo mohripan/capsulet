@@ -563,6 +563,7 @@ pub async fn seeded_run(
             &digest,
             AssuranceMode::Enforce,
             None,
+            &std::collections::BTreeMap::new(),
             RecordedTime(NOW),
         )
         .await
