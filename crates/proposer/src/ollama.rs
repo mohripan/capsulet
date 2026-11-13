@@ -18,10 +18,11 @@ const DEFAULT_TIMEOUT_SECONDS: u64 = 180;
 
 /// The flat shape the model is constrained to emit.
 ///
-/// Deliberately not the kernel's recursive [`Rule`] tree: a 1.5B model produces
-/// a flat record far more reliably, and the derivation it implies is assembled
-/// here where the structure can be guaranteed rather than hoped for.
+/// Deliberately not the kernel's recursive rule tree: a 1.5B model produces a
+/// flat record far more reliably, and the derivation it implies is assembled by
+/// the proposer, where the structure can be guaranteed rather than hoped for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RawProposal {
     pub subject: String,
     pub predicate: String,
@@ -33,8 +34,8 @@ pub struct RawProposal {
     /// than quoting.
     ///
     /// Recorded, and no longer acted on: which derivation an answer gets is
-    /// decided by the kernel's own phrasing check (see [`build_proposal`]), not
-    /// by the party that check constrains.
+    /// decided by the kernel's own phrasing check, not by the party that check
+    /// constrains.
     #[serde(default)]
     pub needs_interpretation: bool,
     #[serde(default)]

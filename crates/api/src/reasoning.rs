@@ -122,11 +122,9 @@ pub struct AskResponse {
     pub model: String,
     pub alphabet_digest: String,
     pub alphabet_size: usize,
-    #[schema(value_type = crate::wire_schemas::KernelCertificate)]
     pub certificate: Certificate,
     /// What the model actually emitted, retained so a rejection can be read
     /// against the proposal that caused it.
-    #[schema(value_type = crate::wire_schemas::RawProposal)]
     pub proposal: RawProposal,
 }
 
@@ -140,11 +138,10 @@ pub struct CertificateListResponse {
 pub struct CertificateSummary {
     pub id: String,
     pub question: String,
-    #[schema(value_type = crate::wire_schemas::KernelVerdict)]
+    #[schema(value_type = capsulet_kernel::Verdict)]
     pub verdict: String,
     pub model: String,
     pub alphabet_digest: String,
-    #[schema(value_type = crate::wire_schemas::KernelCertificate)]
     pub certificate: Certificate,
 }
 
@@ -158,7 +155,6 @@ pub struct ReadingResponse {
     pub kind: String,
     /// The attributed content the reading starts from, or the question asked.
     pub from: String,
-    #[schema(value_type = crate::wire_schemas::Proposition)]
     pub to: Proposition,
     /// Why the proposer read it so, or what the kernel says it depends on.
     pub rationale: String,
@@ -179,11 +175,11 @@ pub struct ReviewedCertificateResponse {
     pub certificate_id: String,
     pub question: String,
     /// What the kernel decided.
-    #[schema(value_type = crate::wire_schemas::KernelVerdict)]
+    #[schema(value_type = capsulet_kernel::Verdict)]
     pub kernel_verdict: String,
     /// What the kernel's decision and the reviews together support. Re-derived
     /// on every read, never stored.
-    #[schema(value_type = crate::wire_schemas::KernelVerdict)]
+    #[schema(value_type = capsulet_kernel::Verdict)]
     pub verdict: String,
     /// `mechanical` when the kernel accepted it alone, `human_review` when
     /// reviews of its readings did, and absent while it is not accepted.

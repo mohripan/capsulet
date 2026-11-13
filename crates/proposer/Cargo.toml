@@ -19,6 +19,12 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+utoipa = { workspace = true, optional = true }
+
+[features]
+# The JSON schema of what a model emitted, for the API's OpenAPI document. Off by
+# default, like the kernel's.
+openapi = ["dep:utoipa"]
 
 [lints]
 workspace = true

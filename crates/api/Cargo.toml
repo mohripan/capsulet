@@ -23,8 +23,8 @@ capsulet-application = { path = "../application" }
 capsulet-core = { path = "../core" }
 capsulet-ir = { path = "../ir" }
 capsulet-ir-adapters = { path = "../ir-adapters" }
-capsulet-kernel = { path = "../kernel" }
-capsulet-proposer = { path = "../proposer" }
+capsulet-kernel = { path = "../kernel", features = ["openapi"] }
+capsulet-proposer = { path = "../proposer", features = ["openapi"] }
 capsulet-postgres = { path = "../postgres" }
 capsulet-pack = { path = "../pack" }
 capsulet-runtime = { path = "../runtime" }

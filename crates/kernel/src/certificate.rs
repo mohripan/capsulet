@@ -9,6 +9,7 @@ use crate::{error::RepairOwner, ir::Proposition, quantity::Quantity};
 /// A boolean would force interpretation to be either silently accepted or
 /// treated as failure. Neither is honest, so it gets its own value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = KernelVerdict))]
 #[serde(rename_all = "snake_case")]
 pub enum Verdict {
     /// Every step discharged mechanically. No interpretation was required.
@@ -32,6 +33,7 @@ impl Verdict {
 
 /// One mechanically discharged step, recorded so the certificate is auditable.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DischargedStep {
     pub rule: String,
     pub concluded: String,
@@ -40,6 +42,7 @@ pub struct DischargedStep {
 
 /// What a residual is a reading of.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ResidualKind {
     /// What a cited source means. Every residual was this before questions were.
@@ -60,6 +63,7 @@ impl ResidualKind {
 
 /// An interpretation the kernel could not make, pinned to where it was needed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Residual {
     /// What was read: a source, or the question an answer was asked.
     #[serde(default, skip_serializing_if = "ResidualKind::is_source")]
@@ -76,6 +80,7 @@ pub struct Residual {
 
 /// A recorded failure, with its routing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CertificateError {
     pub code: String,
     pub message: String,
@@ -86,11 +91,45 @@ pub struct CertificateError {
     /// digests, and a number would invite a float back into a pipeline that
     /// refuses them.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "46"))]
     pub corrected_value: Option<Quantity>,
 }
 
 /// The kernel's decision on one proposal.
+///
+/// `unverified` is not a kernel verdict. It belongs to the platform assurance
+/// layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "openapi",
+    derive(utoipa::ToSchema),
+    schema(examples(
+        json!({
+            "verdict": "accepted",
+            "goal": {"subject": "document", "predicate": "states", "object": "fact"},
+            "discharged": [{"rule": "cite", "concluded": "fact", "detail": "literal evidence matched"}],
+            "residuals": [], "errors": [], "replay_digest": "sha256:accepted"
+        }),
+        json!({
+            "verdict": "conditional",
+            "goal": {"subject": "document", "predicate": "implies", "object": "fact"},
+            "discharged": [],
+            "residuals": [{
+                "from": "attributed text",
+                "to": {"subject": "document", "predicate": "implies", "object": "fact"},
+                "rationale": "interpretation required", "evidence_ids": ["evidence_1"]
+            }],
+            "errors": [], "replay_digest": "sha256:conditional"
+        }),
+        json!({
+            "verdict": "rejected",
+            "goal": {"subject": "document", "predicate": "states", "object": "missing"},
+            "discharged": [], "residuals": [],
+            "errors": [{"code": "quote_mismatch", "message": "quote was not found", "repair_owner": "proposer"}],
+            "replay_digest": "sha256:rejected"
+        })
+    ))
+)]
 pub struct Certificate {
     pub verdict: Verdict,
     pub goal: Proposition,
@@ -107,18 +146,22 @@ pub struct Certificate {
     /// reader comparing two certificates should be able to see that without
     /// knowing which constant each build carried.
     ///
-    /// `None` means the bound was not recorded — a certificate decided before
+    /// Absent when the bound was not recorded: a certificate decided before
     /// this field existed, or reloaded from a store that does not keep it. That
     /// is deliberately not the same as today's bound: filling in the running
     /// build's constant would claim something about a decision this build did
     /// not make.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derivation_depth_limit: Option<u32>,
-    /// The authority a person must review this certificate's readings under,
-    /// when the snapshot it was decided against names one. Absent, they are
-    /// reviewed under [`crate::review::READING_AUTHORITY`], as every reading was
-    /// before a contract could name its own.
+    /// The authority a person must decide this certificate's readings under,
+    /// such as `review:legal`, when the contract its answer was read under
+    /// names one. Absent, they are decided under `review:write`, as every
+    /// reading was before a contract could name its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(pattern = "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$")
+    )]
     pub reading_authority: Option<String>,
 }
 

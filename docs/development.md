@@ -78,8 +78,10 @@ Use the following workflow for contract changes:
    with an operation unregistered. Derive `utoipa::ToSchema` on the body types and
    `utoipa::IntoParams` on the parameter type; `#[schema(as = Name)]` keeps a published component name
    that differs from the Rust one. The document collects each type's schema and every schema it
-   refers to, and refuses two types that claim one name. Only shapes with no serde type in this
-   crate, such as non-JSON bodies or the kernel's certificate, are written out, as types in
+   refers to, and refuses two types that claim one name. A type from another crate derives its
+   schema behind that crate's `openapi` feature, which only the API turns on, as the kernel's
+   certificate and the proposer's raw proposal do. Only shapes with no serde type at all, such as
+   non-JSON bodies, and the core domain's status vocabularies are written out, as types in
    `crates/api/src/wire_schemas.rs`, and each is checked against real payloads in
    `crates/api/src/openapi.rs`. In tests every response is checked against the contract of
    the route that produced it, failures included; a crate whose tests drive the router turns

@@ -22,6 +22,13 @@ sha2.workspace = true
 thiserror.workspace = true
 unicode-normalization.workspace = true
 unicode-segmentation.workspace = true
+utoipa = { workspace = true, optional = true }
+
+[features]
+# The JSON schemas of the types the kernel puts on the wire, for the API's
+# OpenAPI document. Off by default: the kernel itself depends on no HTTP schema
+# library, and only the API turns this on.
+openapi = ["dep:utoipa"]
 
 [lints]
 workspace = true

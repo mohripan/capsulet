@@ -16,6 +16,7 @@ use crate::question::QuestionReading;
 /// Kept deliberately flat: the kernel's job is to decide whether a proposition
 /// is grounded, not to model arbitrary logic.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Proposition {
     pub subject: String,
     pub predicate: String,

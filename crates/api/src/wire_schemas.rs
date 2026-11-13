@@ -4,10 +4,12 @@
 //! handler serializes or deserializes, and endpoint contracts name those types,
 //! not strings. What is left here has no such type to derive from: bodies that are
 //! not JSON objects (text, binary, an event stream, the document itself), a webhook
-//! payload that is arbitrary by design, the kernel's certificate types, which live
-//! in a crate that deliberately depends on no HTTP schema library, and the status
-//! vocabularies of the core domain. Each is still a type, so an endpoint names it
-//! the same way and a misspelling is a compile error, not an empty schema.
+//! payload that is arbitrary by design, and the status vocabularies of the core
+//! domain, which carries no serde derives. Each is still a type, so an endpoint
+//! names it the same way and a misspelling is a compile error, not an empty schema.
+//!
+//! The kernel's certificate and the proposer's raw proposal derive theirs, behind
+//! those crates' `openapi` feature, which only this crate turns on.
 
 use std::borrow::Cow;
 
@@ -19,10 +21,6 @@ use utoipa::{PartialSchema, ToSchema};
 /// A schema read from JSON, which is how these are clearest to write down.
 fn parse(value: Value) -> RefOr<Schema> {
     serde_json::from_value(value).expect("hand-written wire schemas are valid OpenAPI schemas")
-}
-
-fn reference(name: &str) -> Value {
-    json!({"$ref": format!("#/components/schemas/{name}")})
 }
 
 /// Declares a component whose schema is written out, with the components it refers to.
@@ -85,130 +83,6 @@ wire_schema!(
 );
 
 wire_schema!(
-    /// `capsulet_kernel::Verdict`.
-    KernelVerdict = "KernelVerdict",
-    [],
-    json!({"type": "string", "enum": ["accepted", "conditional", "rejected"]})
-);
-wire_schema!(
-    /// `capsulet_kernel::Proposition`.
-    Proposition = "Proposition",
-    [],
-    all_required(&[
-        ("subject", json!({"type": "string"})),
-        ("predicate", json!({"type": "string"})),
-        ("object", json!({"type": "string"})),
-    ])
-);
-wire_schema!(
-    /// A step the kernel discharged.
-    DischargedStep = "DischargedStep",
-    [],
-    all_required(&[
-        ("rule", json!({"type": "string"})),
-        ("concluded", json!({"type": "string"})),
-        ("detail", json!({"type": "string"})),
-    ])
-);
-wire_schema!(
-    /// An interpretation the kernel could not discharge, and why.
-    Residual = "Residual",
-    [Proposition],
-    {
-        let mut schema = all_required(&[
-            ("from", json!({"type": "string"})),
-            ("to", reference("Proposition")),
-            ("rationale", json!({"type": "string"})),
-            ("evidence_ids", json!({"type": "array", "items": {"type": "string"}})),
-        ]);
-        // Optional: left out for a reading of a source, which every residual was
-        // before answers were held to their questions.
-        schema["properties"]["kind"] = json!({
-            "type": "string",
-            "enum": ["source", "question"],
-            "default": "source",
-            "description": "What was read: a cited source, or the question the answer was asked."
-        });
-        schema
-    }
-);
-wire_schema!(
-    /// A reason the kernel rejected a proposal.
-    CertificateError = "CertificateError",
-    [],
-    json!({
-        "type": "object",
-        "required": ["code", "message", "repair_owner"],
-        "properties": {
-            "code": {"type": "string"},
-            "message": {"type": "string"},
-            "repair_owner": {"type": "string"},
-            // A fixed-point decimal as text, never a JSON number: the kernel
-            // computes exactly, and a number here would invite a float back
-            // into a pipeline that refuses them.
-            "corrected_value": {"type": ["string", "null"], "example": "46"}
-        },
-        "additionalProperties": false
-    })
-);
-wire_schema!(
-    /// `capsulet_kernel::Certificate`.
-    KernelCertificate = "Certificate",
-    [KernelVerdict, Proposition, DischargedStep, Residual, CertificateError],
-    {
-        let mut schema = all_required(&[
-            ("verdict", reference("KernelVerdict")),
-            ("goal", reference("Proposition")),
-            ("discharged", json!({"type": "array", "items": reference("DischargedStep")})),
-            ("residuals", json!({"type": "array", "items": reference("Residual")})),
-            ("errors", json!({"type": "array", "items": reference("CertificateError")})),
-            ("replay_digest", json!({"type": "string"})),
-        ]);
-        // Optional: the kernel leaves it out when the bound was not recorded,
-        // which is not the same as today's bound.
-        schema["properties"]["derivation_depth_limit"] = json!({
-            "type": "integer",
-            "minimum": 0,
-            "description": "How deep a derivation the kernel would walk when it decided this. Absent when the bound was not recorded."
-        });
-        // Optional: absent when the contract names no reading authority, and
-        // then readings are decided under `review:write`.
-        schema["properties"]["reading_authority"] = json!({
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$",
-            "description": "The authority a decision on this certificate's readings has to be made under, as the contract its answer was read under names it. Absent when the contract names none, and then it is `review:write`."
-        });
-        schema["description"] = json!(
-            "Current deterministic kernel certificate. `unverified` is not a kernel verdict; it belongs to the future platform assurance layer."
-        );
-        schema["examples"] = json!([
-            {"verdict":"accepted","goal":{"subject":"document","predicate":"states","object":"fact"},"discharged":[{"rule":"cite","concluded":"fact","detail":"literal evidence matched"}],"residuals":[],"errors":[],"replay_digest":"sha256:accepted"},
-            {"verdict":"conditional","goal":{"subject":"document","predicate":"implies","object":"fact"},"discharged":[],"residuals":[{"from":"attributed text","to":{"subject":"document","predicate":"implies","object":"fact"},"rationale":"interpretation required","evidence_ids":["evidence_1"]}],"errors":[],"replay_digest":"sha256:conditional"},
-            {"verdict":"rejected","goal":{"subject":"document","predicate":"states","object":"missing"},"discharged":[],"residuals":[],"errors":[{"code":"quote_mismatch","message":"quote was not found","repair_owner":"proposer"}],"replay_digest":"sha256:rejected"}
-        ]);
-        schema
-    }
-);
-wire_schema!(
-    /// `capsulet_proposer::RawProposal`, what a model emitted for the kernel to check.
-    RawProposal = "RawProposal",
-    [],
-    all_required(&[
-        ("subject", json!({"type": "string"})),
-        ("predicate", json!({"type": "string"})),
-        ("object", json!({"type": "string"})),
-        ("evidence_id", json!({"type": "string"})),
-        ("quote", json!({"type": "string"})),
-        ("needs_interpretation", json!({"type": "boolean"})),
-        ("rationale", json!({"type": "string"})),
-        ("asks_relation", json!({"type": "string"})),
-        ("asks_subject", json!({"type": "string"})),
-        ("asks_object", json!({"type": "string"})),
-        ("asks_rationale", json!({"type": "string"})),
-    ])
-);
-
-wire_schema!(
     /// The statuses of a job run, from `capsulet_core::JobRunStatus`.
     JobRunStatusSchema = "JobRunStatus",
     [],
@@ -232,16 +106,6 @@ wire_schema!(
     [],
     string_enum(&automation_statuses())
 );
-
-/// An object whose every listed property is required and nothing else is allowed.
-fn all_required(properties: &[(&str, Value)]) -> Value {
-    let required = properties.iter().map(|(name, _)| *name).collect::<Vec<_>>();
-    let properties = properties
-        .iter()
-        .map(|(name, schema)| ((*name).to_owned(), schema.clone()))
-        .collect::<serde_json::Map<_, _>>();
-    json!({"type": "object", "required": required, "properties": properties, "additionalProperties": false})
-}
 
 fn string_enum(values: &[String]) -> Value {
     json!({"type": "string", "enum": values})

@@ -679,8 +679,7 @@
         "type": "object"
       },
       "Certificate": {
-        "additionalProperties": false,
-        "description": "Current deterministic kernel certificate. `unverified` is not a kernel verdict; it belongs to the future platform assurance layer.",
+        "description": "The kernel's decision on one proposal.\n\n`unverified` is not a kernel verdict. It belongs to the platform assurance\nlayer.",
         "examples": [
           {
             "discharged": [
@@ -746,9 +745,13 @@
         ],
         "properties": {
           "derivation_depth_limit": {
-            "description": "How deep a derivation the kernel would walk when it decided this. Absent when the bound was not recorded.",
+            "description": "How deep a derivation the kernel would walk when it decided this.\n\nRecorded rather than looked up from the kernel version, because a build\nwith a tighter bound may reject a proposal this one accepted, and a\nreader comparing two certificates should be able to see that without\nknowing which constant each build carried.\n\nAbsent when the bound was not recorded: a certificate decided before\nthis field existed, or reloaded from a store that does not keep it. That\nis deliberately not the same as today's bound: filling in the running\nbuild's constant would claim something about a decision this build did\nnot make.",
+            "format": "int32",
             "minimum": 0,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "discharged": {
             "items": {
@@ -766,11 +769,15 @@
             "$ref": "#/components/schemas/Proposition"
           },
           "reading_authority": {
-            "description": "The authority a decision on this certificate's readings has to be made under, as the contract its answer was read under names it. Absent when the contract names none, and then it is `review:write`.",
+            "description": "The authority a person must decide this certificate's readings under,\nsuch as `review:legal`, when the contract its answer was read under\nnames one. Absent, they are decided under `review:write`, as every\nreading was before a contract could name its own.",
             "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "replay_digest": {
+            "description": "Digest over the goal and the derivation, so a certificate can be tied\nback to the exact proposal that produced it.",
             "type": "string"
           },
           "residuals": {
@@ -807,12 +814,13 @@
         "type": "object"
       },
       "CertificateError": {
-        "additionalProperties": false,
+        "description": "A recorded failure, with its routing.",
         "properties": {
           "code": {
             "type": "string"
           },
           "corrected_value": {
+            "description": "The value the kernel computed, when it knows the right answer.\n\nA decimal string, never a JSON number: this travels to clients and into\ndigests, and a number would invite a float back into a pipeline that\nrefuses them.",
             "example": "46",
             "type": [
               "string",
@@ -2115,7 +2123,7 @@
         "type": "object"
       },
       "DischargedStep": {
-        "additionalProperties": false,
+        "description": "One mechanically discharged step, recorded so the certificate is auditable.",
         "properties": {
           "concluded": {
             "type": "string"
@@ -3220,6 +3228,7 @@
         "type": "string"
       },
       "KernelVerdict": {
+        "description": "The three-valued outcome.\n\nA boolean would force interpretation to be either silently accepted or\ntreated as failure. Neither is honest, so it gets its own value.",
         "enum": [
           "accepted",
           "conditional",
@@ -4409,7 +4418,7 @@
         "type": "object"
       },
       "Proposition": {
-        "additionalProperties": false,
+        "description": "A statement about the world, in subject-predicate-object form.\n\nKept deliberately flat: the kernel's job is to decide whether a proposition\nis grounded, not to model arbitrary logic.",
         "properties": {
           "object": {
             "type": "string"
@@ -4429,24 +4438,29 @@
         "type": "object"
       },
       "RawProposal": {
-        "additionalProperties": false,
+        "description": "The flat shape the model is constrained to emit.\n\nDeliberately not the kernel's recursive rule tree: a 1.5B model produces a\nflat record far more reliably, and the derivation it implies is assembled by\nthe proposer, where the structure can be guaranteed rather than hoped for.",
         "properties": {
           "asks_object": {
+            "description": "The object the question names, or `?` when the object is what it asks for.",
             "type": "string"
           },
           "asks_rationale": {
+            "description": "Why the question asks that, in one sentence.",
             "type": "string"
           },
           "asks_relation": {
+            "description": "The relation the model says the question asks about. With the two terms\nbelow, its reading of a question asked only in words: the kernel holds the\nanswer to it, and a reviewer decides whether the words ask it. Ignored\nwhen the caller pinned the question to a query.",
             "type": "string"
           },
           "asks_subject": {
+            "description": "The subject the question names, or `?` when the subject is what it asks for.",
             "type": "string"
           },
           "evidence_id": {
             "type": "string"
           },
           "needs_interpretation": {
+            "description": "Whether the model says reaching the proposition required reading rather\nthan quoting.\n\nRecorded, and no longer acted on: which derivation an answer gets is\ndecided by the kernel's own phrasing check, not by the party that check\nconstrains.",
             "type": "boolean"
           },
           "object": {
@@ -4456,6 +4470,7 @@
             "type": "string"
           },
           "quote": {
+            "description": "The exact substring of the excerpt the model says supports the claim.",
             "type": "string"
           },
           "rationale": {
@@ -4470,13 +4485,7 @@
           "predicate",
           "object",
           "evidence_id",
-          "quote",
-          "needs_interpretation",
-          "rationale",
-          "asks_relation",
-          "asks_subject",
-          "asks_object",
-          "asks_rationale"
+          "quote"
         ],
         "type": "object"
       },
@@ -4613,31 +4622,30 @@
         "type": "object"
       },
       "Residual": {
-        "additionalProperties": false,
+        "description": "An interpretation the kernel could not make, pinned to where it was needed.",
         "properties": {
           "evidence_ids": {
+            "description": "Evidence the reading depends on, so a reviewer can go straight to it.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "from": {
+            "description": "The attributed content the reading starts from.",
             "type": "string"
           },
           "kind": {
-            "default": "source",
-            "description": "What was read: a cited source, or the question the answer was asked.",
-            "enum": [
-              "source",
-              "question"
-            ],
-            "type": "string"
+            "$ref": "#/components/schemas/ResidualKind",
+            "description": "What was read: a source, or the question an answer was asked."
           },
           "rationale": {
+            "description": "The proposer's stated reason, retained for whoever discharges this.",
             "type": "string"
           },
           "to": {
-            "$ref": "#/components/schemas/Proposition"
+            "$ref": "#/components/schemas/Proposition",
+            "description": "The proposition the proposer read out of it."
           }
         },
         "required": [
@@ -4647,6 +4655,14 @@
           "evidence_ids"
         ],
         "type": "object"
+      },
+      "ResidualKind": {
+        "description": "What a residual is a reading of.",
+        "enum": [
+          "source",
+          "question"
+        ],
+        "type": "string"
       },
       "ResolveClaimConflictRequest": {
         "properties": {
