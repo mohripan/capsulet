@@ -25,7 +25,7 @@ use crate::{
     assurance::{IrRunEventResponse, IrRunEventsResponse, recorded_now},
     auth::Principal,
     error::ApiError,
-    http::{generated_id, internal::ProjectContext, project_context, require_resource_project},
+    http::{ProjectContext, generated_id, project_context, require_resource_project},
     models::{
         AgentResponse, AgentRunBundleResponse, AgentRunErasureResponse,
         AgentRunExplanationResponse, AgentRunResponse, AgentRunUsageResponse, CheckRuleResponse,

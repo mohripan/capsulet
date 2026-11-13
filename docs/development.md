@@ -73,7 +73,7 @@ Use the following workflow for contract changes:
 2. Endpoint or wire schema: declare the operation in `crates/api/src/endpoint_contract.rs`, naming
    the Rust type the handler reads, the one it writes and, with `parameters = Type`, the query or
    headers it reads, never a schema name or a parameter list. Register its handler in
-   `crates/api/src/http/internal.rs` with `.operation("operationId", handler)`: the method, the path
+   `crates/api/src/http/router.rs` with `.operation("operationId", handler)`: the method, the path
    and whether it needs authentication come from the contract, and the router refuses to start
    with an operation unregistered. Derive `utoipa::ToSchema` on the body types and
    `utoipa::IntoParams` on the parameter type; `#[schema(as = Name)]` keeps a published component name

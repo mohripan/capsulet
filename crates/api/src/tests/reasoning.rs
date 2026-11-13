@@ -508,7 +508,7 @@ async fn reasoning_loads_typed_endpoints_and_policies_from_its_scoped_contract()
         .await
         .expect("store");
     let state = AppState::new(store, FakeObjectStore::default(), ["mini".into()]);
-    let context = crate::http::internal::ProjectContext {
+    let context = crate::http::ProjectContext {
         tenant_id: "default".into(),
         project_id: "default".into(),
         role: crate::auth::ProjectRole::Admin,
@@ -538,7 +538,7 @@ async fn reasoning_refuses_a_stored_contract_that_does_not_compile() {
         .await
         .expect("store");
     let state = AppState::new(store, FakeObjectStore::default(), ["mini".into()]);
-    let context = crate::http::internal::ProjectContext {
+    let context = crate::http::ProjectContext {
         tenant_id: "default".into(),
         project_id: "default".into(),
         role: crate::auth::ProjectRole::Admin,

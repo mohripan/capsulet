@@ -22,7 +22,7 @@ use utoipa::ToSchema;
 use crate::{
     auth::Principal,
     error::ApiError,
-    http::internal::{ProjectContext, project_context, require_project_role},
+    http::{ProjectContext, project_context, require_project_role},
     state::AppState,
     store::ApiStore,
 };

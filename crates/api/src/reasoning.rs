@@ -28,7 +28,7 @@ use utoipa::ToSchema;
 use crate::{
     auth::Principal,
     error::ApiError,
-    http::internal::{ProjectContext, generated_id, project_context, require_project_role},
+    http::{ProjectContext, generated_id, project_context, require_project_role},
     state::AppState,
     store::ApiStore,
 };
