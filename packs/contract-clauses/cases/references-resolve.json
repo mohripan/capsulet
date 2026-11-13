@@ -1,0 +1,84 @@
+{
+  "cases": [
+    {
+      "name": "every reference in the services agreement resolves",
+      "obligations": [
+        {
+          "id": "references-resolve",
+          "contract": "contract-clauses",
+          "statement": "Every section a contract refers to is one of its own provisions."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "services-agreement.txt",
+          "path": "../samples/services-agreement.txt",
+          "media_type": "text/plain"
+        }
+      ],
+      "expect": {
+        "references-resolve": "holds"
+      }
+    },
+    {
+      "name": "every reference in the licence agreement resolves",
+      "obligations": [
+        {
+          "id": "references-resolve",
+          "contract": "contract-clauses",
+          "statement": "Every section a contract refers to is one of its own provisions."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "licence-agreement.txt",
+          "path": "../samples/licence-agreement.txt",
+          "media_type": "text/plain"
+        }
+      ],
+      "expect": {
+        "references-resolve": "holds"
+      }
+    },
+    {
+      "name": "a reference to a section the document leaves out does not hold",
+      "obligations": [
+        {
+          "id": "references-resolve",
+          "contract": "contract-clauses",
+          "statement": "Every section a contract refers to is one of its own provisions."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "excerpt.txt",
+          "text": "4. Fees\n4.2. Fees are non-refundable, except as provided in Section 8.4.\n8. Termination\n8.1. Subject to Section 8.3, either party may terminate this Agreement.\n",
+          "media_type": "text/plain"
+        }
+      ],
+      "expect": {
+        "references-resolve": "does_not_hold"
+      }
+    },
+    {
+      "name": "a document that refers to nothing holds",
+      "obligations": [
+        {
+          "id": "references-resolve",
+          "contract": "contract-clauses",
+          "statement": "Every section a contract refers to is one of its own provisions."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "plain.txt",
+          "text": "This Agreement is governed by the laws of Ontario.\n",
+          "media_type": "text/plain"
+        }
+      ],
+      "expect": {
+        "references-resolve": "holds"
+      }
+    }
+  ]
+}

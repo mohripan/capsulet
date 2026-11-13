@@ -42,9 +42,11 @@ impl PostgresStore {
             r"
             INSERT INTO reasoning_certificates (
                 id, tenant_id, project_id, question, verdict, goal,
-                discharged, residuals, errors, alphabet_digest, replay_digest, model
+                discharged, residuals, errors, alphabet_digest, replay_digest, model,
+                reading_authority
             )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12,
+                    $13)
             ON CONFLICT (id) DO NOTHING
             ",
         )
@@ -60,6 +62,7 @@ impl PostgresStore {
         .bind(&record.alphabet_digest)
         .bind(&certificate.replay_digest)
         .bind(&record.model)
+        .bind(&certificate.reading_authority)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -80,7 +83,8 @@ impl PostgresStore {
         let rows = sqlx::query(
             r"
             SELECT id, tenant_id, project_id, question, verdict, goal,
-                   discharged, residuals, errors, alphabet_digest, replay_digest, model
+                   discharged, residuals, errors, alphabet_digest, replay_digest, model,
+                   reading_authority
             FROM reasoning_certificates
             WHERE tenant_id = $1 AND project_id = $2
             ORDER BY created_at DESC, id ASC
@@ -110,7 +114,8 @@ impl PostgresStore {
         let row = sqlx::query(
             r"
             SELECT id, tenant_id, project_id, question, verdict, goal,
-                   discharged, residuals, errors, alphabet_digest, replay_digest, model
+                   discharged, residuals, errors, alphabet_digest, replay_digest, model,
+                   reading_authority
             FROM reasoning_certificates
             WHERE tenant_id = $1 AND project_id = $2 AND id = $3
             ",
@@ -244,6 +249,7 @@ fn row_to_certificate(
             // under is genuinely unknown here, and saying so beats filling in
             // the running build's constant as though it had been recorded.
             derivation_depth_limit: None,
+            reading_authority: row.try_get("reading_authority")?,
         },
         alphabet_digest: row.try_get("alphabet_digest")?,
         model: row.try_get("model")?,

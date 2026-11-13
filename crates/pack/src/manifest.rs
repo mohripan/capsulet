@@ -20,6 +20,14 @@ pub struct Manifest {
     pub contracts: Vec<String>,
     #[serde(default)]
     pub validators: Vec<ValidatorEntry>,
+    /// The policy defaults for the pack's obligations, by path: each file is an
+    /// IR contract whose obligations say which kinds of checker may discharge
+    /// them and the authority a person needs to discharge one by review. A
+    /// definition that uses the pack declares these contracts as they are.
+    /// Absent from manifests written before packs carried any, which digest as
+    /// they always did.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub obligations: Vec<String>,
     /// Every file in the pack but `pack.json` and `pack.sig`, sorted by path.
     #[serde(default)]
     pub files: Vec<FileEntry>,

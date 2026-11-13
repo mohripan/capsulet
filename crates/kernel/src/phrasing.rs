@@ -233,6 +233,18 @@ impl Phrasebook {
         &self.context
     }
 
+    /// What the cited `start..end` of `text` has to be read with, by this
+    /// phrasebook's context policy: the same lookup a decision makes.
+    #[must_use]
+    pub fn reading_needs(
+        &self,
+        text: &str,
+        start: usize,
+        end: usize,
+    ) -> crate::context::ReadingNeeds {
+        crate::context::reading_needs(text, start, end, &self.context)
+    }
+
     /// The names this phrasebook pins.
     #[must_use]
     pub fn name_groups(&self) -> &[NameGroup] {

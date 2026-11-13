@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015, CAP-CORRECTNESS-016, CAP-CORRECTNESS-017, CAP-ASSURANCE-011 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015, CAP-CORRECTNESS-016, CAP-CORRECTNESS-017, CAP-ASSURANCE-011, CAP-CORRECTNESS-020 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -548,10 +548,32 @@ text the clause is read with, and reading the qualifying provision too removes t
 leaving it out, but not the reading (`CAP-CORRECTNESS-016`). A contract that declares none of this
 decides exactly as before. Nothing here decides whether a reading of the clause is right.
 
+The ask endpoint's proposer makes the same lookup before it proposes anything, over the text the
+question was asked of. It reads the cited clause with each provision and definition the clause
+depends on, so a clause using a defined term carries its definition. A qualified clause becomes a
+reading of the clause read with what qualifies it, so the answer comes back `conditional` on one
+reading that names the qualifying provision and shows it, instead of `rejected` for quoting the
+clause bare. The text is cut into citable spans at sentence ends, and a full stop with a letter or
+digit right after it ends nothing, so "Section 8.3" stays in the clause it qualifies
+(`CAP-CORRECTNESS-020`).
+
 ### Reviewing readings
 
 A `conditional` certificate names exactly what to review: each residual is a reading the kernel could
-not make. A person holding `review:write` decides one at a time:
+not make. A person holding the reading authority decides one at a time. That is the authority the
+answer's contract names, or `review:write` when it names none:
+
+```text
+review_policy:
+  reading_authority: review:legal
+```
+
+The certificate carries it as `reading_authority`, and each reading reports it as `review_authority`.
+A caller who does not hold it is refused with `403 permission_denied`, naming the scope, because a
+decision under any other authority would decide nothing. A project administrator does not hold
+`review:legal` by being one: a principal holds it when its token or credential grants that scope or
+`review:*`, or when it is a platform administrator, which holds every scope. A decision looks like
+this:
 
 ```json
 POST /v1/reasoning/certificates/{id}/readings/{reading}/review
@@ -561,7 +583,7 @@ POST /v1/reasoning/certificates/{id}/readings/{reading}/review
 `{reading}` is the reading's digest, as `GET /v1/reasoning/readings` and the review endpoint report
 it. It is computed over the residual and the certificate's replay digest, so a decision about one
 reading never applies to another or to the same words in another answer. The decision is recorded
-once, with the reviewer and the `review:write` authority. Deciding it again is `409
+once, with the reviewer and the authority it was decided under. Deciding it again is `409
 reading_already_reviewed`, and nothing rewrites it. A review needs a rationale.
 
 `GET /v1/reasoning/certificates/{id}/review` reports the outcome, re-derived on every read from the

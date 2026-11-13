@@ -18,6 +18,11 @@ name = "template"
 path = "tests/template.rs"
 required-features = ["container-tests"]
 
+[[test]]
+name = "reference_packs"
+path = "tests/reference_packs.rs"
+required-features = ["container-tests"]
+
 [dependencies]
 # Ed25519, which the API already builds for its token signatures.
 aws-lc-rs = { version = "1", features = ["prebuilt-nasm"] }
@@ -31,6 +36,10 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+# The contract-clauses pack's test answers questions the way the ask endpoint
+# does, through the kernel and the proposer's own assembly.
+capsulet-kernel = { path = "../kernel" }
+capsulet-proposer = { path = "../proposer" }
 tempfile = "3"
 
 [lints]

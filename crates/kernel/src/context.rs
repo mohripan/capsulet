@@ -74,6 +74,47 @@ pub(crate) struct Context {
     /// A residual for each provision or definition it depends on and the
     /// derivation did not read it with.
     pub uncited: Vec<String>,
+    /// The bytes of each of those provisions and definitions, so whoever
+    /// proposes a derivation can read the span with them.
+    pub needs: Vec<(usize, usize)>,
+}
+
+/// What a cited span of a document has to be read with, found from the
+/// structure its contract declares.
+///
+/// This is the same lookup the kernel makes when it decides a citation, offered
+/// to whoever proposes one, so a proposal can read a clause with what qualifies
+/// it instead of quoting it bare and being refused for it. Finding these spans
+/// decides nothing: reading the clause with them still leaves the reading to a
+/// person when the clause is qualified.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReadingNeeds {
+    /// Why the cited clause does not state its relation outright, if it does
+    /// not. Empty when nothing qualifies it.
+    pub qualified: Vec<String>,
+    /// The bytes of each provision or definition the span depends on, in the
+    /// order they were found. A derivation reads the span with these.
+    pub read_with: Vec<(usize, usize)>,
+}
+
+/// What the cited `start..end` of `text` has to be read with, under `policy`.
+///
+/// A span that is not one of `text`, or a policy that declares nothing, needs
+/// nothing.
+#[must_use]
+pub fn reading_needs(text: &str, start: usize, end: usize, policy: &ContextPolicy) -> ReadingNeeds {
+    let within = start <= end
+        && end <= text.len()
+        && text.is_char_boundary(start)
+        && text.is_char_boundary(end);
+    if !within {
+        return ReadingNeeds::default();
+    }
+    let context = context_of(text, start, end, &[], policy);
+    ReadingNeeds {
+        qualified: context.qualified,
+        read_with: context.needs,
+    }
 }
 
 /// A text with each character's plain, lower-case form and byte offset, so a
@@ -357,6 +398,12 @@ impl Context {
         }
     }
 
+    fn needs(&mut self, start: usize, end: usize) {
+        if !self.needs.contains(&(start, end)) {
+            self.needs.push((start, end));
+        }
+    }
+
     fn qualified(&mut self, reason: String) {
         if !self.qualified.contains(&reason) {
             self.qualified.push(reason);
@@ -416,6 +463,9 @@ fn in_the_cited_sentences(document: &Document<'_>, read: &Read<'_>, context: &mu
             let covered = provision.is_some_and(|p| read.covers(p.start, p.end));
             if let Some(cue) = cue_before(shadow, &document.policy.subject_to, reference.start) {
                 context.qualified(format!("it is \"{cue}\" provision {target}"));
+                if let Some(provision) = provision.filter(|_| !covered) {
+                    context.needs(provision.start, provision.end);
+                }
                 if !covered {
                     context.uncited(format!(
                         "the cited clause is qualified by provision {target} (\"{cue}\"), which the \
@@ -427,7 +477,8 @@ fn in_the_cited_sentences(document: &Document<'_>, read: &Read<'_>, context: &mu
                     "the cited clause refers to provision {target}, which is not among the \
                      document's provisions"
                 ));
-            } else if !covered {
+            } else if let Some(provision) = provision.filter(|_| !covered) {
+                context.needs(provision.start, provision.end);
                 context.uncited(format!(
                     "the cited clause refers to provision {target}, which the derivation does not \
                      read it with"
@@ -458,6 +509,7 @@ fn prevailing_elsewhere(document: &Document<'_>, read: &Read<'_>, context: &mut 
         let (name, a, b) = document.place_of(shadow.offsets[reference.start]);
         context.qualified(format!("{name} applies \"{cue}\" it"));
         if !read.covers(a, b) {
+            context.needs(a, b);
             context.uncited(format!(
                 "{name} prevails over the cited clause (\"{cue}\" provision {}), and the \
                  derivation does not read it with it",
@@ -475,6 +527,7 @@ fn defined_terms(document: &Document<'_>, read: &Read<'_>, context: &mut Context
             continue;
         }
         let (place, ..) = document.place_of(a);
+        context.needs(a, b);
         context.uncited(format!(
             "the cited clause uses the defined term \"{term}\", defined in {place}, which the \
              derivation does not read it with"
@@ -594,6 +647,44 @@ mod tests {
         assert!(context.uncited[0].contains("\"Affiliate\", defined in provision 1"));
         let lower = "acme may assign to an affiliate.";
         assert!(!uses_term(lower, "Affiliate"));
+    }
+
+    #[test]
+    fn what_a_span_needs_is_the_bytes_that_would_satisfy_it() {
+        let (start, end) = cited(
+            "Subject to Section 12, either party may terminate this agreement on thirty days' notice.",
+        );
+        let needs = reading_needs(AGREEMENT, start, end, &legal());
+        assert_eq!(needs.qualified.len(), 2, "{needs:?}");
+        let twelve = AGREEMENT.find("12. Minimum term").expect("provision 12");
+        assert!(
+            needs.read_with.iter().any(|&(a, b)| a == twelve
+                && AGREEMENT[a..b].contains("no party may terminate in the first year")),
+            "{needs:?}"
+        );
+        let read: Vec<(usize, usize)> = needs.read_with.clone();
+        let read_so = context_of(AGREEMENT, start, end, &read, &legal());
+        assert!(read_so.uncited.is_empty(), "{read_so:?}");
+
+        let (start, end) = cited("Acme may assign to an Affiliate.");
+        let needs = reading_needs(AGREEMENT, start, end, &legal());
+        assert!(needs.qualified.is_empty(), "{needs:?}");
+        assert_eq!(needs.read_with.len(), 1, "{needs:?}");
+        let (a, b) = needs.read_with[0];
+        assert!(
+            AGREEMENT[a..b].starts_with("\"Affiliate\" means"),
+            "{:?}",
+            &AGREEMENT[a..b]
+        );
+
+        assert_eq!(
+            reading_needs(AGREEMENT, end, start, &legal()),
+            ReadingNeeds::default()
+        );
+        assert_eq!(
+            reading_needs(AGREEMENT, 0, AGREEMENT.len() + 1, &legal()),
+            ReadingNeeds::default()
+        );
     }
 
     #[test]

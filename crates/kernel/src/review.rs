@@ -74,6 +74,16 @@ pub struct ReadingReview {
     pub rationale: String,
 }
 
+/// The authority `certificate`'s readings are reviewed under: the one its
+/// contract names, or [`READING_AUTHORITY`] when it names none.
+#[must_use]
+pub fn reading_authority(certificate: &Certificate) -> &str {
+    certificate
+        .reading_authority
+        .as_deref()
+        .unwrap_or(READING_AUTHORITY)
+}
+
 /// The digest that names one reading.
 ///
 /// Over the residual's canonical bytes, together with the certificate's replay
@@ -120,10 +130,11 @@ pub struct Reviewed {
 /// - Every reading decided `holds` accepts, by review.
 /// - Anything else stays `conditional`, with the open readings named.
 ///
-/// A review of a reading the certificate does not carry, or under another
-/// authority, is ignored: it decides nothing here.
+/// A review of a reading the certificate does not carry, or under any
+/// authority but [`reading_authority`], is ignored: it decides nothing here.
 #[must_use]
 pub fn reviewed(certificate: &Certificate, reviews: &[ReadingReview]) -> Reviewed {
+    let authority = reading_authority(certificate);
     let readings: Vec<(String, ReadingState)> = certificate
         .residuals
         .iter()
@@ -131,7 +142,7 @@ pub fn reviewed(certificate: &Certificate, reviews: &[ReadingReview]) -> Reviewe
             let digest = reading_digest(certificate, residual);
             let state = reviews
                 .iter()
-                .find(|review| review.reading == digest && review.authority == READING_AUTHORITY)
+                .find(|review| review.reading == digest && review.authority == authority)
                 .map_or(ReadingState::Open, |review| {
                     ReadingState::Decided(review.clone())
                 });
@@ -186,6 +197,7 @@ mod tests {
             errors: Vec::new(),
             replay_digest: "sha256:proposal".to_string(),
             derivation_depth_limit: None,
+            reading_authority: None,
         }
     }
 
@@ -243,6 +255,25 @@ mod tests {
             reviewed(&certificate, &[unauthorised]).verdict,
             Verdict::Conditional
         );
+    }
+
+    #[test]
+    fn a_contract_that_names_its_reading_authority_is_reviewed_only_under_it() {
+        let mut certificate = certificate(Verdict::Conditional, 1);
+        certificate.reading_authority = Some("review:legal".to_string());
+        assert_eq!(reading_authority(&certificate), "review:legal");
+
+        let general = [review(&certificate, 0, ReadingDecision::Holds)];
+        assert_eq!(
+            reviewed(&certificate, &general).verdict,
+            Verdict::Conditional,
+            "a review under the general authority decides nothing here"
+        );
+        let mut legal = review(&certificate, 0, ReadingDecision::Holds);
+        legal.authority = "review:legal".to_string();
+        let outcome = reviewed(&certificate, &[legal]);
+        assert_eq!(outcome.verdict, Verdict::Accepted);
+        assert!(outcome.by_review);
     }
 
     #[test]

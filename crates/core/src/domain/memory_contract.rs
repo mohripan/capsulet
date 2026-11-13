@@ -438,6 +438,7 @@ impl TrustPolicySpec {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ReviewPolicySpec {
     review_conditions: Vec<String>,
+    reading_authority: Option<String>,
 }
 
 impl ReviewPolicySpec {
@@ -445,6 +446,28 @@ impl ReviewPolicySpec {
     pub fn review_conditions(&self) -> &[String] {
         &self.review_conditions
     }
+
+    /// The authority a person must hold to decide a reading of a source this
+    /// contract governs, such as `review:legal`. `None` leaves readings to the
+    /// general reading authority.
+    #[must_use]
+    pub fn reading_authority(&self) -> Option<&str> {
+        self.reading_authority.as_deref()
+    }
+}
+
+/// Whether `name` can name a reading authority: a scope, `resource:action`,
+/// each part lower-case letters, digits, `_` and `-`, starting with a letter.
+#[must_use]
+pub fn is_authority_name(name: &str) -> bool {
+    let part = |value: &str| {
+        value.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+            && value
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '-'))
+    };
+    name.split_once(':')
+        .is_some_and(|(resource, action)| part(resource) && part(action))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -713,32 +736,52 @@ impl<'a> MemoryContractParser<'a> {
         Ok(())
     }
 
+    /// A heading inside a section, such as `stated_by:`, which the list items
+    /// under it belong to.
+    fn parse_subsection(
+        &mut self,
+        line_number: usize,
+        line: &str,
+    ) -> Result<(), MemoryContractError> {
+        if matches!(self.section, Some(Section::StatementPolicy))
+            && !matches!(
+                line,
+                "cues:"
+                    | "provisions:"
+                    | "references:"
+                    | "subject_to:"
+                    | "overrides:"
+                    | "conditions:"
+                    | "definitions:"
+            )
+        {
+            return Err(parse_error(
+                line_number,
+                "unknown or empty statement policy property",
+            ));
+        }
+        // A review policy has one list. Anything else ending in a colon is a
+        // property written wrong, such as an authority with no action, and
+        // reading it as a heading would drop it without a word.
+        if matches!(self.section, Some(Section::ReviewPolicy)) && line != "require_human_review_if:"
+        {
+            return Err(parse_error(
+                line_number,
+                "unknown or empty review policy property",
+            ));
+        }
+        self.subsection = Some(line.trim_end_matches(':').to_string());
+        self.pending_key = None;
+        Ok(())
+    }
+
     fn parse_property(
         &mut self,
         line_number: usize,
         line: &str,
     ) -> Result<(), MemoryContractError> {
         if line.ends_with(':') {
-            if matches!(self.section, Some(Section::StatementPolicy))
-                && !matches!(
-                    line,
-                    "cues:"
-                        | "provisions:"
-                        | "references:"
-                        | "subject_to:"
-                        | "overrides:"
-                        | "conditions:"
-                        | "definitions:"
-                )
-            {
-                return Err(parse_error(
-                    line_number,
-                    "unknown or empty statement policy property",
-                ));
-            }
-            self.subsection = Some(line.trim_end_matches(':').to_string());
-            self.pending_key = None;
-            return Ok(());
+            return self.parse_subsection(line_number, line);
         }
         let (key, value) = split_key_value(line_number, line)?;
         self.pending_key = None;
@@ -769,6 +812,21 @@ impl<'a> MemoryContractParser<'a> {
                 self.ast.event_types[index].fields.push(field);
             }
             Some(Section::ClaimPolicy) => self.parse_claim_policy(line_number, key, value)?,
+            Some(Section::ReviewPolicy) if key == "reading_authority" => {
+                if !is_authority_name(value) {
+                    return Err(parse_error(
+                        line_number,
+                        "reading_authority is a scope, such as review:legal",
+                    ));
+                }
+                if self.ast.review_policy.reading_authority.is_some() {
+                    return Err(parse_error(
+                        line_number,
+                        "reading_authority is declared once",
+                    ));
+                }
+                self.ast.review_policy.reading_authority = Some(value.to_string());
+            }
             Some(Section::StatementPolicy) => match key {
                 "default_currency" if is_currency_code(value) => {
                     self.ast.statement_policy.default_currency = Some(value.to_string());

@@ -56,6 +56,9 @@ pub struct InstalledPackResponse {
     pub contracts: Vec<String>,
     /// The validator registrations it carries, by path.
     pub validators: Vec<String>,
+    /// The policy defaults for its obligations, by path: IR contracts a
+    /// definition using the pack declares.
+    pub obligations: Vec<String>,
     /// Whether this request installed it, or found it already installed.
     pub newly_installed: bool,
 }
@@ -320,6 +323,7 @@ fn response(record: &DomainPackRecord, newly_installed: bool) -> InstalledPackRe
             .to_string(),
         contracts: strings("contracts"),
         validators: strings("validators"),
+        obligations: strings("obligations"),
         newly_installed,
     }
 }

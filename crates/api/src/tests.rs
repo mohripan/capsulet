@@ -6920,6 +6920,7 @@ fn reasoning_certificate(
             errors: Vec::new(),
             replay_digest: format!("sha256:{id}"),
             derivation_depth_limit: None,
+            reading_authority: None,
         },
         alphabet_digest: "sha256:alphabet".to_string(),
         model: "mini".to_string(),
@@ -7028,6 +7029,109 @@ async fn reviewing_every_reading_accepts_an_answer_by_review_and_a_decision_is_n
     let (_, open) =
         reasoning_request(&app, Method::GET, "/v1/reasoning/readings", "default", None).await;
     assert_eq!(open["readings"].as_array().map(Vec::len), Some(0), "{open}");
+}
+
+#[tokio::test]
+async fn a_reading_whose_contract_names_its_authority_is_decided_only_by_a_holder_of_it() {
+    let store = FakeStore::default();
+    store.ensure_default_projects();
+    for name in ["reader", "counsel"] {
+        store
+            .project_memberships
+            .lock()
+            .expect("project memberships mutex")
+            .push(ProjectMembershipRecord {
+                id: format!("finance_{name}_admin"),
+                tenant_id: "default".to_string(),
+                project_id: "finance".to_string(),
+                principal_kind: "user".to_string(),
+                principal_name: name.to_string(),
+                role: "project_admin".to_string(),
+                created_by: "system".to_string(),
+                created_at: "2026-11-13 00:00:00+00".to_string(),
+                updated_at: "2026-11-13 00:00:00+00".to_string(),
+            });
+    }
+    let mut record = reasoning_certificate(
+        "certificate_clause",
+        capsulet_kernel::Verdict::Conditional,
+        1,
+    );
+    record.project_id = "finance".to_string();
+    record.certificate.reading_authority = Some("review:legal".to_string());
+    store.insert_certificate(&record).await.expect("store");
+    let auth = AuthConfig::from_json(
+        r#"[
+            {"name":"reader","role":"viewer","token":"viewer-token-0123456789-abcdefgh"},
+            {"name":"counsel","role":"viewer","token":"counsel-token-0123456789-abcdefgh",
+             "scopes":["review:read","review:write","review:legal","certificates:read"]}
+        ]"#,
+    )
+    .expect("auth config");
+    let app = router(
+        AppState::new(store, FakeObjectStore::default(), ["mini".to_string()]).with_auth(auth),
+    );
+    let send = |token: &'static str, method: Method, uri: String, body: Option<Value>| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(uri)
+                        .header("authorization", format!("Bearer {token}"))
+                        .header("x-capsulet-project-id", "finance")
+                        .header("content-type", "application/json")
+                        .body(body.map_or_else(Body::empty, |body| Body::from(body.to_string())))
+                        .expect("request"),
+                )
+                .await
+                .expect("response");
+            let status = response.status();
+            (status, response_json(response).await)
+        }
+    };
+    let general = "viewer-token-0123456789-abcdefgh";
+    let legal = "counsel-token-0123456789-abcdefgh";
+
+    let (status, open) = send(
+        general,
+        Method::GET,
+        "/v1/reasoning/readings".to_string(),
+        None,
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::OK, "{open}");
+    assert_eq!(
+        open["readings"][0]["reading"]["review_authority"],
+        "review:legal"
+    );
+
+    let review = format!(
+        "/v1/reasoning/certificates/certificate_clause/readings/{}/review",
+        reading_of(&record, 0)
+    );
+    let holds = json!({ "decision": "holds", "rationale": "read with Section 9.3 it still holds" });
+    let (status, refused) = send(general, Method::POST, review.clone(), Some(holds.clone())).await;
+    assert_eq!(
+        status,
+        axum::http::StatusCode::FORBIDDEN,
+        "a project admin without review:legal decides nothing here: {refused}"
+    );
+    assert_eq!(refused["code"], "permission_denied");
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|message| message.ends_with("required scope: review:legal")),
+        "refused by the contract's authority, not the endpoint's: {refused}"
+    );
+
+    let (status, decided) = send(legal, Method::POST, review, Some(holds)).await;
+    assert_eq!(status, axum::http::StatusCode::CREATED, "{decided}");
+    assert_eq!(decided["verdict"], "accepted");
+    assert_eq!(decided["basis"], "human_review");
+    assert_eq!(decided["readings"][0]["authority"], "review:legal");
+    assert_eq!(decided["readings"][0]["reviewer"], "counsel");
 }
 
 #[tokio::test]
@@ -7232,9 +7336,13 @@ async fn reasoning_loads_typed_endpoints_and_policies_from_its_scoped_contract()
         project_id: "default".into(),
         role: crate::auth::ProjectRole::Admin,
     };
-    let book = crate::reasoning::contract_phrasebook(&state, &context, "typed")
+    let (book, authority) = crate::reasoning::contract_policy(&state, &context, "typed")
         .await
         .expect("scoped contract");
+    assert_eq!(
+        authority, None,
+        "a contract that names none leaves it to review:write"
+    );
     let cad = capsulet_kernel::Proposition::new("Acme", "revenue", "CAD 1200000");
     assert!(
         book.statement_in("Acme is $1.2 million.", &cad)
@@ -7259,7 +7367,7 @@ async fn reasoning_refuses_a_stored_contract_that_does_not_compile() {
         role: crate::auth::ProjectRole::Admin,
     };
     assert!(
-        crate::reasoning::contract_phrasebook(&state, &context, "invalid")
+        crate::reasoning::contract_policy(&state, &context, "invalid")
             .await
             .is_err()
     );

@@ -9,7 +9,10 @@
 //! - the signature verifies, under a key the project trusts for this pack's name;
 //! - the version is not a downgrade, and not a reused version with other content;
 //! - every contract parses and compiles, and every validator registration and
-//!   cases file reads.
+//!   cases file reads;
+//! - every obligations file is an IR contract whose policy holds together: an
+//!   obligation a person may discharge names the authority they need, and one
+//!   naming an authority lets a person discharge it.
 //!
 //! [`test`] runs the validators against their cases through the verifier's
 //! harness, and [`refresh`] lists a directory's files in its manifest, which is
@@ -78,6 +81,8 @@ pub enum PackError {
     BadValidator { path: String, detail: String },
     #[error("cases {path} cannot be read: {detail}")]
     BadCases { path: String, detail: String },
+    #[error("obligations {path} cannot be used: {detail}")]
+    BadObligations { path: String, detail: String },
     #[error("the trust store cannot be used: {0}")]
     TrustStore(String),
     #[error("the key cannot be used: {0}")]
@@ -108,6 +113,7 @@ impl PackError {
             Self::BadContract { .. } => "bad_contract",
             Self::BadValidator { .. } => "bad_validator",
             Self::BadCases { .. } => "bad_cases",
+            Self::BadObligations { .. } => "bad_obligations",
             Self::TrustStore(_) => "trust_store",
             Self::Key(_) => "key",
         }
@@ -475,7 +481,63 @@ fn check_content(pack: &Pack) -> Result<(), PackError> {
         registration_of(pack, entry)?;
         cases_of(pack, entry)?;
     }
+    obligations(pack)?;
     Ok(())
+}
+
+/// The IR contracts a pack's obligations files state, in manifest order: the
+/// policy defaults a definition using the pack declares.
+///
+/// # Errors
+///
+/// Returns [`PackError::BadObligations`] when a file is not an IR contract, two
+/// files state the same contract, a contract states an obligation twice, or an
+/// obligation's policy cannot be met: one a person may discharge by review that
+/// names no authority, which every review of it would be refused for, or one
+/// naming an authority that no review may discharge.
+pub fn obligations(pack: &Pack) -> Result<Vec<capsulet_ir::Contract>, PackError> {
+    let mut contracts: Vec<capsulet_ir::Contract> = Vec::new();
+    for path in &pack.manifest.obligations {
+        let bad = |detail: String| PackError::BadObligations {
+            path: path.clone(),
+            detail,
+        };
+        let contract: capsulet_ir::Contract =
+            serde_json::from_slice(pack.file(path)?).map_err(|error| bad(error.to_string()))?;
+        if contracts.iter().any(|known| known.id == contract.id) {
+            return Err(bad(format!("contract `{}` is stated twice", contract.id)));
+        }
+        let mut seen = BTreeSet::new();
+        for obligation in &contract.obligations {
+            if !seen.insert(obligation.id.as_str()) {
+                return Err(bad(format!(
+                    "obligation `{}` is stated twice",
+                    obligation.id
+                )));
+            }
+            let reviewable = obligation.accepts.is_empty()
+                || obligation
+                    .accepts
+                    .contains(&capsulet_ir::correctness::obligation::BasisKind::HumanReview);
+            let only_review = obligation.accepts
+                == [capsulet_ir::correctness::obligation::BasisKind::HumanReview];
+            if only_review && obligation.authority.is_none() {
+                return Err(bad(format!(
+                    "obligation `{}` accepts only human_review and names no authority, so no \
+                     review of it would count",
+                    obligation.id
+                )));
+            }
+            if obligation.authority.is_some() && !reviewable {
+                return Err(bad(format!(
+                    "obligation `{}` names an authority and accepts no human_review",
+                    obligation.id
+                )));
+            }
+        }
+        contracts.push(contract);
+    }
+    Ok(contracts)
 }
 
 fn registration_of(pack: &Pack, entry: &ValidatorEntry) -> Result<Registration, PackError> {

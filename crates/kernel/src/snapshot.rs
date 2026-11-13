@@ -33,6 +33,11 @@ pub struct Snapshot {
     /// proposer does not choose what its answer is checked against. Without one,
     /// a decision is about a claim and says nothing about responsiveness.
     question: Option<Question>,
+    /// The authority readings are reviewed under, when the contract the
+    /// decision reads names one. Policy, like the floor: it is the contract's
+    /// to set, and the certificate carries it so a review can be checked
+    /// against it.
+    reading_authority: Option<String>,
 }
 
 impl Default for Snapshot {
@@ -47,6 +52,7 @@ impl Default for Snapshot {
             authority_floor: Authority::Low,
             phrasebook: Phrasebook::new(),
             question: None,
+            reading_authority: None,
         }
     }
 }
@@ -123,6 +129,24 @@ impl Snapshot {
     #[must_use]
     pub const fn question(&self) -> Option<&Question> {
         self.question.as_ref()
+    }
+
+    /// Names the authority this decision's readings are reviewed under, as the
+    /// contract it reads declares. A blank name is no name.
+    #[must_use]
+    pub fn with_reading_authority(mut self, authority: Option<&str>) -> Self {
+        self.reading_authority = authority
+            .map(str::trim)
+            .filter(|authority| !authority.is_empty())
+            .map(str::to_string);
+        self
+    }
+
+    /// The authority this decision's readings are reviewed under, when the
+    /// contract names one.
+    #[must_use]
+    pub fn reading_authority(&self) -> Option<&str> {
+        self.reading_authority.as_deref()
     }
 
     #[must_use]

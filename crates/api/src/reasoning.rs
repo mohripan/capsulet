@@ -15,9 +15,9 @@ use capsulet_core::{
     MemoryScope, Source, SourceContent, SourceId,
 };
 use capsulet_kernel::{
-    Certificate, NameGroup, Phrasebook, Proposition, Query, Question, READING_AUTHORITY,
-    ReadingDecision, ReadingReview, ReadingState, ResidualKind, Slot, Snapshot, Verdict, check,
-    confirmed_name_groups, reviewed,
+    Certificate, NameGroup, Phrasebook, Proposition, Query, Question, ReadingDecision,
+    ReadingReview, ReadingState, ResidualKind, Slot, Snapshot, Verdict, check,
+    confirmed_name_groups, reading_authority, reviewed,
 };
 use capsulet_postgres::{CertificateRecord, ReadingReviewRecord};
 use capsulet_proposer::{EvidenceAlphabet, OllamaProposer, RawProposal, chunk_into_spans};
@@ -165,6 +165,9 @@ pub struct ReadingResponse {
     pub evidence_ids: Vec<String>,
     /// `open`, `holds` or `does_not_hold`.
     pub state: String,
+    /// The authority a decision on this reading has to be made under: the one
+    /// the answer's contract names, or `review:write` when it names none.
+    pub review_authority: String,
     pub reviewer: Option<String>,
     pub authority: Option<String>,
     pub review_rationale: Option<String>,
@@ -312,6 +315,13 @@ where
         ));
     }
     let record = certificate_in_project(&state, &context, &id).await?;
+    // The contract the answer was read under says whose decision counts. A
+    // decision under any other authority would decide nothing, so it is refused
+    // rather than recorded.
+    let authority = reading_authority(&record.certificate).to_string();
+    if !principal.has_scope(&authority) {
+        return Err(ApiError::ReadingAuthorityMissing(authority));
+    }
     let known = reviewed(&record.certificate, &[])
         .readings
         .iter()
@@ -337,7 +347,7 @@ where
                 reading: reading.clone(),
                 decision,
                 reviewer: principal.name.to_string(),
-                authority: READING_AUTHORITY.to_string(),
+                authority,
                 rationale: request.rationale.trim().to_string(),
             },
         })
@@ -406,6 +416,7 @@ fn reviewed_response(
 ) -> ReviewedCertificateResponse {
     let certificate = &record.certificate;
     let outcome = reviewed(certificate, reviews);
+    let review_authority = reading_authority(certificate);
     let basis = match (outcome.verdict, outcome.by_review) {
         (Verdict::Accepted, true) => Some("human_review".to_string()),
         (Verdict::Accepted, false) => Some("mechanical".to_string()),
@@ -434,6 +445,7 @@ fn reviewed_response(
                 rationale: residual.rationale.clone(),
                 evidence_ids: residual.evidence_ids.clone(),
                 state,
+                review_authority: review_authority.to_string(),
                 reviewer: review.as_ref().map(|review| review.reviewer.clone()),
                 authority: review.as_ref().map(|review| review.authority.clone()),
                 review_rationale: review.map(|review| review.rationale),
@@ -481,9 +493,9 @@ where
     let authority = parse_authority(request.authority.as_deref())?;
     // Resolved before anything is written, so a contract the caller cannot see
     // fails the request rather than leaving a stored source behind it.
-    let phrasebook = match request.contract_id.as_deref() {
-        Some(id) => contract_phrasebook(&state, &context, id).await?,
-        None => Phrasebook::new(),
+    let (phrasebook, reading_authority) = match request.contract_id.as_deref() {
+        Some(id) => contract_policy(&state, &context, id).await?,
+        None => (Phrasebook::new(), None),
     };
     let phrasebook = phrasebook.with_name_groups(project_name_groups(&state, &context).await?);
     let query = request
@@ -524,7 +536,10 @@ where
             "text produced no citable spans".to_string(),
         ));
     }
-    let alphabet = EvidenceAlphabet::from_evidence(&evidence);
+    // The text goes with the alphabet so the proposer can read a cited clause
+    // with what its document says qualifies it. The digest names only what may
+    // be cited, so it is the same with or without it.
+    let alphabet = EvidenceAlphabet::from_evidence(&evidence).with_source(&stored_text);
 
     let proposer = build_proposer(request.model.as_deref())?;
     let (proposal, raw) = proposer
@@ -542,6 +557,7 @@ where
     };
     let mut snapshot = Snapshot::new()
         .with_authority_floor(AUTHORITY_FLOOR)
+        .with_reading_authority(reading_authority.as_deref())
         .with_question(question)
         .with_phrasebook(phrasebook)
         .with_source(source)
@@ -699,11 +715,14 @@ where
 /// A contract in another project reports as missing, the way every memory
 /// route reports it: ids share one namespace, and existence is not something a
 /// caller outside the project gets to learn.
-pub(crate) async fn contract_phrasebook<S, O>(
+///
+/// With it, the authority the contract's readings are reviewed under, when it
+/// names one.
+pub(crate) async fn contract_policy<S, O>(
     state: &AppState<S, O>,
     context: &ProjectContext,
     id: &str,
-) -> Result<Phrasebook, ApiError>
+) -> Result<(Phrasebook, Option<String>), ApiError>
 where
     S: ApiStore,
     O: ObjectStore,
@@ -720,7 +739,14 @@ where
     contract
         .compile()
         .map_err(|error| ApiError::validation(error.to_string()))?;
-    Ok(Phrasebook::from_contract(contract.ast()))
+    Ok((
+        Phrasebook::from_contract(contract.ast()),
+        contract
+            .ast()
+            .review_policy()
+            .reading_authority()
+            .map(str::to_string),
+    ))
 }
 
 fn build_proposer(model: Option<&str>) -> Result<OllamaProposer, ApiError> {

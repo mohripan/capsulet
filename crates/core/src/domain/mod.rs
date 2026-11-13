@@ -54,7 +54,8 @@ pub use memory::{
 pub use memory_contract::{
     ClaimPolicySpec, CompiledMemoryPolicy, ContradictionRuleSpec, EntityTypeSpec, EventTypeSpec,
     FieldSpec, FieldType, MemoryContract, MemoryContractAst, MemoryContractError, RelationTypeSpec,
-    RetrievalPolicySpec, ReviewPolicySpec, StatementPolicySpec, TrustPolicySpec, is_currency_code,
+    RetrievalPolicySpec, ReviewPolicySpec, StatementPolicySpec, TrustPolicySpec, is_authority_name,
+    is_currency_code,
 };
 pub use memory_graph::{
     CanonicalEntity, ClaimConflict, ClaimConflictStatus, EntityGraphAttachment,

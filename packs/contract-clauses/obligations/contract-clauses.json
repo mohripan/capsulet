@@ -1,0 +1,36 @@
+{
+  "id": "contract-clauses",
+  "version": "1",
+  "inputs": {},
+  "outputs": {},
+  "allowed_effects": [],
+  "obligations": [
+    {
+      "id": "clause-reading",
+      "statement": "What an answer says a contract clause means, read with every provision and definition that qualifies it, is what the clause means.",
+      "owner": "human",
+      "authority": "review:legal",
+      "accepts": [
+        "human_review"
+      ]
+    },
+    {
+      "id": "answers-the-question",
+      "statement": "The answer answers the question it was asked: checked against the typed query the question was pinned to, or, for a question asked only in words, by a review of how it was read.",
+      "owner": "human",
+      "authority": "review:legal",
+      "accepts": [
+        "mechanical",
+        "human_review"
+      ]
+    },
+    {
+      "id": "references-resolve",
+      "statement": "Every section a contract refers to is one of its own provisions.",
+      "owner": "retrieval",
+      "accepts": [
+        "replayable_tool"
+      ]
+    }
+  ]
+}

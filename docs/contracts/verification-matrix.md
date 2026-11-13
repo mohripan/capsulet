@@ -24,7 +24,7 @@ Every required gate records its prerequisites, timeout, commands, log artifact, 
 | `dashboard` | no | yes | ESLint and production build | npm |
 | `postgres` | no | yes | Isolated persistence integration | Cargo, Docker |
 | `chaos` | no | yes | IR worker crash recovery at step boundaries | Cargo, Docker |
-| `verifier-isolation` | no | yes | A validator in a real container, from an image pinned by digest, reaches no network, cannot write its inputs or its root, is stopped past its memory or its time, leaves no container behind, and runs again to the same outputs ([verifier protocol](verifier-protocol.md)); and `packs/template` passes its own test there and, once signed, installs ([domain packs](domain-packs.md)) | Cargo, Docker |
+| `verifier-isolation` | no | yes | A validator in a real container, from an image pinned by digest, reaches no network, cannot write its inputs or its root, is stopped past its memory or its time, leaves no container behind, and runs again to the same outputs ([verifier protocol](verifier-protocol.md)); `packs/template` passes its own test there and, once signed, installs; and each reference pack, starting with `packs/contract-clauses`, passes its own test there ([domain packs](domain-packs.md)) | Cargo, Docker |
 | `migrations` | no | yes | Supported forward migrations | Cargo, Docker |
 | `security` | no | yes | Rust/npm/Python dependency and license policy, including expiring exceptions | cargo-audit, cargo-deny, npm, Python |
 | `secrets` | no | yes | gitleaks, pinned by digest, over the whole Git history; every finding must be a registered, unexpired test fixture ([supply chain](../security/supply-chain.md)) | Cargo, Docker, Git |

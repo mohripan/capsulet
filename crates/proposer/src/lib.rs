@@ -10,4 +10,4 @@ pub mod alphabet;
 pub mod ollama;
 
 pub use alphabet::{AlphabetEntry, EvidenceAlphabet, chunk_into_spans};
-pub use ollama::{OllamaProposer, ProposerError, RawProposal};
+pub use ollama::{OllamaProposer, ProposerError, RawProposal, build_proposal, build_proposal_in};

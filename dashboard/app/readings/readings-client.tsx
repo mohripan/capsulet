@@ -96,6 +96,9 @@ export default function ReadingsClient() {
                     <span className="mono">{readingLine(open.reading)}</span>
                   </p>
                   <p className="explanationNote">{open.reading.rationale}</p>
+                  <p className="explanationNote">
+                    Decided under <span className="mono">{open.reading.review_authority}</span>
+                  </p>
                   {open.reading.evidence_ids.length > 0 ? (
                     <p className="explanationNote">
                       Evidence: <span className="mono">{open.reading.evidence_ids.join(", ")}</span>

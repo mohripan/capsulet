@@ -43,7 +43,7 @@ pub use bundle::{Bundle, BundleError};
 pub use certificate::{
     Certificate, CertificateError, DischargedStep, Residual, ResidualKind, Verdict,
 };
-pub use context::ContextPolicy;
+pub use context::{ContextPolicy, ReadingNeeds, reading_needs};
 pub use error::{CheckError, RepairOwner};
 pub use family::{ClaimReasoning, ObligationFamily, from_checker_verdict, to_checker_verdict};
 pub use ir::{ArithOp, Judgment, Proposal, Proposition, Rule};
@@ -53,8 +53,8 @@ pub use quantity::{MAX_SCALE, Quantity, QuantityError};
 pub use question::{Query, Question, QuestionReading, Slot};
 pub use replay::{EvidenceMap, EvidenceSource, ReplayFinding, ReplayNote, ReplayOutcome, replay};
 pub use review::{
-    READING_AUTHORITY, ReadingDecision, ReadingReview, ReadingState, Reviewed, reading_digest,
-    reviewed,
+    READING_AUTHORITY, ReadingDecision, ReadingReview, ReadingState, Reviewed, reading_authority,
+    reading_digest, reviewed,
 };
 pub use snapshot::Snapshot;
 pub use snapshot_document::{NameGroupDocument, SnapshotDocument};
@@ -170,6 +170,7 @@ pub fn check(proposal: &Proposal, snapshot: &Snapshot) -> Certificate {
             .collect(),
         replay_digest,
         derivation_depth_limit: Some(MAX_DERIVATION_DEPTH),
+        reading_authority: snapshot.reading_authority().map(str::to_string),
     }
 }
 
@@ -362,6 +363,8 @@ fn refusal(proposal: &Proposal, reason: &str, error: &CheckError) -> Certificate
             format!("{reason}|{}", proposal.goal.canonical()).as_bytes(),
         ),
         derivation_depth_limit: Some(MAX_DERIVATION_DEPTH),
+        // Rejected unread, so there are no readings to review.
+        reading_authority: None,
     }
 }
 

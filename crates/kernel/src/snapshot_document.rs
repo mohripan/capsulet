@@ -140,6 +140,11 @@ pub struct SnapshotDocument {
     /// before citations were read with their context, which read none.
     #[serde(default, skip_serializing_if = "ContextPolicy::is_empty")]
     pub context: ContextPolicy,
+    /// The authority readings are reviewed under, when the contract names one.
+    /// Absent from documents written before a contract could, whose readings
+    /// are reviewed under the one authority there was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reading_authority: Option<String>,
 }
 
 impl SnapshotDocument {
@@ -155,6 +160,12 @@ impl SnapshotDocument {
             snapshot = snapshot.with_authority_floor(authority(floor)?);
         }
         snapshot = snapshot.with_phrasebook(self.phrasebook()?);
+        if let Some(authority) = &self.reading_authority {
+            if authority.trim().is_empty() {
+                return Err(RebuildError::from("the reading authority is empty"));
+            }
+            snapshot = snapshot.with_reading_authority(Some(authority));
+        }
         if let Some(question) = &self.question {
             if let Some(problem) = question
                 .query

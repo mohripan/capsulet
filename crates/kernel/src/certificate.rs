@@ -114,6 +114,12 @@ pub struct Certificate {
     /// not make.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derivation_depth_limit: Option<u32>,
+    /// The authority a person must review this certificate's readings under,
+    /// when the snapshot it was decided against names one. Absent, they are
+    /// reviewed under [`crate::review::READING_AUTHORITY`], as every reading was
+    /// before a contract could name its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reading_authority: Option<String>,
 }
 
 impl Certificate {

@@ -500,7 +500,7 @@ pub(crate) fn gates() -> Vec<Gate> {
             "verifier-isolation",
             "a validator in a real container reaches no network, writes only its outputs, is \
              stopped past its memory or its time, and runs again to the same outputs; and the pack \
-             template passes its own test there and, once signed, installs",
+             template and the reference packs pass their own tests there",
             &["cargo", "docker"],
             900,
             &[Full],
@@ -528,6 +528,19 @@ pub(crate) fn gates() -> Vec<Gate> {
                         "container-tests",
                         "--test",
                         "template",
+                        "--locked",
+                    ],
+                ),
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-pack",
+                        "--features",
+                        "container-tests",
+                        "--test",
+                        "reference_packs",
                         "--locked",
                     ],
                 ),

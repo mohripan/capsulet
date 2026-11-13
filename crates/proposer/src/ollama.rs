@@ -139,14 +139,7 @@ impl OllamaProposer {
             return Err(ProposerError::EmptyAlphabet);
         }
         let raw = self.request(question, query, alphabet, phrasebook).await?;
-
-        let Some(entry) = alphabet.entry(&raw.evidence_id) else {
-            return Err(ProposerError::OutsideAlphabet {
-                evidence_id: raw.evidence_id.clone(),
-            });
-        };
-
-        let mut proposal = build_proposal(&raw, &entry.excerpt, phrasebook);
+        let mut proposal = build_proposal_in(&raw, alphabet, phrasebook)?;
         if query.is_none() {
             proposal.question_reading = question_reading(&raw);
         }
@@ -251,6 +244,114 @@ pub fn build_proposal(raw: &RawProposal, excerpt: &str, phrasebook: &Phrasebook)
         goal,
         derivation,
     }
+}
+
+/// Assembles the derivation as [`build_proposal`] does, from the alphabet entry
+/// the model cited, and then reads the cited clause with what its document's
+/// structure says it depends on.
+///
+/// The phrasing check above looks at the excerpt alone, and an excerpt can state
+/// a relation that its document qualifies elsewhere: "subject to Section 9.3",
+/// or a later clause that applies "notwithstanding" this one. Quoted bare, the
+/// kernel refuses that citation as qualified, and the answer comes back
+/// `rejected` when the honest outcome is a reading for a person to decide. So,
+/// by the same lookup the kernel makes ([`Phrasebook::reading_needs`]):
+///
+/// - each provision or definition the clause depends on is read with it, by the
+///   alphabet entries that cover it;
+/// - a clause something qualifies becomes a reading of the clause read that
+///   way, whose rationale names what qualifies it, so it comes back
+///   `conditional` until a reviewer decides it.
+///
+/// Without the source text or the cited entry's span there is no structure to
+/// read, and the proposal is [`build_proposal`]'s.
+///
+/// # Errors
+///
+/// Returns [`ProposerError::OutsideAlphabet`] when the model cited an id the
+/// alphabet does not hold.
+pub fn build_proposal_in(
+    raw: &RawProposal,
+    alphabet: &EvidenceAlphabet,
+    phrasebook: &Phrasebook,
+) -> Result<Proposal, ProposerError> {
+    let Some(entry) = alphabet.entry(&raw.evidence_id) else {
+        return Err(ProposerError::OutsideAlphabet {
+            evidence_id: raw.evidence_id.clone(),
+        });
+    };
+    let mut proposal = build_proposal(raw, &entry.excerpt, phrasebook);
+    let (Some(text), Some((start, end))) = (alphabet.source_text(&entry.source_id), entry.span)
+    else {
+        return Ok(proposal);
+    };
+    let needs = phrasebook.reading_needs(text, start, end);
+    let mut read_with: Vec<String> = Vec::new();
+    for &(a, b) in &needs.read_with {
+        for covering in alphabet.overlapping(&entry.source_id, a, b) {
+            if covering.evidence_id != entry.evidence_id
+                && !read_with.contains(&covering.evidence_id)
+            {
+                read_with.push(covering.evidence_id.clone());
+            }
+        }
+    }
+    proposal.derivation = match proposal.derivation {
+        Rule::Trust { premise, .. } if !needs.qualified.is_empty() => Rule::Interpret {
+            premise: with_read_with(*premise, &read_with),
+            proposition: proposal.goal.clone(),
+            rationale: qualified_rationale(&raw.rationale, &needs.qualified),
+        },
+        Rule::Trust {
+            premise,
+            min_authority,
+        } => Rule::Trust {
+            premise: with_read_with(*premise, &read_with),
+            min_authority,
+        },
+        Rule::Interpret {
+            premise,
+            proposition,
+            rationale,
+        } => Rule::Interpret {
+            premise: with_read_with(*premise, &read_with),
+            proposition,
+            rationale,
+        },
+        other => other,
+    };
+    Ok(proposal)
+}
+
+fn with_read_with(premise: Rule, read_with: &[String]) -> Box<Rule> {
+    match premise {
+        Rule::Cite {
+            evidence_id,
+            proposition,
+            ..
+        } => Box::new(Rule::Cite {
+            evidence_id,
+            proposition,
+            read_with: read_with.to_vec(),
+        }),
+        other => Box::new(other),
+    }
+}
+
+/// What a reviewer of a qualified clause's reading is told.
+fn qualified_rationale(model: &str, qualified: &[String]) -> String {
+    let because = qualified.join("; ");
+    let said = model.trim().trim_end_matches('.');
+    let lead = if said.is_empty() {
+        String::new()
+    } else {
+        format!("{said}. ")
+    };
+    format!(
+        "{lead}The cited clause does not say this outright: {because}. It is read here with \
+         what qualifies it, and whether it still says this, read that way, is for a reviewer \
+         to decide."
+    )
 }
 
 /// The model's reading of the question, when it offered one.
@@ -658,5 +759,191 @@ mod tests {
             assert_eq!(proposal.goal.predicate, raw.predicate);
             assert_eq!(proposal.goal.object, raw.object);
         }
+    }
+
+    const AGREEMENT: &str = "1. Definitions\n\
+\"Affiliate\" means an entity that controls, or is controlled by, a party.\n\
+9. Termination\n\
+9.1. Subject to Section 9.3, either party may terminate this agreement on 60 days' notice.\n\
+9.2. The Supplier may assign this agreement to an Affiliate.\n\
+9.3. Notwithstanding Section 9.1, no party may terminate in the first year.\n";
+
+    fn clauses() -> Phrasebook {
+        let phrasing = |template: &str| Phrasing::parse(template).expect("a phrasing");
+        Phrasebook::new()
+            .with_relation("may_terminate", vec![phrasing("{from} may terminate {to}")])
+            .with_relation(
+                "may_assign_to",
+                vec![phrasing("{from} may assign this agreement to an {to}")],
+            )
+            .with_context(capsulet_kernel::ContextPolicy {
+                provisions: vec!["{ref}.".to_string()],
+                references: vec!["Section {ref}".to_string()],
+                subject_to: vec!["subject to".to_string()],
+                overrides: vec!["notwithstanding".to_string()],
+                conditions: vec!["provided that".to_string()],
+                definitions: vec!["\"{term}\" means".to_string()],
+            })
+    }
+
+    /// The agreement chunked and stored as the ask endpoint does it, and the
+    /// alphabet built from it, with or without the text it came from.
+    fn chunked(with_text: bool) -> (Snapshot, crate::alphabet::EvidenceAlphabet) {
+        let scope = MemoryScope::new("acme", "legal").expect("scope");
+        let source_id = SourceId::new("agreement").expect("source id");
+        let content = SourceContent::new(source_id.clone(), AGREEMENT).expect("content");
+        let evidence: Vec<Evidence> = crate::alphabet::chunk_into_spans(&content)
+            .into_iter()
+            .enumerate()
+            .map(|(index, (start, end))| {
+                Evidence::new(
+                    EvidenceId::new(format!("ev_{index}")).expect("evidence id"),
+                    scope.clone(),
+                    source_id.clone(),
+                    format!("bytes {start}..{end}"),
+                    &AGREEMENT[start..end],
+                    "inline",
+                )
+                .expect("evidence")
+                .with_span(EvidenceSpan::new(start, end, content.content_hash()).expect("span"))
+            })
+            .collect();
+        let mut alphabet = crate::alphabet::EvidenceAlphabet::from_evidence(&evidence);
+        if with_text {
+            alphabet = alphabet.with_source(&content);
+        }
+        let mut snapshot = Snapshot::new()
+            .with_phrasebook(clauses())
+            .with_source(
+                Source::new(
+                    source_id,
+                    scope,
+                    "inline",
+                    None,
+                    "Agreement",
+                    Authority::High,
+                )
+                .expect("source"),
+            )
+            .with_source_content(content);
+        for item in evidence {
+            snapshot = snapshot.with_evidence(item);
+        }
+        (snapshot, alphabet)
+    }
+
+    fn citing(
+        alphabet: &crate::alphabet::EvidenceAlphabet,
+        clause: &str,
+        answer: (&str, &str, &str),
+    ) -> RawProposal {
+        let entry = alphabet
+            .entries()
+            .iter()
+            .find(|entry| entry.excerpt == clause)
+            .expect("the clause is one chunk");
+        RawProposal {
+            subject: answer.0.to_string(),
+            predicate: answer.1.to_string(),
+            object: answer.2.to_string(),
+            evidence_id: entry.evidence_id.clone(),
+            quote: clause.to_string(),
+            needs_interpretation: false,
+            rationale: String::new(),
+            asks_relation: String::new(),
+            asks_subject: String::new(),
+            asks_object: String::new(),
+            asks_rationale: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_qualified_clause_is_read_with_what_qualifies_it_and_left_for_a_reviewer() {
+        let clause =
+            "Subject to Section 9.3, either party may terminate this agreement on 60 days' notice.";
+        let answer = ("either party", "may_terminate", "this agreement");
+        let (snapshot, alphabet) = chunked(true);
+        let raw = citing(&alphabet, clause, answer);
+
+        let proposal = super::build_proposal_in(&raw, &alphabet, &clauses()).expect("in alphabet");
+        let Rule::Interpret {
+            premise, rationale, ..
+        } = &proposal.derivation
+        else {
+            panic!("a qualified clause is a reading: {:?}", proposal.derivation);
+        };
+        assert!(
+            rationale.contains("\"subject to\" provision 9.3"),
+            "{rationale}"
+        );
+        let Rule::Cite { read_with, .. } = premise.as_ref() else {
+            panic!("it rests on the citation");
+        };
+        let qualifying = alphabet
+            .entries()
+            .iter()
+            .find(|entry| entry.excerpt.starts_with("Notwithstanding Section 9.1"))
+            .expect("provision 9.3 is a chunk");
+        assert!(read_with.contains(&qualifying.evidence_id), "{read_with:?}");
+
+        let certificate = check(&proposal, &snapshot);
+        assert_eq!(certificate.verdict, Verdict::Conditional, "{certificate:?}");
+        assert_eq!(
+            certificate.residuals.len(),
+            1,
+            "{:?}",
+            certificate.residuals
+        );
+        assert!(
+            certificate.residuals[0]
+                .evidence_ids
+                .contains(&qualifying.evidence_id),
+            "the reviewer is shown the clause that qualifies it"
+        );
+
+        // Without the document, the clause is quoted bare and refused for it.
+        let (_, bare) = chunked(false);
+        let proposal = super::build_proposal_in(&raw, &bare, &clauses()).expect("in alphabet");
+        assert!(matches!(proposal.derivation, Rule::Trust { .. }));
+        let certificate = check(&proposal, &snapshot);
+        assert!(
+            certificate
+                .errors
+                .iter()
+                .any(|error| error.code == "relation_qualified"),
+            "{certificate:?}"
+        );
+    }
+
+    #[test]
+    fn a_clause_using_a_defined_term_is_read_with_its_definition() {
+        let clause = "The Supplier may assign this agreement to an Affiliate.";
+        let (snapshot, alphabet) = chunked(true);
+        let raw = citing(
+            &alphabet,
+            clause,
+            ("The Supplier", "may_assign_to", "Affiliate"),
+        );
+        let proposal = super::build_proposal_in(&raw, &alphabet, &clauses()).expect("in alphabet");
+        assert!(matches!(proposal.derivation, Rule::Trust { .. }));
+        let certificate = check(&proposal, &snapshot);
+        assert_eq!(certificate.verdict, Verdict::Accepted, "{certificate:?}");
+
+        let (_, bare) = chunked(false);
+        let proposal = super::build_proposal_in(&raw, &bare, &clauses()).expect("in alphabet");
+        let certificate = check(&proposal, &snapshot);
+        assert_eq!(certificate.verdict, Verdict::Conditional);
+        assert!(certificate.residuals[0].rationale.contains("defined term"));
+    }
+
+    #[test]
+    fn an_id_outside_the_alphabet_is_refused_before_anything_is_built() {
+        let (_, alphabet) = chunked(true);
+        let mut raw = raw("the Contoso contract", "x", false);
+        raw.evidence_id = "ev_invented".to_string();
+        assert!(matches!(
+            super::build_proposal_in(&raw, &alphabet, &clauses()),
+            Err(super::ProposerError::OutsideAlphabet { .. })
+        ));
     }
 }

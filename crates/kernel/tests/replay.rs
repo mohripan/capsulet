@@ -515,6 +515,7 @@ fn pinned_snapshot() -> SnapshotDocument {
         name_groups: vec![],
         question: None,
         context: capsulet_kernel::ContextPolicy::default(),
+        reading_authority: None,
     }
 }
 
@@ -986,4 +987,44 @@ fn a_pinned_name_group_with_no_review_behind_it_does_not_rebuild() {
         ..capsulet_kernel::SnapshotDocument::default()
     };
     assert!(document.rebuild().is_err());
+}
+
+#[test]
+fn a_pinned_reading_authority_rebuilds_and_its_certificate_carries_it() {
+    let mut document = pinned_snapshot();
+    let encoded = serde_json::to_value(&document).expect("encodes");
+    assert!(
+        encoded.get("reading_authority").is_none(),
+        "a document naming none encodes as it did: {encoded}"
+    );
+    let certificate = capsulet_kernel::check(
+        &trusted_citation("the Contoso contract"),
+        &document.rebuild().expect("rebuilds"),
+    );
+    assert_eq!(certificate.reading_authority, None);
+    assert!(
+        serde_json::to_value(&certificate)
+            .expect("encodes")
+            .get("reading_authority")
+            .is_none()
+    );
+
+    document.reading_authority = Some("review:legal".to_string());
+    let snapshot = document.rebuild().expect("rebuilds");
+    assert_eq!(snapshot.reading_authority(), Some("review:legal"));
+    let certificate = capsulet_kernel::check(&trusted_citation("the Contoso contract"), &snapshot);
+    assert_eq!(
+        certificate.reading_authority.as_deref(),
+        Some("review:legal")
+    );
+    assert_eq!(
+        capsulet_kernel::reading_authority(&certificate),
+        "review:legal"
+    );
+
+    document.reading_authority = Some("  ".to_string());
+    assert!(
+        document.rebuild().is_err(),
+        "a blank authority is no authority"
+    );
 }

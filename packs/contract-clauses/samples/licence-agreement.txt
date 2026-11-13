@@ -1,0 +1,22 @@
+SOFTWARE LICENCE AGREEMENT
+
+This Software Licence Agreement (the "Agreement") is made between Quillfeather Systems Ltd (the "Licensor") and Tarn Valley Water Board (the "Licensee").
+
+1. Definitions
+"Software" means the Quillfeather metering software, in object code only.
+"Authorised Users" means the Licensee's employees who use the Software for the Licensee's own operations.
+
+2. Licence
+2.1. The Licensee may use the Software for its internal operations only.
+2.2. Subject to Section 2.3, the Licensee may make one backup copy of the Software.
+2.3. The Licensee shall keep every copy of the Software under its own control.
+
+3. Fees
+The Licensee shall pay the fees within 30 days of each invoice.
+
+4. Term and termination
+4.1. This Agreement continues for three years.
+4.2. The Licensor may terminate this Agreement if the Licensee breaches Section 2.1.
+
+5. Governing law
+This Agreement is governed by the laws of Scotland.

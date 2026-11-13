@@ -16,6 +16,10 @@ pub(crate) enum ApiError {
     Unauthorized,
     #[error("insufficient permission; required scope: {0}")]
     Forbidden(&'static str),
+    /// A decision on a reading the caller's scopes do not cover: the contract
+    /// the answer was read under names the authority, so it is not static.
+    #[error("insufficient permission; required scope: {0}")]
+    ReadingAuthorityMissing(String),
     #[error("resource not found")]
     ResourceNotFound,
     #[error("public route is missing endpoint contract metadata: {0}")]
@@ -129,7 +133,7 @@ impl ApiError {
     const fn status_code(&self) -> StatusCode {
         match self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
-            Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::Forbidden(_) | Self::ReadingAuthorityMissing(_) => StatusCode::FORBIDDEN,
             Self::Validation(_) | Self::InvalidWorkflowRunTransition(_) => StatusCode::BAD_REQUEST,
             Self::QueueOverloaded(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::WorkflowLocked(_)
@@ -174,7 +178,7 @@ impl ApiError {
     const fn code(&self) -> &'static str {
         match self {
             Self::Unauthorized => "authentication_required",
-            Self::Forbidden(_) => "permission_denied",
+            Self::Forbidden(_) | Self::ReadingAuthorityMissing(_) => "permission_denied",
             Self::ResourceNotFound => "resource_not_found",
             Self::MissingEndpointContract(_) => "missing_endpoint_contract",
             Self::Validation(_) => "validation_error",

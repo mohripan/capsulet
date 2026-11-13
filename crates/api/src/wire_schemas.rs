@@ -171,6 +171,13 @@ wire_schema!(
             "minimum": 0,
             "description": "How deep a derivation the kernel would walk when it decided this. Absent when the bound was not recorded."
         });
+        // Optional: absent when the contract names no reading authority, and
+        // then readings are decided under `review:write`.
+        schema["properties"]["reading_authority"] = json!({
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$",
+            "description": "The authority a decision on this certificate's readings has to be made under, as the contract its answer was read under names it. Absent when the contract names none, and then it is `review:write`."
+        });
         schema["description"] = json!(
             "Current deterministic kernel certificate. `unverified` is not a kernel verdict; it belongs to the future platform assurance layer."
         );

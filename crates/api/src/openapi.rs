@@ -764,6 +764,7 @@ mod tests {
             }],
             replay_digest: "sha256:full".to_string(),
             derivation_depth_limit: Some(64),
+            reading_authority: Some("review:legal".to_string()),
         };
         assert_conforms(
             "Certificate",
@@ -778,6 +779,7 @@ mod tests {
             errors: Vec::new(),
             replay_digest: "sha256:bare".to_string(),
             derivation_depth_limit: None,
+            reading_authority: None,
         };
         assert_conforms(
             "Certificate",

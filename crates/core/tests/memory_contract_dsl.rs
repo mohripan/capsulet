@@ -329,3 +329,34 @@ fn a_statement_policy_declares_how_its_documents_are_structured() {
         assert!(parse(&source).is_err(), "{list}: {item}");
     }
 }
+
+#[test]
+fn a_review_policy_names_the_authority_its_readings_are_decided_under() {
+    let named = parse(
+        "entity Party:\n  fields:\n    name: string\n\nreview_policy:\n  reading_authority: review:legal\n  require_human_review_if:\n    - confidence < 0.9\n",
+    )
+    .expect("parses");
+    assert_eq!(
+        named.ast().review_policy().reading_authority(),
+        Some("review:legal")
+    );
+    assert_eq!(named.ast().review_policy().review_conditions().len(), 1);
+
+    let unnamed = parse("entity Party:\n  fields:\n    name: string\n").expect("parses");
+    assert_eq!(unnamed.ast().review_policy().reading_authority(), None);
+
+    for bad in [
+        "legal",
+        "Review:Legal",
+        "review:",
+        ":legal",
+        "review:legal:extra",
+        "review legal",
+    ] {
+        let source = format!("review_policy:\n  reading_authority: {bad}\n");
+        assert!(parse(&source).is_err(), "{bad:?} is not an authority");
+    }
+    let twice =
+        "review_policy:\n  reading_authority: review:legal\n  reading_authority: review:tax\n";
+    assert!(parse(twice).is_err(), "declared once");
+}

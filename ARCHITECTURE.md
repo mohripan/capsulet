@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-JOB-001, CAP-JOB-002, CAP-JOB-003, CAP-JOB-004, CAP-JOB-005, CAP-JOB-006, CAP-JOB-007, CAP-JOB-008, CAP-JOB-009, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008, CAP-CORRECTNESS-013, CAP-CORRECTNESS-014, CAP-ASSURANCE-009, CAP-CORRECTNESS-019, CAP-ASSURANCE-010, CAP-ASSURANCE-011 -->
+<!-- capsulet-claims: CAP-PRODUCT-001, CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-CORRECTNESS-003, CAP-CORRECTNESS-004, CAP-CORRECTNESS-005, CAP-CORRECTNESS-006, CAP-CORRECTNESS-007, CAP-CORRECTNESS-008, CAP-CORRECTNESS-009, CAP-CORRECTNESS-010, CAP-CORRECTNESS-011, CAP-CORRECTNESS-012, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-JOB-001, CAP-JOB-002, CAP-JOB-003, CAP-JOB-004, CAP-JOB-005, CAP-JOB-006, CAP-JOB-007, CAP-JOB-008, CAP-JOB-009, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-PERSISTENCE-001, CAP-DASHBOARD-001, CAP-OBSERVABILITY-001, CAP-SECURITY-001, CAP-LIFECYCLE-001, CAP-IR-001, CAP-IR-002, CAP-IR-003, CAP-IR-004, CAP-IR-006, CAP-ASSURANCE-001, CAP-ASSURANCE-002, CAP-ASSURANCE-003, CAP-ASSURANCE-004, CAP-ASSURANCE-005, CAP-ASSURANCE-006, CAP-ASSURANCE-007, CAP-ASSURANCE-008, CAP-REPLAY-001, CAP-REPLAY-002, CAP-REPLAY-003, CAP-ADAPTERS-001, CAP-RUNTIME-001, CAP-RUNTIME-002, CAP-RUNTIME-003, CAP-RUNTIME-004, CAP-RUNTIME-005, CAP-RUNTIME-006, CAP-RUNTIME-007, CAP-RUNTIME-008, CAP-CORRECTNESS-013, CAP-CORRECTNESS-014, CAP-ASSURANCE-009, CAP-CORRECTNESS-019, CAP-ASSURANCE-010, CAP-ASSURANCE-011, CAP-CORRECTNESS-020 -->
 # Capsulet Architecture
 
 This document describes the architecture implemented in this repository. Capsulet is a
@@ -546,7 +546,8 @@ limits, and a replay can run a tool again there and compare its outputs by diges
 
 Everything domain-specific travels in a domain pack
 ([ADR 0022](docs/adr/0022-signed-versioned-domain-packs.md), [domain packs](docs/contracts/domain-packs.md)),
-in `capsulet-pack`: contracts, and validators with their cases. A manifest lists every file by digest,
+in `capsulet-pack`: contracts, validators with their cases, and the policy defaults for the pack's
+obligations as IR contracts. A manifest lists every file by digest,
 and its own digest is the pack's identity. The pack is signed with Ed25519 under a key the project
 trusts for that pack's name, and a version neither goes backwards nor changes its content. Installing
 refuses an unsigned, tampered, wrongly signed, downgraded or reused-version pack, each with its own
@@ -554,3 +555,13 @@ code. A project installs packs over the API under a trust store the operator sup
 pins the packs it uses by manifest digest, and registers only when its project holds them exactly as
 pinned. A certificate therefore names them, and a replay checks the packs it holds against the pins
 (`CAP-ASSURANCE-011`).
+
+The first reference pack is `packs/contract-clauses`, for answers that quote contract clauses. It
+declares relations for obligations, rights, conditions, terms and termination, and the qualifiers,
+section references and definitions that change what a clause means. Its contract names `review:legal`
+as the authority its readings are decided under, and its obligations accept a reading discharged by a
+review under that authority and nothing else. The ask endpoint's proposer reads a cited clause with
+what the contract says qualifies or defines it. A question about a termination right "subject to
+Section 8.3" is answered, cited and checked against its typed query, and stays `conditional` on that
+reading, showing the qualifying clause, until a holder of `review:legal` decides it. Every case of the
+misreading corpus its mechanisms claim is caught under its own contract (`CAP-CORRECTNESS-020`).

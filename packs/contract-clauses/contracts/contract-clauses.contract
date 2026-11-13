@@ -1,0 +1,196 @@
+# Contract clauses: the relations an answer about a contract states, how a
+# contract's provisions qualify and define one another, and who decides what a
+# clause means.
+#
+# Every phrasing below states a relation only where a clause says it outright.
+# A clause something else qualifies is never read as stating it: the kernel
+# finds the qualification from the declarations under statement_policy and the
+# answer becomes a reading, which only a holder of review:legal decides.
+
+entity Party:
+  fields:
+    name: string
+
+entity Agreement:
+  fields:
+    title: string
+
+entity Matter:
+  fields:
+    summary: string
+
+entity Term:
+  fields:
+    length: string
+
+entity Condition:
+  fields:
+    summary: string
+
+entity Law:
+  fields:
+    jurisdiction: string
+
+# Obligations: what a party has to do.
+
+relation shall:
+  from: Party
+  to: Matter
+  stated_by:
+    - "{from} shall {to}"
+    - "{from} must {to}"
+    - "{from} agrees to {to}"
+    - "{from} undertakes to {to}"
+
+relation pay_within:
+  from: Party
+  to: Term
+  stated_by:
+    - "{from} shall pay each invoice within {to}"
+    - "{from} shall pay the fees within {to}"
+    - "{from} must pay each invoice within {to}"
+
+relation liable_for:
+  from: Party
+  to: Matter
+  stated_by:
+    - "{from} is liable for {to}"
+    - "{from} shall be liable for {to}"
+
+# Rights: what a party may do.
+
+relation may:
+  from: Party
+  to: Matter
+  stated_by:
+    - "{from} may {to}"
+    - "{from} is entitled to {to}"
+    - "{from} has the right to {to}"
+
+relation may_assign_to:
+  from: Party
+  to: Party
+  stated_by:
+    - "{from} may assign this agreement to an {to}"
+    - "{from} may assign this agreement to {to}"
+
+relation may_raise:
+  from: Party
+  to: Matter
+  stated_by:
+    - "{from} may raise {to}"
+    - "{from} may increase {to}"
+
+# Termination.
+
+relation may_terminate:
+  from: Party
+  to: Agreement
+  stated_by:
+    - "{from} may terminate {to}"
+    - "{from} is entitled to terminate {to}"
+    - "{from} has the right to terminate {to}"
+
+relation terminates_on:
+  from: Agreement
+  to: Term
+  stated_by:
+    - "{from} terminates on {to}"
+    - "{from} expires on {to}"
+
+# Conditions: what something needs before it takes effect.
+
+relation requires:
+  from: Matter
+  to: Condition
+  stated_by:
+    - "{from} requires {to}"
+    - "{from} needs {to}"
+    - "{from} is conditional on {to}"
+
+# Terms: what something is, how long it lasts, and which law governs it.
+
+relation are:
+  from: Matter
+  to: Matter
+  stated_by:
+    - "{from} are {to}"
+    - "{from} is {to}"
+
+relation has_term:
+  from: Agreement
+  to: Term
+  stated_by:
+    - "{from} has an initial term of {to}"
+    - "{from} continues for {to}"
+
+relation renews_for:
+  from: Agreement
+  to: Term
+  stated_by:
+    - "{from} renews for {to}"
+    - "{from} renews automatically for {to}"
+
+relation governed_by:
+  from: Agreement
+  to: Law
+  stated_by:
+    - "{from} is governed by the laws of {to}"
+    - "{from} is governed by {to}"
+
+claim_policy:
+  require_source: true
+  store_confidence: true
+  allow_contradictions: true
+  min_confidence: 0.85
+
+statement_policy:
+  cues:
+    - purported
+    - purportedly
+    - disputed
+    - proposed
+  provisions:
+    - "{ref}."
+    - "Section {ref}."
+    - "Clause {ref}."
+    - "Article {ref}."
+  references:
+    - "Section {ref}"
+    - "Sections {ref}"
+    - "Clause {ref}"
+    - "Clauses {ref}"
+    - "Article {ref}"
+    - "paragraph {ref}"
+  subject_to:
+    - "subject to"
+    - "except as provided in"
+    - "except as set out in"
+    - "except as otherwise provided in"
+    - "save as provided in"
+    - "as limited by"
+  overrides:
+    - "notwithstanding anything in"
+    - notwithstanding
+    - "in priority to"
+  conditions:
+    - "provided that"
+    - "provided, however, that"
+    - "on condition that"
+    - "conditional on"
+    - "in the event that"
+    - "only if"
+    - "except where"
+    - "except that"
+    - unless
+    - if
+  definitions:
+    - "{term}" means
+    - "{term}" shall mean
+    - "{term}" has the meaning
+    - "{term}" includes
+    - (the "{term}")
+    - (each, a "{term}")
+
+review_policy:
+  reading_authority: review:legal

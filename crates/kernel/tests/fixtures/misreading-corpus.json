@@ -1,0 +1,182 @@
+{
+  "about": "What catches a misreading, against what a reader would say (#162). Every answer has the shape capsulet-proposer gives a direct quote, asked under a pinned query. Read by crates/kernel/tests/misreading_corpus.rs and by the contract-clauses pack's own test.",
+  "agreement": "1. Definitions\n\"Affiliate\" means an entity that controls, or is controlled by, a party.\n4. Fees\nThe Customer shall pay the fees within 30 days of each invoice. Fees are non-refundable, except as provided in Section 11.\n7. Liability\nSubject to Section 8, the Supplier is liable for all damages.\n8. Limitation\nNotwithstanding Section 7, the Supplier is not liable for indirect damages.\n9. Termination\nEither party may terminate this agreement, provided that all fees are paid.\n10. Assignment\nThe Supplier may assign this agreement to an Affiliate.\n11. Refunds\nThe Supplier shall refund prepaid fees if it ends this agreement early.\n12. Renewal\nThis agreement renews for one year unless either party objects.\n13. Governing law\nThis agreement is governed by the laws of Ontario.\n14. Prices\nThe Supplier may raise prices once a year. Any increase needs the Customer's written consent.\n",
+  "cases": [
+    {
+      "note": "An exception two provisions away.",
+      "clause": "Fees are non-refundable, except as provided in Section 11.",
+      "question": "Are fees refundable?",
+      "query": {
+        "relation": "are",
+        "subject": "Fees",
+        "object": null
+      },
+      "answer": {
+        "subject": "Fees",
+        "predicate": "are",
+        "object": "non-refundable"
+      },
+      "reader": "misread",
+      "expected": "qualifier"
+    },
+    {
+      "note": "Subject to one provision, and overridden by it.",
+      "clause": "Subject to Section 8, the Supplier is liable for all damages.",
+      "question": "What is the Supplier liable for?",
+      "query": {
+        "relation": "liable_for",
+        "subject": "the Supplier",
+        "object": null
+      },
+      "answer": {
+        "subject": "the Supplier",
+        "predicate": "liable_for",
+        "object": "all damages"
+      },
+      "reader": "misread",
+      "expected": "qualifier"
+    },
+    {
+      "note": "A condition in the same sentence.",
+      "clause": "Either party may terminate this agreement, provided that all fees are paid.",
+      "question": "May either party terminate this agreement?",
+      "query": {
+        "relation": "may_terminate",
+        "subject": "Either party",
+        "object": "this agreement"
+      },
+      "answer": {
+        "subject": "Either party",
+        "predicate": "may_terminate",
+        "object": "this agreement"
+      },
+      "reader": "misread",
+      "expected": "qualifier"
+    },
+    {
+      "note": "A defined term read in its ordinary sense.",
+      "clause": "The Supplier may assign this agreement to an Affiliate.",
+      "question": "To whom may the Supplier assign this agreement?",
+      "query": {
+        "relation": "may_assign_to",
+        "subject": "The Supplier",
+        "object": null
+      },
+      "answer": {
+        "subject": "The Supplier",
+        "predicate": "may_assign_to",
+        "object": "Affiliate"
+      },
+      "reader": "misread",
+      "expected": "definition"
+    },
+    {
+      "note": "A condition the kernel's own cues already know.",
+      "clause": "This agreement renews for one year unless either party objects.",
+      "question": "How long does this agreement renew for?",
+      "query": {
+        "relation": "renews_for",
+        "subject": "This agreement",
+        "object": null
+      },
+      "answer": {
+        "subject": "This agreement",
+        "predicate": "renews_for",
+        "object": "one year"
+      },
+      "reader": "misread",
+      "expected": "unstated"
+    },
+    {
+      "note": "The qualification is a sentence of its own, with no declared cue or reference. Nothing finds it: see the limitations.",
+      "clause": "The Supplier may raise prices once a year.",
+      "question": "May the Supplier raise prices?",
+      "query": {
+        "relation": "may_raise",
+        "subject": "The Supplier",
+        "object": "prices"
+      },
+      "answer": {
+        "subject": "The Supplier",
+        "predicate": "may_raise",
+        "object": "prices"
+      },
+      "reader": "misread",
+      "expected": "nothing"
+    },
+    {
+      "note": "Supported, and beside the point.",
+      "clause": "The Customer shall pay the fees within 30 days of each invoice.",
+      "question": "Which law governs this agreement?",
+      "query": {
+        "relation": "governed_by",
+        "subject": "This agreement",
+        "object": null
+      },
+      "answer": {
+        "subject": "The Customer",
+        "predicate": "pay_within",
+        "object": "30 days"
+      },
+      "reader": "non_responsive",
+      "expected": "query"
+    },
+    {
+      "note": "Supported, and beside the point.",
+      "clause": "This agreement is governed by the laws of Ontario.",
+      "question": "When must the Customer pay?",
+      "query": {
+        "relation": "pay_within",
+        "subject": "The Customer",
+        "object": null
+      },
+      "answer": {
+        "subject": "This agreement",
+        "predicate": "governed_by",
+        "object": "Ontario"
+      },
+      "reader": "non_responsive",
+      "expected": "query"
+    },
+    {
+      "note": "A sound answer.",
+      "clause": "This agreement is governed by the laws of Ontario.",
+      "question": "Which law governs this agreement?",
+      "query": {
+        "relation": "governed_by",
+        "subject": "This agreement",
+        "object": null
+      },
+      "answer": {
+        "subject": "This agreement",
+        "predicate": "governed_by",
+        "object": "Ontario"
+      },
+      "reader": "sound",
+      "expected": "nothing"
+    },
+    {
+      "note": "A sound answer.",
+      "clause": "The Customer shall pay the fees within 30 days of each invoice.",
+      "question": "When must the Customer pay?",
+      "query": {
+        "relation": "pay_within",
+        "subject": "The Customer",
+        "object": null
+      },
+      "answer": {
+        "subject": "The Customer",
+        "predicate": "pay_within",
+        "object": "30 days"
+      },
+      "reader": "sound",
+      "expected": "nothing"
+    }
+  ],
+  "limitations": [
+    {
+      "clause": "The Supplier may raise prices once a year.",
+      "why": "a qualification written as a sentence of its own, with no declared cue and no reference, is not found: only what the contract declares is read with a clause"
+    }
+  ]
+}

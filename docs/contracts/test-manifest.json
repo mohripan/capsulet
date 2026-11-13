@@ -78,6 +78,10 @@
         },
         {
           "path": "crates/api/src/tests.rs",
+          "selector": "a_reading_whose_contract_names_its_authority_is_decided_only_by_a_holder_of_it"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
           "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
         },
         {
@@ -230,6 +234,10 @@
         },
         {
           "path": "crates/core/tests/memory_contract_dsl.rs",
+          "selector": "a_review_policy_names_the_authority_its_readings_are_decided_under"
+        },
+        {
+          "path": "crates/core/tests/memory_contract_dsl.rs",
           "selector": "a_statement_policy_declares_how_its_documents_are_structured"
         },
         {
@@ -271,6 +279,14 @@
         {
           "path": "crates/evaluator/src/sql_trigger.rs",
           "selector": "rejects_multiple_or_mutating_sql_statements"
+        },
+        {
+          "path": "crates/kernel/src/context.rs",
+          "selector": "what_a_span_needs_is_the_bytes_that_would_satisfy_it"
+        },
+        {
+          "path": "crates/kernel/src/review.rs",
+          "selector": "a_contract_that_names_its_reading_authority_is_reviewed_only_under_it"
         },
         {
           "path": "crates/kernel/src/review.rs",
@@ -498,6 +514,10 @@
         },
         {
           "path": "crates/kernel/tests/replay.rs",
+          "selector": "a_pinned_reading_authority_rebuilds_and_its_certificate_carries_it"
+        },
+        {
+          "path": "crates/kernel/tests/replay.rs",
           "selector": "a_proposal_always_serializes_its_schema_version"
         },
         {
@@ -581,12 +601,44 @@
           "selector": "every_derivation_shape_reaches_a_verdict"
         },
         {
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "selector": "a_clause_with_defined_terms_and_no_qualifier_is_accepted_read_with_them"
+        },
+        {
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "selector": "a_typed_question_about_a_termination_right_waits_on_a_legal_reviewer"
+        },
+        {
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "selector": "an_answer_to_another_question_or_a_bare_quote_is_never_accepted"
+        },
+        {
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "selector": "every_misreading_the_packs_mechanisms_claim_is_caught_under_its_contract"
+        },
+        {
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "selector": "the_pack_lists_its_files_and_once_signed_installs"
+        },
+        {
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "selector": "under_enforce_a_reading_is_discharged_by_a_legal_review_and_nothing_else"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
+          "selector": "a_manifest_without_obligations_digests_as_it_always_did"
+        },
+        {
           "path": "crates/pack/tests/packs.rs",
           "selector": "a_pack_travels_as_one_json_document_and_is_checked_the_same_way"
         },
         {
           "path": "crates/pack/tests/packs.rs",
           "selector": "a_pack_whose_contract_or_validator_does_not_read_is_refused"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
+          "selector": "a_packs_obligations_install_only_when_their_policy_can_be_met"
         },
         {
           "path": "crates/pack/tests/packs.rs",
@@ -603,6 +655,18 @@
         {
           "path": "crates/pack/tests/packs.rs",
           "selector": "only_a_key_the_project_trusts_for_this_pack_installs_it"
+        },
+        {
+          "path": "crates/proposer/src/alphabet.rs",
+          "selector": "a_dotted_reference_stays_in_the_clause_it_qualifies"
+        },
+        {
+          "path": "crates/proposer/src/ollama.rs",
+          "selector": "a_clause_using_a_defined_term_is_read_with_its_definition"
+        },
+        {
+          "path": "crates/proposer/src/ollama.rs",
+          "selector": "a_qualified_clause_is_read_with_what_qualifies_it_and_left_for_a_reviewer"
         },
         {
           "path": "crates/runner/src/tests.rs",
@@ -1088,6 +1152,10 @@
       "tests": [
         {
           "path": "crates/postgres/tests/ir_and_assurance.rs",
+          "selector": "a_certificate_keeps_the_authority_its_readings_are_decided_under"
+        },
+        {
+          "path": "crates/postgres/tests/ir_and_assurance.rs",
           "selector": "a_models_endorsement_or_dispute_is_projected_as_outstanding"
         },
         {
@@ -1383,6 +1451,16 @@
         {
           "path": "crates/pack/tests/template.rs",
           "selector": "the_template_passes_its_own_test"
+        }
+      ]
+    },
+    {
+      "gate": "verifier-isolation",
+      "command": "cargo test -p capsulet-pack --features container-tests --test reference_packs --locked",
+      "tests": [
+        {
+          "path": "crates/pack/tests/reference_packs.rs",
+          "selector": "the_contract_clauses_pack_passes_its_own_test"
         }
       ]
     },

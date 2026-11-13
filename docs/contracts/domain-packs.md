@@ -2,14 +2,14 @@
 
 Status: experimental. A domain pack carries everything domain-specific, as
 [ADR 0022](../adr/0022-signed-versioned-domain-packs.md) decided it and `crates/pack` implements it:
-contracts, and validators with the cases that show they work. The kernel and runtime contain none of
-it.
+contracts, validators with the cases that show they work, and the policy defaults for its
+obligations. The kernel and runtime contain none of it.
 
 ## The directory
 
 | File | Holds |
 | --- | --- |
-| `pack.json` | the manifest, `capsulet.pack/v1`: `name`, `version`, `description`, `contracts`, `validators` and `files` |
+| `pack.json` | the manifest, `capsulet.pack/v1`: `name`, `version`, `description`, `contracts`, `validators`, `obligations` and `files` |
 | `pack.sig` | the signature, `capsulet.pack-signature/v1`: the key, the manifest digest, and the Ed25519 signature over it |
 | anything else | listed in `files` by path and SHA-256 digest |
 
@@ -18,6 +18,8 @@ it.
 - **Contracts:** memory contract DSL files, which must parse and compile.
 - **Validators:** each a `capsulet.verifier/v1` registration with its cases file
   ([verifier protocol](verifier-protocol.md)). The registration must be one the host may run.
+- **Obligations:** IR contracts stating the policy defaults for the pack's obligations, described
+  below. Optional.
 
 Paths are relative and `/`-separated, with no `..`.
 
@@ -42,6 +44,7 @@ as a signature over anything else.
 | `downgrade` | a later version of the pack is installed |
 | `version_reused` | this version is installed with other content |
 | `bad_contract`, `bad_validator`, `bad_cases` | a contract does not compile, or a registration or cases file does not read |
+| `bad_obligations` | an obligations file is not an IR contract, or its policy cannot be met |
 
 The same version with the same digest is the same pack. Installing it again changes nothing.
 
@@ -63,6 +66,29 @@ secret: it never goes in a pack or a repository.
 
 `packs/template` is a working pack to start from. The `verifier-isolation` gate holds it to passing
 its own test, with its validator in a real container, and to installing once signed.
+
+The reference packs are held the same way, and each has its own tests of what it answers:
+
+| Pack | For | Tests |
+| --- | --- | --- |
+| [`contract-clauses`](../../packs/contract-clauses/README.md) | answers that quote contract clauses | `crates/pack/tests/contract_clauses.rs` |
+
+## The policy defaults for a pack's obligations
+
+`obligations` lists IR contracts by path. Each is a contract in the IR's own form, whose obligations
+say which kinds of checker may discharge them (`accepts`) and the authority a person needs to
+discharge one by review (`authority`). A definition that uses the pack declares these contracts as
+they are and pins the pack, and an obligation discharged any other way is refused when its
+certificate is sealed. Admission refuses an obligations file, with `bad_obligations`, when:
+
+- it is not an IR contract;
+- two files state the same contract, or a contract states an obligation twice;
+- an obligation accepts only `human_review` and names no authority, so no review of it would count;
+- an obligation names an authority and accepts no `human_review`, so the authority is never used.
+
+A manifest with no `obligations` digests exactly as it did before packs carried any. The
+[contract-clauses pack](../../packs/contract-clauses/README.md) is the reference: a reading of a
+clause is discharged by a review under `review:legal` and by nothing else.
 
 ## Installing a pack into a project
 

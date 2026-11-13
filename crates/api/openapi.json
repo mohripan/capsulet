@@ -765,6 +765,11 @@
           "goal": {
             "$ref": "#/components/schemas/Proposition"
           },
+          "reading_authority": {
+            "description": "The authority a decision on this certificate's readings has to be made under, as the contract its answer was read under names it. Absent when the contract names none, and then it is `review:write`.",
+            "pattern": "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$",
+            "type": "string"
+          },
           "replay_digest": {
             "type": "string"
           },
@@ -2935,6 +2940,13 @@
             "description": "Whether this request installed it, or found it already installed.",
             "type": "boolean"
           },
+          "obligations": {
+            "description": "The policy defaults for its obligations, by path: IR contracts a\ndefinition using the pack declares.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "signed_by": {
             "description": "The key that signed it.",
             "type": "string"
@@ -2959,6 +2971,7 @@
           "description",
           "contracts",
           "validators",
+          "obligations",
           "newly_installed"
         ],
         "type": "object"
@@ -4498,6 +4511,10 @@
             "description": "The reading's digest, which is what a review names.",
             "type": "string"
           },
+          "review_authority": {
+            "description": "The authority a decision on this reading has to be made under: the one\nthe answer's contract names, or `review:write` when it names none.",
+            "type": "string"
+          },
           "review_rationale": {
             "type": [
               "string",
@@ -4525,7 +4542,8 @@
           "to",
           "rationale",
           "evidence_ids",
-          "state"
+          "state",
+          "review_authority"
         ],
         "type": "object"
       },

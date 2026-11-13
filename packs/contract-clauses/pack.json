@@ -1,0 +1,48 @@
+{
+  "schema_version": "capsulet.pack/v1",
+  "name": "contract-clauses",
+  "version": "1.0.0",
+  "description": "Answers about contract clauses: relations for obligations, rights, conditions, terms and termination; the qualifiers, references and definitions that change what a clause means; every reading decided by a holder of review:legal.",
+  "contracts": [
+    "contracts/contract-clauses.contract"
+  ],
+  "validators": [
+    {
+      "registration": "validators/references-resolve.json",
+      "cases": "cases/references-resolve.json"
+    }
+  ],
+  "obligations": [
+    "obligations/contract-clauses.json"
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "digest": "sha256:728242e43f643bee730c1c2c7da850fbcf779da46a9d734643adb76bba1a78c9"
+    },
+    {
+      "path": "cases/references-resolve.json",
+      "digest": "sha256:5b26d4655622c28c3423918c5a1ab8c13512b75b538429a716d8de40d53eefb4"
+    },
+    {
+      "path": "contracts/contract-clauses.contract",
+      "digest": "sha256:a95dcddd0e4dc7be96ccfe570d8b1efef8e7f2c12237a7c23e9452ccc3e9975e"
+    },
+    {
+      "path": "obligations/contract-clauses.json",
+      "digest": "sha256:462b124da92d237c3130bcd44502c64a71444611239a17e8ec8748d6e4066503"
+    },
+    {
+      "path": "samples/licence-agreement.txt",
+      "digest": "sha256:a2da23f77cc30ecb0681d0dd825ff1c1a7d956f47d7efbda08fcd7544b5768a0"
+    },
+    {
+      "path": "samples/services-agreement.txt",
+      "digest": "sha256:bdc3639f1bd094dfc90566c0fe64cf34d6840b861ee8d358daf07a9ed7987f6b"
+    },
+    {
+      "path": "validators/references-resolve.json",
+      "digest": "sha256:d0e730cfb4544e43d2edfc558284db85b9cfedb4b0720a86f6ed5fe2e39c9413"
+    }
+  ]
+}

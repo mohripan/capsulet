@@ -4273,7 +4273,7 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Assurance policy",
-      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content, or whose contracts or validators do not read. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. A project installs a pack over the API only under the trust store its operator supplies, and holds each version once and unchanged. A definition pins its packs by manifest digest and registers only when its project holds them exactly as pinned, and replay reports a pinned pack it does not hold, or holds as another pack, instead of substituting one.",
+      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content,, whose contracts or validators do not read, or whose obligations, the policy defaults it carries as IR contracts, could never be met. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. A project installs a pack over the API only under the trust store its operator supplies, and holds each version once and unchanged. A definition pins its packs by manifest digest and registers only when its project holds them exactly as pinned, and replay reports a pinned pack it does not hold, or holds as another pack, instead of substituting one.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/api.md"
@@ -4328,6 +4328,13 @@
             "a_pin_no_pack_could_satisfy_is_refused_as_a_schema_problem",
             "a_definition_registers_only_when_every_pack_it_pins_is_installed_as_pinned",
             "a_runs_pinned_packs_are_named_and_checked_against_the_packs_given"
+          ]
+        },
+        {
+          "assertion": "obligations-hold-together",
+          "evidence_selectors": [
+            "a_packs_obligations_install_only_when_their_policy_can_be_met",
+            "a_manifest_without_obligations_digests_as_it_always_did"
           ]
         }
       ],
@@ -4443,6 +4450,20 @@
           "gate": "replay",
           "command": "cargo test -p capsulet-replay --locked",
           "selector": "a_runs_pinned_packs_are_named_and_checked_against_the_packs_given"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_packs_obligations_install_only_when_their_policy_can_be_met"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_manifest_without_obligations_digests_as_it_always_did"
         },
         {
           "type": "source",
@@ -5468,7 +5489,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Correctness kernel",
-      "statement": "A reading a reasoning certificate leaves open can be decided by a person holding `review:write`: `POST /v1/reasoning/certificates/{id}/readings/{reading}/review` records `holds` or `does_not_hold` with a rationale, bound to that reading by a digest over it and its certificate. The outcome (`GET /v1/reasoning/certificates/{id}/review`) is re-derived from the kernel's certificate and the recorded reviews: every reading held is `accepted` on basis `human_review`, any reading refuted is `rejected`, and a rejected certificate stays rejected. `GET /v1/reasoning/readings` lists the open ones. A decision is recorded once and never rewritten, and another project's certificate is not found.",
+      "statement": "A reading a reasoning certificate leaves open can be decided by a person holding its reading authority, the one the answer's contract names in `review_policy`, or `review:write` when it names none. The certificate records that authority, a caller without it is refused, and a decision under any other decides nothing: `POST /v1/reasoning/certificates/{id}/readings/{reading}/review` records `holds` or `does_not_hold` with a rationale, bound to that reading by a digest over it and its certificate. The outcome (`GET /v1/reasoning/certificates/{id}/review`) is re-derived from the kernel's certificate and the recorded reviews: every reading held is `accepted` on basis `human_review`, any reading refuted is `rejected`, and a rejected certificate stays rejected. `GET /v1/reasoning/readings` lists the open ones. A decision is recorded once and never rewritten, and another project's certificate is not found.",
       "public_surfaces": [
         "docs/api.md",
         "dashboard/app/readings/page.tsx",
@@ -5495,6 +5516,16 @@
           "assertion": "decided-once-kept-and-scoped",
           "evidence_selectors": [
             "a_reading_is_decided_once_kept_and_kept_in_its_own_project"
+          ]
+        },
+        {
+          "assertion": "a-contract-names-whose-review-counts",
+          "evidence_selectors": [
+            "a_contract_that_names_its_reading_authority_is_reviewed_only_under_it",
+            "a_reading_whose_contract_names_its_authority_is_decided_only_by_a_holder_of_it",
+            "a_review_policy_names_the_authority_its_readings_are_decided_under",
+            "a_pinned_reading_authority_rebuilds_and_its_certificate_carries_it",
+            "a_certificate_keeps_the_authority_its_readings_are_decided_under"
           ]
         }
       ],
@@ -5547,6 +5578,41 @@
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test ir_and_assurance --locked",
           "selector": "a_reading_is_decided_once_kept_and_kept_in_its_own_project"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/src/review.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_contract_that_names_its_reading_authority_is_reviewed_only_under_it"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_reading_whose_contract_names_its_authority_is_decided_only_by_a_holder_of_it"
+        },
+        {
+          "type": "test",
+          "path": "crates/core/tests/memory_contract_dsl.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_review_policy_names_the_authority_its_readings_are_decided_under"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/tests/replay.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_pinned_reading_authority_rebuilds_and_its_certificate_carries_it"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/ir_and_assurance.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test ir_and_assurance --locked",
+          "selector": "a_certificate_keeps_the_authority_its_readings_are_decided_under"
         },
         {
           "type": "source",
@@ -5631,6 +5697,138 @@
           "gate": "unit",
           "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "every_recorded_limitation_is_still_the_limitation_it_says_it_is"
+        }
+      ]
+    },
+    {
+      "id": "CAP-CORRECTNESS-020",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Correctness kernel",
+      "statement": "The ask endpoint's proposer reads a cited clause with each provision and definition its contract says the clause depends on, by the lookup the kernel decides with, so a qualified clause comes back `conditional` on a reading that names and shows the qualifying provision, rather than `rejected` for quoting it bare, and never `accepted`. Text is cut into citable spans without splitting a dotted section number. The contract-clauses reference pack declares relations for obligations, rights, conditions, terms and termination, with their qualifier cues, section references and definitions, names `review:legal` as its reading authority, and carries obligations that a review under it discharges and nothing else does, which a model may endorse or dispute. Under it, a typed question about a termination right is answered, cited, checked against its query, and stays `conditional` on the qualifying clause until a holder of `review:legal` decides it, and every case of the misreading corpus its mechanisms claim is caught. The pack's validator checks that every section a contract refers to is one of its own, in a container.",
+      "public_surfaces": [
+        "ARCHITECTURE.md",
+        "docs/api.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-clause-is-read-with-what-qualifies-it",
+          "evidence_selectors": [
+            "a_qualified_clause_is_read_with_what_qualifies_it_and_left_for_a_reviewer",
+            "a_clause_using_a_defined_term_is_read_with_its_definition",
+            "a_dotted_reference_stays_in_the_clause_it_qualifies",
+            "what_a_span_needs_is_the_bytes_that_would_satisfy_it"
+          ]
+        },
+        {
+          "assertion": "a-termination-right-waits-on-a-legal-reviewer",
+          "evidence_selectors": [
+            "a_typed_question_about_a_termination_right_waits_on_a_legal_reviewer",
+            "an_answer_to_another_question_or_a_bare_quote_is_never_accepted",
+            "a_clause_with_defined_terms_and_no_qualifier_is_accepted_read_with_them"
+          ]
+        },
+        {
+          "assertion": "the-corpus-is-caught-under-the-pack",
+          "evidence_selectors": [
+            "every_misreading_the_packs_mechanisms_claim_is_caught_under_its_contract"
+          ]
+        },
+        {
+          "assertion": "readings-are-discharged-only-by-a-legal-review",
+          "evidence_selectors": [
+            "under_enforce_a_reading_is_discharged_by_a_legal_review_and_nothing_else",
+            "the_pack_lists_its_files_and_once_signed_installs"
+          ]
+        },
+        {
+          "assertion": "the-pack-passes-its-own-test",
+          "evidence_selectors": [
+            "the_contract_clauses_pack_passes_its_own_test"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/proposer/src/ollama.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_qualified_clause_is_read_with_what_qualifies_it_and_left_for_a_reviewer"
+        },
+        {
+          "type": "test",
+          "path": "crates/proposer/src/ollama.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_clause_using_a_defined_term_is_read_with_its_definition"
+        },
+        {
+          "type": "test",
+          "path": "crates/proposer/src/alphabet.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_dotted_reference_stays_in_the_clause_it_qualifies"
+        },
+        {
+          "type": "test",
+          "path": "crates/kernel/src/context.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "what_a_span_needs_is_the_bytes_that_would_satisfy_it"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_typed_question_about_a_termination_right_waits_on_a_legal_reviewer"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_answer_to_another_question_or_a_bare_quote_is_never_accepted"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_clause_with_defined_terms_and_no_qualifier_is_accepted_read_with_them"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "every_misreading_the_packs_mechanisms_claim_is_caught_under_its_contract"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "under_enforce_a_reading_is_discharged_by_a_legal_review_and_nothing_else"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/contract_clauses.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_pack_lists_its_files_and_once_signed_installs"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/reference_packs.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test reference_packs --locked",
+          "selector": "the_contract_clauses_pack_passes_its_own_test"
+        },
+        {
+          "type": "source",
+          "path": "packs/contract-clauses/contracts/contract-clauses.contract"
         }
       ]
     },

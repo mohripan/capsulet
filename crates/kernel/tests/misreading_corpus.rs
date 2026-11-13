@@ -19,6 +19,10 @@
 //!
 //! Every answer has the shape `capsulet-proposer` gives a direct quote:
 //! `Trust { Cite(goal), min_authority: "low" }`, asked under a pinned query.
+//!
+//! The cases are data, in `fixtures/misreading-corpus.json`, so a domain pack
+//! can be held to the same corpus under its own contract: the contract-clauses
+//! pack's test runs every case here and pins what catches each one there.
 
 use capsulet_core::{
     Authority, Evidence, EvidenceId, EvidenceSpan, MemoryScope, Source, SourceContent, SourceId,
@@ -27,31 +31,11 @@ use capsulet_kernel::{
     Certificate, ContextPolicy, Phrasebook, Phrasing, Proposal, Proposition, Query, Question, Rule,
     Slot, Snapshot, Verdict, check,
 };
-
-const AGREEMENT: &str = "1. Definitions\n\
-\"Affiliate\" means an entity that controls, or is controlled by, a party.\n\
-4. Fees\n\
-The Customer shall pay the fees within 30 days of each invoice. \
-Fees are non-refundable, except as provided in Section 11.\n\
-7. Liability\n\
-Subject to Section 8, the Supplier is liable for all damages.\n\
-8. Limitation\n\
-Notwithstanding Section 7, the Supplier is not liable for indirect damages.\n\
-9. Termination\n\
-Either party may terminate this agreement, provided that all fees are paid.\n\
-10. Assignment\n\
-The Supplier may assign this agreement to an Affiliate.\n\
-11. Refunds\n\
-The Supplier shall refund prepaid fees if it ends this agreement early.\n\
-12. Renewal\n\
-This agreement renews for one year unless either party objects.\n\
-13. Governing law\n\
-This agreement is governed by the laws of Ontario.\n\
-14. Prices\n\
-The Supplier may raise prices once a year. Any increase needs the Customer's written consent.\n";
+use serde::Deserialize;
 
 /// What a reader says about the answer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
 enum Reader {
     /// It is what the agreement means, and it answers the question.
     Sound,
@@ -64,7 +48,8 @@ enum Reader {
 use Reader::{Misread, NonResponsive, Sound};
 
 /// What stops an answer reaching `accepted`, read off its certificate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
 enum Caught {
     /// A qualified clause states nothing outright (`relation_qualified`).
     Qualifier,
@@ -77,124 +62,50 @@ enum Caught {
     /// Nothing: the answer is accepted.
     Nothing,
 }
-use Caught::{Definition, Nothing, Qualifier, Query as ByQuery, Unstated};
 
+#[derive(Debug, Deserialize)]
+struct Corpus {
+    agreement: String,
+    cases: Vec<Case>,
+    limitations: Vec<RecordedLimitation>,
+}
+
+#[derive(Debug, Deserialize)]
 struct Case {
-    clause: &'static str,
-    question: &'static str,
-    query: (&'static str, Option<&'static str>, Option<&'static str>),
-    answer: (&'static str, &'static str, &'static str),
+    clause: String,
+    question: String,
+    query: Asked,
+    answer: Answer,
     reader: Reader,
     expected: Caught,
 }
 
-const CORPUS: &[Case] = &[
-    // An exception two provisions away.
-    Case {
-        clause: "Fees are non-refundable, except as provided in Section 11.",
-        question: "Are fees refundable?",
-        query: ("are", Some("Fees"), None),
-        answer: ("Fees", "are", "non-refundable"),
-        reader: Misread,
-        expected: Qualifier,
-    },
-    // Subject to one provision, and overridden by it.
-    Case {
-        clause: "Subject to Section 8, the Supplier is liable for all damages.",
-        question: "What is the Supplier liable for?",
-        query: ("liable_for", Some("the Supplier"), None),
-        answer: ("the Supplier", "liable_for", "all damages"),
-        reader: Misread,
-        expected: Qualifier,
-    },
-    // A condition in the same sentence.
-    Case {
-        clause: "Either party may terminate this agreement, provided that all fees are paid.",
-        question: "May either party terminate this agreement?",
-        query: (
-            "may_terminate",
-            Some("Either party"),
-            Some("this agreement"),
-        ),
-        answer: ("Either party", "may_terminate", "this agreement"),
-        reader: Misread,
-        expected: Qualifier,
-    },
-    // A defined term read in its ordinary sense.
-    Case {
-        clause: "The Supplier may assign this agreement to an Affiliate.",
-        question: "To whom may the Supplier assign this agreement?",
-        query: ("may_assign_to", Some("The Supplier"), None),
-        answer: ("The Supplier", "may_assign_to", "Affiliate"),
-        reader: Misread,
-        expected: Definition,
-    },
-    // A condition the kernel's own cues already know.
-    Case {
-        clause: "This agreement renews for one year unless either party objects.",
-        question: "How long does this agreement renew for?",
-        query: ("renews_for", Some("This agreement"), None),
-        answer: ("This agreement", "renews_for", "one year"),
-        reader: Misread,
-        expected: Unstated,
-    },
-    // The qualification is a sentence of its own, with no declared cue or
-    // reference. Nothing finds it: see RECORDED_LIMITATIONS.
-    Case {
-        clause: "The Supplier may raise prices once a year.",
-        question: "May the Supplier raise prices?",
-        query: ("may_raise", Some("The Supplier"), Some("prices")),
-        answer: ("The Supplier", "may_raise", "prices"),
-        reader: Misread,
-        expected: Nothing,
-    },
-    // Supported, and beside the point.
-    Case {
-        clause: "The Customer shall pay the fees within 30 days of each invoice.",
-        question: "Which law governs this agreement?",
-        query: ("governed_by", Some("This agreement"), None),
-        answer: ("The Customer", "pay_within", "30 days"),
-        reader: NonResponsive,
-        expected: ByQuery,
-    },
-    Case {
-        clause: "This agreement is governed by the laws of Ontario.",
-        question: "When must the Customer pay?",
-        query: ("pay_within", Some("The Customer"), None),
-        answer: ("This agreement", "governed_by", "Ontario"),
-        reader: NonResponsive,
-        expected: ByQuery,
-    },
-    // Sound answers.
-    Case {
-        clause: "This agreement is governed by the laws of Ontario.",
-        question: "Which law governs this agreement?",
-        query: ("governed_by", Some("This agreement"), None),
-        answer: ("This agreement", "governed_by", "Ontario"),
-        reader: Sound,
-        expected: Nothing,
-    },
-    Case {
-        clause: "The Customer shall pay the fees within 30 days of each invoice.",
-        question: "When must the Customer pay?",
-        query: ("pay_within", Some("The Customer"), None),
-        answer: ("The Customer", "pay_within", "30 days"),
-        reader: Sound,
-        expected: Nothing,
-    },
-];
-
-/// A misreading the mechanisms are known not to catch, kept in the corpus.
-struct RecordedLimitation {
-    clause: &'static str,
-    why: &'static str,
+/// The query a case is asked under: a relation, and a term or `null` for the
+/// wanted slot.
+#[derive(Debug, Deserialize)]
+struct Asked {
+    relation: String,
+    subject: Option<String>,
+    object: Option<String>,
 }
 
-const RECORDED_LIMITATIONS: &[RecordedLimitation] = &[RecordedLimitation {
-    clause: "The Supplier may raise prices once a year.",
-    why: "a qualification written as a sentence of its own, with no declared cue and no reference, \
-          is not found: only what the contract declares is read with a clause",
-}];
+#[derive(Debug, Deserialize)]
+struct Answer {
+    subject: String,
+    predicate: String,
+    object: String,
+}
+
+/// A misreading the mechanisms are known not to catch, kept in the corpus.
+#[derive(Debug, Deserialize)]
+struct RecordedLimitation {
+    clause: String,
+    why: String,
+}
+
+fn corpus() -> Corpus {
+    serde_json::from_str(include_str!("fixtures/misreading-corpus.json")).expect("the corpus reads")
+}
 
 fn legal() -> ContextPolicy {
     ContextPolicy {
@@ -233,27 +144,26 @@ fn phrasebook() -> Phrasebook {
         .with_context(legal())
 }
 
-fn certificate_of(case: &Case) -> Certificate {
+fn certificate_of(agreement: &str, case: &Case) -> Certificate {
     let scope = MemoryScope::new("acme", "legal").expect("scope");
     let source_id = SourceId::new("agreement").expect("source id");
-    let content = SourceContent::new(source_id.clone(), AGREEMENT).expect("content");
-    let start = AGREEMENT
-        .find(case.clause)
+    let content = SourceContent::new(source_id.clone(), agreement).expect("content");
+    let start = agreement
+        .find(&case.clause)
         .expect("the clause is in the agreement");
     let evidence = Evidence::new(
         EvidenceId::new("ev_clause").expect("evidence id"),
         scope.clone(),
         source_id.clone(),
         "clause",
-        case.clause,
+        &case.clause,
         "2026-11-13T00:00:00Z",
     )
     .expect("evidence")
     .with_span(
         EvidenceSpan::new(start, start + case.clause.len(), content.content_hash()).expect("span"),
     );
-    let slot = |term: Option<&str>| term.map_or(Slot::Wanted, Slot::bound);
-    let (relation, subject, object) = case.query;
+    let slot = |term: Option<&String>| term.map_or(Slot::Wanted, Slot::bound);
     let snapshot = Snapshot::new()
         .with_phrasebook(phrasebook())
         .with_source(
@@ -269,12 +179,16 @@ fn certificate_of(case: &Case) -> Certificate {
         )
         .with_source_content(content)
         .with_evidence(evidence)
-        .with_question(Question::asked(case.question).with_query(Query::new(
-            relation,
-            slot(subject),
-            slot(object),
+        .with_question(Question::asked(&case.question).with_query(Query::new(
+            &case.query.relation,
+            slot(case.query.subject.as_ref()),
+            slot(case.query.object.as_ref()),
         )));
-    let goal = Proposition::new(case.answer.0, case.answer.1, case.answer.2);
+    let goal = Proposition::new(
+        &case.answer.subject,
+        &case.answer.predicate,
+        &case.answer.object,
+    );
     let proposal = Proposal {
         schema_version: Proposal::current_schema_version(),
         question_reading: None,
@@ -295,32 +209,34 @@ fn certificate_of(case: &Case) -> Certificate {
 fn caught(certificate: &Certificate) -> Caught {
     let has = |code: &str| certificate.errors.iter().any(|error| error.code == code);
     if has("goal_not_responsive") {
-        ByQuery
+        Caught::Query
     } else if has("relation_qualified") {
-        Qualifier
+        Caught::Qualifier
     } else if has("relation_not_stated") {
-        Unstated
+        Caught::Unstated
     } else if certificate
         .residuals
         .iter()
         .any(|residual| residual.rationale.contains("defined term"))
     {
-        Definition
+        Caught::Definition
     } else {
         assert_eq!(
             certificate.verdict,
             Verdict::Accepted,
             "an answer stopped by nothing this corpus names: {certificate:?}"
         );
-        Nothing
+        Caught::Nothing
     }
 }
 
 #[test]
 fn no_misread_or_non_responsive_answer_reaches_accepted_but_the_recorded_limitations() {
-    for case in CORPUS.iter().filter(|case| case.reader != Sound) {
-        let certificate = certificate_of(case);
-        let recorded = RECORDED_LIMITATIONS
+    let corpus = corpus();
+    for case in corpus.cases.iter().filter(|case| case.reader != Sound) {
+        let certificate = certificate_of(&corpus.agreement, case);
+        let recorded = corpus
+            .limitations
             .iter()
             .any(|limitation| limitation.clause == case.clause);
         assert_eq!(
@@ -335,9 +251,10 @@ fn no_misread_or_non_responsive_answer_reaches_accepted_but_the_recorded_limitat
 
 #[test]
 fn every_case_is_caught_by_the_mechanism_it_names() {
-    for case in CORPUS {
+    let corpus = corpus();
+    for case in &corpus.cases {
         assert_eq!(
-            caught(&certificate_of(case)),
+            caught(&certificate_of(&corpus.agreement, case)),
             case.expected,
             "{:?}",
             case.clause
@@ -347,16 +264,18 @@ fn every_case_is_caught_by_the_mechanism_it_names() {
 
 #[test]
 fn every_recorded_limitation_is_still_the_limitation_it_says_it_is() {
-    for limitation in RECORDED_LIMITATIONS {
-        let case = CORPUS
+    let corpus = corpus();
+    for limitation in &corpus.limitations {
+        let case = corpus
+            .cases
             .iter()
             .find(|case| case.clause == limitation.clause)
             .expect("a recorded limitation is a case in the corpus");
         assert_eq!(case.reader, Misread, "{}", limitation.why);
         assert_eq!(
-            certificate_of(case).verdict,
+            certificate_of(&corpus.agreement, case).verdict,
             Verdict::Accepted,
-            "fixed? then take it out of RECORDED_LIMITATIONS: {}",
+            "fixed? then take it out of the corpus's limitations: {}",
             limitation.why
         );
     }
@@ -366,11 +285,15 @@ fn every_recorded_limitation_is_still_the_limitation_it_says_it_is() {
 /// so a change to any of them has to be looked at rather than absorbed.
 #[test]
 fn the_counts_are_what_was_recorded() {
+    let corpus = corpus();
     let count = |reader: Reader, accepted: bool| {
-        CORPUS
+        corpus
+            .cases
             .iter()
             .filter(|case| case.reader == reader)
-            .filter(|case| (certificate_of(case).verdict == Verdict::Accepted) == accepted)
+            .filter(|case| {
+                (certificate_of(&corpus.agreement, case).verdict == Verdict::Accepted) == accepted
+            })
             .count()
     };
     // Misreadings caught, and the one that is not.

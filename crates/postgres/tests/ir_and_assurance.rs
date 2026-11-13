@@ -442,10 +442,61 @@ fn reasoning_record(tenant: &str, project: &str, id: &str) -> capsulet_postgres:
             errors: Vec::new(),
             replay_digest: format!("sha256:{id}"),
             derivation_depth_limit: None,
+            reading_authority: None,
         },
         alphabet_digest: "sha256:alphabet".to_string(),
         model: "mini".to_string(),
     }
+}
+
+#[tokio::test]
+async fn a_certificate_keeps_the_authority_its_readings_are_decided_under() {
+    let store = store().await;
+    let tenant = unique_id("tenant");
+    let project = unique_id("project");
+
+    let general = reasoning_record(&tenant, &project, &unique_id("certificate"));
+    store.insert_certificate(&general).await.expect("record it");
+    let found = store
+        .find_certificate(&tenant, &project, &general.id)
+        .await
+        .expect("find it")
+        .expect("it is there");
+    assert_eq!(found.certificate.reading_authority, None);
+
+    let mut legal = reasoning_record(&tenant, &project, &unique_id("certificate"));
+    legal.certificate.reading_authority = Some("review:legal".to_string());
+    store.insert_certificate(&legal).await.expect("record it");
+    let found = store
+        .find_certificate(&tenant, &project, &legal.id)
+        .await
+        .expect("find it")
+        .expect("it is there");
+    assert_eq!(
+        found.certificate.reading_authority.as_deref(),
+        Some("review:legal")
+    );
+    assert_eq!(
+        capsulet_kernel::reading_digest(&found.certificate, &found.certificate.residuals[0]),
+        capsulet_kernel::reading_digest(&legal.certificate, &legal.certificate.residuals[0]),
+        "a reading's digest is the same with its authority stored beside it"
+    );
+    let listed = store
+        .list_certificates(&tenant, &project, 10)
+        .await
+        .expect("list them");
+    assert!(
+        listed
+            .iter()
+            .any(|record| record.certificate.reading_authority.as_deref() == Some("review:legal"))
+    );
+
+    let mut malformed = reasoning_record(&tenant, &project, &unique_id("certificate"));
+    malformed.certificate.reading_authority = Some("Legal Review".to_string());
+    store
+        .insert_certificate(&malformed)
+        .await
+        .expect_err("an authority that is not a scope is refused by the table itself");
 }
 
 #[tokio::test]

@@ -534,6 +534,8 @@ dependencies = [
  "aws-lc-rs",
  "capsulet-core",
  "capsulet-ir",
+ "capsulet-kernel",
+ "capsulet-proposer",
  "capsulet-verifier",
  "hex",
  "semver",

@@ -265,3 +265,82 @@ fn a_pack_travels_as_one_json_document_and_is_checked_the_same_way() {
         "a pack from a bundle has no directory to test in"
     );
 }
+
+/// `sample` with one obligations file holding `contract`, signed with `key`.
+fn with_obligations(root: &Path, contract: &serde_json::Value, key: &PrivateKey) {
+    write_pack(root, "1.0.0", None);
+    fs::create_dir_all(root.join("obligations")).expect("dir");
+    fs::write(root.join("obligations/sample.json"), contract.to_string()).expect("obligations");
+    let path = root.join("pack.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).expect("manifest")).expect("json");
+    manifest["obligations"] = serde_json::json!(["obligations/sample.json"]);
+    fs::write(&path, manifest.to_string()).expect("manifest");
+    sign(root, key).expect("signs");
+}
+
+fn obligations_of(obligations: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "id": "sample", "version": "1", "inputs": {}, "outputs": {}, "allowed_effects": [],
+        "obligations": obligations
+    })
+}
+
+#[test]
+fn a_packs_obligations_install_only_when_their_policy_can_be_met() {
+    let (key, _) = generate().expect("a key");
+    let trust = trusting(&key, &["sample"]);
+
+    let reading = serde_json::json!({
+        "id": "reading", "statement": "the reading holds", "owner": "human",
+        "authority": "review:legal", "accepts": ["human_review"]
+    });
+    let directory = tempfile::tempdir().expect("dir");
+    with_obligations(
+        directory.path(),
+        &obligations_of(&serde_json::json!([reading])),
+        &key,
+    );
+    let pack = read(directory.path()).expect("reads");
+    admit(&pack, &trust, &[]).expect("installs");
+    let contracts = capsulet_pack::obligations(&pack).expect("its obligations");
+    assert_eq!(contracts[0].obligations[0].id.as_str(), "reading");
+
+    let unreviewable = serde_json::json!({
+        "id": "reading", "statement": "the reading holds", "owner": "human",
+        "accepts": ["human_review"]
+    });
+    let named_unused = serde_json::json!({
+        "id": "reading", "statement": "the reading holds", "owner": "human",
+        "authority": "review:legal", "accepts": ["mechanical"]
+    });
+    for (contract, why) in [
+        (serde_json::json!({"id": "sample"}), "not a contract"),
+        (
+            obligations_of(&serde_json::json!([reading.clone(), reading])),
+            "an obligation stated twice",
+        ),
+        (
+            obligations_of(&serde_json::json!([unreviewable])),
+            "only a review discharges it, and it names no authority to review it under",
+        ),
+        (
+            obligations_of(&serde_json::json!([named_unused])),
+            "it names an authority, and no review discharges it",
+        ),
+    ] {
+        let directory = tempfile::tempdir().expect("dir");
+        with_obligations(directory.path(), &contract, &key);
+        let error = refused(directory.path(), &trust, &[]);
+        assert_eq!(error.code(), "bad_obligations", "{why}: {error}");
+    }
+}
+
+#[test]
+fn a_manifest_without_obligations_digests_as_it_always_did() {
+    let directory = tempfile::tempdir().expect("dir");
+    write_pack(directory.path(), "1.0.0", None);
+    let manifest = read(directory.path()).expect("reads").manifest;
+    let encoded = serde_json::to_value(&manifest).expect("encodes");
+    assert!(encoded.get("obligations").is_none(), "{encoded}");
+}

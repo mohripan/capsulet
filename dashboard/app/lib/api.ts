@@ -1018,6 +1018,8 @@ export type Reading = {
   evidence_ids: string[];
   /** `open`, `holds` or `does_not_hold`. */
   state: string;
+  /** The authority a decision on it has to be made under: its contract's, or `review:write`. */
+  review_authority: string;
   reviewer: string | null;
   authority: string | null;
   review_rationale: string | null;
