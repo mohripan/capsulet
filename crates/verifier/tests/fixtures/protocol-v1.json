@@ -1,0 +1,44 @@
+{
+  "request": {
+    "protocol": "capsulet.verifier/v1",
+    "obligations": [
+      {
+        "id": "builds",
+        "contract": "patch-compiles",
+        "statement": "the patch compiles"
+      },
+      {
+        "id": "tests-pass",
+        "contract": "patch-compiles",
+        "statement": "the existing tests pass"
+      }
+    ],
+    "parameters": {
+      "profile": "release"
+    },
+    "inputs": [
+      {
+        "name": "patch.diff",
+        "digest": "sha256:0d2f2bf4ef56e1fb0e7c86e3b2c1fb9c8cbd0f10d1d6a05e9b8f0b10e1b4b9e2",
+        "media_type": "text/x-diff"
+      }
+    ]
+  },
+  "response": {
+    "protocol": "capsulet.verifier/v1",
+    "results": [
+      {
+        "obligation": "builds",
+        "contract": "patch-compiles",
+        "outcome": "holds",
+        "reason": "built clean"
+      },
+      {
+        "obligation": "tests-pass",
+        "contract": "patch-compiles",
+        "outcome": "cannot_decide",
+        "reason": "the test runner needs a database this run was not given"
+      }
+    ]
+  }
+}

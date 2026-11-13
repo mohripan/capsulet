@@ -18,7 +18,8 @@ decided it and `crates/verifier` implements it. The protocol version is governed
 
 A validator finds its directories in `CAPSULET_VERIFIER_INPUTS` and `CAPSULET_VERIFIER_OUTPUTS`, or at
 `/inputs` and `/outputs` in a container. `capsulet_verifier::sdk::serve` does the reading and writing
-for a validator written in Rust.
+for a validator written in Rust, and `capsulet.verifier.serve` for one in Python. Both are tested
+against the same protocol fixture, `crates/verifier/tests/fixtures/protocol-v1.json`.
 
 ## Request
 
@@ -126,7 +127,6 @@ compare.
 
 - **Re-running from a bundle.** `capsulet-replay` deliberately reaches no daemon or network, so running
   a tool again from a bundle belongs in a command of its own.
-- **The Python SDK.**
 - **The `capsulet verifier test` harness.**
 
-All three are tracked in #155.
+Both are tracked in #155.

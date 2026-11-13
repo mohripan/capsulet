@@ -605,6 +605,10 @@
           "selector": "every_way_a_validator_misbehaves_is_a_typed_failure_owned_by_the_verifier"
         },
         {
+          "path": "crates/verifier/tests/host.rs",
+          "selector": "the_shared_protocol_fixture_is_a_request_and_a_response_this_build_reads_and_writes"
+        },
+        {
           "path": "crates/worker/src/tests.rs",
           "selector": "offloads_large_logs_as_artifact"
         },
@@ -956,6 +960,14 @@
       "gate": "sdk",
       "command": "python -m unittest discover -s sdk/python/tests -p test_*.py",
       "tests": [
+        {
+          "path": "sdk/python/tests/test_verifier.py",
+          "selector": "test_reads_the_shared_request_and_writes_the_shared_response"
+        },
+        {
+          "path": "sdk/python/tests/test_verifier.py",
+          "selector": "test_refuses_a_request_in_another_protocol_or_not_a_request_at_all"
+        },
         {
           "path": "sdk/python/tests/test_workflow.py",
           "selector": "test_infers_dependency_and_compiles_artifact_path"

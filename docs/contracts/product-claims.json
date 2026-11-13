@@ -4096,9 +4096,10 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Assurance policy",
-      "statement": "A validator speaks `capsulet.verifier/v1`: one request in, naming the obligations and the read-only inputs by digest, and one response out with `holds`, `does_not_hold` or `cannot_decide` for each. The host checks its registration first, so a replayable tool granted the network or a model, a model not declared as one, or an image not pinned by digest is refused. It then holds the run to its limits, refuses changed inputs, oversized outputs and anything but one result per obligation as typed failures owned by the verifier, digests the outputs itself, and builds the verifier record. An isolated tool's `holds` discharges on basis `replayable_tool`, a model's endorses or disputes, and an unisolated development run decides nothing. In a container, from an image pinned by digest, it reaches no network unless granted, cannot write its inputs or its root, and is stopped past its memory or time; a replay can run a tool again there and compare its outputs by digest.",
+      "statement": "A validator speaks `capsulet.verifier/v1`: one request in, naming the obligations and the read-only inputs by digest, and one response out with `holds`, `does_not_hold` or `cannot_decide` for each. The host checks its registration first, so a replayable tool granted the network or a model, a model not declared as one, or an image not pinned by digest is refused. It then holds the run to its limits, refuses changed inputs, oversized outputs and anything but one result per obligation as typed failures owned by the verifier, digests the outputs itself, and builds the verifier record. An isolated tool's `holds` discharges on basis `replayable_tool`, a model's endorses or disputes, and an unisolated development run decides nothing. In a container, from an image pinned by digest, it reaches no network unless granted, cannot write its inputs or its root, and is stopped past its memory or time; a replay can run a tool again there and compare its outputs by digest. Rust and Python validators read and write the same protocol documents, held to one shared fixture.",
       "public_surfaces": [
-        "ARCHITECTURE.md"
+        "ARCHITECTURE.md",
+        "sdk/python/README.md"
       ],
       "verification": [
         {
@@ -4130,6 +4131,14 @@
             "a_validator_in_a_container_reaches_no_network_and_writes_only_its_outputs",
             "a_validator_past_its_memory_or_its_time_is_stopped_and_decides_nothing",
             "a_replay_runs_the_tool_again_in_its_pinned_image_and_compares_outputs_by_digest"
+          ]
+        },
+        {
+          "assertion": "both-sdks-speak-the-same-protocol",
+          "evidence_selectors": [
+            "the_shared_protocol_fixture_is_a_request_and_a_response_this_build_reads_and_writes",
+            "test_reads_the_shared_request_and_writes_the_shared_response",
+            "test_refuses_a_request_in_another_protocol_or_not_a_request_at_all"
           ]
         }
       ],
@@ -4210,6 +4219,27 @@
           "gate": "verifier-isolation",
           "command": "cargo test -p capsulet-verifier --features container-tests --test isolation --locked",
           "selector": "a_replay_runs_the_tool_again_in_its_pinned_image_and_compares_outputs_by_digest"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/host.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_shared_protocol_fixture_is_a_request_and_a_response_this_build_reads_and_writes"
+        },
+        {
+          "type": "test",
+          "path": "sdk/python/tests/test_verifier.py",
+          "gate": "sdk",
+          "command": "python -m unittest discover -s sdk/python/tests -p test_*.py",
+          "selector": "test_reads_the_shared_request_and_writes_the_shared_response"
+        },
+        {
+          "type": "test",
+          "path": "sdk/python/tests/test_verifier.py",
+          "gate": "sdk",
+          "command": "python -m unittest discover -s sdk/python/tests -p test_*.py",
+          "selector": "test_refuses_a_request_in_another_protocol_or_not_a_request_at_all"
         },
         {
           "type": "source",

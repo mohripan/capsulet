@@ -282,3 +282,29 @@ fn a_registration_that_cannot_run_and_an_input_that_is_not_a_file_name_are_refus
         assert_eq!(refused.code(), "bad_input", "{name:?}");
     }
 }
+
+/// The protocol fixture the Python SDK is tested against too, so the two SDKs
+/// read and write the same documents.
+#[test]
+fn the_shared_protocol_fixture_is_a_request_and_a_response_this_build_reads_and_writes() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/protocol-v1.json"))
+            .expect("the fixture is JSON");
+    let request: capsulet_verifier::VerifyRequest =
+        serde_json::from_value(fixture["request"].clone()).expect("a request");
+    assert_eq!(request.protocol, capsulet_verifier::PROTOCOL);
+    assert_eq!(
+        serde_json::to_value(&request).expect("encodes"),
+        fixture["request"]
+    );
+    let response: capsulet_verifier::VerifyResponse =
+        serde_json::from_value(fixture["response"].clone()).expect("a response");
+    assert_eq!(
+        response.results[1].outcome,
+        capsulet_verifier::Outcome::CannotDecide
+    );
+    assert_eq!(
+        serde_json::to_value(&response).expect("encodes"),
+        fixture["response"]
+    );
+}
