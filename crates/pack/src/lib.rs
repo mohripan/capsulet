@@ -136,12 +136,70 @@ pub struct Admitted {
     pub already_installed: bool,
 }
 
-/// A pack read from a directory.
+/// A pack: its manifest, its signature when it has one, and its files.
 #[derive(Debug, Clone)]
 pub struct Pack {
-    pub root: PathBuf,
+    /// The directory it was read from, when it was read from one. Testing a
+    /// pack needs it, because a case's input paths resolve beside its cases file.
+    pub root: Option<PathBuf>,
     pub manifest: Manifest,
     pub signature: Option<Signature>,
+    /// Every file but the manifest and the signature, by path.
+    pub files: BTreeMap<String, Vec<u8>>,
+}
+
+/// A pack as one JSON document, the form it travels in when it is installed
+/// over the API: the manifest, the signature, and each file's bytes, hex-encoded.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Bundle {
+    pub manifest: Manifest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<Signature>,
+    #[serde(default)]
+    pub files: BTreeMap<String, String>,
+}
+
+impl Pack {
+    /// The pack a bundle carries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PackError::Unreadable`] when a file's bytes are not hex.
+    pub fn from_bundle(bundle: Bundle) -> Result<Self, PackError> {
+        let mut files = BTreeMap::new();
+        for (path, hex) in bundle.files {
+            let bytes = hex::decode(&hex)
+                .map_err(|_| PackError::Unreadable(format!("{path} is not hex")))?;
+            files.insert(path, bytes);
+        }
+        Ok(Self {
+            root: None,
+            manifest: bundle.manifest,
+            signature: bundle.signature,
+            files,
+        })
+    }
+
+    /// The pack as one JSON document.
+    #[must_use]
+    pub fn bundle(&self) -> Bundle {
+        Bundle {
+            manifest: self.manifest.clone(),
+            signature: self.signature.clone(),
+            files: self
+                .files
+                .iter()
+                .map(|(path, bytes)| (path.clone(), hex::encode(bytes)))
+                .collect(),
+        }
+    }
+
+    fn file(&self, path: &str) -> Result<&[u8], PackError> {
+        self.files
+            .get(path)
+            .map(Vec::as_slice)
+            .ok_or_else(|| PackError::MissingFile(path.to_string()))
+    }
 }
 
 fn unreadable(error: impl std::fmt::Display) -> PackError {
@@ -168,9 +226,10 @@ pub fn read(root: &Path) -> Result<Pack, PackError> {
         None
     };
     Ok(Pack {
-        root: root.to_path_buf(),
+        root: Some(root.to_path_buf()),
         manifest,
         signature,
+        files: walk(root)?.into_iter().collect(),
     })
 }
 
@@ -181,6 +240,18 @@ pub fn read(root: &Path) -> Result<Pack, PackError> {
 ///
 /// Returns [`PackError::Unreadable`] when the directory cannot be walked.
 pub fn files_of(root: &Path) -> Result<Vec<FileEntry>, PackError> {
+    Ok(walk(root)?
+        .into_iter()
+        .map(|(path, bytes)| FileEntry {
+            path,
+            digest: capsulet_ir::Digest::of(&bytes).to_string(),
+        })
+        .collect())
+}
+
+/// Every file under `root` but the manifest and the signature, with its bytes,
+/// sorted by path.
+fn walk(root: &Path) -> Result<Vec<(String, Vec<u8>)>, PackError> {
     let mut found = Vec::new();
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {
@@ -203,10 +274,7 @@ pub fn files_of(root: &Path) -> Result<Vec<FileEntry>, PackError> {
                 continue;
             }
             let bytes = fs::read(entry.path()).map_err(unreadable)?;
-            found.push(FileEntry {
-                path,
-                digest: capsulet_ir::Digest::of(&bytes).to_string(),
-            });
+            found.push((path, bytes));
         }
     }
     found.sort();
@@ -242,6 +310,29 @@ pub fn sign(root: &Path, key: &PrivateKey) -> Result<String, PackError> {
     let text = serde_json::to_string_pretty(&signature).map_err(unreadable)?;
     fs::write(root.join(SIGNATURE_FILE), text + "\n").map_err(unreadable)?;
     Ok(manifest)
+}
+
+/// What a pack is, by its manifest digest, once its files are shown to be the
+/// files its manifest lists.
+///
+/// No signature is checked. A replayer compares the pack it holds with the pin a
+/// certificate names, and the pin, sealed into the certificate, is what it
+/// trusts: the pack either is that pack or is not.
+///
+/// # Errors
+///
+/// Returns why the pack is not well formed, or why its files do not match.
+pub fn identify(pack: &Pack) -> Result<String, PackError> {
+    if pack.manifest.schema_version != PACK_SCHEMA {
+        return Err(PackError::UnsupportedSchema {
+            found: pack.manifest.schema_version.clone(),
+        });
+    }
+    check_files(pack)?;
+    pack.manifest
+        .digest()
+        .map(|digest| digest.to_string())
+        .map_err(PackError::Unreadable)
 }
 
 /// Decides whether a project holding `installed` may install the pack, under
@@ -291,8 +382,8 @@ pub fn admit(
     })
 }
 
-/// Every file on disk is listed, every listed file is on disk, and each is the
-/// bytes its digest names.
+/// Every file the pack holds is listed, every listed file is held, and each is
+/// the bytes its digest names.
 fn check_files(pack: &Pack) -> Result<(), PackError> {
     let listed: BTreeMap<&str, &str> = pack
         .manifest
@@ -305,18 +396,20 @@ fn check_files(pack: &Pack) -> Result<(), PackError> {
             return Err(PackError::UnsafePath((*path).to_string()));
         }
     }
-    let present = files_of(&pack.root)?;
-    let on_disk: BTreeSet<&str> = present.iter().map(|file| file.path.as_str()).collect();
-    for file in &present {
-        match listed.get(file.path.as_str()) {
-            None => return Err(PackError::UnlistedFile(file.path.clone())),
-            Some(digest) if *digest != file.digest => {
-                return Err(PackError::TamperedFile(file.path.clone()));
+    for (path, bytes) in &pack.files {
+        if !is_pack_path(path) {
+            return Err(PackError::UnsafePath(path.clone()));
+        }
+        match listed.get(path.as_str()) {
+            None => return Err(PackError::UnlistedFile(path.clone())),
+            Some(digest) if *digest != capsulet_ir::Digest::of(bytes).to_string() => {
+                return Err(PackError::TamperedFile(path.clone()));
             }
             Some(_) => {}
         }
     }
-    if let Some(missing) = listed.keys().find(|path| !on_disk.contains(*path)) {
+    let held: BTreeSet<&str> = pack.files.keys().map(String::as_str).collect();
+    if let Some(missing) = listed.keys().find(|path| !held.contains(*path)) {
         return Err(PackError::MissingFile((*missing).to_string()));
     }
     let named = pack.manifest.contracts.iter().chain(
@@ -367,13 +460,14 @@ fn check_version(
 /// reads.
 fn check_content(pack: &Pack) -> Result<(), PackError> {
     for path in &pack.manifest.contracts {
-        let source = fs::read_to_string(pack.root.join(path)).map_err(unreadable)?;
         let bad = |detail: String| PackError::BadContract {
             path: path.clone(),
             detail,
         };
+        let source = std::str::from_utf8(pack.file(path)?)
+            .map_err(|_| bad("it is not UTF-8".to_string()))?;
         let id = MemoryContractId::new(format!("{}/{path}", pack.manifest.name)).map_err(bad)?;
-        let contract = MemoryContract::parse(id, &pack.manifest.name, &source)
+        let contract = MemoryContract::parse(id, &pack.manifest.name, source)
             .map_err(|error| bad(error.to_string()))?;
         contract.compile().map_err(|error| bad(error.to_string()))?;
     }
@@ -389,10 +483,8 @@ fn registration_of(pack: &Pack, entry: &ValidatorEntry) -> Result<Registration, 
         path: entry.registration.clone(),
         detail,
     };
-    let bytes =
-        fs::read(pack.root.join(&entry.registration)).map_err(|error| bad(error.to_string()))?;
-    let registration: Registration =
-        serde_json::from_slice(&bytes).map_err(|error| bad(error.to_string()))?;
+    let registration: Registration = serde_json::from_slice(pack.file(&entry.registration)?)
+        .map_err(|error| bad(error.to_string()))?;
     registration
         .validate()
         .map_err(|error| bad(error.to_string()))?;
@@ -404,8 +496,7 @@ fn cases_of(pack: &Pack, entry: &ValidatorEntry) -> Result<Cases, PackError> {
         path: entry.cases.clone(),
         detail,
     };
-    let bytes = fs::read(pack.root.join(&entry.cases)).map_err(|error| bad(error.to_string()))?;
-    serde_json::from_slice(&bytes).map_err(|error| bad(error.to_string()))
+    serde_json::from_slice(pack.file(&entry.cases)?).map_err(|error| bad(error.to_string()))
 }
 
 /// One validator's cases, and how they came out.
@@ -420,16 +511,22 @@ pub struct ValidatorReport {
 ///
 /// # Errors
 ///
-/// Returns why a registration or a cases file does not read.
+/// Returns why a registration or a cases file does not read, or
+/// [`PackError::Unreadable`] for a pack that was not read from a directory.
 pub fn test(pack: &Pack) -> Result<Vec<ValidatorReport>, PackError> {
+    let root = pack.root.as_ref().ok_or_else(|| {
+        PackError::Unreadable(
+            "a pack is tested from a directory, for its cases' input files".to_string(),
+        )
+    })?;
     pack.manifest
         .validators
         .iter()
         .map(|entry| {
             let registration = registration_of(pack, entry)?;
             let cases = cases_of(pack, entry)?;
-            let cases_path = pack.root.join(&entry.cases);
-            let base = cases_path.parent().unwrap_or(&pack.root);
+            let cases_path = root.join(&entry.cases);
+            let base = cases_path.parent().unwrap_or(root);
             Ok(ValidatorReport {
                 registration: entry.registration.clone(),
                 cases: run_cases(&registration, &cases, base),

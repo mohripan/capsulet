@@ -290,6 +290,21 @@
     "ownership": "selected_project"
   },
   {
+    "operation_id": "installPack",
+    "minimum_role": "admin",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "listPacks",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
+    "operation_id": "getPack",
+    "minimum_role": "viewer",
+    "ownership": "selected_project"
+  },
+  {
     "operation_id": "getReviewedCertificate",
     "minimum_role": "viewer",
     "ownership": "selected_project"

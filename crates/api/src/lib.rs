@@ -12,6 +12,7 @@ mod ingestion;
 mod memory;
 mod models;
 mod openapi;
+mod packs;
 mod reasoning;
 mod state;
 mod store;

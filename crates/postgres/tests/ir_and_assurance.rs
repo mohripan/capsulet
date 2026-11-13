@@ -536,3 +536,71 @@ async fn a_reading_is_decided_once_kept_and_kept_in_its_own_project() {
     .expect_err("a decision cannot be rewritten");
     assert!(rewrite.to_string().contains("append-only"), "{rewrite}");
 }
+
+#[tokio::test]
+async fn an_installed_pack_version_is_held_once_unchanged_and_in_its_project() {
+    let store = store().await;
+    let tenant = unique_id("tenant");
+    let project = unique_id("project");
+    let record = |version: &str, digest: &str| capsulet_postgres::DomainPackRecord {
+        tenant_id: tenant.clone(),
+        project_id: project.clone(),
+        name: "contract-clauses".to_string(),
+        version: version.to_string(),
+        manifest_digest: digest.to_string(),
+        signed_by: "sha256:publisher".to_string(),
+        bundle: serde_json::json!({ "manifest": { "name": "contract-clauses" }, "files": {} }),
+        installed_by: "owner".to_string(),
+    };
+    assert!(
+        store
+            .insert_domain_pack(&record("1.0.0", "sha256:first"))
+            .await
+            .expect("installs")
+    );
+    assert!(
+        !store
+            .insert_domain_pack(&record("1.0.0", "sha256:other"))
+            .await
+            .expect("a second install of a version is reported, not written"),
+    );
+    let held = store
+        .find_domain_pack(&tenant, &project, "contract-clauses", "1.0.0")
+        .await
+        .expect("query")
+        .expect("held");
+    assert_eq!(
+        held.manifest_digest, "sha256:first",
+        "a version does not change"
+    );
+    assert!(
+        store
+            .find_domain_pack(
+                &tenant,
+                &unique_id("elsewhere"),
+                "contract-clauses",
+                "1.0.0"
+            )
+            .await
+            .expect("query")
+            .is_none(),
+        "another project does not hold it"
+    );
+    assert_eq!(
+        store
+            .list_domain_packs(&tenant, &project)
+            .await
+            .expect("list")
+            .len(),
+        1
+    );
+
+    let rewrite = sqlx::query(
+        "UPDATE domain_packs SET manifest_digest = 'sha256:forged' WHERE tenant_id = $1",
+    )
+    .bind(&tenant)
+    .execute(store.pool())
+    .await
+    .expect_err("an installed pack cannot be rewritten");
+    assert!(rewrite.to_string().contains("append-only"), "{rewrite}");
+}

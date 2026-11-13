@@ -4273,9 +4273,10 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Assurance policy",
-      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content, or whose contracts or validators do not read. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. Installation through the API and runs pinning packs are not implemented yet.",
+      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content, or whose contracts or validators do not read. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. A project installs a pack over the API only under the trust store its operator supplies, and holds each version once and unchanged. A definition pins its packs by manifest digest and registers only when its project holds them exactly as pinned, and replay reports a pinned pack it does not hold, or holds as another pack, instead of substituting one.",
       "public_surfaces": [
-        "ARCHITECTURE.md"
+        "ARCHITECTURE.md",
+        "docs/api.md"
       ],
       "verification": [
         {
@@ -4309,6 +4310,24 @@
           "evidence_selectors": [
             "the_template_passes_its_own_test",
             "the_template_lists_its_files_and_once_signed_installs"
+          ]
+        },
+        {
+          "assertion": "installed-over-the-api-under-the-projects-trust",
+          "evidence_selectors": [
+            "a_signed_pack_installs_into_its_project_once_and_is_listed_there_only",
+            "a_tampered_or_untrusted_pack_is_refused_and_nothing_is_installed",
+            "a_pack_travels_as_one_json_document_and_is_checked_the_same_way",
+            "an_installed_pack_version_is_held_once_unchanged_and_in_its_project"
+          ]
+        },
+        {
+          "assertion": "definitions-pin-packs-and-replay-checks-them",
+          "evidence_selectors": [
+            "a_definition_pins_its_packs_and_the_pin_changes_what_it_is",
+            "a_pin_no_pack_could_satisfy_is_refused_as_a_schema_problem",
+            "a_definition_registers_only_when_every_pack_it_pins_is_installed_as_pinned",
+            "a_runs_pinned_packs_are_named_and_checked_against_the_packs_given"
           ]
         }
       ],
@@ -4368,6 +4387,62 @@
           "gate": "verifier-isolation",
           "command": "cargo test -p capsulet-pack --features container-tests --test template --locked",
           "selector": "the_template_lists_its_files_and_once_signed_installs"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_signed_pack_installs_into_its_project_once_and_is_listed_there_only"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_tampered_or_untrusted_pack_is_refused_and_nothing_is_installed"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_pack_travels_as_one_json_document_and_is_checked_the_same_way"
+        },
+        {
+          "type": "test",
+          "path": "crates/postgres/tests/ir_and_assurance.rs",
+          "gate": "postgres",
+          "command": "cargo test -p capsulet-postgres --test ir_and_assurance --locked",
+          "selector": "an_installed_pack_version_is_held_once_unchanged_and_in_its_project"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/admission.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_definition_pins_its_packs_and_the_pin_changes_what_it_is"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/admission.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_pin_no_pack_could_satisfy_is_refused_as_a_schema_problem"
+        },
+        {
+          "type": "test",
+          "path": "crates/api/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_definition_registers_only_when_every_pack_it_pins_is_installed_as_pinned"
+        },
+        {
+          "type": "test",
+          "path": "crates/replay/tests/run_bundles.rs",
+          "gate": "replay",
+          "command": "cargo test -p capsulet-replay --locked",
+          "selector": "a_runs_pinned_packs_are_named_and_checked_against_the_packs_given"
         },
         {
           "type": "source",

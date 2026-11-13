@@ -344,3 +344,53 @@ fn the_published_rule_table_matches_the_rules_that_run() {
         "the published rule table has drifted from the rules that run"
     );
 }
+
+fn pin(name: &str, version: &str) -> capsulet_ir::PackPin {
+    capsulet_ir::PackPin {
+        name: name.to_string(),
+        version: version.to_string(),
+        manifest: capsulet_ir::Digest::of(name.as_bytes()),
+    }
+}
+
+#[test]
+fn a_definition_pins_its_packs_and_the_pin_changes_what_it_is() {
+    let plain = definition(AssuranceMode::Enforce);
+    let mut pinned = definition(AssuranceMode::Enforce);
+    pinned.packs = vec![pin("contract-clauses", "1.2.0")];
+    let plain_record = admit(&plain).expect("admitted");
+    let pinned_record = admit(&pinned).expect("a well-formed pin is admitted");
+    assert_ne!(
+        plain_record.definition(),
+        pinned_record.definition(),
+        "a certificate pins the definition, so a pin has to change its digest"
+    );
+    let encoded = serde_json::to_value(&plain).expect("encodes");
+    assert!(
+        encoded.get("packs").is_none(),
+        "no packs encodes as before: {encoded}"
+    );
+}
+
+#[test]
+fn a_pin_no_pack_could_satisfy_is_refused_as_a_schema_problem() {
+    for packs in [
+        vec![pin("Contract_Clauses", "1.0.0")],
+        vec![pin("contract-clauses", "latest")],
+        vec![pin("contract-clauses", "1.0")],
+        vec![
+            pin("contract-clauses", "1.0.0"),
+            pin("contract-clauses", "2.0.0"),
+        ],
+    ] {
+        let mut definition = definition(AssuranceMode::Enforce);
+        definition.packs = packs.clone();
+        let refusal = admit(&definition).expect_err("refused");
+        assert_eq!(
+            refusal.code.as_str(),
+            "schema_invalid",
+            "{packs:?}: {}",
+            refusal.detail
+        );
+    }
+}

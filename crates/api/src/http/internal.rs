@@ -332,6 +332,9 @@ where
         .operation("explainAgentRun", crate::graphs::explain_agent_run)
         .operation("askReasoning", crate::reasoning::ask)
         .operation("listCertificates", crate::reasoning::list_certificates)
+        .operation("installPack", crate::packs::install_pack)
+        .operation("listPacks", crate::packs::list_packs)
+        .operation("getPack", crate::packs::get_pack)
         .operation(
             "getReviewedCertificate",
             crate::reasoning::get_reviewed_certificate,

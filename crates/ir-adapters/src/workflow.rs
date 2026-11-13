@@ -115,6 +115,7 @@ pub fn from_workflow(workflow: &WorkflowDefinition) -> Result<Adapted, AdapterEr
 
     let definition = Definition {
         schema_version: Definition::current_schema_version(),
+        packs: Vec::new(),
         id: identifier(workflow.id().as_str(), "workflow id")?,
         version: "1".to_string(),
         name: workflow.name().to_string(),

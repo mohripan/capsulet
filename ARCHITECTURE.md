@@ -550,4 +550,7 @@ in `capsulet-pack`: contracts, and validators with their cases. A manifest lists
 and its own digest is the pack's identity. The pack is signed with Ed25519 under a key the project
 trusts for that pack's name, and a version neither goes backwards nor changes its content. Installing
 refuses an unsigned, tampered, wrongly signed, downgraded or reused-version pack, each with its own
-code (`CAP-ASSURANCE-011`).
+code. A project installs packs over the API under a trust store the operator supplies. A definition
+pins the packs it uses by manifest digest, and registers only when its project holds them exactly as
+pinned. A certificate therefore names them, and a replay checks the packs it holds against the pins
+(`CAP-ASSURANCE-011`).

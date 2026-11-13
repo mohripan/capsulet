@@ -2879,6 +2879,90 @@
         ],
         "type": "object"
       },
+      "InstallPackRequest": {
+        "description": "A pack, as one JSON document.",
+        "properties": {
+          "files": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Each file's bytes, hex-encoded, by path.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "manifest": {
+            "description": "The pack's manifest, `capsulet.pack/v1`.",
+            "type": "object"
+          },
+          "signature": {
+            "description": "Its signature, `capsulet.pack-signature/v1`.",
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "manifest"
+        ],
+        "type": "object"
+      },
+      "InstalledPackResponse": {
+        "description": "An installed pack version.",
+        "properties": {
+          "contracts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "installed_by": {
+            "type": "string"
+          },
+          "manifest": {
+            "description": "The manifest digest: what a definition pins.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "newly_installed": {
+            "description": "Whether this request installed it, or found it already installed.",
+            "type": "boolean"
+          },
+          "signed_by": {
+            "description": "The key that signed it.",
+            "type": "string"
+          },
+          "validators": {
+            "description": "The validator registrations it carries, by path.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "manifest",
+          "signed_by",
+          "installed_by",
+          "description",
+          "contracts",
+          "validators",
+          "newly_installed"
+        ],
+        "type": "object"
+      },
       "IrRunEventResponse": {
         "description": "One event from a run's log.",
         "properties": {
@@ -3526,6 +3610,20 @@
         },
         "required": [
           "subgraphs"
+        ],
+        "type": "object"
+      },
+      "ListPacksResponse": {
+        "properties": {
+          "packs": {
+            "items": {
+              "$ref": "#/components/schemas/InstalledPackResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "packs"
         ],
         "type": "object"
       },
@@ -12632,6 +12730,217 @@
           "project_admin"
         ],
         "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/packs": {
+      "get": {
+        "operationId": "listPacks",
+        "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPacksResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "list packs",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
+        "x-capsulet-resource": "memory",
+        "x-capsulet-stability": "experimental"
+      },
+      "post": {
+        "operationId": "installPack",
+        "parameters": [
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallPackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstalledPackResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "install pack",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:write",
+        "x-capsulet-resource": "memory",
+        "x-capsulet-stability": "experimental"
+      }
+    },
+    "/v1/packs/{name}/{version}": {
+      "get": {
+        "operationId": "getPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project context. Required when the principal can access more than one project.",
+            "in": "header",
+            "name": "x-capsulet-project-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional caller-supplied request correlation identifier.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstalledPackResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "get pack",
+        "x-capsulet-ownership": "selected_project",
+        "x-capsulet-project-context": true,
+        "x-capsulet-project-roles": [
+          "project_viewer",
+          "project_operator",
+          "project_admin"
+        ],
+        "x-capsulet-required-scope": "memory:read",
         "x-capsulet-resource": "memory",
         "x-capsulet-stability": "experimental"
       }

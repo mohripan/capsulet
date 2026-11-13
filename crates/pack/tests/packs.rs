@@ -230,3 +230,38 @@ fn a_pack_whose_contract_or_validator_does_not_read_is_refused() {
     fs::write(escape.path().join("pack.json"), manifest.to_string()).expect("edit");
     assert_eq!(refused(escape.path(), &trust, &[]).code(), "unsafe_path");
 }
+
+#[test]
+fn a_pack_travels_as_one_json_document_and_is_checked_the_same_way() {
+    let directory = tempfile::tempdir().expect("dir");
+    let (key, _) = generate().expect("a key");
+    write_pack(directory.path(), "1.0.0", Some(&key));
+    let trust = trusting(&key, &["sample"]);
+    let on_disk = admit(&read(directory.path()).expect("reads"), &trust, &[]).expect("installs");
+
+    let bundle = read(directory.path()).expect("reads").bundle();
+    let travelled: capsulet_pack::Bundle =
+        serde_json::from_str(&serde_json::to_string(&bundle).expect("encodes")).expect("decodes");
+    let pack = capsulet_pack::Pack::from_bundle(travelled.clone()).expect("a pack");
+    assert!(pack.root.is_none());
+    let over_the_wire = admit(&pack, &trust, &[]).expect("installs the same");
+    assert_eq!(over_the_wire.manifest, on_disk.manifest);
+
+    let mut tampered = travelled;
+    let contract = tampered
+        .files
+        .get_mut("contracts/sample.contract")
+        .expect("the contract travels");
+    contract.replace_range(0..2, "41");
+    let refused = admit(
+        &capsulet_pack::Pack::from_bundle(tampered).expect("a pack"),
+        &trust,
+        &[],
+    )
+    .expect_err("a changed file is refused however it arrives");
+    assert_eq!(refused.code(), "tampered_file");
+    assert!(
+        capsulet_pack::test(&pack).is_err(),
+        "a pack from a bundle has no directory to test in"
+    );
+}

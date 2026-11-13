@@ -88,6 +88,7 @@ fn node(name: &str, kind: NodeKind, inputs: Vec<InputPort>, outputs: Vec<OutputP
 fn definition_with(graph: Graph, capabilities: CapabilitySet) -> Definition {
     Definition {
         schema_version: Definition::current_schema_version(),
+        packs: Vec::new(),
         id: id("test-definition"),
         version: "1".to_string(),
         name: "Test definition".to_string(),

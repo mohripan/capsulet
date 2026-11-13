@@ -52,16 +52,8 @@ impl Manifest {
     }
 }
 
-/// Whether `name` is a pack name: 1 to 64 lower-case letters, digits and
-/// hyphens, starting with a letter.
-#[must_use]
-pub fn is_pack_name(name: &str) -> bool {
-    (1..=64).contains(&name.len())
-        && name.starts_with(|first: char| first.is_ascii_lowercase())
-        && name.chars().all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-        })
-}
+/// Whether `name` is a pack name, by the rule a definition's pin is held to.
+pub use capsulet_ir::is_pack_name;
 
 /// Whether `path` stays inside the pack: relative, `/`-separated, with no
 /// empty, `.` or `..` segment, and no drive or backslash.

@@ -58,6 +58,9 @@ without membership or lacking action permission returns `403`. Webhooks require 
 | `decideAgentRun` | POST | `/v1/agent-runs/{id}/decisions` | `agents:operate` | selected_project | deny | allow | allow |
 | `askReasoning` | POST | `/v1/reasoning/ask` | `reasoning:operate` | selected_project | deny | allow | allow |
 | `registerIrDefinition` | POST | `/v1/ir/definitions` | `memory:write` | selected_project | deny | deny | allow |
+| `installPack` | POST | `/v1/packs` | `memory:write` | selected_project | deny | deny | allow |
+| `listPacks` | GET | `/v1/packs` | `memory:read` | selected_project | allow | allow | allow |
+| `getPack` | GET | `/v1/packs/{name}/{version}` | `memory:read` | selected_project | allow | allow | allow |
 | `listIrDefinitions` | GET | `/v1/ir/definitions` | `memory:read` | selected_project | allow | allow | allow |
 | `getIrDefinitionVersion` | GET | `/v1/ir/definitions/{digest}` | `memory:read` | selected_project | allow | allow | allow |
 | `startIrRun` | POST | `/v1/ir/runs` | `jobs:run` | selected_project | deny | allow | allow |

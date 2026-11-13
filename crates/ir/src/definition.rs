@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::capability::CapabilitySet;
 use crate::correctness::obligation::Contract;
+use crate::digest::Digest;
 use crate::effect::ProtectedBoundary;
 use crate::graph::Graph;
 use crate::id::Identifier;
@@ -87,6 +88,60 @@ pub struct Definition {
     pub boundaries: Vec<ProtectedBoundary>,
     /// The contracts this definition's obligations come from.
     pub contracts: Vec<Contract>,
+    /// The domain packs this definition was written against, each pinned by
+    /// manifest digest (ADR 0022). A certificate pins the definition, so it
+    /// names these packs too. Left out when there are none, so a definition
+    /// written before packs existed encodes and digests as it always did.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub packs: Vec<PackPin>,
+}
+
+/// A domain pack a definition uses, pinned exactly.
+///
+/// The name and version say what the pack claims to be. The manifest digest
+/// says what it is, and it is what a replay compares against the pack it
+/// holds.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PackPin {
+    pub name: String,
+    pub version: String,
+    pub manifest: Digest,
+}
+
+impl PackPin {
+    /// Why this pin is not one a pack could satisfy, if it is not.
+    #[must_use]
+    pub fn problem(&self) -> Option<&'static str> {
+        if !is_pack_name(&self.name) {
+            return Some("its name is not a pack name");
+        }
+        if !is_release_version(&self.version) {
+            return Some("its version is not MAJOR.MINOR.PATCH");
+        }
+        None
+    }
+}
+
+/// Whether `name` is a pack name: 1 to 64 lower-case letters, digits and
+/// hyphens, starting with a letter.
+#[must_use]
+pub fn is_pack_name(name: &str) -> bool {
+    (1..=64).contains(&name.len())
+        && name.starts_with(|first: char| first.is_ascii_lowercase())
+        && name.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
+}
+
+/// Whether `version` starts with a semantic version's `MAJOR.MINOR.PATCH`. The
+/// pack's own manifest holds the full version, checked when it is installed.
+fn is_release_version(version: &str) -> bool {
+    let core = version.split(['-', '+']).next().unwrap_or_default();
+    let parts: Vec<&str> = core.split('.').collect();
+    parts.len() == 3
+        && parts.iter().all(|part| {
+            !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
+        })
 }
 
 impl Definition {

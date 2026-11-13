@@ -305,3 +305,42 @@ fn a_page_for_a_log_the_runtime_would_not_have_written_shows_where() {
     );
     assert!(html.contains("href=\"#event-13\">Event 13</a>"), "{html}");
 }
+
+#[test]
+fn a_runs_pinned_packs_are_named_and_checked_against_the_packs_given() {
+    let mut bundle = sealed("succeeded").open().expect("the fixture opens");
+    bundle.definition.packs = vec![capsulet_ir::PackPin {
+        name: "sample".to_string(),
+        version: "1.0.0".to_string(),
+        manifest: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            .parse()
+            .expect("a digest"),
+    }];
+    let path = written("pinned", &bundle.seal().expect("it seals"));
+    let named = replay(&path);
+    let empty =
+        std::env::temp_dir().join(format!("capsulet-replay-no-packs-{}", std::process::id()));
+    std::fs::create_dir_all(&empty).expect("dir");
+    let checked = Command::new(env!("CARGO_BIN_EXE_capsulet-replay"))
+        .arg(&path)
+        .arg("--packs")
+        .arg(&empty)
+        .env_clear()
+        .output()
+        .expect("the replay binary runs");
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&empty);
+
+    let stdout = String::from_utf8_lossy(&named.stdout);
+    assert!(
+        stdout.contains("pack sample 1.0.0 (sha256:2222") && stdout.contains("pass --packs <dir>"),
+        "{stdout}"
+    );
+    let stdout = String::from_utf8_lossy(&checked.stdout);
+    assert!(stdout.contains("not held as pinned"), "{stdout}");
+    assert_eq!(
+        checked.status.code(),
+        Some(1),
+        "a pin nobody holds fails the replay: {stdout}"
+    );
+}

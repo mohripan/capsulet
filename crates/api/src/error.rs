@@ -82,6 +82,12 @@ pub(crate) enum ApiError {
     ReasoningCertificateNotFound(String),
     #[error("{0}")]
     ReadingAlreadyReviewed(String),
+    #[error("the pack is refused: {0}")]
+    PackRefused(String),
+    #[error("{0}")]
+    PackNotInstalled(String),
+    #[error("pack not found: {0}")]
+    PackNotFound(String),
     #[error("cited evidence is no longer retrievable: {0}")]
     AssuranceEvidenceMissing(String),
     /// A definition that did not pass structural admission. The rule and its
@@ -136,6 +142,8 @@ impl ApiError {
             Self::UnknownJobDefinition(_)
             | Self::UnknownExecutionPool(_)
             | Self::AdmissionRefused { .. }
+            | Self::PackRefused(_)
+            | Self::PackNotInstalled(_)
             | Self::AgentNotRunnable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::ResourceNotFound
             | Self::JobDefinitionSourceNotFound(_)
@@ -154,6 +162,7 @@ impl ApiError {
             | Self::IrDefinitionNotFound(_)
             | Self::AssuranceCertificateNotFound(_)
             | Self::ReasoningCertificateNotFound(_)
+            | Self::PackNotFound(_)
             | Self::AssuranceEvidenceMissing(_) => StatusCode::NOT_FOUND,
             Self::AdmissionUnavailable(_) | Self::Proposer(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::MissingEndpointContract(_) | Self::Store(_) | Self::ObjectStore(_) => {
@@ -199,6 +208,9 @@ impl ApiError {
             Self::AssuranceCertificateNotFound(_) => "assurance_certificate_not_found",
             Self::ReasoningCertificateNotFound(_) => "reasoning_certificate_not_found",
             Self::ReadingAlreadyReviewed(_) => "reading_already_reviewed",
+            Self::PackRefused(_) => "pack_refused",
+            Self::PackNotInstalled(_) => "pack_not_installed",
+            Self::PackNotFound(_) => "pack_not_found",
             Self::AssuranceEvidenceMissing(_) => "assurance_evidence_missing",
             Self::AdmissionRefused { .. } => "admission_refused",
             Self::ObjectStore(_) => "object_store_error",

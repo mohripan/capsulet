@@ -26,6 +26,7 @@ capsulet-ir-adapters = { path = "../ir-adapters" }
 capsulet-kernel = { path = "../kernel" }
 capsulet-proposer = { path = "../proposer" }
 capsulet-postgres = { path = "../postgres" }
+capsulet-pack = { path = "../pack" }
 capsulet-runtime = { path = "../runtime" }
 capsulet-storage = { path = "../storage" }
 reqwest.workspace = true

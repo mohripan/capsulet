@@ -80,6 +80,7 @@ fn text() -> ValueSchema {
 fn definition_with(name: &str, graph: Graph, capabilities: CapabilitySet) -> Definition {
     Definition {
         schema_version: Definition::current_schema_version(),
+        packs: Vec::new(),
         id: id(name),
         version: "1".to_string(),
         name: name.to_string(),

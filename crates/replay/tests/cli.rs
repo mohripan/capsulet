@@ -50,6 +50,7 @@ fn definition() -> Definition {
 
     Definition {
         schema_version: Definition::current_schema_version(),
+        packs: Vec::new(),
         id: id("remediation"),
         version: "1".to_string(),
         name: "Remediation".to_string(),

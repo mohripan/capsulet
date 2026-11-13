@@ -128,6 +128,10 @@ where
         owner: refusal.owner.as_str().to_string(),
         detail: refusal.detail,
     })?;
+    // A pinned pack has to be installed here, at exactly the version and bytes
+    // the pin names, or the definition's certificates would name a pack nobody
+    // can re-read.
+    crate::packs::check_pins(&state, &context, &request.definition).await?;
 
     let digest = state
         .store

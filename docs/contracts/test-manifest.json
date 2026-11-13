@@ -70,6 +70,10 @@
         },
         {
           "path": "crates/api/src/tests.rs",
+          "selector": "a_definition_registers_only_when_every_pack_it_pins_is_installed_as_pinned"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
           "selector": "a_reading_a_reviewer_refutes_rejects_the_answer"
         },
         {
@@ -83,6 +87,14 @@
         {
           "path": "crates/api/src/tests.rs",
           "selector": "a_run_of_a_definition_nobody_registered_is_refused"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "a_signed_pack_installs_into_its_project_once_and_is_listed_there_only"
+        },
+        {
+          "path": "crates/api/src/tests.rs",
+          "selector": "a_tampered_or_untrusted_pack_is_refused_and_nothing_is_installed"
         },
         {
           "path": "crates/api/src/tests.rs",
@@ -570,6 +582,10 @@
         },
         {
           "path": "crates/pack/tests/packs.rs",
+          "selector": "a_pack_travels_as_one_json_document_and_is_checked_the_same_way"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
           "selector": "a_pack_whose_contract_or_validator_does_not_read_is_refused"
         },
         {
@@ -670,6 +686,14 @@
       "gate": "ir",
       "command": "cargo test -p capsulet-ir --locked",
       "tests": [
+        {
+          "path": "crates/ir/tests/admission.rs",
+          "selector": "a_definition_pins_its_packs_and_the_pin_changes_what_it_is"
+        },
+        {
+          "path": "crates/ir/tests/admission.rs",
+          "selector": "a_pin_no_pack_could_satisfy_is_refused_as_a_schema_problem"
+        },
         {
           "path": "crates/ir/tests/admission.rs",
           "selector": "admission_always_reaches_a_decision"
@@ -922,6 +946,10 @@
         },
         {
           "path": "crates/replay/tests/run_bundles.rs",
+          "selector": "a_runs_pinned_packs_are_named_and_checked_against_the_packs_given"
+        },
+        {
+          "path": "crates/replay/tests/run_bundles.rs",
           "selector": "every_decision_in_every_fixture_is_the_one_the_runtime_makes_again"
         }
       ]
@@ -1065,6 +1093,10 @@
         {
           "path": "crates/postgres/tests/ir_and_assurance.rs",
           "selector": "a_reading_is_decided_once_kept_and_kept_in_its_own_project"
+        },
+        {
+          "path": "crates/postgres/tests/ir_and_assurance.rs",
+          "selector": "an_installed_pack_version_is_held_once_unchanged_and_in_its_project"
         }
       ]
     },

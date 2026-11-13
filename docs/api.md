@@ -1,4 +1,4 @@
-<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015, CAP-CORRECTNESS-016, CAP-CORRECTNESS-017 -->
+<!-- capsulet-claims: CAP-CORRECTNESS-001, CAP-CORRECTNESS-002, CAP-GRAPH-001, CAP-AGENT-001, CAP-AGENT-002, CAP-AGENT-003, CAP-AGENT-004, CAP-AGENT-005, CAP-AGENT-006, CAP-AGENT-007, CAP-AGENT-008, CAP-AGENT-009, CAP-AGENT-010, CAP-MEMORY-001, CAP-MEMORY-002, CAP-MEMORY-003, CAP-MEMORY-004, CAP-MEMORY-005, CAP-MEMORY-006, CAP-MEMORY-007, CAP-WORKFLOW-001, CAP-AUTOMATION-001, CAP-AUTOMATION-002, CAP-AUTOMATION-003, CAP-AUTOMATION-004, CAP-AUTOMATION-005, CAP-AUTOMATION-006, CAP-AUTOMATION-007, CAP-AUTOMATION-008, CAP-IAM-001, CAP-IAM-002, CAP-IAM-003, CAP-IAM-004, CAP-IAM-005, CAP-IAM-006, CAP-IAM-007, CAP-IAM-009, CAP-OPENAPI-001, CAP-LIFECYCLE-001, CAP-CORRECTNESS-013, CAP-CORRECTNESS-015, CAP-CORRECTNESS-016, CAP-CORRECTNESS-017, CAP-ASSURANCE-011 -->
 # API
 
 Capsulet's current experimental API spans the implemented compatibility workflow engine,
@@ -92,6 +92,9 @@ The generated router inventory currently exposes:
 | `GET` | `/openapi.json` | Machine-readable OpenAPI document |
 | `POST` | `/v1/reasoning/ask` | Run the current propose-check-certify slice |
 | `GET` | `/v1/reasoning/readings` | The readings in recent certificates nobody has decided yet |
+| `POST` | `/v1/packs` | Install a signed domain pack into the project, or find it already installed ([domain packs](contracts/domain-packs.md)) |
+| `GET` | `/v1/packs` | The pack versions the project holds |
+| `GET` | `/v1/packs/{name}/{version}` | One pack version the project holds |
 | `GET` | `/v1/reasoning/certificates/{id}/review` | A certificate's outcome with the reviews of its readings |
 | `POST` | `/v1/reasoning/certificates/{id}/readings/{reading}/review` | Decide one reading, `holds` or `does_not_hold`, with a rationale |
 | `GET` | `/v1/reasoning/certificates` | List persisted kernel certificates |

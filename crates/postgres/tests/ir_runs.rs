@@ -65,6 +65,7 @@ fn effect_definition(name: &str, idempotency: Idempotency) -> Definition {
 
     Definition {
         schema_version: Definition::current_schema_version(),
+        packs: Vec::new(),
         id: id(name),
         version: "1".to_string(),
         name: name.to_string(),

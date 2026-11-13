@@ -240,11 +240,35 @@ pub fn admit(definition: &Definition) -> Result<AdmissionRecord, AdmissionRefusa
 
     check_boundaries(definition)?;
     check_contracts(definition)?;
+    check_packs(definition)?;
 
     Ok(AdmissionRecord {
         definition: digest,
         rules_applied: AdmissionCode::all().to_vec(),
     })
+}
+
+/// Each pin names a pack once, by a pack name and a release version. Refused
+/// as a schema problem: a pin that could match no pack is a document that does
+/// not say what it claims to.
+fn check_packs(definition: &Definition) -> Result<(), AdmissionRefusal> {
+    let mut seen: Vec<&str> = Vec::new();
+    for pin in &definition.packs {
+        if let Some(problem) = pin.problem() {
+            return Err(AdmissionRefusal::new(
+                AdmissionCode::SchemaInvalid,
+                format!("pack pin {}@{}: {problem}", pin.name, pin.version),
+            ));
+        }
+        if seen.contains(&pin.name.as_str()) {
+            return Err(AdmissionRefusal::new(
+                AdmissionCode::SchemaInvalid,
+                format!("pack {} is pinned twice", pin.name),
+            ));
+        }
+        seen.push(&pin.name);
+    }
+    Ok(())
 }
 
 fn schema_refusal(source: &CanonicalError) -> AdmissionRefusal {

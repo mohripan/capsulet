@@ -19,9 +19,9 @@ use capsulet_ir::correctness::evidence::RecordedTime;
 use capsulet_ir::definition::{AssuranceMode, Definition};
 use capsulet_ir::digest::Digest;
 use capsulet_postgres::{
-    AdmissionSnapshot, AuditEvent, CertificateRecord, EvidenceLocation, IrDefinitionVersion,
-    IrRunRecord, NewAuditEvent, NewProjectMembership, NewServiceAccount, PostgresStore,
-    PostgresStoreError, ProjectMembershipRecord, ProjectRecord, ReadingReviewRecord,
+    AdmissionSnapshot, AuditEvent, CertificateRecord, DomainPackRecord, EvidenceLocation,
+    IrDefinitionVersion, IrRunRecord, NewAuditEvent, NewProjectMembership, NewServiceAccount,
+    PostgresStore, PostgresStoreError, ProjectMembershipRecord, ProjectRecord, ReadingReviewRecord,
     ServiceAccountRecord, StoredCertificate, TriggerEvent,
 };
 use capsulet_runtime::RecordedEvent;
@@ -560,6 +560,20 @@ pub trait ApiStore: Clone + Send + Sync + 'static {
         project_id: &str,
         certificate_ids: &[String],
     ) -> Result<Vec<ReadingReviewRecord>, Self::Error>;
+    /// Records an installed pack version; `false` when that version is already held.
+    async fn insert_domain_pack(&self, record: &DomainPackRecord) -> Result<bool, Self::Error>;
+    async fn list_domain_packs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<DomainPackRecord>, Self::Error>;
+    async fn find_domain_pack(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        name: &str,
+        version: &str,
+    ) -> Result<Option<DomainPackRecord>, Self::Error>;
     async fn upsert_memory_entity(&self, entity: &Entity) -> Result<(), Self::Error>;
     async fn list_memory_entities(
         &self,
@@ -1532,6 +1546,29 @@ impl ApiStore for PostgresStore {
         certificate_ids: &[String],
     ) -> Result<Vec<ReadingReviewRecord>, Self::Error> {
         self.list_reading_reviews(tenant_id, project_id, certificate_ids)
+            .await
+    }
+
+    async fn insert_domain_pack(&self, record: &DomainPackRecord) -> Result<bool, Self::Error> {
+        self.insert_domain_pack(record).await
+    }
+
+    async fn list_domain_packs(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<DomainPackRecord>, Self::Error> {
+        self.list_domain_packs(tenant_id, project_id).await
+    }
+
+    async fn find_domain_pack(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        name: &str,
+        version: &str,
+    ) -> Result<Option<DomainPackRecord>, Self::Error> {
+        self.find_domain_pack(tenant_id, project_id, name, version)
             .await
     }
 

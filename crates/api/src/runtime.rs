@@ -84,7 +84,8 @@ pub async fn run() -> anyhow::Result<()> {
             AppState::new(store, object_store, execution_pools)
                 .with_auth(auth)
                 .with_webhook_secrets(webhook_secrets)
-                .with_admission(AdmissionConfig::from_env()),
+                .with_admission(AdmissionConfig::from_env())
+                .with_pack_trust_from_env(),
         ),
     )
     .await

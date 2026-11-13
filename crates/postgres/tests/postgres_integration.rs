@@ -65,6 +65,7 @@ fn minimal_definition() -> &'static capsulet_ir::Definition {
     static DEFINITION: std::sync::OnceLock<capsulet_ir::Definition> = std::sync::OnceLock::new();
     DEFINITION.get_or_init(|| capsulet_ir::Definition {
         schema_version: capsulet_ir::Definition::current_schema_version(),
+        packs: Vec::new(),
         id: capsulet_ir::Identifier::parse("minimal").expect("valid"),
         version: "1".to_string(),
         name: "Minimal".to_string(),

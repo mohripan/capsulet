@@ -369,6 +369,7 @@ dependencies = [
  "capsulet-ir-adapters",
  "capsulet-kernel",
  "capsulet-observability",
+ "capsulet-pack",
  "capsulet-postgres",
  "capsulet-proposer",
  "capsulet-runtime",
@@ -578,6 +579,7 @@ version = "0.1.0"
 dependencies = [
  "capsulet-ir",
  "capsulet-kernel",
+ "capsulet-pack",
  "capsulet-runtime",
  "serde_json",
 ]

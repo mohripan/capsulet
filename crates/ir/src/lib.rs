@@ -52,7 +52,7 @@ pub use correctness::{
     ProducerKind, Proposal, RecordedTime, RepairOwner, Subject, VerifierRecord, VerifierTrust,
 };
 pub use coverage::{Coverage, coverage};
-pub use definition::{AssuranceMode, Definition};
+pub use definition::{AssuranceMode, Definition, PackPin, is_pack_name};
 pub use digest::{DIGEST_PREFIX, Digest, DigestError};
 pub use effect::{
     BoundaryError, Crossing, Effect, EffectError, EffectKind, Idempotency, ProtectedBoundary,

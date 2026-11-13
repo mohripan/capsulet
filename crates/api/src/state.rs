@@ -19,6 +19,9 @@ pub struct AppState<S, O> {
     pub(crate) auth: AuthConfig,
     pub(crate) webhook_secrets: WebhookSecrets,
     pub(crate) admission: AdmissionConfig,
+    /// Where each project's pack trust store lives: `<dir>/<tenant>/<project>.json`.
+    /// Without one, no pack's signer is trusted, so no pack installs.
+    pub(crate) pack_trust: Option<Arc<std::path::PathBuf>>,
 }
 
 impl<S, O> AppState<S, O> {
@@ -42,7 +45,15 @@ impl<S, O> AppState<S, O> {
             auth: AuthConfig::disabled(),
             webhook_secrets: WebhookSecrets::default(),
             admission: AdmissionConfig::default(),
+            pack_trust: None,
         }
+    }
+
+    /// Reads each project's pack trust store from `<dir>/<tenant>/<project>.json`.
+    #[must_use]
+    pub fn with_pack_trust(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.pack_trust = Some(Arc::new(dir.into()));
+        self
     }
 
     #[must_use]
@@ -61,6 +72,15 @@ impl<S, O> AppState<S, O> {
     pub fn with_auth(mut self, auth: AuthConfig) -> Self {
         self.auth = auth;
         self
+    }
+
+    /// Reads pack trust stores from `CAPSULET_PACK_TRUST_DIR`, when it is set.
+    #[must_use]
+    pub fn with_pack_trust_from_env(self) -> Self {
+        match std::env::var_os("CAPSULET_PACK_TRUST_DIR") {
+            Some(dir) if !dir.is_empty() => self.with_pack_trust(dir),
+            _ => self,
+        }
     }
 
     pub(crate) fn knows_pool(&self, pool: &str) -> bool {

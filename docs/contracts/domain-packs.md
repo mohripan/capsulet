@@ -64,8 +64,37 @@ secret: it never goes in a pack or a repository.
 `packs/template` is a working pack to start from. The `verifier-isolation` gate holds it to passing
 its own test, with its validator in a real container, and to installing once signed.
 
-## Not yet
+## Installing a pack into a project
 
-Installing a pack into a project over the API, and a run's definition pinning the packs it uses by
-manifest digest so that a certificate names them and a replay re-reads exactly those. Both are tracked
-in #158.
+`POST /v1/packs` (`memory:write`, admin) takes a pack as one JSON document:
+
+```json
+{
+  "manifest": { "schema_version": "capsulet.pack/v1", "name": "sample", "version": "1.0.0", "...": "..." },
+  "signature": { "schema_version": "capsulet.pack-signature/v1", "key": "sha256:…", "manifest": "sha256:…", "signature": "…" },
+  "files": { "contracts/sample.contract": "<the file's bytes, hex-encoded>" }
+}
+```
+
+It answers `200` either way, with `newly_installed` true when the pack was installed and false when
+this project already held exactly this pack. A refusal is `422 pack_refused`, with the pack's own
+code in the message.
+
+Each project's trust store is the file `<CAPSULET_PACK_TRUST_DIR>/<tenant>/<project>.json`, supplied
+by the operator. With no directory configured, or no file for the project, no signer is trusted, so
+no pack installs. `GET /v1/packs` and `GET /v1/packs/{name}/{version}` (`memory:read`) report what a
+project holds. An installed version is stored as it arrived and never changes, which the database
+enforces.
+
+## Pinning a pack in a definition
+
+A definition names each pack it uses in `packs`, by `name`, `version` and `manifest` digest.
+Admission refuses a pin no pack could satisfy, and refuses a pack pinned twice. Registering the
+definition (`POST /v1/ir/definitions`) refuses, with `422 pack_not_installed`, a pin the project
+does not hold at exactly that version and manifest digest. A certificate pins its definition's digest,
+so it names the packs too.
+
+`capsulet-replay <run-bundle.json> --packs <dir>` names each pinned pack and checks the one held at
+`<dir>/<name>`: its files are the ones its manifest lists, and its manifest digest is the one pinned.
+A pin the replayer does not hold, or holds as another pack, is reported and fails the replay, never
+substituted. Without `--packs` the pins are named and nothing fails.

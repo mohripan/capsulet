@@ -1247,6 +1247,39 @@ const ENDPOINTS: &[EndpointContract] = &[
         "201"
     ),
     endpoint!(
+        "POST",
+        "/v1/packs",
+        "installPack",
+        "memory:write",
+        true,
+        true,
+        Some(crate::packs::InstallPackRequest),
+        crate::packs::InstalledPackResponse,
+        "200"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/packs",
+        "listPacks",
+        "memory:read",
+        true,
+        true,
+        None,
+        crate::packs::ListPacksResponse,
+        "200"
+    ),
+    endpoint!(
+        "GET",
+        "/v1/packs/{name}/{version}",
+        "getPack",
+        "memory:read",
+        true,
+        true,
+        None,
+        crate::packs::InstalledPackResponse,
+        "200"
+    ),
+    endpoint!(
         "GET",
         "/v1/ir/definitions",
         "listIrDefinitions",

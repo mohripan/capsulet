@@ -185,6 +185,7 @@ pub fn boundary() -> ProtectedBoundary {
 pub fn definition_in(mode: AssuranceMode) -> Definition {
     Definition {
         schema_version: Definition::current_schema_version(),
+        packs: Vec::new(),
         id: id("security-remediation"),
         version: "1".to_string(),
         name: "Security remediation".to_string(),

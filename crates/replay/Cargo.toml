@@ -19,6 +19,9 @@ path = "src/main.rs"
 [dependencies]
 capsulet-ir = { path = "../ir" }
 capsulet-kernel = { path = "../kernel" }
+# To compare a pinned pack with the one a replayer holds. Reading a directory and
+# digesting it; nothing here is fetched.
+capsulet-pack = { path = "../pack" }
 # The pure fold, for reading a run bundle's log again. No store, no clock, no I/O.
 capsulet-runtime = { path = "../runtime" }
 serde_json.workspace = true

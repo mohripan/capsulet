@@ -167,6 +167,7 @@ pub fn from_agent(agent: &AgentDefinition) -> Result<Adapted, AdapterError> {
 
     let definition = Definition {
         schema_version: Definition::current_schema_version(),
+        packs: Vec::new(),
         id: identifier(agent.id().as_str())?,
         version: "1".to_string(),
         name: agent.name().to_string(),
@@ -1156,6 +1157,7 @@ fn definition_for(
 
     Ok(Definition {
         schema_version: Definition::current_schema_version(),
+        packs: Vec::new(),
         id: identifier(graph.id().as_str())?,
         version: "1".to_string(),
         name: graph.name().to_string(),

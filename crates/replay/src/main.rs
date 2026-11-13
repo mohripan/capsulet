@@ -1,7 +1,7 @@
 //! `capsulet-replay` — check a certificate against the evidence it cites, or
 //! explain a run from its bundle.
 //!
-//! Usage: `capsulet-replay <bundle.json> [--html <page.html>]`
+//! Usage: `capsulet-replay <bundle.json> [--html <page.html>] [--packs <dir>]`
 //!
 //! A certificate bundle: exits 0 when the certificate still justifies its recorded
 //! verdict, 1 when it does not, and 2 when the bundle cannot be read at all.
@@ -12,6 +12,12 @@
 //! reader could reproduce without the installation. Exits 0 when the log supports
 //! what the installation reported and every decision replays, 1 when either does
 //! not, and 2 when the bundle cannot be read or does not match its digest.
+//!
+//! A run whose definition pins domain packs names them. Given `--packs <dir>`,
+//! each pin is checked against `<dir>/<name>`: the pack there has to be exactly
+//! the one pinned, by manifest digest, with its files intact. A pin the
+//! replayer does not hold, or holds as another pack, is reported and fails the
+//! replay, never substituted.
 //!
 //! The distinction matters to a script: "this is wrong" and "I could not open the
 //! file" are different problems.
@@ -33,7 +39,7 @@ use capsulet_runtime::bundle::{
 
 mod html;
 
-const USAGE: &str = "usage: capsulet-replay <bundle.json> [--html <page.html>]";
+const USAGE: &str = "usage: capsulet-replay <bundle.json> [--html <page.html>] [--packs <dir>]";
 
 fn main() -> ExitCode {
     let mut arguments = std::env::args_os().skip(1);
@@ -41,15 +47,25 @@ fn main() -> ExitCode {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     };
-    // A run bundle can also be written out as one page to open in a browser.
-    let page = match (arguments.next(), arguments.next(), arguments.next()) {
-        (None, ..) => None,
-        (Some(flag), Some(page), None) if flag == "--html" => Some(PathBuf::from(page)),
-        _ => {
-            eprintln!("{USAGE}");
-            return ExitCode::from(2);
+    // A run bundle can also be written out as one page to open in a browser, and
+    // its pinned packs checked against the packs a replayer holds.
+    let mut page = None;
+    let mut packs = None;
+    loop {
+        match (arguments.next(), arguments.next()) {
+            (None, _) => break,
+            (Some(flag), Some(value)) if flag == "--html" && page.is_none() => {
+                page = Some(PathBuf::from(value));
+            }
+            (Some(flag), Some(value)) if flag == "--packs" && packs.is_none() => {
+                packs = Some(PathBuf::from(value));
+            }
+            _ => {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
         }
-    };
+    }
 
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
@@ -72,7 +88,9 @@ fn main() -> ExitCode {
                     eprintln!("cannot write {}: {error}", page.display());
                     return ExitCode::from(2);
                 }
-                report_run(&bundle, &explanation)
+                let run = report_run(&bundle, &explanation);
+                let pins = report_pins(&bundle.definition, packs.as_deref());
+                if run == ExitCode::SUCCESS { pins } else { run }
             }
             Err(error) => {
                 eprintln!("{}: {error}", path.display());
@@ -80,9 +98,9 @@ fn main() -> ExitCode {
             }
         };
     }
-    if page.is_some() {
+    if page.is_some() || packs.is_some() {
         eprintln!(
-            "--html is for run bundles; {} is a certificate bundle",
+            "--html and --packs are for run bundles; {} is a certificate bundle",
             path.display()
         );
         return ExitCode::from(2);
@@ -224,6 +242,57 @@ fn describe_note(note: &ReplayNote) -> String {
 }
 
 /// Says what a run did, from its bundle alone.
+/// The packs a definition pins, and, given a directory of held packs, whether
+/// each held one is exactly the pack pinned. Fails when any is not.
+fn report_pins(definition: &capsulet_ir::Definition, held: Option<&std::path::Path>) -> ExitCode {
+    let (lines, all_held) = pin_lines(definition, held);
+    for line in lines {
+        println!("{line}");
+    }
+    if all_held {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+/// A line for each pin, and whether every pin is held exactly as pinned. Pins
+/// are only reported, and nothing fails, when no directory of packs is given.
+fn pin_lines(
+    definition: &capsulet_ir::Definition,
+    held: Option<&std::path::Path>,
+) -> (Vec<String>, bool) {
+    let mut lines = Vec::new();
+    let mut all_held = true;
+    for pin in &definition.packs {
+        let named = format!("pack {} {} ({})", pin.name, pin.version, pin.manifest);
+        let Some(directory) = held else {
+            lines.push(format!(
+                "{named}: pinned; pass --packs <dir> to check the pack you hold"
+            ));
+            continue;
+        };
+        let found = capsulet_pack::read(&directory.join(&pin.name))
+            .and_then(|pack| capsulet_pack::identify(&pack));
+        match found {
+            Ok(digest) if digest == pin.manifest.to_string() => {
+                lines.push(format!("{named}: held, and it is the pack this run pinned"));
+            }
+            Ok(digest) => {
+                all_held = false;
+                lines.push(format!(
+                    "{named}: held as {digest}, NOT the pack this run pinned"
+                ));
+            }
+            Err(error) => {
+                all_held = false;
+                lines.push(format!("{named}: not held as pinned: {error}"));
+            }
+        }
+    }
+    (lines, all_held)
+}
+
 fn report_run(bundle: &RunBundle, explanation: &Explanation) -> ExitCode {
     println!(
         "run {} of agent {}, in {}/{}",
@@ -401,5 +470,79 @@ fn print_offline(bundle: &RunBundle, explanation: &Explanation) {
     );
     if bundle.payloads_erased {
         println!("  this run's payloads had been erased when it was packed");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    /// `dir/sample`, a pack whose manifest digest this returns.
+    fn held_pack(dir: &Path, contract: &str) -> String {
+        let root = dir.join("sample");
+        std::fs::create_dir_all(root.join("contracts")).expect("dir");
+        std::fs::write(root.join("contracts/sample.contract"), contract).expect("contract");
+        std::fs::write(
+            root.join("pack.json"),
+            r#"{"schema_version": "capsulet.pack/v1", "name": "sample", "version": "1.0.0",
+                "contracts": ["contracts/sample.contract"], "files": []}"#,
+        )
+        .expect("manifest");
+        capsulet_pack::refresh(&root).expect("lists its files")
+    }
+
+    fn pinning(manifest: &str) -> capsulet_ir::Definition {
+        let bundle: capsulet_runtime::bundle::SealedRunBundle =
+            serde_json::from_str(include_str!("../tests/fixtures/run-succeeded.json"))
+                .expect("a fixture");
+        let mut definition = bundle.open().expect("opens").definition;
+        definition.packs = vec![capsulet_ir::PackPin {
+            name: "sample".to_string(),
+            version: "1.0.0".to_string(),
+            manifest: manifest.parse().expect("a digest"),
+        }];
+        definition
+    }
+
+    #[test]
+    fn a_held_pack_is_checked_against_its_pin_and_never_substituted() {
+        let directory =
+            std::env::temp_dir().join(format!("capsulet-replay-pins-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        let manifest = held_pack(
+            &directory,
+            "entity Organization:\n  fields:\n    name: string\n",
+        );
+
+        let (lines, held) = super::pin_lines(&pinning(&manifest), Some(&directory));
+        assert!(held, "{lines:?}");
+        assert!(
+            lines[0].ends_with("held, and it is the pack this run pinned"),
+            "{lines:?}"
+        );
+
+        let other = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+        let (lines, held) = super::pin_lines(&pinning(other), Some(&directory));
+        assert!(!held);
+        assert!(
+            lines[0].contains("NOT the pack this run pinned"),
+            "{lines:?}"
+        );
+
+        std::fs::write(
+            directory.join("sample/contracts/sample.contract"),
+            "entity Changed:\n",
+        )
+        .expect("tamper");
+        let (lines, held) = super::pin_lines(&pinning(&manifest), Some(&directory));
+        assert!(!held);
+        assert!(lines[0].contains("not held as pinned"), "{lines:?}");
+
+        let (lines, held) = super::pin_lines(&pinning(&manifest), Some(&directory.join("nowhere")));
+        assert!(!held, "{lines:?}");
+        let (lines, held) = super::pin_lines(&pinning(&manifest), None);
+        assert!(held, "only reported without a directory: {lines:?}");
+        assert!(lines[0].contains("pass --packs <dir>"), "{lines:?}");
+        let _ = std::fs::remove_dir_all(&directory);
     }
 }

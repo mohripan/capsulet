@@ -386,6 +386,9 @@ authorization_operation!(
     "getAssuranceCertificateBundle"
 );
 authorization_operation!(authorization_list_certificates, "listCertificates");
+authorization_operation!(authorization_install_pack, "installPack");
+authorization_operation!(authorization_list_packs, "listPacks");
+authorization_operation!(authorization_get_pack, "getPack");
 authorization_operation!(
     authorization_get_reviewed_certificate,
     "getReviewedCertificate"
