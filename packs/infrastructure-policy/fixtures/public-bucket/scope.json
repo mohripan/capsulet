@@ -1,0 +1,16 @@
+{
+  "resources": [
+    {
+      "address": "aws_s3_bucket.docs",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_s3_bucket_acl.docs",
+      "actions": [
+        "create"
+      ]
+    }
+  ]
+}

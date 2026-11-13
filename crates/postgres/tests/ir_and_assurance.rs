@@ -49,6 +49,7 @@ fn certificate(definition: &Definition, certificate_id: &str, content: &[u8]) ->
                 owner: RepairOwner::Verifier,
                 authority: None,
                 accepts: Vec::new(),
+                waiver_authority: None,
             },
             contract: id("patch-compiles"),
             state: DischargeState::Discharged {
@@ -281,6 +282,7 @@ async fn obligations_are_projected_so_outstanding_work_is_queryable() {
                 owner: RepairOwner::Human,
                 authority: None,
                 accepts: Vec::new(),
+                waiver_authority: None,
             },
             contract: id("patch-compiles"),
             state: DischargeState::Residual {

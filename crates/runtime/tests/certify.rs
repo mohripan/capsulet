@@ -213,6 +213,7 @@ fn an_obligation_resting_on_evidence_the_run_never_carried_is_refused() {
             owner: RepairOwner::Verifier,
             authority: None,
             accepts: Vec::new(),
+            waiver_authority: None,
         },
         contract: id("patch-compiles"),
         state: DischargeState::Discharged {

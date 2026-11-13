@@ -1,0 +1,99 @@
+{
+  "cases": [
+    {
+      "name": "a change inside its scope holds",
+      "obligations": [
+        {
+          "id": "within-declared-scope",
+          "contract": "infrastructure-policy",
+          "statement": "Every resource the change touches is one its request's scope names, under an action the scope allows."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "path": "../fixtures/compliant/plan.json",
+          "media_type": "application/json"
+        },
+        {
+          "name": "scope.json",
+          "path": "../fixtures/compliant/scope.json",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "within-declared-scope": "holds"
+      }
+    },
+    {
+      "name": "an address ending in * names only the addresses that start with what comes before it",
+      "obligations": [
+        {
+          "id": "within-declared-scope",
+          "contract": "infrastructure-policy",
+          "statement": "Every resource the change touches is one its request's scope names, under an action the scope allows."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "path": "../fixtures/compliant/plan.json",
+          "media_type": "application/json"
+        },
+        {
+          "name": "scope.json",
+          "text": "{\"resources\": [{\"address\": \"aws_s3_*\", \"actions\": [\"create\", \"update\"]}]}\n",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "within-declared-scope": "does_not_hold"
+      }
+    },
+    {
+      "name": "a delete the scope does not name, and a replacement it allows only as an update, are outside",
+      "obligations": [
+        {
+          "id": "within-declared-scope",
+          "contract": "infrastructure-policy",
+          "statement": "Every resource the change touches is one its request's scope names, under an action the scope allows."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "path": "../fixtures/outside-scope/plan.json",
+          "media_type": "application/json"
+        },
+        {
+          "name": "scope.json",
+          "path": "../fixtures/outside-scope/scope.json",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "within-declared-scope": "does_not_hold"
+      }
+    },
+    {
+      "name": "a change whose request declares no scope is not decided",
+      "obligations": [
+        {
+          "id": "within-declared-scope",
+          "contract": "infrastructure-policy",
+          "statement": "Every resource the change touches is one its request's scope names, under an action the scope allows."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "path": "../fixtures/public-bucket/plan.json",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "within-declared-scope": "cannot_decide"
+      }
+    }
+  ]
+}

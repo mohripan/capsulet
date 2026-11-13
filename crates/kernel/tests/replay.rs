@@ -149,6 +149,7 @@ fn assembly(evidence: EvidenceRef, verifiers: Vec<VerifierRecord>) -> Assembly {
                 owner: RepairOwner::Verifier,
                 authority: None,
                 accepts: Vec::new(),
+                waiver_authority: None,
             },
             contract: id("patch-compiles"),
             state: DischargeState::Discharged {
@@ -408,6 +409,7 @@ fn a_bundle_with_nothing_in_it_says_so_rather_than_reproducing_quietly() {
                 owner: RepairOwner::Verifier,
                 authority: None,
                 accepts: Vec::new(),
+                waiver_authority: None,
             },
             contract: id("patch-compiles"),
             state: DischargeState::Discharged {
@@ -616,6 +618,7 @@ fn claim_reasoning_certificate_with_snapshot(
                 owner: RepairOwner::Verifier,
                 authority: None,
                 accepts: Vec::new(),
+                waiver_authority: None,
             },
             contract: id("grounded"),
             state: match recorded {

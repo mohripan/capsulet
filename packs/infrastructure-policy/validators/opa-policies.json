@@ -1,0 +1,27 @@
+{
+  "name": "opa-policies",
+  "version": "1",
+  "basis": {
+    "kind": "replayable_tool"
+  },
+  "environment": {
+    "kind": "container",
+    "image": "openpolicyagent/opa@sha256:9eb36ac3ceb3b855e776e60926a8a5142f96109a219a5fcd490fa1744c755bec",
+    "command": [
+      "eval",
+      "--stdin-input",
+      "--format",
+      "raw",
+      "--data",
+      "/inputs/pack/policies",
+      "--data",
+      "change:/inputs/change/plan.json",
+      "data.capsulet.response"
+    ]
+  },
+  "limits": {
+    "timeout_ms": 60000,
+    "memory_mb": 256,
+    "max_output_bytes": 1048576
+  }
+}

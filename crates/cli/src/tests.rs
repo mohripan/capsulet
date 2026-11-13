@@ -271,7 +271,7 @@ fn verifier_test_reports_each_case_and_fails_when_one_does() {
     let failed = super::verifier_test(&registration, &cases).expect_err("one case fails");
     let message = failed.to_string();
     assert!(
-        message.contains("pass refused: failed as expected"),
+        message.contains("pass refused: failed as expected (unisolated)"),
         "{message}"
     );
     assert!(

@@ -1,0 +1,40 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.docs",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "docs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-docs",
+          "acl": null
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket_acl.docs",
+      "mode": "managed",
+      "type": "aws_s3_bucket_acl",
+      "name": "docs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-docs",
+          "acl": "public-read"
+        }
+      }
+    }
+  ]
+}

@@ -649,6 +649,38 @@
           "selector": "under_enforce_a_reading_is_discharged_by_a_legal_review_and_nothing_else"
         },
         {
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "selector": "a_compliant_change_is_accepted_on_the_tools_word_alone"
+        },
+        {
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "selector": "a_policy_violation_is_rejected_naming_the_rule_owned_by_the_proposer"
+        },
+        {
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "selector": "a_waived_violation_is_conditional_names_its_authority_and_carries_the_waiver"
+        },
+        {
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "selector": "a_waiver_covers_the_failure_it_names_and_no_other"
+        },
+        {
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "selector": "a_waiver_no_authority_could_grant_here_is_refused_and_changes_nothing"
+        },
+        {
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "selector": "every_policy_obligation_has_its_policy_the_scanner_runs_its_script_and_the_pack_installs"
+        },
+        {
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "selector": "the_policy_engine_is_handed_the_packs_policies_and_a_change_cannot_bring_its_own"
+        },
+        {
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "selector": "the_tools_run_again_from_the_bundle_with_the_policies_it_carries"
+        },
+        {
           "path": "crates/pack/tests/packs.rs",
           "selector": "a_manifest_without_obligations_digests_as_it_always_did"
         },
@@ -667,6 +699,10 @@
         {
           "path": "crates/pack/tests/packs.rs",
           "selector": "a_signed_pack_installs_once_and_installing_it_again_changes_nothing"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
+          "selector": "a_validator_reads_only_files_the_pack_holds_and_each_once"
         },
         {
           "path": "crates/pack/tests/packs.rs",
@@ -881,6 +917,10 @@
         {
           "path": "crates/ir/tests/discharge_basis.rs",
           "selector": "a_review_counts_only_under_the_authority_the_obligation_names"
+        },
+        {
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "selector": "a_waiver_counts_only_under_the_authority_the_obligation_names_for_one"
         },
         {
           "path": "crates/ir/tests/discharge_basis.rs",
@@ -1496,6 +1536,14 @@
         },
         {
           "path": "crates/pack/tests/reference_packs.rs",
+          "selector": "in_containers_a_compliant_change_is_accepted_and_one_outside_its_scope_is_rejected"
+        },
+        {
+          "path": "crates/pack/tests/reference_packs.rs",
+          "selector": "in_containers_a_public_bucket_is_rejected_naming_the_rule_and_a_waiver_makes_it_conditional"
+        },
+        {
+          "path": "crates/pack/tests/reference_packs.rs",
           "selector": "in_containers_a_sound_fix_waits_only_for_its_review"
         },
         {
@@ -1505,6 +1553,10 @@
         {
           "path": "crates/pack/tests/reference_packs.rs",
           "selector": "the_contract_clauses_pack_passes_its_own_test"
+        },
+        {
+          "path": "crates/pack/tests/reference_packs.rs",
+          "selector": "the_infrastructure_policy_pack_passes_its_own_test"
         }
       ]
     },

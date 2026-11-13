@@ -1,0 +1,29 @@
+{
+  "resources": [
+    {
+      "address": "aws_s3_bucket.logs",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_s3_bucket_public_access_block.logs",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_ebs_volume.data",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_security_group_rule.*",
+      "actions": [
+        "create",
+        "update"
+      ]
+    }
+  ]
+}

@@ -140,6 +140,7 @@ pub fn contract() -> Contract {
             owner: RepairOwner::Verifier,
             authority: None,
             accepts: Vec::new(),
+            waiver_authority: None,
         }],
     }
 }
@@ -159,6 +160,7 @@ pub fn scan_contract() -> Contract {
             owner: RepairOwner::Verifier,
             authority: None,
             accepts: Vec::new(),
+            waiver_authority: None,
         }],
     }
 }

@@ -1,0 +1,16 @@
+{
+  "resources": [
+    {
+      "address": "aws_db_instance.orders",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_ebs_volume.scratch",
+      "actions": [
+        "create"
+      ]
+    }
+  ]
+}

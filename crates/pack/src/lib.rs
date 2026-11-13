@@ -14,10 +14,12 @@
 //!   obligation a person may discharge names the authority they need, and one
 //!   naming an authority lets a person discharge it;
 //! - every obligation a validator `decides` is one the pack states, accepts the
-//!   kind of checker the validator is, and is decided by that validator alone.
+//!   kind of checker the validator is, and is decided by that validator alone;
+//! - every file a validator `reads` is one the pack holds.
 //!
-//! [`decide`] runs the validators over a change, and [`replay_tools`] runs them
-//! again from a certificate's bundle.
+//! [`decide`] runs the validators over a change, [`waive`] applies the waivers
+//! people granted to what they failed, and [`replay_tools`] runs them again
+//! from a certificate's bundle.
 //!
 //! [`test`] runs the validators against their cases through the verifier's
 //! harness, and [`refresh`] lists a directory's files in its manifest, which is
@@ -26,6 +28,7 @@
 pub mod decide;
 pub mod keys;
 pub mod manifest;
+pub mod waiver;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -33,12 +36,15 @@ use std::path::{Path, PathBuf};
 
 use capsulet_core::{MemoryContract, MemoryContractId};
 use capsulet_verifier::Registration;
-use capsulet_verifier::harness::{CaseReport, Cases, run_cases};
+use capsulet_verifier::harness::{CaseInput, CaseReport, Cases, run_cases};
 use thiserror::Error;
 
-pub use decide::{Decision, INPUT_PREFIX, Run, ToolReplay, decide, replay_tools};
+pub use decide::{
+    Decision, INPUT_PREFIX, PACK_INPUT_PREFIX, Run, ToolReplay, decide, replay_tools,
+};
 pub use keys::{PrivateKey, Signature, TrustStore, TrustedKey, generate};
 pub use manifest::{FileEntry, Manifest, PACK_SCHEMA, ValidatorEntry, is_pack_name, is_pack_path};
+pub use waiver::{WAIVER_PREFIX, Waiver, waive};
 
 /// The manifest's file name.
 pub const MANIFEST_FILE: &str = "pack.json";
@@ -90,6 +96,10 @@ pub enum PackError {
     BadCases { path: String, detail: String },
     #[error("obligations {path} cannot be used: {detail}")]
     BadObligations { path: String, detail: String },
+    #[error("input `{0}` is under `pack/`, where only the pack's own files go")]
+    ReservedInput(String),
+    #[error("waiver {waiver} cannot be granted: {detail}")]
+    BadWaiver { waiver: String, detail: String },
     #[error("the trust store cannot be used: {0}")]
     TrustStore(String),
     #[error("the key cannot be used: {0}")]
@@ -121,6 +131,8 @@ impl PackError {
             Self::BadValidator { .. } => "bad_validator",
             Self::BadCases { .. } => "bad_cases",
             Self::BadObligations { .. } => "bad_obligations",
+            Self::ReservedInput(_) => "reserved_input",
+            Self::BadWaiver { .. } => "bad_waiver",
             Self::TrustStore(_) => "trust_store",
             Self::Key(_) => "key",
         }
@@ -490,6 +502,29 @@ fn check_content(pack: &Pack) -> Result<(), PackError> {
     }
     let contracts = obligations(pack)?;
     check_decides(pack, &contracts)?;
+    check_reads(pack)?;
+    Ok(())
+}
+
+/// Every file a validator reads is one the pack holds, named once.
+fn check_reads(pack: &Pack) -> Result<(), PackError> {
+    for entry in &pack.manifest.validators {
+        let bad = |detail: String| PackError::BadValidator {
+            path: entry.registration.clone(),
+            detail,
+        };
+        let mut seen = BTreeSet::new();
+        for path in &entry.reads {
+            if !pack.files.contains_key(path) {
+                return Err(bad(format!(
+                    "it reads `{path}`, which the pack does not hold"
+                )));
+            }
+            if !seen.insert(path.as_str()) {
+                return Err(bad(format!("it reads `{path}` twice")));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -620,7 +655,8 @@ pub struct ValidatorReport {
 }
 
 /// Runs every validator in the pack against its cases. Paths in a cases file
-/// resolve beside it.
+/// resolve beside it, and each case is handed the files its validator reads,
+/// as [`decide`] hands them.
 ///
 /// # Errors
 ///
@@ -637,7 +673,19 @@ pub fn test(pack: &Pack) -> Result<Vec<ValidatorReport>, PackError> {
         .iter()
         .map(|entry| {
             let registration = registration_of(pack, entry)?;
-            let cases = cases_of(pack, entry)?;
+            let mut cases = cases_of(pack, entry)?;
+            for case in &mut cases.cases {
+                for path in &entry.reads {
+                    // Absolute, because a case's paths resolve beside its cases file.
+                    let file = root.join(path);
+                    case.inputs.push(CaseInput {
+                        name: format!("{PACK_INPUT_PREFIX}{path}"),
+                        path: Some(std::path::absolute(&file).unwrap_or(file)),
+                        text: None,
+                        media_type: decide::media_type_of(path).to_string(),
+                    });
+                }
+            }
             let cases_path = root.join(&entry.cases);
             let base = cases_path.parent().unwrap_or(root);
             Ok(ValidatorReport {

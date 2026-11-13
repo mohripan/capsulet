@@ -1,0 +1,212 @@
+{
+  "cases": [
+    {
+      "name": "a compliant change breaks no policy",
+      "obligations": [
+        {
+          "id": "no-public-buckets",
+          "contract": "infrastructure-policy",
+          "statement": "No storage bucket the change creates or updates can be read by the public."
+        },
+        {
+          "id": "storage-encrypted",
+          "contract": "infrastructure-policy",
+          "statement": "Every volume and database the change creates or updates is encrypted at rest."
+        },
+        {
+          "id": "no-open-admin-ports",
+          "contract": "infrastructure-policy",
+          "statement": "No firewall rule the change creates or updates opens SSH or RDP to the whole internet."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "path": "../fixtures/compliant/plan.json",
+          "media_type": "application/json"
+        },
+        {
+          "name": "scope.json",
+          "path": "../fixtures/compliant/scope.json",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "no-public-buckets": "holds",
+        "storage-encrypted": "holds",
+        "no-open-admin-ports": "holds"
+      }
+    },
+    {
+      "name": "a public bucket breaks no-public-buckets and nothing else",
+      "obligations": [
+        {
+          "id": "no-public-buckets",
+          "contract": "infrastructure-policy",
+          "statement": "No storage bucket the change creates or updates can be read by the public."
+        },
+        {
+          "id": "storage-encrypted",
+          "contract": "infrastructure-policy",
+          "statement": "Every volume and database the change creates or updates is encrypted at rest."
+        },
+        {
+          "id": "no-open-admin-ports",
+          "contract": "infrastructure-policy",
+          "statement": "No firewall rule the change creates or updates opens SSH or RDP to the whole internet."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "path": "../fixtures/public-bucket/plan.json",
+          "media_type": "application/json"
+        },
+        {
+          "name": "scope.json",
+          "path": "../fixtures/public-bucket/scope.json",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "no-public-buckets": "does_not_hold",
+        "storage-encrypted": "holds",
+        "no-open-admin-ports": "holds"
+      }
+    },
+    {
+      "name": "SSH open to the internet, and every port open over IPv6, break no-open-admin-ports",
+      "obligations": [
+        {
+          "id": "no-public-buckets",
+          "contract": "infrastructure-policy",
+          "statement": "No storage bucket the change creates or updates can be read by the public."
+        },
+        {
+          "id": "storage-encrypted",
+          "contract": "infrastructure-policy",
+          "statement": "Every volume and database the change creates or updates is encrypted at rest."
+        },
+        {
+          "id": "no-open-admin-ports",
+          "contract": "infrastructure-policy",
+          "statement": "No firewall rule the change creates or updates opens SSH or RDP to the whole internet."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "path": "../fixtures/open-ssh/plan.json",
+          "media_type": "application/json"
+        },
+        {
+          "name": "scope.json",
+          "path": "../fixtures/open-ssh/scope.json",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "no-public-buckets": "holds",
+        "storage-encrypted": "holds",
+        "no-open-admin-ports": "does_not_hold"
+      }
+    },
+    {
+      "name": "an unencrypted database and volume break storage-encrypted",
+      "obligations": [
+        {
+          "id": "no-public-buckets",
+          "contract": "infrastructure-policy",
+          "statement": "No storage bucket the change creates or updates can be read by the public."
+        },
+        {
+          "id": "storage-encrypted",
+          "contract": "infrastructure-policy",
+          "statement": "Every volume and database the change creates or updates is encrypted at rest."
+        },
+        {
+          "id": "no-open-admin-ports",
+          "contract": "infrastructure-policy",
+          "statement": "No firewall rule the change creates or updates opens SSH or RDP to the whole internet."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "path": "../fixtures/unencrypted-database/plan.json",
+          "media_type": "application/json"
+        },
+        {
+          "name": "scope.json",
+          "path": "../fixtures/unencrypted-database/scope.json",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "no-public-buckets": "holds",
+        "storage-encrypted": "does_not_hold",
+        "no-open-admin-ports": "holds"
+      }
+    },
+    {
+      "name": "a document that is not a plan is not decided",
+      "obligations": [
+        {
+          "id": "no-public-buckets",
+          "contract": "infrastructure-policy",
+          "statement": "No storage bucket the change creates or updates can be read by the public."
+        },
+        {
+          "id": "storage-encrypted",
+          "contract": "infrastructure-policy",
+          "statement": "Every volume and database the change creates or updates is encrypted at rest."
+        },
+        {
+          "id": "no-open-admin-ports",
+          "contract": "infrastructure-policy",
+          "statement": "No firewall rule the change creates or updates opens SSH or RDP to the whole internet."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "text": "{\"resources\": []}\n",
+          "media_type": "application/json"
+        }
+      ],
+      "expect": {
+        "no-public-buckets": "cannot_decide",
+        "storage-encrypted": "cannot_decide",
+        "no-open-admin-ports": "cannot_decide"
+      }
+    },
+    {
+      "name": "a plan that is not JSON stops the engine, which decides nothing",
+      "obligations": [
+        {
+          "id": "no-public-buckets",
+          "contract": "infrastructure-policy",
+          "statement": "No storage bucket the change creates or updates can be read by the public."
+        },
+        {
+          "id": "storage-encrypted",
+          "contract": "infrastructure-policy",
+          "statement": "Every volume and database the change creates or updates is encrypted at rest."
+        },
+        {
+          "id": "no-open-admin-ports",
+          "contract": "infrastructure-policy",
+          "statement": "No firewall rule the change creates or updates opens SSH or RDP to the whole internet."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "change/plan.json",
+          "text": "resource \"aws_s3_bucket\" \"docs\" {}\n",
+          "media_type": "application/json"
+        }
+      ],
+      "expect_failure": "crashed"
+    }
+  ]
+}

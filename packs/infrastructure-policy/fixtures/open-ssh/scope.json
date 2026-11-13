@@ -1,0 +1,16 @@
+{
+  "resources": [
+    {
+      "address": "aws_security_group.bastion",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_security_group_rule.anything",
+      "actions": [
+        "create"
+      ]
+    }
+  ]
+}

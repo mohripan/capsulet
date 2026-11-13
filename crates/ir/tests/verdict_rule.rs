@@ -27,6 +27,7 @@ fn obligation(statement: &str, contract: &str, state: DischargeState) -> Obligat
             owner: RepairOwner::Verifier,
             authority: None,
             accepts: Vec::new(),
+            waiver_authority: None,
         },
         contract: id(contract),
         state,

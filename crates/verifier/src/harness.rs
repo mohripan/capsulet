@@ -107,7 +107,11 @@ fn run_case(registration: &Registration, case: &Case, base: &Path) -> CaseReport
     };
     match (outcome, &case.expect_failure) {
         (Err(failure), Some(expected)) if failure.code() == expected => {
-            report(true, format!("failed as expected: {failure}"))
+            let isolation = match &registration.environment {
+                Environment::Container { .. } => "isolated",
+                Environment::Process { .. } => "unisolated",
+            };
+            report(true, format!("failed as expected ({isolation}): {failure}"))
         }
         (Err(failure), _) => report(false, format!("failed: {} ({failure})", failure.code())),
         (Ok(_), Some(expected)) => report(

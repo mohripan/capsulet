@@ -1,0 +1,44 @@
+{
+  "id": "infrastructure-policy",
+  "version": "1",
+  "inputs": {},
+  "outputs": {},
+  "allowed_effects": [],
+  "obligations": [
+    {
+      "id": "no-public-buckets",
+      "statement": "No storage bucket the change creates or updates can be read by the public.",
+      "owner": "proposer",
+      "accepts": [
+        "replayable_tool"
+      ],
+      "waiver_authority": "review:security"
+    },
+    {
+      "id": "storage-encrypted",
+      "statement": "Every volume and database the change creates or updates is encrypted at rest.",
+      "owner": "proposer",
+      "accepts": [
+        "replayable_tool"
+      ],
+      "waiver_authority": "review:security"
+    },
+    {
+      "id": "no-open-admin-ports",
+      "statement": "No firewall rule the change creates or updates opens SSH or RDP to the whole internet.",
+      "owner": "proposer",
+      "accepts": [
+        "replayable_tool"
+      ],
+      "waiver_authority": "review:security"
+    },
+    {
+      "id": "within-declared-scope",
+      "statement": "Every resource the change touches is one its request's scope names, under an action the scope allows.",
+      "owner": "proposer",
+      "accepts": [
+        "replayable_tool"
+      ]
+    }
+  ]
+}

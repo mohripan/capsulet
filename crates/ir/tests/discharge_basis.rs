@@ -277,6 +277,58 @@ fn a_review_counts_only_under_the_authority_the_obligation_names() {
 }
 
 #[test]
+fn a_waiver_counts_only_under_the_authority_the_obligation_names_for_one() {
+    let mut policy = statement("no-public-buckets");
+    policy.waiver_authority = Some(id("review:security"));
+    let waived = |authority: &str| DischargeState::Waived {
+        policy: id("docs-site-is-public"),
+        authority: id(authority),
+        by: Some(id("dana")),
+        evidence: vec![evidence().content],
+    };
+
+    let certificate =
+        seal(vec![obligation(policy.clone(), waived("review:security"))]).expect("seals");
+    assert_eq!(certificate.verdict(), AssuranceVerdict::Conditional);
+
+    let error = seal(vec![obligation(policy, waived("review:code"))])
+        .expect_err("a waiver under another authority is refused");
+    assert!(
+        matches!(error, CertificateError::WaiverWithoutAuthority { .. }),
+        "{error}"
+    );
+
+    // A waiver rests on what it carries, like any other state.
+    let mut uncarried = waived("review:security");
+    if let DischargeState::Waived { evidence, .. } = &mut uncarried {
+        *evidence = vec![Digest::of(b"a waiver nobody kept")];
+    }
+    let mut named = statement("storage-encrypted");
+    named.waiver_authority = Some(id("review:security"));
+    let error = seal(vec![obligation(named, uncarried)]).expect_err("the waiver is not carried");
+    assert!(
+        matches!(error, CertificateError::MissingEvidence { .. }),
+        "{error}"
+    );
+
+    // An obligation naming no waiver authority is waived as it always was, and
+    // a waiver written before waivers said who granted them reads.
+    seal(vec![obligation(
+        statement("unnamed"),
+        waived("platform-admin"),
+    )])
+    .expect("seals");
+    let read: DischargeState = serde_json::from_value(serde_json::json!({
+        "state": "waived", "policy": "release-policy", "authority": "platform-admin"
+    }))
+    .expect("a waiver written before reads");
+    assert!(matches!(
+        read,
+        DischargeState::Waived { by: None, ref evidence, .. } if evidence.is_empty()
+    ));
+}
+
+#[test]
 fn an_obligation_refuses_a_discharge_of_a_kind_it_does_not_accept() {
     let mut reading = statement("reading");
     reading.accepts = vec![BasisKind::HumanReview];
@@ -310,6 +362,7 @@ fn an_unrecorded_basis_and_a_plain_statement_encode_as_they_always_did() {
     let encoded = serde_json::to_value(statement("builds")).expect("encodes");
     assert!(encoded.get("authority").is_none(), "{encoded}");
     assert!(encoded.get("accepts").is_none(), "{encoded}");
+    assert!(encoded.get("waiver_authority").is_none(), "{encoded}");
 
     let read: DischargeState = serde_json::from_value(serde_json::json!({
         "state": "discharged", "by": "cargo-test", "evidence": []

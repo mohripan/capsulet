@@ -46,6 +46,7 @@ fn statement(name: &str, owner: RepairOwner) -> ObligationStatement {
         owner,
         authority: None,
         accepts: Vec::new(),
+        waiver_authority: None,
     }
 }
 
@@ -208,6 +209,8 @@ fn a_waiver_is_not_a_discharge() {
         state: DischargeState::Waived {
             policy: id("release-policy-v3"),
             authority: id("platform-admin"),
+            by: None,
+            evidence: Vec::new(),
         },
     });
     waived.verdict = AssuranceVerdict::from_obligations(&waived.obligations);
@@ -246,6 +249,8 @@ fn an_obligation_cannot_be_left_without_a_state() {
         DischargeState::Waived {
             policy: id("p"),
             authority: id("a"),
+            by: None,
+            evidence: Vec::new(),
         },
         DischargeState::Residual {
             rationale: "open".to_string(),

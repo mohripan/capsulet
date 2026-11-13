@@ -46,6 +46,11 @@ pub struct ValidatorEntry {
     /// which digest as they always did.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub decides: Vec<String>,
+    /// Files of the pack, by path, that it is handed beside a change's inputs,
+    /// at `pack/` and the path: the policies a policy engine evaluates, say.
+    /// The pack pins them, so a change cannot bring its own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reads: Vec<String>,
 }
 
 /// One file, by path and the digest of its bytes.

@@ -402,3 +402,38 @@ fn what_a_validator_decides_has_to_be_the_packs_own_and_its_alone() {
         assert_eq!(error.code(), "bad_validator", "{why}: {error}");
     }
 }
+
+#[test]
+fn a_validator_reads_only_files_the_pack_holds_and_each_once() {
+    let (key, _) = generate().expect("a key");
+    let trust = trusting(&key, &["sample"]);
+    let with_reads = |reads: serde_json::Value| {
+        let directory = tempfile::tempdir().expect("dir");
+        write_pack(directory.path(), "1.0.0", Some(&key));
+        let path = directory.path().join("pack.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).expect("manifest")).expect("json");
+        manifest["validators"][0]["reads"] = reads;
+        fs::write(&path, manifest.to_string()).expect("manifest");
+        sign(directory.path(), &key).expect("signs");
+        directory
+    };
+
+    let fine = with_reads(serde_json::json!(["validators/echo.json"]));
+    admit(&read(fine.path()).expect("reads"), &trust, &[]).expect("installs");
+
+    for (reads, why) in [
+        (
+            serde_json::json!(["policies/missing.rego"]),
+            "a file the pack does not hold",
+        ),
+        (
+            serde_json::json!(["validators/echo.json", "validators/echo.json"]),
+            "a file named twice",
+        ),
+    ] {
+        let directory = with_reads(reads);
+        let error = refused(directory.path(), &trust, &[]);
+        assert_eq!(error.code(), "bad_validator", "{why}: {error}");
+    }
+}

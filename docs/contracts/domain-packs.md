@@ -20,7 +20,9 @@ obligations. The kernel and runtime contain none of it.
   ([verifier protocol](verifier-protocol.md)). The registration must be one the host may run. A
   validator may say which of the pack's obligations it `decides`: each has to be one the pack
   states, one that accepts the kind of checker the validator is, and decided by no other validator.
-  Otherwise the pack is refused with `bad_validator`.
+  It may also say which of the pack's files it `reads`, such as the policies a policy engine
+  evaluates: each has to be a file the pack holds, named once. Otherwise the pack is refused with
+  `bad_validator`.
 - **Obligations:** IR contracts stating the policy defaults for the pack's obligations, described
   below. Optional.
 
@@ -76,12 +78,14 @@ The reference packs are held the same way, and each has its own tests of what it
 | --- | --- | --- |
 | [`contract-clauses`](../../packs/contract-clauses/README.md) | answers that quote contract clauses | `crates/pack/tests/contract_clauses.rs` |
 | [`code-changes`](../../packs/code-changes/README.md) | whether a code change builds and its tests show it | `crates/pack/tests/code_changes.rs` |
+| [`infrastructure-policy`](../../packs/infrastructure-policy/README.md) | whether an infrastructure change is permitted by policy, and stays inside its scope | `crates/pack/tests/infrastructure_policy.rs` |
 
 ## The policy defaults for a pack's obligations
 
 `obligations` lists IR contracts by path. Each is a contract in the IR's own form, whose obligations
-say which kinds of checker may discharge them (`accepts`) and the authority a person needs to
-discharge one by review (`authority`). A definition that uses the pack declares these contracts as
+say which kinds of checker may discharge them (`accepts`), the authority a person needs to
+discharge one by review (`authority`), and the authority a person needs to waive one
+(`waiver_authority`). A definition that uses the pack declares these contracts as
 they are and pins the pack, and an obligation discharged any other way is refused when its
 certificate is sealed. Admission refuses an obligations file, with `bad_obligations`, when:
 
@@ -107,6 +111,33 @@ An obligation no validator decides stays residual, naming the authority whose re
 validator that cannot run decides nothing, and its obligations stay residual with the failure's code.
 `capsulet_pack::replay_tools` runs the tools again from the certificate's bundle, which
 `capsulet pack replay` does from the command line ([verifier protocol](verifier-protocol.md)).
+
+Each validator is also handed the pack's files it `reads`, at `pack/` and the path. They are cited
+as inputs like the change's own, supplied by the pack at its version, so a certificate pins which
+policy text decided it, and a replay hands each tool exactly what it read. A change's inputs may
+not reach under `pack/`: `decide` refuses one that does, with `reserved_input`. `capsulet pack test`
+hands each case the files its validator reads, the same way.
+
+## Waiving a failure
+
+`capsulet_pack::waive` applies waivers to what a decision failed. A waiver names:
+
+- its `id`, the obligation it waives, and the `authority` it is granted under;
+- who granted it (`by`) and why (`reason`);
+- the `failure` it accepts, exactly as the validator reported it.
+
+A waiver whose failure is the obligation's makes it `waived`. The waived state names the waiver as
+its policy, its authority and who granted it, and rests on the waiver itself, cited as
+`waivers/<id>` with a person as its producer, so the certificate and its bundle carry it. A waived
+obligation is still outstanding, so a certificate with one and nothing failed is `conditional`.
+
+A waiver covers the failure it names and no other. One whose obligation held, or failed some other
+way, is returned as having covered nothing, and the obligation keeps its state. A waiver of an
+obligation the decision does not hold, of one naming no `waiver_authority`, or under another
+authority than the one it names is refused, with `bad_waiver`, and nothing changes. The seal refuses
+a certificate waiving an obligation under any authority but the one it names. Whether the person
+granting a waiver holds its authority is for the caller to check, as the API checks a reviewer's
+scopes.
 
 ## Installing a pack into a project
 

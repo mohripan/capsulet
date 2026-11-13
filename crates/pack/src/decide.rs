@@ -8,16 +8,24 @@
 //! validator decides, a review, stays residual and says whose review it waits
 //! for. A validator that could not run decides nothing, and says why.
 //!
+//! A validator is also handed the pack's files it `reads`, under `pack/`: the
+//! policies a policy engine evaluates. They are cited as inputs like the
+//! change's own, so the certificate pins which policy text decided, and a
+//! change's inputs may not reach under `pack/`.
+//!
 //! [`replay_tools`] is the other half (ADR 0021 §4): for a certificate and the
 //! bundle of its evidence, it runs each replayable tool again in the
 //! environment its record pins, with the inputs the certificate cites, and
 //! compares what it produced with what the record says.
 
+use std::collections::BTreeMap;
+
 use capsulet_ir::Identifier;
+use capsulet_ir::correctness::Identity;
 use capsulet_ir::correctness::certificate::{Certificate, VerifierRecord, VerifierTrust};
 use capsulet_ir::correctness::evidence::{EvidenceRef, RecordedTime};
 use capsulet_ir::correctness::obligation::{DischargeState, Obligation};
-use capsulet_ir::correctness::proposal::Producer;
+use capsulet_ir::correctness::proposal::{Producer, ProducerKind};
 use capsulet_kernel::{EvidenceMap, EvidenceSource};
 use capsulet_verifier::{Input, ReRun, Requested, Transport, VerifierFailure, rerun, verify};
 
@@ -25,6 +33,20 @@ use crate::{Pack, PackError, obligations, registration_of};
 
 /// The evidence id an input is cited under: `inputs/` and its path.
 pub const INPUT_PREFIX: &str = "inputs/";
+
+/// Where a validator finds the pack's files it reads, among its inputs.
+pub const PACK_INPUT_PREFIX: &str = "pack/";
+
+/// The media type a pack file is handed over as, by its extension.
+pub(crate) fn media_type_of(path: &str) -> &'static str {
+    match path.rsplit_once('.').map(|(_, extension)| extension) {
+        Some("rego") => "text/x-rego",
+        Some("json") => "application/json",
+        Some("py") => "text/x-python",
+        Some("md" | "txt") => "text/plain",
+        _ => "application/octet-stream",
+    }
+}
 
 /// What one validator's run came to.
 #[derive(Debug, Clone)]
@@ -59,8 +81,9 @@ pub struct Decision {
 /// # Errors
 ///
 /// Returns [`PackError`] when the pack's obligations or a registration do not
-/// read, or an input's path is not an evidence id. A validator that fails to
-/// run is not an error: its obligations stay residual, saying why.
+/// read, an input's path is not an evidence id, or an input is under `pack/`
+/// ([`PackError::ReservedInput`]). A validator that fails to run is not an
+/// error: its obligations stay residual, saying why.
 pub fn decide(
     pack: &Pack,
     inputs: &[Input],
@@ -69,22 +92,7 @@ pub fn decide(
     at: RecordedTime,
 ) -> Result<Decision, PackError> {
     let contracts = obligations(pack)?;
-    let mut blobs = EvidenceMap::new();
-    let mut evidence = Vec::new();
-    for input in inputs {
-        let id = Identifier::parse(format!("{INPUT_PREFIX}{}", input.name)).map_err(|_| {
-            PackError::Unreadable(format!("input `{}` cannot be cited", input.name))
-        })?;
-        let content = blobs.insert(input.bytes.clone());
-        evidence.push(EvidenceRef {
-            id,
-            content,
-            media_type: input.media_type.clone(),
-            byte_length: input.bytes.len() as u64,
-            producer: producer.clone(),
-            captured_at: at,
-        });
-    }
+    let (mut evidence, mut blobs) = cite_inputs(pack, inputs, producer, at)?;
 
     let mut decided: Vec<Obligation> = Vec::new();
     let mut verifiers = Vec::new();
@@ -95,7 +103,9 @@ pub fn decide(
         }
         let registration = registration_of(pack, entry)?;
         let requested = requested(&contracts, &entry.decides);
-        let outcome = verify(&registration, transport, &requested, inputs);
+        let mut handed = inputs.to_vec();
+        handed.extend(pack_inputs(pack, entry)?);
+        let outcome = verify(&registration, transport, &requested, &handed);
         match &outcome {
             Ok(run) => {
                 decided.extend(run.obligations(&requested));
@@ -165,6 +175,87 @@ pub fn decide(
     })
 }
 
+/// The change's inputs, then each pack file a deciding validator reads, once,
+/// cited as evidence with their bytes kept.
+fn cite_inputs(
+    pack: &Pack,
+    inputs: &[Input],
+    producer: &Producer,
+    at: RecordedTime,
+) -> Result<(Vec<EvidenceRef>, EvidenceMap), PackError> {
+    if let Some(input) = inputs
+        .iter()
+        .find(|input| input.name.starts_with(PACK_INPUT_PREFIX))
+    {
+        return Err(PackError::ReservedInput(input.name.clone()));
+    }
+    let mut blobs = EvidenceMap::new();
+    let mut evidence = Vec::new();
+    for input in inputs {
+        evidence.push(cite(input, producer, at, &mut blobs)?);
+    }
+    let from_pack = pack_producer(pack)?;
+    let mut cited = std::collections::BTreeSet::new();
+    for entry in pack
+        .manifest
+        .validators
+        .iter()
+        .filter(|entry| !entry.decides.is_empty())
+    {
+        for input in pack_inputs(pack, entry)? {
+            if cited.insert(input.name.clone()) {
+                evidence.push(cite(&input, &from_pack, at, &mut blobs)?);
+            }
+        }
+    }
+    Ok((evidence, blobs))
+}
+
+/// An input, cited as evidence under [`INPUT_PREFIX`], its bytes kept.
+fn cite(
+    input: &Input,
+    producer: &Producer,
+    at: RecordedTime,
+    blobs: &mut EvidenceMap,
+) -> Result<EvidenceRef, PackError> {
+    let id = Identifier::parse(format!("{INPUT_PREFIX}{}", input.name))
+        .map_err(|_| PackError::Unreadable(format!("input `{}` cannot be cited", input.name)))?;
+    let content = blobs.insert(input.bytes.clone());
+    Ok(EvidenceRef {
+        id,
+        content,
+        media_type: input.media_type.clone(),
+        byte_length: input.bytes.len() as u64,
+        producer: producer.clone(),
+        captured_at: at,
+    })
+}
+
+/// Who supplied the pack's own files: the pack, at its version.
+fn pack_producer(pack: &Pack) -> Result<Producer, PackError> {
+    let name = Identifier::parse(pack.manifest.name.clone())
+        .map_err(|_| PackError::BadName(pack.manifest.name.clone()))?;
+    Ok(Producer {
+        kind: ProducerKind::Retrieval,
+        identity: Identity::new(name, pack.manifest.version.clone()),
+    })
+}
+
+/// The pack's files `entry` reads, as inputs under [`PACK_INPUT_PREFIX`].
+fn pack_inputs(pack: &Pack, entry: &crate::ValidatorEntry) -> Result<Vec<Input>, PackError> {
+    entry
+        .reads
+        .iter()
+        .map(|path| {
+            Ok(Input {
+                name: format!("{PACK_INPUT_PREFIX}{path}"),
+                bytes: pack.file(path)?.to_vec(),
+                media_type: media_type_of(path).to_string(),
+            })
+        })
+        .collect()
+}
+
 /// The pack's statements of `ids`, in that order.
 fn requested(contracts: &[capsulet_ir::Contract], ids: &[String]) -> Vec<Requested> {
     ids.iter()
@@ -202,16 +293,18 @@ impl ToolReplay {
 
 /// Runs every replayable tool `certificate` records again, from `evidence`.
 ///
-/// The inputs are the evidence cited under [`INPUT_PREFIX`], in the order the
-/// certificate cites them, which is the order the tools read them in. A tool's
-/// registration is the one in `pack` with the record's name and version; what
-/// it is asked is what it decides, as the certificate states each obligation.
-/// A model's record is not re-run: a model's word is not re-derivable.
+/// A tool's inputs are the change's, the evidence cited under [`INPUT_PREFIX`]
+/// in the order the certificate cites them, then the pack files it reads, from
+/// the bundle too: the order the tool read them in. A tool's registration is
+/// the one in `pack` with the record's name and version; what it is asked is
+/// what it decides, as the certificate states each obligation. A model's
+/// record is not re-run: a model's word is not re-derivable.
 ///
 /// # Errors
 ///
-/// Returns [`PackError::Unreadable`] when an input the certificate cites is
-/// not in `evidence`, or a recorded tool is not in `pack`.
+/// Returns [`PackError::Unreadable`] when an input the certificate cites, or a
+/// pack file a tool reads, is not in `evidence`, or a recorded tool is not in
+/// `pack`.
 pub fn replay_tools(
     pack: &Pack,
     certificate: &Certificate,
@@ -220,6 +313,7 @@ pub fn replay_tools(
 ) -> Result<Vec<ToolReplay>, PackError> {
     let body = certificate.body();
     let mut inputs = Vec::new();
+    let mut from_pack = BTreeMap::new();
     for reference in &body.evidence {
         let Some(name) = reference.id.as_str().strip_prefix(INPUT_PREFIX) else {
             continue;
@@ -230,11 +324,16 @@ pub fn replay_tools(
                 reference.content
             ))
         })?;
-        inputs.push(Input {
+        let input = Input {
             name: name.to_string(),
             bytes: bytes.to_vec(),
             media_type: reference.media_type.clone(),
-        });
+        };
+        if name.starts_with(PACK_INPUT_PREFIX) {
+            from_pack.insert(name.to_string(), input);
+        } else {
+            inputs.push(input);
+        }
     }
     let mut replays = Vec::new();
     for record in &body.verifiers {
@@ -270,9 +369,19 @@ pub fn replay_tools(
                     })
             })
             .collect();
+        let mut handed = inputs.clone();
+        for path in &entry.reads {
+            let name = format!("{PACK_INPUT_PREFIX}{path}");
+            handed.push(from_pack.get(&name).cloned().ok_or_else(|| {
+                PackError::Unreadable(format!(
+                    "{} reads `{path}`, which the bundle does not carry",
+                    registration.name
+                ))
+            })?);
+        }
         replays.push(ToolReplay {
             validator: format!("{} {}", record.identity.name, record.identity.version),
-            outcome: rerun(&registration, transport, &requested, &inputs, record),
+            outcome: rerun(&registration, transport, &requested, &handed, record),
         });
     }
     Ok(replays)

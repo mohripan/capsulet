@@ -3,9 +3,9 @@
     reason = "each test binary uses a different part of what is shared here"
 )]
 
-//! What the code-changes pack's tests share: the pack, its fixtures as a
-//! change's inputs, and a certificate sealed from a decision the way a run
-//! under `enforce` would seal it.
+//! What the reference packs' tests share: a pack, its fixtures as a change's
+//! inputs, and a certificate sealed from a decision the way a run under
+//! `enforce` would seal it.
 
 #[path = "../../../ir/tests/fixtures/mod.rs"]
 pub mod fixtures;
@@ -57,6 +57,26 @@ pub fn change(scenario: &str) -> Vec<Input> {
     inputs
 }
 
+/// One of the infrastructure-policy pack's fixtures as a change's inputs: its
+/// plan, and the scope its request declared.
+#[must_use]
+pub fn plan(scenario: &str) -> Vec<Input> {
+    let fixture = pack_dir("infrastructure-policy")
+        .join("fixtures")
+        .join(scenario);
+    [
+        ("change/plan.json", "plan.json"),
+        ("scope.json", "scope.json"),
+    ]
+    .into_iter()
+    .map(|(name, file)| Input {
+        name: name.to_string(),
+        bytes: fs::read(fixture.join(file)).expect("a fixture file"),
+        media_type: "application/json".to_string(),
+    })
+    .collect()
+}
+
 /// Who proposed the change.
 #[must_use]
 pub fn proposer() -> Producer {
@@ -99,7 +119,7 @@ pub fn sealed(pack: &Pack, decision: &Decision) -> Certificate {
                 .collect(),
             outputs: vec![],
         },
-        policy_version: "code-changes/1".to_string(),
+        policy_version: format!("{}/1", pack.manifest.name),
         contracts: contracts
             .iter()
             .map(|contract| contract.id.clone())

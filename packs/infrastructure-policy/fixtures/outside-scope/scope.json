@@ -1,0 +1,22 @@
+{
+  "resources": [
+    {
+      "address": "aws_s3_bucket.logs",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_s3_bucket_public_access_block.logs",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_instance.web",
+      "actions": [
+        "update"
+      ]
+    }
+  ]
+}

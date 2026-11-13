@@ -64,6 +64,7 @@ fn obligation(state: DischargeState) -> Obligation {
             owner: RepairOwner::Verifier,
             authority: None,
             accepts: Vec::new(),
+            waiver_authority: None,
         },
         contract: id("patch-compiles"),
         state,
@@ -269,6 +270,8 @@ fn every_field_of_an_assurance_policy_is_accounted_for() {
     let waived = certificate(vec![obligation(DischargeState::Waived {
         policy: id("release-policy"),
         authority: id("platform-admin"),
+        by: None,
+        evidence: Vec::new(),
     })]);
     assert!(
         matches!(

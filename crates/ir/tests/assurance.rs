@@ -52,6 +52,7 @@ fn obligation(name: &str, state: DischargeState) -> Obligation {
             owner: RepairOwner::Verifier,
             authority: None,
             accepts: Vec::new(),
+            waiver_authority: None,
         },
         contract: id("patch-compiles"),
         state,
@@ -336,6 +337,8 @@ fn a_waiver_by_an_unauthorised_party_is_not_a_waiver() {
                 DischargeState::Waived {
                     policy: id("release-policy"),
                     authority: id("a-passing-colleague"),
+                    by: None,
+                    evidence: Vec::new(),
                 },
             ),
         ],
@@ -372,6 +375,8 @@ fn a_waiver_by_a_named_authority_stands() {
                 DischargeState::Waived {
                     policy: id("release-policy"),
                     authority: id("platform-admin"),
+                    by: None,
+                    evidence: Vec::new(),
                 },
             ),
         ],

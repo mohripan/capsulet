@@ -269,6 +269,15 @@ pub enum CertificateError {
         authority: Identifier,
     },
     #[error(
+        "certificate `{id}` waives obligation `{obligation}` under `{authority}`, which is not \
+         the authority the obligation names for a waiver"
+    )]
+    WaiverWithoutAuthority {
+        id: Identifier,
+        obligation: Identifier,
+        authority: Identifier,
+    },
+    #[error(
         "certificate `{id}` discharges obligation `{obligation}` on basis `{basis}`, which the \
          obligation does not accept"
     )]
@@ -348,7 +357,8 @@ impl CertificateBody {
     /// a review is under the authority the obligation names, and the obligation
     /// accepts the basis it was discharged on. A discharge with no recorded basis
     /// is checked only against models, as every discharge was read before bases
-    /// were recorded.
+    /// were recorded. A waiver is under the authority the obligation names for
+    /// one, when it names one.
     fn check_basis(&self, obligation: &Obligation) -> Result<(), CertificateError> {
         let id = || self.id.clone();
         let statement = || obligation.statement.id.clone();
@@ -412,8 +422,19 @@ impl CertificateBody {
                     })
                 }
             }
+            DischargeState::Waived { authority, .. } => {
+                match &obligation.statement.waiver_authority {
+                    Some(named) if named != authority => {
+                        Err(CertificateError::WaiverWithoutAuthority {
+                            id: id(),
+                            obligation: statement(),
+                            authority: authority.clone(),
+                        })
+                    }
+                    _ => Ok(()),
+                }
+            }
             DischargeState::Assumed { .. }
-            | DischargeState::Waived { .. }
             | DischargeState::Residual { .. }
             | DischargeState::Failed { .. } => Ok(()),
         }

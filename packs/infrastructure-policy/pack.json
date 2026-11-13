@@ -1,0 +1,125 @@
+{
+  "schema_version": "capsulet.pack/v1",
+  "name": "infrastructure-policy",
+  "version": "1.0.0",
+  "description": "Whether a proposed infrastructure change, as a Terraform plan, is permitted by policy: OPA evaluates the pack's policies and a scanner checks the change stays inside the scope its request declared, both in pinned containers. A holder of review:security may waive a policy's failure; a change outside its scope cannot be waived.",
+  "contracts": [],
+  "validators": [
+    {
+      "registration": "validators/opa-policies.json",
+      "cases": "cases/opa-policies.json",
+      "decides": [
+        "no-public-buckets",
+        "storage-encrypted",
+        "no-open-admin-ports"
+      ],
+      "reads": [
+        "policies/response.rego",
+        "policies/plan.rego",
+        "policies/no_public_buckets.rego",
+        "policies/storage_encrypted.rego",
+        "policies/no_open_admin_ports.rego"
+      ]
+    },
+    {
+      "registration": "validators/plan-scope.json",
+      "cases": "cases/plan-scope.json",
+      "decides": [
+        "within-declared-scope"
+      ]
+    }
+  ],
+  "obligations": [
+    "obligations/infrastructure-policy.json"
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "digest": "sha256:15f357e1598675d13f07738cb5be9017e1623ccc0676d71320e24fa4bf8c4d06"
+    },
+    {
+      "path": "cases/opa-policies.json",
+      "digest": "sha256:51607458098393fef8e78eca0ae935f5df19569e3507e5fec14e7066c96d4644"
+    },
+    {
+      "path": "cases/plan-scope.json",
+      "digest": "sha256:73addbf42323cbbb6fb8a0c4e9be60ab41b26e42ab33ecb859df17ea957b6ee2"
+    },
+    {
+      "path": "fixtures/compliant/plan.json",
+      "digest": "sha256:f9ca9f736bb91992900936eadc95c5822a54ac31c242d4b6df5746890d52726e"
+    },
+    {
+      "path": "fixtures/compliant/scope.json",
+      "digest": "sha256:a5c3c2fb91f50d28f910628c4ea349d10561301090a7e7a8dea88b6f73dbd7b0"
+    },
+    {
+      "path": "fixtures/open-ssh/plan.json",
+      "digest": "sha256:0be51efbc990a84d0e5baabc7bb5543e4f0283ec38833c5c4ff0fe5d84854f90"
+    },
+    {
+      "path": "fixtures/open-ssh/scope.json",
+      "digest": "sha256:dda07cbaf12ea2f5bd07fbea5064496ba651799baa105d421ce2c07a82cdb2ed"
+    },
+    {
+      "path": "fixtures/outside-scope/plan.json",
+      "digest": "sha256:96503a6783f1e70b79ae289dc4731f6accc6340ce3fc44e35f45ef3bbf98f679"
+    },
+    {
+      "path": "fixtures/outside-scope/scope.json",
+      "digest": "sha256:353eeeb8508804d2e12148c00604d8123116d7d00117a6ae09f3cd0f61d107b6"
+    },
+    {
+      "path": "fixtures/public-bucket/plan.json",
+      "digest": "sha256:189ba8347c1fb312de6e297bcc2162afc1dd1f5d507744bd171a95224031f7cb"
+    },
+    {
+      "path": "fixtures/public-bucket/scope.json",
+      "digest": "sha256:5d0a916269e1ca619d9ff9003f91e4df6b0285f4aff16338e33e65c86b38df50"
+    },
+    {
+      "path": "fixtures/unencrypted-database/plan.json",
+      "digest": "sha256:18068f1e746573d9d667b175008b094c6ab960a41e3706a82796e1d82d6a64e7"
+    },
+    {
+      "path": "fixtures/unencrypted-database/scope.json",
+      "digest": "sha256:cbcd94ee2ac006f0191c662ec986eb7a3b62decc56d4a6196d270eccc2e1b1dd"
+    },
+    {
+      "path": "obligations/infrastructure-policy.json",
+      "digest": "sha256:c442c1f5c7fcf1615287566fe2a84564babaa1f0748be5768c337208d5926174"
+    },
+    {
+      "path": "policies/no_open_admin_ports.rego",
+      "digest": "sha256:5157f6817120789a671c0795db6b3a7df76c4db0e697f70ba85ad8000c4b07ef"
+    },
+    {
+      "path": "policies/no_public_buckets.rego",
+      "digest": "sha256:060884a0e359b924dfa39564c022c5dd90994129e8826b6e935fc90848a85f4b"
+    },
+    {
+      "path": "policies/plan.rego",
+      "digest": "sha256:89de9c9af70fe25ba95bd1ec941118be3f231a0db652f5361e503a58dec24470"
+    },
+    {
+      "path": "policies/response.rego",
+      "digest": "sha256:c1192521c3e15638e20f6a44bd7d4fe2aa235a81a6a86850b2c95dbbae31b6ff"
+    },
+    {
+      "path": "policies/storage_encrypted.rego",
+      "digest": "sha256:761d5fb1a1ab35e59f84ec54e14122cf0111e23fefe53a178ca92c36952d7bd8"
+    },
+    {
+      "path": "validators/opa-policies.json",
+      "digest": "sha256:b247fa1b722072848b5993ee160407207f363a44db6cb00c99556be43a0a16f5"
+    },
+    {
+      "path": "validators/plan-scope.json",
+      "digest": "sha256:b5ab2fb660c995ed9edc88bd699a019e1162402b94ab8c1026b31da0445fec79"
+    },
+    {
+      "path": "validators/src/plan_scope_check.py",
+      "digest": "sha256:9a0196eb82a441cc9627be2908a39241331d3f6edbe0d71bee6a3289ae38e398"
+    }
+  ]
+}

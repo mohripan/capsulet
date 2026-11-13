@@ -281,6 +281,7 @@ fn definition() -> Definition {
                 owner: RepairOwner::Verifier,
                 authority: None,
                 accepts: Vec::new(),
+                waiver_authority: None,
             }],
         }],
     }
@@ -363,6 +364,7 @@ fn certificate(
                     owner: RepairOwner::Verifier,
                     authority: None,
                     accepts: Vec::new(),
+                    waiver_authority: None,
                 },
                 contract: id("patch-compiles"),
                 state: DischargeState::Discharged {
@@ -378,6 +380,7 @@ fn certificate(
                     owner: RepairOwner::Human,
                     authority: None,
                     accepts: Vec::new(),
+                    waiver_authority: None,
                 },
                 contract: id("patch-compiles"),
                 state: DischargeState::Residual {

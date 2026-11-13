@@ -78,6 +78,7 @@ pub fn from_memory_claim(
             owner: RepairOwner::Verifier,
             authority: None,
             accepts: Vec::new(),
+            waiver_authority: None,
         },
         contract: identifier("memory/claim-is-grounded")?,
         state: DischargeState::Residual {

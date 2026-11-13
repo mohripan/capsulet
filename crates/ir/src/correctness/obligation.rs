@@ -150,6 +150,11 @@ pub struct ObligationStatement {
     /// obligation as residual instead, saying why the discharge did not count.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub accepts: Vec<BasisKind>,
+    /// The authority a person must hold to waive it. A waiver under any other
+    /// authority is refused at the seal. One naming none is waived, as before,
+    /// under whichever authorities the assurance policy allows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiver_authority: Option<Identifier>,
 }
 
 impl ObligationStatement {
@@ -162,6 +167,7 @@ impl ObligationStatement {
             owner,
             authority: None,
             accepts: Vec::new(),
+            waiver_authority: None,
         }
     }
 
@@ -235,9 +241,18 @@ pub enum DischargeState {
     /// Nobody checked it; the run proceeded on the stated assumption.
     Assumed { rationale: String },
     /// Policy allowed release without it, on a named authority's decision.
+    /// `policy` names the decision: the waiver granted, or the policy that
+    /// grants it.
     Waived {
         policy: Identifier,
         authority: Identifier,
+        /// Who waived it, under `authority`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        by: Option<Identifier>,
+        /// The waiver as it was granted, which the certificate carries: who,
+        /// why, and the failure it accepted.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        evidence: Vec<Digest>,
     },
     /// Still open, with whatever partial evidence exists.
     Residual {
@@ -278,8 +293,9 @@ impl DischargeState {
             Self::Discharged { evidence, .. }
             | Self::Endorsed { evidence, .. }
             | Self::Disputed { evidence, .. }
+            | Self::Waived { evidence, .. }
             | Self::Residual { evidence, .. } => evidence,
-            Self::Assumed { .. } | Self::Waived { .. } | Self::Failed { .. } => &[],
+            Self::Assumed { .. } | Self::Failed { .. } => &[],
         }
     }
 }

@@ -3973,7 +3973,7 @@
       "kind": "capability",
       "maturity": "implemented",
       "area": "Assurance policy",
-      "statement": "A certificate records what kind of checker discharged each obligation: mechanical, a replayable tool, or a person reviewing under the authority the obligation names. A model-backed verifier only endorses or disputes, both of which leave the obligation outstanding, so no combination of them makes a certificate accepted, and the seal refuses a certificate in which a model discharges anything. An obligation may restrict which kinds of checker count. A boundary may refuse to cross over a dispute, or require every open obligation to be endorsed by a model of another family than the proposer's. Certificates sealed before bases existed read unchanged.",
+      "statement": "A certificate records what kind of checker discharged each obligation: mechanical, a replayable tool, or a person reviewing under the authority the obligation names. A model-backed verifier only endorses or disputes, both of which leave the obligation outstanding, so no combination of them makes a certificate accepted, and the seal refuses a certificate in which a model discharges anything. An obligation may restrict which kinds of checker count, and name the authority a waiver of it needs: a waiver stays outstanding, names who granted it, rests on the waiver the certificate carries, and is refused at the seal under any other authority. A boundary may refuse to cross over a dispute, or require every open obligation to be endorsed by a model of another family than the proposer's. Certificates sealed before bases existed read unchanged.",
       "public_surfaces": [
         "ARCHITECTURE.md"
       ],
@@ -4011,6 +4011,12 @@
           "assertion": "legacy-certificates-read-unchanged",
           "evidence_selectors": [
             "an_unrecorded_basis_and_a_plain_statement_encode_as_they_always_did"
+          ]
+        },
+        {
+          "assertion": "a-waiver-is-under-its-authority",
+          "evidence_selectors": [
+            "a_waiver_counts_only_under_the_authority_the_obligation_names_for_one"
           ]
         }
       ],
@@ -4084,6 +4090,13 @@
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test ir_and_assurance --locked",
           "selector": "a_models_endorsement_or_dispute_is_projected_as_outstanding"
+        },
+        {
+          "type": "test",
+          "path": "crates/ir/tests/discharge_basis.rs",
+          "gate": "ir",
+          "command": "cargo test -p capsulet-ir --locked",
+          "selector": "a_waiver_counts_only_under_the_authority_the_obligation_names_for_one"
         },
         {
           "type": "source",
@@ -4294,7 +4307,7 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Assurance policy",
-      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content,, whose contracts or validators do not read, whose validators decide an obligation the pack does not state, one their kind may not discharge or one another validator decides, or whose obligations, the policy defaults it carries as IR contracts, could never be met. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. A project installs a pack over the API only under the trust store its operator supplies, and holds each version once and unchanged. A definition pins its packs by manifest digest and registers only when its project holds them exactly as pinned, and replay reports a pinned pack it does not hold, or holds as another pack, instead of substituting one.",
+      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content, whose contracts or validators do not read, whose validators decide an obligation the pack does not state, one their kind may not discharge or one another validator decides, whose validators read a file the pack does not hold, or whose obligations, the policy defaults it carries as IR contracts, could never be met. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. A project installs a pack over the API only under the trust store its operator supplies, and holds each version once and unchanged. A definition pins its packs by manifest digest and registers only when its project holds them exactly as pinned, and replay reports a pinned pack it does not hold, or holds as another pack, instead of substituting one.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/api.md"
@@ -4362,6 +4375,12 @@
           "assertion": "what-a-validator-decides-holds-together",
           "evidence_selectors": [
             "what_a_validator_decides_has_to_be_the_packs_own_and_its_alone"
+          ]
+        },
+        {
+          "assertion": "what-a-validator-reads-is-the-packs",
+          "evidence_selectors": [
+            "a_validator_reads_only_files_the_pack_holds_and_each_once"
           ]
         }
       ],
@@ -4500,6 +4519,13 @@
           "selector": "what_a_validator_decides_has_to_be_the_packs_own_and_its_alone"
         },
         {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_validator_reads_only_files_the_pack_holds_and_each_once"
+        },
+        {
           "type": "source",
           "path": "crates/pack/src/lib.rs"
         }
@@ -4607,6 +4633,132 @@
         {
           "type": "source",
           "path": "crates/pack/src/decide.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-013",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Assurance policy",
+      "statement": "The infrastructure-policy reference pack decides whether a proposed infrastructure change, a Terraform plan, is permitted by policy. OPA, a replayable tool pinned by digest, evaluates the pack's own Rego policies, which the validator reads from the pack: they are cited as inputs supplied by the pack, and a change's inputs may not reach under `pack/`. A scanner in a pinned Python image checks that everything the plan touches is inside the scope its request declared. A violation is `rejected`, owned by the proposer, with a reason naming the rule and each resource that breaks it. A holder of `review:security` may waive a policy's failure with `capsulet_pack::waive`: the waiver covers the failure it names exactly and no other, is recorded as a waived obligation naming the waiver, its authority and who granted it, and is carried as evidence, so the certificate is `conditional`. A waiver under another authority, or of the scope check, is refused. Run again from the bundle, both tools reach their records and the verdict reproduces offline.",
+      "public_surfaces": [
+        "ARCHITECTURE.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-violation-is-rejected-naming-the-rule",
+          "evidence_selectors": [
+            "a_policy_violation_is_rejected_naming_the_rule_owned_by_the_proposer",
+            "a_compliant_change_is_accepted_on_the_tools_word_alone",
+            "in_containers_a_compliant_change_is_accepted_and_one_outside_its_scope_is_rejected"
+          ]
+        },
+        {
+          "assertion": "a-waived-violation-is-conditional-and-names-its-authority",
+          "evidence_selectors": [
+            "a_waived_violation_is_conditional_names_its_authority_and_carries_the_waiver",
+            "a_waiver_covers_the_failure_it_names_and_no_other",
+            "a_waiver_no_authority_could_grant_here_is_refused_and_changes_nothing",
+            "in_containers_a_public_bucket_is_rejected_naming_the_rule_and_a_waiver_makes_it_conditional"
+          ]
+        },
+        {
+          "assertion": "the-policies-are-the-packs",
+          "evidence_selectors": [
+            "the_policy_engine_is_handed_the_packs_policies_and_a_change_cannot_bring_its_own",
+            "the_tools_run_again_from_the_bundle_with_the_policies_it_carries"
+          ]
+        },
+        {
+          "assertion": "the-pack-is-what-it-says",
+          "evidence_selectors": [
+            "every_policy_obligation_has_its_policy_the_scanner_runs_its_script_and_the_pack_installs",
+            "the_infrastructure_policy_pack_passes_its_own_test"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_policy_violation_is_rejected_naming_the_rule_owned_by_the_proposer"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_compliant_change_is_accepted_on_the_tools_word_alone"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/reference_packs.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test reference_packs --locked",
+          "selector": "in_containers_a_compliant_change_is_accepted_and_one_outside_its_scope_is_rejected"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_waived_violation_is_conditional_names_its_authority_and_carries_the_waiver"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_waiver_covers_the_failure_it_names_and_no_other"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_waiver_no_authority_could_grant_here_is_refused_and_changes_nothing"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/reference_packs.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test reference_packs --locked",
+          "selector": "in_containers_a_public_bucket_is_rejected_naming_the_rule_and_a_waiver_makes_it_conditional"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_policy_engine_is_handed_the_packs_policies_and_a_change_cannot_bring_its_own"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_tools_run_again_from_the_bundle_with_the_policies_it_carries"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/infrastructure_policy.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "every_policy_obligation_has_its_policy_the_scanner_runs_its_script_and_the_pack_installs"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/reference_packs.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test reference_packs --locked",
+          "selector": "the_infrastructure_policy_pack_passes_its_own_test"
+        },
+        {
+          "type": "source",
+          "path": "crates/pack/src/waiver.rs"
         }
       ]
     },

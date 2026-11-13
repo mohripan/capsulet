@@ -101,6 +101,14 @@ An obligation statement may name the `authority` a review needs, and the kinds o
 one records the obligation as residual instead and says why the discharge did not count. A statement
 that lists nothing accepts any basis, as every statement did before.
 
+A waiver records the `policy` that released the obligation anyway, which is the waiver granted or
+the policy granting it, and the `authority` it was granted under. It may also say who granted it
+(`by`), and rest on `evidence`, the waiver as it was granted, which the certificate has to carry. A
+statement may name the `waiver_authority` a waiver needs, and a waiver under any other is refused
+at the seal. A statement naming none is waived as before, and a boundary admits the waiver only
+under an authority its policy lists in `waiver_authorities`. A waived obligation stays outstanding,
+so it never makes a certificate `accepted`.
+
 A boundary may go further with what models said. `refuse_disputed` keeps it shut over a dispute of
 an obligation it gates. `endorsement` lets a `conditional` result cross only when every obligation
 still open under its contract has been endorsed, and with `independent: true` only by a model of

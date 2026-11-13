@@ -111,6 +111,7 @@ fn certificate(content: &[u8]) -> Certificate {
                 owner: RepairOwner::Verifier,
                 authority: None,
                 accepts: Vec::new(),
+                waiver_authority: None,
             },
             contract: id("patch-compiles"),
             state: DischargeState::Discharged {
