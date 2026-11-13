@@ -462,7 +462,7 @@
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_run_started_over_http_is_executed_by_the_worker"
@@ -490,21 +490,21 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_run_started_over_http_is_executed_by_the_worker"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_worker_stopping_after_every_step_changes_nothing"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/jobs.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_job_node_runs_its_job_once_and_reports_how_it_came_out"
@@ -586,35 +586,35 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_failed_check_goes_round_again_carrying_what_the_last_attempt_left"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "running_out_of_iterations_stops_a_run_rather_than_succeeding_it"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "running_out_of_tokens_stops_a_run_part_way_through"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_model_repeating_itself_is_stopped_for_going_nowhere"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_safety_check_stops_the_run"
@@ -658,21 +658,21 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/decisions.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/decisions.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "approving_at_a_gate_waives_the_failure_and_the_run_finishes"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/decisions.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "refusing_at_a_gate_stops_the_run"
@@ -708,7 +708,7 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_model_that_reports_no_usage_is_counted_as_unknown"
@@ -757,21 +757,21 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/memory.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "an_agent_can_only_propose_a_claim_never_activate_one"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/jobs.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_job_in_another_project_is_refused_rather_than_run"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "another_project_can_see_none_of_it"
@@ -793,7 +793,7 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_planner_agent_is_refused_at_the_start_by_name"
@@ -847,35 +847,35 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/erasure.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_run_that_has_not_ended_cannot_have_its_payloads_erased"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/erasure.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "erasing_a_finished_run_removes_what_it_held_and_keeps_its_record"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/erasure.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/erasure.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "payloads_past_retention_are_erased_and_newer_ones_kept"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
@@ -959,28 +959,28 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_bundle_explains_a_run_interrupted_mid_call"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_bundle_explains_a_run_that_failed"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_bundle_explains_a_run_that_ran_out_of_budget"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
@@ -1111,21 +1111,21 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "an_explanation_labels_what_each_node_did_and_agrees_with_the_export"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "an_explanation_says_a_failed_check_disputed_the_answer_and_the_run_abstained"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "another_projects_explanation_of_a_run_is_not_found"
@@ -1266,7 +1266,7 @@
         },
         {
           "type": "test",
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/memory.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
           "selector": "saves_and_lists_memory_claims_when_database_is_available"
@@ -1676,14 +1676,14 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/leases.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
           "selector": "lease_query_does_not_hand_out_same_run_twice_when_database_is_available"
         },
         {
           "type": "test",
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/leases.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
           "selector": "pool_limit_prevents_concurrent_leases_when_database_is_available"
@@ -1813,7 +1813,7 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/jobs.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
           "selector": "saves_and_finds_job_run_logs_when_database_is_available"
@@ -1882,7 +1882,7 @@
         },
         {
           "type": "test",
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/jobs.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
           "selector": "saves_lists_and_finds_artifacts_when_database_is_available"
@@ -2282,7 +2282,7 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/automations.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
           "selector": "due_schedule_trigger_creates_workflow_run_when_database_is_available"
@@ -2748,7 +2748,7 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/identity.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
           "selector": "service_accounts_are_listed_and_revoked_only_in_their_own_project"
@@ -2809,7 +2809,7 @@
         },
         {
           "type": "test",
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/identity.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
           "selector": "audit_listing_excludes_foreign_projects_and_tenants_before_limit"
@@ -3186,35 +3186,35 @@
       "evidence": [
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_collector_that_is_down_changes_nothing_about_how_a_run_ends"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "a_run_is_one_trace_from_its_request_through_every_lease_on_every_worker"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "an_effect_is_a_tool_span_and_a_refused_one_says_why_only_by_kind"
         },
         {
           "type": "test",
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
           "gate": "postgres",
           "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
           "selector": "the_metrics_a_run_records_have_labels_from_closed_sets"

@@ -1113,36 +1113,36 @@
       "command": "cargo test -p capsulet-postgres --test postgres_integration --locked",
       "tests": [
         {
-          "path": "crates/postgres/tests/postgres_integration.rs",
-          "selector": "audit_listing_excludes_foreign_projects_and_tenants_before_limit"
-        },
-        {
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/automations.rs",
           "selector": "due_schedule_trigger_creates_workflow_run_when_database_is_available"
         },
         {
-          "path": "crates/postgres/tests/postgres_integration.rs",
-          "selector": "lease_query_does_not_hand_out_same_run_twice_when_database_is_available"
+          "path": "crates/postgres/tests/postgres_integration/identity.rs",
+          "selector": "audit_listing_excludes_foreign_projects_and_tenants_before_limit"
         },
         {
-          "path": "crates/postgres/tests/postgres_integration.rs",
-          "selector": "pool_limit_prevents_concurrent_leases_when_database_is_available"
+          "path": "crates/postgres/tests/postgres_integration/identity.rs",
+          "selector": "service_accounts_are_listed_and_revoked_only_in_their_own_project"
         },
         {
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/jobs.rs",
           "selector": "saves_and_finds_job_run_logs_when_database_is_available"
         },
         {
-          "path": "crates/postgres/tests/postgres_integration.rs",
-          "selector": "saves_and_lists_memory_claims_when_database_is_available"
-        },
-        {
-          "path": "crates/postgres/tests/postgres_integration.rs",
+          "path": "crates/postgres/tests/postgres_integration/jobs.rs",
           "selector": "saves_lists_and_finds_artifacts_when_database_is_available"
         },
         {
-          "path": "crates/postgres/tests/postgres_integration.rs",
-          "selector": "service_accounts_are_listed_and_revoked_only_in_their_own_project"
+          "path": "crates/postgres/tests/postgres_integration/leases.rs",
+          "selector": "lease_query_does_not_hand_out_same_run_twice_when_database_is_available"
+        },
+        {
+          "path": "crates/postgres/tests/postgres_integration/leases.rs",
+          "selector": "pool_limit_prevents_concurrent_leases_when_database_is_available"
+        },
+        {
+          "path": "crates/postgres/tests/postgres_integration/memory.rs",
+          "selector": "saves_and_lists_memory_claims_when_database_is_available"
         }
       ]
     },
@@ -1283,131 +1283,131 @@
       "command": "cargo test -p capsulet-graph-worker --test agent_runs --locked",
       "tests": [
         {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_bundle_explains_a_run_interrupted_mid_call"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_bundle_explains_a_run_that_failed"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_bundle_explains_a_run_that_ran_out_of_budget"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_collector_that_is_down_changes_nothing_about_how_a_run_ends"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_failed_check_goes_round_again_carrying_what_the_last_attempt_left"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_job_in_another_project_is_refused_rather_than_run"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_job_node_runs_its_job_once_and_reports_how_it_came_out"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_model_repeating_itself_is_stopped_for_going_nowhere"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_model_that_reports_no_usage_is_counted_as_unknown"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_planner_agent_is_refused_at_the_start_by_name"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_run_is_one_trace_from_its_request_through_every_lease_on_every_worker"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_run_started_over_http_is_executed_by_the_worker"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_run_that_has_not_ended_cannot_have_its_payloads_erased"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_safety_check_stops_the_run"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "a_worker_stopping_after_every_step_changes_nothing"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "an_agent_can_only_propose_a_claim_never_activate_one"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "an_effect_is_a_tool_span_and_a_refused_one_says_why_only_by_kind"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "an_explanation_labels_what_each_node_did_and_agrees_with_the_export"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "an_explanation_says_a_failed_check_disputed_the_answer_and_the_run_abstained"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "another_project_can_see_none_of_it"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "another_projects_explanation_of_a_run_is_not_found"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/decisions.rs",
           "selector": "approving_at_a_gate_waives_the_failure_and_the_run_finishes"
         },
         {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/decisions.rs",
           "selector": "cancelling_stops_a_run_and_a_finished_run_cannot_be_cancelled"
         },
         {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "erasing_a_finished_run_removes_what_it_held_and_keeps_its_record"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
-          "selector": "payloads_past_retention_are_erased_and_newer_ones_kept"
-        },
-        {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/decisions.rs",
           "selector": "refusing_at_a_gate_stops_the_run"
         },
         {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/erasure.rs",
+          "selector": "a_run_that_has_not_ended_cannot_have_its_payloads_erased"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/erasure.rs",
+          "selector": "bytes_another_run_holds_are_kept_for_it_and_go_when_it_is_erased"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/erasure.rs",
+          "selector": "erasing_a_finished_run_removes_what_it_held_and_keeps_its_record"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/erasure.rs",
+          "selector": "payloads_past_retention_are_erased_and_newer_ones_kept"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
+          "selector": "a_failed_check_goes_round_again_carrying_what_the_last_attempt_left"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
+          "selector": "a_model_repeating_itself_is_stopped_for_going_nowhere"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
+          "selector": "a_model_that_reports_no_usage_is_counted_as_unknown"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
+          "selector": "a_planner_agent_is_refused_at_the_start_by_name"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
+          "selector": "a_run_started_over_http_is_executed_by_the_worker"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
+          "selector": "a_safety_check_stops_the_run"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
+          "selector": "a_worker_stopping_after_every_step_changes_nothing"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
+          "selector": "another_project_can_see_none_of_it"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "selector": "running_out_of_iterations_stops_a_run_rather_than_succeeding_it"
         },
         {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/execution.rs",
           "selector": "running_out_of_tokens_stops_a_run_part_way_through"
         },
         {
-          "path": "crates/graph-worker/tests/agent_runs.rs",
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
+          "selector": "a_bundle_explains_a_run_interrupted_mid_call"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
+          "selector": "a_bundle_explains_a_run_that_failed"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
+          "selector": "a_bundle_explains_a_run_that_ran_out_of_budget"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
+          "selector": "a_bundle_explains_a_run_that_succeeded_and_carries_none_of_its_content"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
+          "selector": "an_explanation_labels_what_each_node_did_and_agrees_with_the_export"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
+          "selector": "an_explanation_says_a_failed_check_disputed_the_answer_and_the_run_abstained"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/explanations.rs",
+          "selector": "another_projects_explanation_of_a_run_is_not_found"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/jobs.rs",
+          "selector": "a_job_in_another_project_is_refused_rather_than_run"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/jobs.rs",
+          "selector": "a_job_node_runs_its_job_once_and_reports_how_it_came_out"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/memory.rs",
+          "selector": "an_agent_can_only_propose_a_claim_never_activate_one"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
+          "selector": "a_collector_that_is_down_changes_nothing_about_how_a_run_ends"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
+          "selector": "a_refused_model_call_is_an_error_that_names_its_kind_and_not_its_content"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
+          "selector": "a_run_is_one_trace_from_its_request_through_every_lease_on_every_worker"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
+          "selector": "an_effect_is_a_tool_span_and_a_refused_one_says_why_only_by_kind"
+        },
+        {
+          "path": "crates/graph-worker/tests/agent_runs/telemetry.rs",
           "selector": "the_metrics_a_run_records_have_labels_from_closed_sets"
         }
       ]

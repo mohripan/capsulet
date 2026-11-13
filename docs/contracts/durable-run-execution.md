@@ -145,7 +145,7 @@ That makes a check's outcome part of the run's record rather than its content. A
 replay and the run's explanation can say whether each check held without carrying the value it
 checked. A log written before verdicts were recorded reads as `verdict_unrecorded`.
 
-Checked by: `verify --gate postgres` (`crates/graph-worker/tests/agent_runs.rs` and `execution.rs`).
+Checked by: `verify --gate postgres` (`crates/graph-worker/tests/agent_runs/` and `execution.rs`).
 
 ## What is not claimed
 
