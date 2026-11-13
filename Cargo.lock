@@ -409,6 +409,7 @@ name = "capsulet-cli"
 version = "0.1.0"
 dependencies = [
  "capsulet-core",
+ "capsulet-pack",
  "capsulet-runtime",
  "capsulet-verifier",
  "clap",
@@ -523,6 +524,22 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "capsulet-pack"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "capsulet-core",
+ "capsulet-ir",
+ "capsulet-verifier",
+ "hex",
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

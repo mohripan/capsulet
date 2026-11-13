@@ -104,6 +104,8 @@ enum Command {
     AgentRuns(AgentRunsCommand),
     #[command(subcommand, about = "Develop a validator for the verifier protocol")]
     Verifier(VerifierCommand),
+    #[command(subcommand, about = "Make, sign, check and test domain packs")]
+    Pack(PackCommand),
     #[command(about = "Generate shell completion scripts")]
     Completions {
         #[arg(value_enum, help = "Target shell")]
@@ -162,6 +164,55 @@ enum VerifierCommand {
         registration: PathBuf,
         #[arg(help = "Cases JSON file; input paths resolve beside it")]
         cases: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum PackCommand {
+    /// Makes a publisher key, and adds its public half to a trust store for the
+    /// named packs. The key is a secret: keep it out of every pack and
+    /// repository. An existing key file is never overwritten.
+    #[command(about = "Make a publisher key and trust it for packs")]
+    Keygen {
+        #[arg(long, help = "File to write the private key to")]
+        key: PathBuf,
+        #[arg(long, help = "Trust store to add the public key to; made if missing")]
+        trust: PathBuf,
+        #[arg(long, num_args = 1.., required = true, help = "Pack names the key may sign, or *")]
+        packs: Vec<String>,
+    },
+    /// Lists every file in the pack's manifest by digest, as signing does.
+    #[command(about = "List a pack's files in its manifest")]
+    Refresh {
+        #[arg(help = "Pack directory")]
+        dir: PathBuf,
+    },
+    /// Lists every file in the manifest, then signs the manifest, writing
+    /// `pack.sig`.
+    #[command(about = "Sign a pack")]
+    Sign {
+        #[arg(help = "Pack directory")]
+        dir: PathBuf,
+        #[arg(long, help = "Private key file")]
+        key: PathBuf,
+    },
+    /// Checks a pack the way installing it would: every file listed and
+    /// unchanged, the signature verifying under a key trusted for this pack,
+    /// and the contracts and validators reading. Exits non-zero when it would
+    /// be refused.
+    #[command(about = "Check a pack against a trust store")]
+    Verify {
+        #[arg(help = "Pack directory")]
+        dir: PathBuf,
+        #[arg(long, help = "Trust store file")]
+        trust: PathBuf,
+    },
+    /// Runs each validator in the pack against its cases, without a stack.
+    /// Exits non-zero when any case fails.
+    #[command(about = "Run a pack's validators against their cases")]
+    Test {
+        #[arg(help = "Pack directory")]
+        dir: PathBuf,
     },
 }
 
@@ -266,6 +317,7 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
             let run = api.get_run(&id).await?;
             Ok(format_run_detail(&run))
         }
+        Command::Pack(command) => pack(command),
         Command::Verifier(VerifierCommand::Test {
             registration,
             cases,
@@ -283,6 +335,78 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
                 output.display(),
                 output.display()
             ))
+        }
+    }
+}
+
+/// Runs one `capsulet pack` command.
+fn pack(command: PackCommand) -> Result<String, CliError> {
+    match command {
+        PackCommand::Keygen { key, trust, packs } => {
+            if key.exists() {
+                return Err(CliError::Pack(capsulet_pack::PackError::Key(format!(
+                    "{} exists, and a key is never overwritten",
+                    key.display()
+                ))));
+            }
+            let (private, _) = capsulet_pack::generate()?;
+            let mut store = if trust.exists() {
+                serde_json::from_slice(&std::fs::read(&trust)?)?
+            } else {
+                capsulet_pack::TrustStore::new()
+            };
+            store.keys.push(private.trusted_for(packs.clone())?);
+            store.check()?;
+            std::fs::write(&key, serde_json::to_string_pretty(&private)? + "\n")?;
+            std::fs::write(&trust, serde_json::to_string_pretty(&store)? + "\n")?;
+            Ok(format!(
+                "wrote key {} to {} (a secret: keep it out of packs and repositories)\n\
+                 trusted it for {} in {}\n",
+                private.id,
+                key.display(),
+                packs.join(", "),
+                trust.display()
+            ))
+        }
+        PackCommand::Refresh { dir } => {
+            let manifest = capsulet_pack::refresh(&dir)?;
+            Ok(format!(
+                "listed the files of {}: manifest {manifest}\n",
+                dir.display()
+            ))
+        }
+        PackCommand::Sign { dir, key } => {
+            let private: capsulet_pack::PrivateKey = serde_json::from_slice(&std::fs::read(&key)?)?;
+            let manifest = capsulet_pack::sign(&dir, &private)?;
+            Ok(format!(
+                "signed {}: manifest {manifest}, key {}\n",
+                dir.display(),
+                private.id
+            ))
+        }
+        PackCommand::Verify { dir, trust } => {
+            let store: capsulet_pack::TrustStore = serde_json::from_slice(&std::fs::read(&trust)?)?;
+            let admitted = capsulet_pack::admit(&capsulet_pack::read(&dir)?, &store, &[])?;
+            Ok(format!(
+                "verified {} {}: manifest {}, signed by {}\n",
+                admitted.name, admitted.version, admitted.manifest, admitted.key
+            ))
+        }
+        PackCommand::Test { dir } => {
+            let reports = capsulet_pack::test(&capsulet_pack::read(&dir)?)?;
+            let mut text = String::new();
+            let mut all_passed = true;
+            for report in &reports {
+                let (lines, passed) = capsulet_verifier::harness::render(&report.cases);
+                let _ = writeln!(text, "{}", report.registration);
+                text.push_str(&lines);
+                all_passed &= passed;
+            }
+            if all_passed {
+                Ok(text)
+            } else {
+                Err(CliError::CasesFailed(text))
+            }
         }
     }
 }
@@ -648,6 +772,8 @@ enum CliError {
     Bundle(#[from] BundleError),
     #[error("a validator case failed:\n{0}")]
     CasesFailed(String),
+    #[error("{} ({})", .0, .0.code())]
+    Pack(#[from] capsulet_pack::PackError),
     #[error("API returned {status}: {code}: {message}")]
     Api {
         status: StatusCode,

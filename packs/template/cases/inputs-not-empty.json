@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "name": "an input with content holds",
+      "obligations": [
+        {
+          "id": "inputs-not-empty",
+          "contract": "template",
+          "statement": "every input has content"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "document.txt",
+          "text": "Either party may terminate this agreement.",
+          "media_type": "text/plain"
+        }
+      ],
+      "expect": {
+        "inputs-not-empty": "holds"
+      }
+    },
+    {
+      "name": "an empty input does not hold",
+      "obligations": [
+        {
+          "id": "inputs-not-empty",
+          "contract": "template",
+          "statement": "every input has content"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "empty.txt",
+          "text": "",
+          "media_type": "text/plain"
+        }
+      ],
+      "expect": {
+        "inputs-not-empty": "does_not_hold"
+      }
+    }
+  ]
+}

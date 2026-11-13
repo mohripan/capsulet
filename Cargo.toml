@@ -10,6 +10,7 @@ members = [
     "crates/ir-adapters",
     "crates/kernel",
     "crates/observability",
+    "crates/pack",
     "crates/postgres",
     "crates/proposer",
     "crates/replay",

@@ -1,0 +1,21 @@
+{
+  "name": "inputs-not-empty",
+  "version": "1",
+  "basis": {
+    "kind": "replayable_tool"
+  },
+  "environment": {
+    "kind": "container",
+    "image": "busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec",
+    "command": [
+      "sh",
+      "-c",
+      "cat >/dev/null\no=holds; r='every input has content'\nfor f in /inputs/*; do [ -s \"$f\" ] || { o=does_not_hold; r=\"$(basename \"$f\") is empty\"; }; done\nprintf '{\"protocol\":\"capsulet.verifier/v1\",\"results\":[{\"obligation\":\"inputs-not-empty\",\"contract\":\"template\",\"outcome\":\"%s\",\"reason\":\"%s\"}]}' \"$o\" \"$r\"\n"
+    ]
+  },
+  "limits": {
+    "timeout_ms": 30000,
+    "memory_mb": 64,
+    "max_output_bytes": 65536
+  }
+}

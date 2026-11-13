@@ -4269,6 +4269,113 @@
       ]
     },
     {
+      "id": "CAP-ASSURANCE-011",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Assurance policy",
+      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content, or whose contracts or validators do not read. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. Installation through the API and runs pinning packs are not implemented yet.",
+      "public_surfaces": [
+        "ARCHITECTURE.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-signed-pack-installs-once",
+          "evidence_selectors": [
+            "a_signed_pack_installs_once_and_installing_it_again_changes_nothing"
+          ]
+        },
+        {
+          "assertion": "unsigned-tampered-and-untrusted-packs-are-refused",
+          "evidence_selectors": [
+            "an_unsigned_or_tampered_pack_is_refused",
+            "only_a_key_the_project_trusts_for_this_pack_installs_it",
+            "a_pack_whose_contract_or_validator_does_not_read_is_refused"
+          ]
+        },
+        {
+          "assertion": "versions-move-forward-and-do-not-change",
+          "evidence_selectors": [
+            "a_version_does_not_go_backwards_or_change_its_content"
+          ]
+        },
+        {
+          "assertion": "the-commands-sign-and-verify",
+          "evidence_selectors": [
+            "a_pack_signed_with_a_new_key_verifies_against_the_trust_store_it_was_added_to"
+          ]
+        },
+        {
+          "assertion": "the-template-passes-its-own-test-and-installs",
+          "evidence_selectors": [
+            "the_template_passes_its_own_test",
+            "the_template_lists_its_files_and_once_signed_installs"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_signed_pack_installs_once_and_installing_it_again_changes_nothing"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "an_unsigned_or_tampered_pack_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "only_a_key_the_project_trusts_for_this_pack_installs_it"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_pack_whose_contract_or_validator_does_not_read_is_refused"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_version_does_not_go_backwards_or_change_its_content"
+        },
+        {
+          "type": "test",
+          "path": "crates/cli/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_pack_signed_with_a_new_key_verifies_against_the_trust_store_it_was_added_to"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/template.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test template --locked",
+          "selector": "the_template_passes_its_own_test"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/template.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test template --locked",
+          "selector": "the_template_lists_its_files_and_once_signed_installs"
+        },
+        {
+          "type": "source",
+          "path": "crates/pack/src/lib.rs"
+        }
+      ]
+    },
+    {
       "id": "CAP-CORRECTNESS-003",
       "kind": "capability",
       "maturity": "implemented",

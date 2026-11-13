@@ -498,23 +498,40 @@ pub(crate) fn gates() -> Vec<Gate> {
         // every one of them to running.
         every_test_must_run(gate(
             "verifier-isolation",
-            "a validator in a real container reaches no network, writes only its outputs, is              stopped past its memory or its time, and runs again to the same outputs",
+            "a validator in a real container reaches no network, writes only its outputs, is \
+             stopped past its memory or its time, and runs again to the same outputs; and the pack \
+             template passes its own test there and, once signed, installs",
             &["cargo", "docker"],
             900,
             &[Full],
-            vec![command(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "capsulet-verifier",
-                    "--features",
-                    "container-tests",
-                    "--test",
-                    "isolation",
-                    "--locked",
-                ],
-            )],
+            vec![
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-verifier",
+                        "--features",
+                        "container-tests",
+                        "--test",
+                        "isolation",
+                        "--locked",
+                    ],
+                ),
+                command(
+                    "cargo",
+                    &[
+                        "test",
+                        "-p",
+                        "capsulet-pack",
+                        "--features",
+                        "container-tests",
+                        "--test",
+                        "template",
+                        "--locked",
+                    ],
+                ),
+            ],
         )),
         every_test_must_run(gate(
             "migrations",

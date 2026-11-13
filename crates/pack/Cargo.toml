@@ -1,0 +1,37 @@
+[package]
+name = "capsulet-pack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Domain packs: a signed, versioned bundle of contracts and validators, checked before it is installed."
+
+# Tests that run a pack's container validators, so they need Docker. The
+# `verifier-isolation` gate enables this; the `unit` gate does not build them.
+[features]
+container-tests = []
+
+[[test]]
+name = "template"
+path = "tests/template.rs"
+required-features = ["container-tests"]
+
+[dependencies]
+# Ed25519, which the API already builds for its token signatures.
+aws-lc-rs = { version = "1", features = ["prebuilt-nasm"] }
+capsulet-core = { path = "../core" }
+capsulet-ir = { path = "../ir" }
+capsulet-verifier = { path = "../verifier" }
+hex = "0.4"
+semver = "1"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

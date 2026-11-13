@@ -1,0 +1,27 @@
+entity Party:
+  fields:
+    name: string
+
+entity Agreement:
+  fields:
+    title: string
+
+relation may_terminate:
+  from: Party
+  to: Agreement
+  stated_by:
+    - "{from} may terminate {to}"
+
+statement_policy:
+  provisions:
+    - "{ref}."
+  references:
+    - "Section {ref}"
+  subject_to:
+    - "subject to"
+  overrides:
+    - notwithstanding
+  conditions:
+    - "provided that"
+  definitions:
+    - "{term}" means

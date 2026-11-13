@@ -194,6 +194,10 @@
         },
         {
           "path": "crates/cli/src/tests.rs",
+          "selector": "a_pack_signed_with_a_new_key_verifies_against_the_trust_store_it_was_added_to"
+        },
+        {
+          "path": "crates/cli/src/tests.rs",
           "selector": "verifier_test_reports_each_case_and_fails_when_one_does"
         },
         {
@@ -563,6 +567,26 @@
         {
           "path": "crates/kernel/tests/totality.rs",
           "selector": "every_derivation_shape_reaches_a_verdict"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
+          "selector": "a_pack_whose_contract_or_validator_does_not_read_is_refused"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
+          "selector": "a_signed_pack_installs_once_and_installing_it_again_changes_nothing"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
+          "selector": "a_version_does_not_go_backwards_or_change_its_content"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
+          "selector": "an_unsigned_or_tampered_pack_is_refused"
+        },
+        {
+          "path": "crates/pack/tests/packs.rs",
+          "selector": "only_a_key_the_project_trusts_for_this_pack_installs_it"
         },
         {
           "path": "crates/runner/src/tests.rs",
@@ -1313,6 +1337,20 @@
         {
           "path": "crates/verifier/tests/isolation.rs",
           "selector": "a_validator_past_its_memory_or_its_time_is_stopped_and_decides_nothing"
+        }
+      ]
+    },
+    {
+      "gate": "verifier-isolation",
+      "command": "cargo test -p capsulet-pack --features container-tests --test template --locked",
+      "tests": [
+        {
+          "path": "crates/pack/tests/template.rs",
+          "selector": "the_template_lists_its_files_and_once_signed_installs"
+        },
+        {
+          "path": "crates/pack/tests/template.rs",
+          "selector": "the_template_passes_its_own_test"
         }
       ]
     },

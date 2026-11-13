@@ -281,3 +281,88 @@ fn verifier_test_reports_each_case_and_fails_when_one_does() {
     assert!(message.contains("1 of 2 cases passed"), "{message}");
     let _ = std::fs::remove_dir_all(&directory);
 }
+
+#[test]
+fn a_pack_signed_with_a_new_key_verifies_against_the_trust_store_it_was_added_to() {
+    let directory = tempfile_dir("capsulet-cli-pack");
+    let pack = directory.join("sample");
+    std::fs::create_dir_all(pack.join("contracts")).expect("dir");
+    std::fs::write(
+        pack.join("contracts/sample.contract"),
+        "entity Organization:\n  fields:\n    name: string\n",
+    )
+    .expect("contract");
+    std::fs::write(
+        pack.join("pack.json"),
+        r#"{"schema_version": "capsulet.pack/v1", "name": "sample", "version": "1.0.0",
+            "contracts": ["contracts/sample.contract"], "validators": [], "files": []}"#,
+    )
+    .expect("manifest");
+    let key = directory.join("publisher.key.json");
+    let trust = directory.join("trust.json");
+
+    super::pack(super::PackCommand::Keygen {
+        key: key.clone(),
+        trust: trust.clone(),
+        packs: vec!["sample".to_string()],
+    })
+    .expect("a key");
+    assert!(
+        super::pack(super::PackCommand::Keygen {
+            key: key.clone(),
+            trust: trust.clone(),
+            packs: vec!["sample".to_string()],
+        })
+        .is_err(),
+        "a key is never overwritten"
+    );
+    let listed =
+        super::pack(super::PackCommand::Refresh { dir: pack.clone() }).expect("lists its files");
+    assert!(listed.contains("manifest sha256:"), "{listed}");
+    let unsigned = super::pack(super::PackCommand::Verify {
+        dir: pack.clone(),
+        trust: trust.clone(),
+    })
+    .expect_err("an unsigned pack does not verify");
+    assert!(unsigned.to_string().contains("(unsigned)"), "{unsigned}");
+
+    super::pack(super::PackCommand::Sign {
+        dir: pack.clone(),
+        key,
+    })
+    .expect("signs");
+    let verified = super::pack(super::PackCommand::Verify {
+        dir: pack.clone(),
+        trust: trust.clone(),
+    })
+    .expect("verifies");
+    assert!(
+        verified.starts_with("verified sample 1.0.0: manifest sha256:"),
+        "{verified}"
+    );
+
+    std::fs::write(
+        pack.join("contracts/sample.contract"),
+        "entity Changed:\n  fields:\n    name: string\n",
+    )
+    .expect("tamper");
+    let tampered = super::pack(super::PackCommand::Verify { dir: pack, trust })
+        .expect_err("a changed file does not verify");
+    assert!(
+        tampered.to_string().contains("(tampered_file)"),
+        "{tampered}"
+    );
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+fn tempfile_dir(prefix: &str) -> std::path::PathBuf {
+    let directory = std::env::temp_dir().join(format!(
+        "{prefix}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos())
+    ));
+    std::fs::create_dir_all(&directory).expect("a directory");
+    directory
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "capsulet.pack/v1",
+  "name": "template",
+  "version": "0.1.0",
+  "description": "A working pack to start from: a contract that declares how its documents are structured, and one validator with its cases.",
+  "contracts": [
+    "contracts/template.contract"
+  ],
+  "validators": [
+    {
+      "registration": "validators/inputs-not-empty.json",
+      "cases": "cases/inputs-not-empty.json"
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "digest": "sha256:adcbd58870bf7db832118a595282488b9f7d18bd13ff7cf8d50cbaf33b2a708f"
+    },
+    {
+      "path": "cases/inputs-not-empty.json",
+      "digest": "sha256:a12afdff836ee79ea26eb80caa63506b2e9f3ff226381c1188ae2d3ae22817b6"
+    },
+    {
+      "path": "contracts/template.contract",
+      "digest": "sha256:b711046680db61bb479de81f171ce045853ed7fadcd22ef81f96b75c9f0107f8"
+    },
+    {
+      "path": "validators/inputs-not-empty.json",
+      "digest": "sha256:a474eb563816255cab53fd3f217651ba74a830174a3ae6d2a223f250377d2ebf"
+    }
+  ]
+}
