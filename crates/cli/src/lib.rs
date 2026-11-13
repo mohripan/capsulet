@@ -351,7 +351,7 @@ fn pack(command: PackCommand) -> Result<String, CliError> {
             }
             let (private, _) = capsulet_pack::generate()?;
             let mut store = if trust.exists() {
-                serde_json::from_slice(&std::fs::read(&trust)?)?
+                read_json(&trust)?
             } else {
                 capsulet_pack::TrustStore::new()
             };
@@ -376,7 +376,7 @@ fn pack(command: PackCommand) -> Result<String, CliError> {
             ))
         }
         PackCommand::Sign { dir, key } => {
-            let private: capsulet_pack::PrivateKey = serde_json::from_slice(&std::fs::read(&key)?)?;
+            let private: capsulet_pack::PrivateKey = read_json(&key)?;
             let manifest = capsulet_pack::sign(&dir, &private)?;
             Ok(format!(
                 "signed {}: manifest {manifest}, key {}\n",
@@ -385,7 +385,7 @@ fn pack(command: PackCommand) -> Result<String, CliError> {
             ))
         }
         PackCommand::Verify { dir, trust } => {
-            let store: capsulet_pack::TrustStore = serde_json::from_slice(&std::fs::read(&trust)?)?;
+            let store: capsulet_pack::TrustStore = read_json(&trust)?;
             let admitted = capsulet_pack::admit(&capsulet_pack::read(&dir)?, &store, &[])?;
             Ok(format!(
                 "verified {} {}: manifest {}, signed by {}\n",
@@ -411,14 +411,23 @@ fn pack(command: PackCommand) -> Result<String, CliError> {
     }
 }
 
+/// A JSON file named on the command line.
+fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T, CliError> {
+    let failed = |detail: String| CliError::LocalFile {
+        path: path.display().to_string(),
+        detail,
+    };
+    let bytes = std::fs::read(path).map_err(|error| failed(error.to_string()))?;
+    serde_json::from_slice(&bytes).map_err(|error| failed(error.to_string()))
+}
+
 /// Runs a validator against its cases and reports each one.
 fn verifier_test(
     registration: &std::path::Path,
     cases: &std::path::Path,
 ) -> Result<String, CliError> {
-    let registration: capsulet_verifier::Registration =
-        serde_json::from_slice(&std::fs::read(registration)?)?;
-    let parsed: capsulet_verifier::harness::Cases = serde_json::from_slice(&std::fs::read(cases)?)?;
+    let registration: capsulet_verifier::Registration = read_json(registration)?;
+    let parsed: capsulet_verifier::harness::Cases = read_json(cases)?;
     let base = cases.parent().unwrap_or_else(|| std::path::Path::new("."));
     let reports = capsulet_verifier::harness::run_cases(&registration, &parsed, base);
     let (text, all_passed) = capsulet_verifier::harness::render(&reports);
@@ -772,6 +781,10 @@ enum CliError {
     Bundle(#[from] BundleError),
     #[error("a validator case failed:\n{0}")]
     CasesFailed(String),
+    /// A file named on the command line that is missing or is not the JSON it
+    /// should be: a key, a trust store, a registration, or a cases file.
+    #[error("{path} cannot be read: {detail}")]
+    LocalFile { path: String, detail: String },
     #[error("{} ({})", .0, .0.code())]
     Pack(#[from] capsulet_pack::PackError),
     #[error("API returned {status}: {code}: {message}")]

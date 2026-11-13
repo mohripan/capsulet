@@ -355,6 +355,39 @@ fn a_pack_signed_with_a_new_key_verifies_against_the_trust_store_it_was_added_to
     let _ = std::fs::remove_dir_all(&directory);
 }
 
+#[test]
+fn a_trust_store_or_key_that_does_not_read_is_named_not_blamed_on_the_api() {
+    let directory = tempfile_dir("capsulet-cli-local-files");
+    let empty = directory.join("trust.json");
+    std::fs::write(&empty, "").expect("an empty file");
+    let missing = directory.join("publisher.key.json");
+
+    let unreadable = super::pack(super::PackCommand::Verify {
+        dir: directory.clone(),
+        trust: empty.clone(),
+    })
+    .expect_err("an empty trust store does not read")
+    .to_string();
+    assert!(
+        unreadable.starts_with(&format!("{} cannot be read:", empty.display())),
+        "{unreadable}"
+    );
+    assert!(!unreadable.contains("API"), "{unreadable}");
+
+    let absent = super::pack(super::PackCommand::Sign {
+        dir: directory.clone(),
+        key: missing.clone(),
+    })
+    .expect_err("a missing key does not read")
+    .to_string();
+    assert!(
+        absent.starts_with(&format!("{} cannot be read:", missing.display())),
+        "{absent}"
+    );
+    assert!(!absent.contains("write"), "{absent}");
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
 fn tempfile_dir(prefix: &str) -> std::path::PathBuf {
     let directory = std::env::temp_dir().join(format!(
         "{prefix}-{}-{}",
