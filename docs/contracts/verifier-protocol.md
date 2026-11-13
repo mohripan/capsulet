@@ -94,13 +94,39 @@ Each failure is typed, owned by `verifier`, and decides nothing.
 | `inputs_modified` | an input changed, or a file appeared beside them |
 | `outputs_too_large` | the outputs exceed `max_output_bytes` |
 
+## Isolation
+
+`ContainerTransport` runs the image the registration pins by digest, optionally with a `command`, as
+`docker run` with:
+
+- `--network none`, unless the registration grants `network`, which a replayable tool never has;
+- `--read-only` and a 64 MiB `/tmp`;
+- the inputs bind-mounted read-only at `/inputs`, and only `/outputs` writable;
+- `--cap-drop ALL`, `no-new-privileges`, `--memory` with no swap beyond it, `--pids-limit 128` and one
+  CPU;
+- a name of its own, so a run past its time limit is killed, and `--rm` either way.
+
+Exit codes 125 to 127 are Docker's own failures, such as no image or no daemon, and are reported as
+`transport_failed`, never as the validator crashing. A validator killed for its memory exits 137 and is
+`crashed`.
+
+The `verifier-isolation` gate checks all of this from inside a real container, with a probe in a
+pinned busybox image that tries the network, its inputs and its root and reports what happened. It
+also checks that a validator past its memory or its time is stopped, that no container is left
+behind, and that a second run reaches the same outputs.
+
+## Running a tool again
+
+`rerun` runs an isolated replayable tool again with the same inputs and compares the new record with
+the one a certificate holds: identity, environment, inputs, outputs by digest, and verdict. A model is
+not re-run, since its word is not re-derivable. Neither is an unisolated run, which decided nothing to
+compare.
+
 ## Not yet
 
-- **Container isolation.** A read-only root, no network unless granted, and memory and process limits
-  are the container transport's, and only the process transport exists so far. Until the container one
-  does, nothing a validator decides discharges an obligation.
-- **Re-running a replayable tool on replay.**
+- **Re-running from a bundle.** `capsulet-replay` deliberately reaches no daemon or network, so running
+  a tool again from a bundle belongs in a command of its own.
 - **The Python SDK.**
 - **The `capsulet verifier test` harness.**
 
-All four are tracked in #155.
+All three are tracked in #155.

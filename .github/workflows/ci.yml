@@ -124,13 +124,13 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # These gates fail when any database test was skipped, ignored or filtered
+      # These gates fail when any database or container test was skipped, ignored or filtered
       # out, and the verifier writes every test binary's counts to the job summary
       # and to test-counts.json, which is kept below as the record that they ran.
       - name: Verify
         run: >
           cargo run -p capsulet-xtask --locked --
-          verify --gate postgres --gate migrations --gate chaos
+          verify --gate postgres --gate migrations --gate chaos --gate verifier-isolation
 
       - name: Keep test counts
         if: always()

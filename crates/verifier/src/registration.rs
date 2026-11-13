@@ -41,7 +41,12 @@ pub enum RegisteredBasis {
 pub enum Environment {
     /// A container image pinned by digest, run isolated: no network unless
     /// granted, a read-only root and inputs, and resource limits.
-    Container { image: String },
+    Container {
+        image: String,
+        /// What to run in it, when not the image's own entrypoint.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        command: Vec<String>,
+    },
     /// A program on this machine, unisolated. For the development harness
     /// only: what it decides is recorded as decided in an unisolated run, and
     /// discharges nothing.
@@ -147,7 +152,7 @@ impl Registration {
                 }
             }
         }
-        if let Environment::Container { image } = &self.environment
+        if let Environment::Container { image, .. } = &self.environment
             && !pinned(image)
         {
             return Err(RegistrationError::ImageNotPinned {
@@ -183,6 +188,7 @@ mod tests {
             basis: RegisteredBasis::ReplayableTool,
             environment: Environment::Container {
                 image: image.to_string(),
+                command: Vec::new(),
             },
             capabilities,
             limits: Limits::default(),

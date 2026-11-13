@@ -17,6 +17,17 @@ path = "src/bin/fixture-validator.rs"
 test = false
 doc = false
 
+# Tests that run real containers, so they need Docker. The `verifier-isolation`
+# gate enables this and requires every one of them to run; the `unit` gate,
+# which has no Docker, does not build them.
+[features]
+container-tests = []
+
+[[test]]
+name = "isolation"
+path = "tests/isolation.rs"
+required-features = ["container-tests"]
+
 [dependencies]
 capsulet-ir = { path = "../ir" }
 serde.workspace = true

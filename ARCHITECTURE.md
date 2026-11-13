@@ -539,5 +539,7 @@ another family than the proposer's (`CAP-ASSURANCE-009`).
 the obligations and its read-only inputs by digest, and returns one result for each. The host checks
 the validator's registration before it runs, holds it to its limits, digests what it produced, and
 builds the verifier record. An isolated tool's `holds` discharges, a model's endorses or disputes,
-and an unisolated development run decides nothing. Container isolation is the next step
+and an unisolated development run decides nothing. A container runs from an image pinned by
+digest, with no network unless granted, a read-only root and inputs, and memory, process and time
+limits, and a replay can run a tool again there and compare its outputs by digest
 (`CAP-ASSURANCE-010`).

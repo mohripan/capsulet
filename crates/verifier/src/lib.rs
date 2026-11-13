@@ -14,8 +14,10 @@
 //!   model's endorses, and an unisolated run decides nothing;
 //! - [`sdk`]: writing a validator in Rust.
 //!
-//! Isolation is the transport's. [`host::ProcessTransport`] runs a local program
-//! for the development harness, and its records say it was unisolated.
+//! Isolation is the transport's. [`host::ContainerTransport`] runs a pinned
+//! image with no network unless granted, a read-only root and inputs, and
+//! resource limits. [`host::ProcessTransport`] runs a local program for the
+//! development harness, and its records say it was unisolated.
 
 pub mod host;
 pub mod protocol;
@@ -23,8 +25,8 @@ pub mod registration;
 pub mod sdk;
 
 pub use host::{
-    Input, Output, ProcessTransport, RawRun, Requested, Transport, Verification, VerifierFailure,
-    verify,
+    ContainerTransport, Input, Output, ProcessTransport, RawRun, ReRun, Requested, Transport,
+    Verification, VerifierFailure, rerun, verify,
 };
 pub use protocol::{
     InputFile, MAX_RESPONSE_BYTES, ObligationResult, Outcome, PROTOCOL, RequestedObligation,

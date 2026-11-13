@@ -4096,7 +4096,7 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Assurance policy",
-      "statement": "A validator speaks `capsulet.verifier/v1`: one request in, naming the obligations and the read-only inputs by digest, and one response out with `holds`, `does_not_hold` or `cannot_decide` for each. The host checks its registration first, so a replayable tool granted the network or a model, a model not declared as one, or an image not pinned by digest is refused. It then holds the run to its limits, refuses changed inputs, oversized outputs and anything but one result per obligation as typed failures owned by the verifier, digests the outputs itself, and builds the verifier record. An isolated tool's `holds` discharges on basis `replayable_tool`, a model's endorses or disputes, and an unisolated development run decides nothing. Container isolation is not implemented yet.",
+      "statement": "A validator speaks `capsulet.verifier/v1`: one request in, naming the obligations and the read-only inputs by digest, and one response out with `holds`, `does_not_hold` or `cannot_decide` for each. The host checks its registration first, so a replayable tool granted the network or a model, a model not declared as one, or an image not pinned by digest is refused. It then holds the run to its limits, refuses changed inputs, oversized outputs and anything but one result per obligation as typed failures owned by the verifier, digests the outputs itself, and builds the verifier record. An isolated tool's `holds` discharges on basis `replayable_tool`, a model's endorses or disputes, and an unisolated development run decides nothing. In a container, from an image pinned by digest, it reaches no network unless granted, cannot write its inputs or its root, and is stopped past its memory or time; a replay can run a tool again there and compare its outputs by digest.",
       "public_surfaces": [
         "ARCHITECTURE.md"
       ],
@@ -4122,6 +4122,14 @@
             "a_tool_granted_the_network_or_a_model_is_not_a_replayable_tool",
             "an_image_has_to_be_pinned_by_digest",
             "a_model_has_to_be_granted_the_model_it_is"
+          ]
+        },
+        {
+          "assertion": "containers-isolate-and-replay",
+          "evidence_selectors": [
+            "a_validator_in_a_container_reaches_no_network_and_writes_only_its_outputs",
+            "a_validator_past_its_memory_or_its_time_is_stopped_and_decides_nothing",
+            "a_replay_runs_the_tool_again_in_its_pinned_image_and_compares_outputs_by_digest"
           ]
         }
       ],
@@ -4181,6 +4189,27 @@
           "gate": "unit",
           "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
           "selector": "a_model_has_to_be_granted_the_model_it_is"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/isolation.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-verifier --features container-tests --test isolation --locked",
+          "selector": "a_validator_in_a_container_reaches_no_network_and_writes_only_its_outputs"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/isolation.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-verifier --features container-tests --test isolation --locked",
+          "selector": "a_validator_past_its_memory_or_its_time_is_stopped_and_decides_nothing"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/isolation.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-verifier --features container-tests --test isolation --locked",
+          "selector": "a_replay_runs_the_tool_again_in_its_pinned_image_and_compares_outputs_by_digest"
         },
         {
           "type": "source",

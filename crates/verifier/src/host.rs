@@ -456,7 +456,7 @@ fn trust_of(registration: &Registration, isolated: bool) -> VerifierTrust {
 /// program a development run used.
 fn environment_digest(environment: &Environment) -> Digest {
     match environment {
-        Environment::Container { image } => image
+        Environment::Container { image, .. } => image
             .rsplit_once('@')
             .and_then(|(_, digest)| digest.parse().ok())
             .unwrap_or_else(|| Digest::of(image.as_bytes())),
@@ -482,7 +482,15 @@ impl Workspace {
         let directory = tempfile::tempdir().map_err(failed)?;
         let input_root = directory.path().join("inputs");
         fs::create_dir(&input_root).map_err(failed)?;
-        fs::create_dir(directory.path().join("outputs")).map_err(failed)?;
+        let output_root = directory.path().join("outputs");
+        fs::create_dir(&output_root).map_err(failed)?;
+        // A container runs with every capability dropped, so even its root user
+        // writes only where the mode lets anybody write.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&output_root, fs::Permissions::from_mode(0o777)).map_err(failed)?;
+        }
         let mut files = Vec::new();
         let mut written = Vec::new();
         for input in inputs {
@@ -620,6 +628,267 @@ impl Drop for Workspace {
     }
 }
 
+/// What a second run of a recorded tool found, against the record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReRun {
+    /// Each way the second run differs from the record. Empty when it agrees.
+    pub differences: Vec<String>,
+}
+
+impl ReRun {
+    /// Whether the second run reached the record exactly: same environment,
+    /// inputs, outputs and verdict.
+    #[must_use]
+    pub fn agrees(&self) -> bool {
+        self.differences.is_empty()
+    }
+}
+
+/// Runs a replayable tool again, in the environment its record pins, and
+/// compares what it produced with what the record says it produced.
+///
+/// Only a replayable tool, run isolated, can be re-run this way: a model's word
+/// is not re-derivable, and an unisolated run decided nothing to compare.
+///
+/// # Errors
+///
+/// Returns a [`VerifierFailure`] when the registration is not an isolated
+/// replayable tool, or when the second run itself fails.
+pub fn rerun(
+    registration: &Registration,
+    transport: &impl Transport,
+    requested: &[Requested],
+    inputs: &[Input],
+    recorded: &VerifierRecord,
+) -> Result<ReRun, VerifierFailure> {
+    if !matches!(registration.basis, RegisteredBasis::ReplayableTool)
+        || !registration.environment.is_isolated()
+    {
+        return Err(VerifierFailure::WrongTransport {
+            detail: "only an isolated replayable tool can be run again",
+        });
+    }
+    let again = verify(registration, transport, requested, inputs)?;
+    let mut differences = Vec::new();
+    let mut compare = |what: &str, same: bool| {
+        if !same {
+            differences.push(format!("its {what} differ from the record"));
+        }
+    };
+    compare("identity", again.record.identity == recorded.identity);
+    compare(
+        "environment",
+        again.record.environment == recorded.environment,
+    );
+    compare("inputs", again.record.inputs == recorded.inputs);
+    compare("outputs", again.record.outputs == recorded.outputs);
+    compare("verdict", again.record.verdict == recorded.verdict);
+    Ok(ReRun { differences })
+}
+
+/// Runs a [`Environment::Container`] validator in a container, isolated.
+///
+/// The image is the one the registration pins by digest. The container gets:
+///
+/// - no network unless the registration grants it, and a replayable tool never
+///   is granted it;
+/// - a read-only root filesystem, with a small `/tmp`;
+/// - the inputs mounted read-only at `/inputs`, and only `/outputs` writable;
+/// - every capability dropped, no new privileges, and the registration's
+///   memory limit with no swap beyond it, a process limit and one CPU.
+///
+/// It runs under a name of its own so a run that outlives its time limit can be
+/// killed, and `--rm` removes it either way.
+#[derive(Debug, Clone)]
+pub struct ContainerTransport {
+    docker: String,
+}
+
+impl Default for ContainerTransport {
+    fn default() -> Self {
+        Self {
+            docker: "docker".to_string(),
+        }
+    }
+}
+
+impl ContainerTransport {
+    /// A transport using `docker` from `PATH`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The `docker run` arguments for one run.
+    fn arguments(
+        registration: &Registration,
+        workdir: &Path,
+        name: &str,
+    ) -> Result<Vec<String>, String> {
+        let Environment::Container { image, command } = &registration.environment else {
+            return Err("a container transport runs only container environments".to_string());
+        };
+        let network = if registration
+            .capabilities
+            .contains(&crate::registration::Capability::Network)
+        {
+            "bridge"
+        } else {
+            "none"
+        };
+        let memory = format!("{}m", registration.limits.memory_mb);
+        let mount = |directory: &str, target: &str, readonly: bool| {
+            let source = workdir.join(directory);
+            format!(
+                "type=bind,source={},target={target}{}",
+                source.display(),
+                if readonly { ",readonly" } else { "" }
+            )
+        };
+        let mut arguments: Vec<String> = [
+            "run",
+            "--rm",
+            "-i",
+            "--name",
+            name,
+            "--label",
+            "capsulet.verifier=run",
+            "--network",
+            network,
+            "--read-only",
+            "--tmpfs",
+            "/tmp:rw,size=64m",
+            "--memory",
+            &memory,
+            "--memory-swap",
+            &memory,
+            "--pids-limit",
+            "128",
+            "--cpus",
+            "1",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--env",
+            "CAPSULET_VERIFIER_INPUTS=/inputs",
+            "--env",
+            "CAPSULET_VERIFIER_OUTPUTS=/outputs",
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+        arguments.push("--mount".to_string());
+        arguments.push(mount("inputs", "/inputs", true));
+        arguments.push("--mount".to_string());
+        arguments.push(mount("outputs", "/outputs", false));
+        arguments.push(image.clone());
+        arguments.extend(command.iter().cloned());
+        Ok(arguments)
+    }
+}
+
+impl Transport for ContainerTransport {
+    fn run(
+        &self,
+        registration: &Registration,
+        workdir: &Path,
+        request: &[u8],
+    ) -> Result<RawRun, String> {
+        let name = format!(
+            "capsulet-verifier-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_nanos())
+        );
+        let arguments = Self::arguments(registration, workdir, &name)?;
+        let mut command = Command::new(&self.docker);
+        command.args(&arguments);
+        let mut run = run_bounded(command, request, registration.limits.timeout_ms, || {
+            let _ = Command::new(&self.docker)
+                .args(["kill", &name])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        })?;
+        // 125 to 127 are Docker's own failures, not the validator's: no image,
+        // no daemon, a command that would not start.
+        if let Some(code @ 125..=127) = run.exit
+            && !run.timed_out
+        {
+            return Err(format!(
+                "docker could not run the validator (exit {code}): {}",
+                std::mem::take(&mut run.stderr_tail)
+            ));
+        }
+        Ok(run)
+    }
+}
+
+/// Starts `command`, feeds it `request`, and reads bounded output until it
+/// exits or `timeout_ms` passes, when `stop` is called and the run reported as
+/// timed out.
+fn run_bounded(
+    mut command: Command,
+    request: &[u8],
+    timeout_ms: u64,
+    stop: impl FnOnce(),
+) -> Result<RawRun, String> {
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(|error| error.to_string())?;
+    if let Some(mut stdin) = child.stdin.take() {
+        // A validator that exits without reading its input closes the pipe;
+        // that is its business, and what it answered is still read below.
+        let _ = stdin.write_all(request);
+    }
+    let stdout = child.stdout.take().ok_or("no standard output")?;
+    let stderr = child.stderr.take().ok_or("no standard error")?;
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = stdout
+            .take(u64::try_from(MAX_RESPONSE_BYTES).unwrap_or(u64::MAX) + 1)
+            .read_to_end(&mut bytes);
+        bytes
+    });
+    let errors = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = stderr.take(64 * 1024).read_to_end(&mut bytes);
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let start = text
+            .char_indices()
+            .rev()
+            .nth(2048)
+            .map_or(0, |(index, _)| index);
+        text[start..].trim().to_string()
+    });
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    let mut stop = Some(stop);
+    let (exit, timed_out) = loop {
+        if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+            break (status.code(), false);
+        }
+        if Instant::now() >= deadline {
+            if let Some(stop) = stop.take() {
+                stop();
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            break (None, true);
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    Ok(RawRun {
+        exit,
+        timed_out,
+        stdout: reader.join().unwrap_or_default(),
+        stderr_tail: errors.join().unwrap_or_default(),
+    })
+}
+
 /// Runs a [`Environment::Process`] validator as a local program. The development
 /// harness's transport: nothing it decides counts, and its records say so.
 #[derive(Debug, Clone, Copy, Default)]
@@ -641,60 +910,13 @@ impl Transport for ProcessTransport {
             .current_dir(workdir)
             .env_clear()
             .env("CAPSULET_VERIFIER_INPUTS", workdir.join("inputs"))
-            .env("CAPSULET_VERIFIER_OUTPUTS", workdir.join("outputs"))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .env("CAPSULET_VERIFIER_OUTPUTS", workdir.join("outputs"));
         // Only what a program needs to start at all on this platform.
         for name in ["PATH", "SYSTEMROOT", "TEMP", "TMP"] {
             if let Some(value) = std::env::var_os(name) {
                 command.env(name, value);
             }
         }
-        let mut child = command.spawn().map_err(|error| error.to_string())?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(request)
-                .map_err(|error| error.to_string())?;
-        }
-        let stdout = child.stdout.take().ok_or("no standard output")?;
-        let stderr = child.stderr.take().ok_or("no standard error")?;
-        let reader = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stdout
-                .take(u64::try_from(MAX_RESPONSE_BYTES).unwrap_or(u64::MAX) + 1)
-                .read_to_end(&mut bytes);
-            bytes
-        });
-        let errors = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stderr.take(64 * 1024).read_to_end(&mut bytes);
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            let start = text
-                .char_indices()
-                .rev()
-                .nth(2048)
-                .map_or(0, |(index, _)| index);
-            text[start..].trim().to_string()
-        });
-
-        let deadline = Instant::now() + Duration::from_millis(registration.limits.timeout_ms);
-        let (exit, timed_out) = loop {
-            if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
-                break (status.code(), false);
-            }
-            if Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                break (None, true);
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        };
-        Ok(RawRun {
-            exit,
-            timed_out,
-            stdout: reader.join().unwrap_or_default(),
-            stderr_tail: errors.join().unwrap_or_default(),
-        })
+        run_bounded(command, request, registration.limits.timeout_ms, || {})
     }
 }

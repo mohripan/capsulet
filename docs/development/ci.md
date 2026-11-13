@@ -51,7 +51,7 @@ What a run keeps on purpose:
 | --- | --- |
 | Rust and IR | `verifier`, `format`, `lint`, `unit`, `ir`, `replay` |
 | Product contracts | `claims`, `api-contracts`, `authorization`, `sdk`, `claims-evidence`, `release`, `supply-chain-contract`, `ci-contract` |
-| PostgreSQL | `postgres`, `migrations`, `chaos` |
+| PostgreSQL | `postgres`, `migrations`, `chaos`, `verifier-isolation` |
 | Dashboard | `dashboard` |
 | Helm | `helm` |
 | Compose | `compose` |

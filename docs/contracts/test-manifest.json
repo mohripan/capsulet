@@ -1279,6 +1279,24 @@
       ]
     },
     {
+      "gate": "verifier-isolation",
+      "command": "cargo test -p capsulet-verifier --features container-tests --test isolation --locked",
+      "tests": [
+        {
+          "path": "crates/verifier/tests/isolation.rs",
+          "selector": "a_replay_runs_the_tool_again_in_its_pinned_image_and_compares_outputs_by_digest"
+        },
+        {
+          "path": "crates/verifier/tests/isolation.rs",
+          "selector": "a_validator_in_a_container_reaches_no_network_and_writes_only_its_outputs"
+        },
+        {
+          "path": "crates/verifier/tests/isolation.rs",
+          "selector": "a_validator_past_its_memory_or_its_time_is_stopped_and_decides_nothing"
+        }
+      ]
+    },
+    {
       "gate": "wasm-python",
       "command": "cargo test -p capsulet-runner --test wasm_python_runner --locked -- --ignored --nocapture",
       "tests": [

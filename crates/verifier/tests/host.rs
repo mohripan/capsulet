@@ -75,6 +75,7 @@ fn tool() -> Registration {
         RegisteredBasis::ReplayableTool,
         Environment::Container {
             image: IMAGE.to_string(),
+            command: Vec::new(),
         },
     )
 }
@@ -88,6 +89,7 @@ fn model() -> Registration {
         },
         Environment::Container {
             image: IMAGE.to_string(),
+            command: Vec::new(),
         },
     )
 }

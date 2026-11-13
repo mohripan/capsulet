@@ -493,6 +493,29 @@ pub(crate) fn gates() -> Vec<Gate> {
                 ],
             )],
         )),
+        // Real containers, so the `unit` gate, which has no Docker, does not
+        // build these: the feature gates the test target, and this gate holds
+        // every one of them to running.
+        every_test_must_run(gate(
+            "verifier-isolation",
+            "a validator in a real container reaches no network, writes only its outputs, is              stopped past its memory or its time, and runs again to the same outputs",
+            &["cargo", "docker"],
+            900,
+            &[Full],
+            vec![command(
+                "cargo",
+                &[
+                    "test",
+                    "-p",
+                    "capsulet-verifier",
+                    "--features",
+                    "container-tests",
+                    "--test",
+                    "isolation",
+                    "--locked",
+                ],
+            )],
+        )),
         every_test_must_run(gate(
             "migrations",
             "forward migration compatibility",
