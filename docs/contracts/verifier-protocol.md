@@ -123,10 +123,36 @@ the one a certificate holds: identity, environment, inputs, outputs by digest, a
 not re-run, since its word is not re-derivable. Neither is an unisolated run, which decided nothing to
 compare.
 
+## The development harness
+
+`capsulet verifier test <registration.json> <cases.json>` runs one validator against cases, without a
+stack. It uses the transport its registration names: a `container` image runs isolated, and a `process`
+runs unisolated, which the report says.
+
+```json
+{
+  "cases": [
+    {
+      "name": "builds",
+      "obligations": [{ "id": "builds", "contract": "patch-compiles", "statement": "the patch compiles" }],
+      "inputs": [{ "name": "patch.diff", "path": "fixtures/patch.diff", "media_type": "text/x-diff" }],
+      "expect": { "builds": "holds" }
+    },
+    {
+      "name": "a slow build is stopped",
+      "obligations": [{ "id": "builds", "contract": "patch-compiles", "statement": "the patch compiles" }],
+      "inputs": [{ "name": "patch.diff", "text": "--- a\n+++ b\n" }],
+      "expect_failure": "timed_out"
+    }
+  ]
+}
+```
+
+An input comes from exactly one of `path`, which resolves beside the cases file, and `text`. A case
+passes when every expected outcome comes back, or when the run fails with the expected failure code.
+The command prints one line per case and exits non-zero when any fails.
+
 ## Not yet
 
 - **Re-running from a bundle.** `capsulet-replay` deliberately reaches no daemon or network, so running
-  a tool again from a bundle belongs in a command of its own.
-- **The `capsulet verifier test` harness.**
-
-Both are tracked in #155.
+  a tool again from a bundle belongs in a command of its own. It is tracked in #155.

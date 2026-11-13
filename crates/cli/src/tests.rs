@@ -241,3 +241,43 @@ fn a_bundle_whose_body_was_changed_is_refused_before_anything_is_written() {
         "{error}"
     );
 }
+
+#[test]
+fn verifier_test_reports_each_case_and_fails_when_one_does() {
+    let directory =
+        std::env::temp_dir().join(format!("capsulet-cli-verifier-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).expect("a directory");
+    let registration = directory.join("registration.json");
+    let cases = directory.join("cases.json");
+    // A replayable tool granted the network is refused before anything runs, so
+    // this needs no validator program at all.
+    std::fs::write(
+        &registration,
+        r#"{"name": "networked-tool", "version": "1", "basis": {"kind": "replayable_tool"},
+            "environment": {"kind": "process", "program": "unused"}, "capabilities": ["network"]}"#,
+    )
+    .expect("registration");
+    std::fs::write(
+        &cases,
+        r#"{"cases": [
+            {"name": "refused", "obligations": [{"id": "builds", "contract": "patch", "statement": "holds"}],
+             "expect_failure": "registration_refused"},
+            {"name": "expected to run", "obligations": [{"id": "builds", "contract": "patch", "statement": "holds"}],
+             "expect": {"builds": "holds"}}
+        ]}"#,
+    )
+    .expect("cases");
+
+    let failed = super::verifier_test(&registration, &cases).expect_err("one case fails");
+    let message = failed.to_string();
+    assert!(
+        message.contains("pass refused: failed as expected"),
+        "{message}"
+    );
+    assert!(
+        message.contains("FAIL expected to run: failed: registration_refused"),
+        "{message}"
+    );
+    assert!(message.contains("1 of 2 cases passed"), "{message}");
+    let _ = std::fs::remove_dir_all(&directory);
+}

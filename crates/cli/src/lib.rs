@@ -102,6 +102,8 @@ enum Command {
     Run(RunCommand),
     #[command(subcommand, about = "Inspect agent runs")]
     AgentRuns(AgentRunsCommand),
+    #[command(subcommand, about = "Develop a validator for the verifier protocol")]
+    Verifier(VerifierCommand),
     #[command(about = "Generate shell completion scripts")]
     Completions {
         #[arg(value_enum, help = "Target shell")]
@@ -141,6 +143,25 @@ enum AgentRunsCommand {
         id: String,
         #[arg(long, short = 'o', help = "File to write the bundle to")]
         output: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum VerifierCommand {
+    /// Runs one validator against a cases file, without a stack.
+    ///
+    /// The registration says what the validator is and where it runs: a
+    /// `container` image pinned by digest, run isolated, or a local `process`,
+    /// run unisolated, whose results would decide nothing in a real run. Each
+    /// case names the obligations to ask about, the inputs to hand over, and the
+    /// outcome expected for each obligation or the failure expected of the run.
+    /// Exits non-zero when any case fails.
+    #[command(about = "Run a validator against cases")]
+    Test {
+        #[arg(help = "Registration JSON file")]
+        registration: PathBuf,
+        #[arg(help = "Cases JSON file; input paths resolve beside it")]
+        cases: PathBuf,
     },
 }
 
@@ -245,6 +266,10 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
             let run = api.get_run(&id).await?;
             Ok(format_run_detail(&run))
         }
+        Command::Verifier(VerifierCommand::Test {
+            registration,
+            cases,
+        }) => verifier_test(&registration, &cases),
         Command::AgentRuns(AgentRunsCommand::Bundle { id, output }) => {
             let project = cli.project.ok_or(CliError::ProjectRequired)?;
             let api =
@@ -259,6 +284,24 @@ async fn execute(cli: Cli) -> Result<String, CliError> {
                 output.display()
             ))
         }
+    }
+}
+
+/// Runs a validator against its cases and reports each one.
+fn verifier_test(
+    registration: &std::path::Path,
+    cases: &std::path::Path,
+) -> Result<String, CliError> {
+    let registration: capsulet_verifier::Registration =
+        serde_json::from_slice(&std::fs::read(registration)?)?;
+    let parsed: capsulet_verifier::harness::Cases = serde_json::from_slice(&std::fs::read(cases)?)?;
+    let base = cases.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let reports = capsulet_verifier::harness::run_cases(&registration, &parsed, base);
+    let (text, all_passed) = capsulet_verifier::harness::render(&reports);
+    if all_passed {
+        Ok(text)
+    } else {
+        Err(CliError::CasesFailed(text))
     }
 }
 
@@ -603,6 +646,8 @@ enum CliError {
     InvalidProject(String),
     #[error("the API returned a bundle that does not check: {0}")]
     Bundle(#[from] BundleError),
+    #[error("a validator case failed:\n{0}")]
+    CasesFailed(String),
     #[error("API returned {status}: {code}: {message}")]
     Api {
         status: StatusCode,

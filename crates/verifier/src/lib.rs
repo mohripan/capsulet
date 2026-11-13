@@ -12,13 +12,15 @@
 //! - [`host`]: running one, and turning what it said into a verifier record and
 //!   obligation states a certificate can carry. A tool's `holds` discharges, a
 //!   model's endorses, and an unisolated run decides nothing;
-//! - [`sdk`]: writing a validator in Rust.
+//! - [`sdk`]: writing a validator in Rust;
+//! - [`harness`]: running one against cases, without a stack.
 //!
 //! Isolation is the transport's. [`host::ContainerTransport`] runs a pinned
 //! image with no network unless granted, a read-only root and inputs, and
 //! resource limits. [`host::ProcessTransport`] runs a local program for the
 //! development harness, and its records say it was unisolated.
 
+pub mod harness;
 pub mod host;
 pub mod protocol;
 pub mod registration;

@@ -193,6 +193,10 @@
           "selector": "a_bundle_whose_body_was_changed_is_refused_before_anything_is_written"
         },
         {
+          "path": "crates/cli/src/tests.rs",
+          "selector": "verifier_test_reports_each_case_and_fails_when_one_does"
+        },
+        {
           "path": "crates/core/src/domain/memory.rs",
           "selector": "accepts_an_excerpt_that_re_derives_from_its_source"
         },
@@ -583,6 +587,10 @@
         {
           "path": "crates/verifier/src/registration.rs",
           "selector": "an_image_has_to_be_pinned_by_digest"
+        },
+        {
+          "path": "crates/verifier/tests/harness.rs",
+          "selector": "every_case_is_reported_and_a_wrong_outcome_or_an_unexpected_failure_fails_it"
         },
         {
           "path": "crates/verifier/tests/host.rs",

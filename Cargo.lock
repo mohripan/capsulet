@@ -410,6 +410,7 @@ version = "0.1.0"
 dependencies = [
  "capsulet-core",
  "capsulet-runtime",
+ "capsulet-verifier",
  "clap",
  "clap_complete",
  "reqwest",
