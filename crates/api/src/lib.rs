@@ -35,7 +35,10 @@ pub use models::{
 };
 pub use openapi::{canonical_openapi_json, generated_openapi, validated_openapi};
 pub use state::{AdmissionConfig, AppState};
-pub use store::ApiStore;
+pub use store::{
+    AgentStore, ApiStore, AutomationStore, IamStore, IngestionStore, IrStore, JobStore,
+    MemoryGraphStore, MemoryStore, PackStore, ReasoningStore, StoreBase, WorkflowStore,
+};
 pub use webhooks::WebhookSecrets;
 
 #[cfg(test)]

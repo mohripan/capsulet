@@ -69,120 +69,120 @@
           "selector": "webhook_headers_publish_the_names_the_handler_reads"
         },
         {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_definition_registers_only_when_every_pack_it_pins_is_installed_as_pinned"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_reading_a_reviewer_refutes_rejects_the_answer"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_reading_whose_contract_names_its_authority_is_decided_only_by_a_holder_of_it"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_review_has_to_decide_something_say_why_and_name_a_reading_of_this_projects_certificate"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_run_of_a_definition_nobody_registered_is_refused"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_signed_pack_installs_into_its_project_once_and_is_listed_there_only"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "a_tampered_or_untrusted_pack_is_refused_and_nothing_is_installed"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "another_projects_summary_trace_cannot_activate_a_subgraph"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "approving_claim_detects_and_reviews_conflicting_active_claims"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "creates_and_activates_nested_memory_graph"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "creates_and_returns_workflow_dag_dependencies"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "creates_lists_and_reads_claim_memory"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "creates_lists_and_reads_memory_contract"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "disabled_automation_can_still_be_triggered_manually"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "entity_resolution_queue_confirms_and_rejects_candidates"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "ingestion_review_queue_approves_and_rejects_candidate_claims"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
+          "path": "crates/api/src/tests/auth.rs",
           "selector": "job_definitions_are_scoped_to_selected_project"
         },
         {
-          "path": "crates/api/src/tests.rs",
-          "selector": "memory_contracts_are_listed_within_the_project_before_the_limit"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "nothing_attaches_to_another_projects_subgraph_over_the_api"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
+          "path": "crates/api/src/tests/auth.rs",
           "selector": "principal_cannot_select_project_without_membership"
         },
         {
-          "path": "crates/api/src/tests.rs",
+          "path": "crates/api/src/tests/auth.rs",
           "selector": "project_admin_can_manage_project_memberships"
         },
         {
-          "path": "crates/api/src/tests.rs",
+          "path": "crates/api/src/tests/auth.rs",
           "selector": "protected_routes_require_a_valid_bearer_token"
         },
         {
-          "path": "crates/api/src/tests.rs",
-          "selector": "reasoning_refuses_a_query_about_a_relation_its_contract_does_not_declare"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "reasoning_refuses_a_query_that_asks_for_nothing_in_particular"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "rejects_manual_automation_trigger_when_workflow_queue_is_overloaded"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
-          "selector": "reviewing_every_reading_accepts_an_answer_by_review_and_a_decision_is_not_rewritten"
-        },
-        {
-          "path": "crates/api/src/tests.rs",
+          "path": "crates/api/src/tests/auth.rs",
           "selector": "scoped_token_can_only_use_declared_permissions"
         },
         {
-          "path": "crates/api/src/tests.rs",
+          "path": "crates/api/src/tests/auth.rs",
           "selector": "viewer_cannot_submit_work_but_operator_can"
+        },
+        {
+          "path": "crates/api/src/tests/automations.rs",
+          "selector": "disabled_automation_can_still_be_triggered_manually"
+        },
+        {
+          "path": "crates/api/src/tests/automations.rs",
+          "selector": "rejects_manual_automation_trigger_when_workflow_queue_is_overloaded"
+        },
+        {
+          "path": "crates/api/src/tests/ingestion.rs",
+          "selector": "approving_claim_detects_and_reviews_conflicting_active_claims"
+        },
+        {
+          "path": "crates/api/src/tests/ingestion.rs",
+          "selector": "entity_resolution_queue_confirms_and_rejects_candidates"
+        },
+        {
+          "path": "crates/api/src/tests/ingestion.rs",
+          "selector": "ingestion_review_queue_approves_and_rejects_candidate_claims"
+        },
+        {
+          "path": "crates/api/src/tests/ir.rs",
+          "selector": "a_registered_definition_can_be_enqueued_as_a_run_and_read_back"
+        },
+        {
+          "path": "crates/api/src/tests/ir.rs",
+          "selector": "a_run_of_a_definition_nobody_registered_is_refused"
+        },
+        {
+          "path": "crates/api/src/tests/memory.rs",
+          "selector": "another_projects_summary_trace_cannot_activate_a_subgraph"
+        },
+        {
+          "path": "crates/api/src/tests/memory.rs",
+          "selector": "creates_and_activates_nested_memory_graph"
+        },
+        {
+          "path": "crates/api/src/tests/memory.rs",
+          "selector": "creates_lists_and_reads_claim_memory"
+        },
+        {
+          "path": "crates/api/src/tests/memory.rs",
+          "selector": "creates_lists_and_reads_memory_contract"
+        },
+        {
+          "path": "crates/api/src/tests/memory.rs",
+          "selector": "memory_contracts_are_listed_within_the_project_before_the_limit"
+        },
+        {
+          "path": "crates/api/src/tests/memory.rs",
+          "selector": "nothing_attaches_to_another_projects_subgraph_over_the_api"
+        },
+        {
+          "path": "crates/api/src/tests/packs.rs",
+          "selector": "a_definition_registers_only_when_every_pack_it_pins_is_installed_as_pinned"
+        },
+        {
+          "path": "crates/api/src/tests/packs.rs",
+          "selector": "a_signed_pack_installs_into_its_project_once_and_is_listed_there_only"
+        },
+        {
+          "path": "crates/api/src/tests/packs.rs",
+          "selector": "a_tampered_or_untrusted_pack_is_refused_and_nothing_is_installed"
+        },
+        {
+          "path": "crates/api/src/tests/reasoning.rs",
+          "selector": "a_reading_a_reviewer_refutes_rejects_the_answer"
+        },
+        {
+          "path": "crates/api/src/tests/reasoning.rs",
+          "selector": "a_reading_whose_contract_names_its_authority_is_decided_only_by_a_holder_of_it"
+        },
+        {
+          "path": "crates/api/src/tests/reasoning.rs",
+          "selector": "a_review_has_to_decide_something_say_why_and_name_a_reading_of_this_projects_certificate"
+        },
+        {
+          "path": "crates/api/src/tests/reasoning.rs",
+          "selector": "reasoning_refuses_a_query_about_a_relation_its_contract_does_not_declare"
+        },
+        {
+          "path": "crates/api/src/tests/reasoning.rs",
+          "selector": "reasoning_refuses_a_query_that_asks_for_nothing_in_particular"
+        },
+        {
+          "path": "crates/api/src/tests/reasoning.rs",
+          "selector": "reviewing_every_reading_accepts_an_answer_by_review_and_a_decision_is_not_rewritten"
+        },
+        {
+          "path": "crates/api/src/tests/workflows.rs",
+          "selector": "creates_and_returns_workflow_dag_dependencies"
         },
         {
           "path": "crates/api/src/webhooks.rs",
