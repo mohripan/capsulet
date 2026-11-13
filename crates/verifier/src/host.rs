@@ -79,7 +79,7 @@ pub enum VerifierFailure {
     Registration(#[from] RegistrationError),
     #[error("the validator's environment does not match its transport: {detail}")]
     WrongTransport { detail: &'static str },
-    #[error("input `{name}` is not a plain file name")]
+    #[error("input `{name}` is not a relative path inside the inputs, or names one twice")]
     BadInput { name: String },
     #[error("the validator could not be run: {detail}")]
     Transport { detail: String },
@@ -145,6 +145,22 @@ pub struct Output {
     pub name: String,
     pub digest: Digest,
     pub byte_length: u64,
+    /// What it holds, so a certificate's bundle can carry what a check
+    /// produced: the failing compiler output, the test log.
+    pub bytes: Vec<u8>,
+}
+
+/// Whether `name` can name an input: a relative path of `/`-separated parts,
+/// none of them empty, `.`, `..` or hidden, with no `\` or `:` anywhere. A
+/// code change is a tree, so an input may be `change/src/calc.py`; it can never
+/// reach outside the inputs.
+#[must_use]
+pub fn is_input_path(name: &str) -> bool {
+    !name.is_empty()
+        && !name.contains(['\\', ':'])
+        && name
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != ".." && !part.starts_with('.'))
 }
 
 /// One validator's run, as a certificate will record it.
@@ -494,21 +510,24 @@ impl Workspace {
         let mut files = Vec::new();
         let mut written = Vec::new();
         for input in inputs {
-            let plain = !input.name.is_empty()
-                && input.name != "."
-                && input.name != ".."
-                && !input.name.contains(['/', '\\', ':'])
-                && !input.name.starts_with('.');
-            if !plain
-                || written
-                    .iter()
-                    .any(|(path, _): &(PathBuf, Digest)| path.ends_with(&input.name))
-            {
-                return Err(VerifierFailure::BadInput {
-                    name: input.name.clone(),
-                });
+            let bad = || VerifierFailure::BadInput {
+                name: input.name.clone(),
+            };
+            if !is_input_path(&input.name) {
+                return Err(bad());
             }
             let path = input_root.join(&input.name);
+            // Twice the same path, or a file where another input needs a
+            // directory, or the other way round.
+            if path.exists() {
+                return Err(bad());
+            }
+            if let Some(parent) = path.parent() {
+                if parent.is_file() {
+                    return Err(bad());
+                }
+                fs::create_dir_all(parent).map_err(|_| bad())?;
+            }
             fs::write(&path, &input.bytes).map_err(failed)?;
             let mut permissions = fs::metadata(&path).map_err(failed)?.permissions();
             permissions.set_readonly(true);
@@ -550,11 +569,11 @@ impl Workspace {
                 return Err(VerifierFailure::InputsModified { name: name() });
             }
         }
-        let present = fs::read_dir(self.root().join("inputs"))
-            .map_err(|error| VerifierFailure::Workspace {
+        let present = files_under(&self.root().join("inputs")).map_err(|error| {
+            VerifierFailure::Workspace {
                 detail: error.to_string(),
-            })?
-            .count();
+            }
+        })?;
         if present != self.written.len() {
             return Err(VerifierFailure::InputsModified {
                 name: "a file the host did not write".to_string(),
@@ -604,12 +623,30 @@ impl Workspace {
                     name,
                     digest: Digest::of(&bytes),
                     byte_length: length,
+                    bytes,
                 });
             }
         }
         found.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(found)
     }
+}
+
+/// How many files are under `root`, at any depth.
+fn files_under(root: &Path) -> std::io::Result<usize> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut count = 0;
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                pending.push(entry.path());
+            } else {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
 }
 
 impl Drop for Workspace {

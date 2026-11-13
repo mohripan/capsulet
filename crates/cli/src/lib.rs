@@ -214,6 +214,18 @@ enum PackCommand {
         #[arg(help = "Pack directory")]
         dir: PathBuf,
     },
+    /// Runs each replayable tool a certificate records again, in the container
+    /// its record pins, with the inputs its bundle carries, and compares what it
+    /// produced with the record. Also replays the certificate offline. Exits
+    /// non-zero when a tool does not reach its record or the verdict does not
+    /// reproduce. Needs Docker.
+    #[command(about = "Run a certificate's tools again from its bundle")]
+    Replay {
+        #[arg(help = "Certificate bundle file")]
+        bundle: PathBuf,
+        #[arg(help = "Directory of the pack whose validators the certificate records")]
+        dir: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -392,6 +404,9 @@ fn pack(command: PackCommand) -> Result<String, CliError> {
                 admitted.name, admitted.version, admitted.manifest, admitted.key
             ))
         }
+        PackCommand::Replay { bundle, dir } => {
+            pack_replay(&bundle, &dir, &capsulet_verifier::ContainerTransport::new())
+        }
         PackCommand::Test { dir } => {
             let reports = capsulet_pack::test(&capsulet_pack::read(&dir)?)?;
             let mut text = String::new();
@@ -408,6 +423,80 @@ fn pack(command: PackCommand) -> Result<String, CliError> {
                 Err(CliError::CasesFailed(text))
             }
         }
+    }
+}
+
+/// Runs a certificate's tools again from its bundle, and replays it offline.
+fn pack_replay(
+    bundle: &std::path::Path,
+    dir: &std::path::Path,
+    transport: &impl capsulet_verifier::Transport,
+) -> Result<String, CliError> {
+    let failed = |detail: String| CliError::LocalFile {
+        path: bundle.display().to_string(),
+        detail,
+    };
+    let bytes = std::fs::read(bundle).map_err(|error| failed(error.to_string()))?;
+    let bundle =
+        capsulet_kernel::Bundle::read(&bytes).map_err(|error| failed(error.to_string()))?;
+    let evidence = bundle
+        .evidence()
+        .map_err(|error| failed(error.to_string()))?;
+    let pack = capsulet_pack::read(dir)?;
+    let replays = capsulet_pack::replay_tools(&pack, &bundle.certificate, &evidence, transport)?;
+    let mut text = String::new();
+    let mut all_agree = true;
+    for replay in &replays {
+        match &replay.outcome {
+            Ok(again) if again.agrees() => {
+                let _ = writeln!(
+                    text,
+                    "agrees {}: the same inputs, environment, outputs and verdict",
+                    replay.validator
+                );
+            }
+            Ok(again) => {
+                all_agree = false;
+                let _ = writeln!(
+                    text,
+                    "DIFFERS {}: {}",
+                    replay.validator,
+                    again.differences.join("; ")
+                );
+            }
+            Err(failure) => {
+                all_agree = false;
+                let _ = writeln!(
+                    text,
+                    "DID NOT RUN {}: {failure} ({})",
+                    replay.validator,
+                    failure.code()
+                );
+            }
+        }
+    }
+    if replays.is_empty() {
+        let _ = writeln!(
+            text,
+            "the certificate records no replayable tool to run again"
+        );
+    }
+    let outcome = capsulet_kernel::replay(&bundle.certificate, &evidence);
+    let reproduced = matches!(outcome, capsulet_kernel::ReplayOutcome::Reproduced { .. });
+    let _ = writeln!(
+        text,
+        "verdict {}: {}",
+        bundle.certificate.verdict().as_str(),
+        if reproduced {
+            "reproduced offline"
+        } else {
+            "NOT reproduced offline"
+        }
+    );
+    if all_agree && reproduced {
+        Ok(text)
+    } else {
+        Err(CliError::Replayed(text))
     }
 }
 
@@ -781,6 +870,10 @@ enum CliError {
     Bundle(#[from] BundleError),
     #[error("a validator case failed:\n{0}")]
     CasesFailed(String),
+    /// A replay that did not reach the certificate: a tool that differs from its
+    /// record or did not run, or a verdict that does not reproduce.
+    #[error("the certificate's tools or verdict did not replay:\n{0}")]
+    Replayed(String),
     /// A file named on the command line that is missing or is not the JSON it
     /// should be: a key, a trust store, a registration, or a cases file.
     #[error("{path} cannot be read: {detail}")]

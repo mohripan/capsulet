@@ -1,0 +1,126 @@
+{
+  "schema_version": "capsulet.pack/v1",
+  "name": "code-changes",
+  "version": "1.0.0",
+  "description": "Whether a code change builds, keeps the base revision's tests passing, and adds tests that pass on it and fail without it, decided by a compiler and a test runner in pinned containers; whether it does what was asked is left to a holder of review:code.",
+  "contracts": [],
+  "validators": [
+    {
+      "registration": "validators/py-compile.json",
+      "cases": "cases/py-compile.json",
+      "decides": [
+        "builds"
+      ]
+    },
+    {
+      "registration": "validators/py-unittest.json",
+      "cases": "cases/py-unittest.json",
+      "decides": [
+        "existing-tests-pass",
+        "new-tests-pass-on-change",
+        "new-tests-fail-on-base"
+      ]
+    }
+  ],
+  "obligations": [
+    "obligations/code-changes.json"
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "digest": "sha256:83990344db538b3afcf85935626db97d404b8b35b66843b7841491402736c31a"
+    },
+    {
+      "path": "cases/py-compile.json",
+      "digest": "sha256:4864a20f4465b45c1d546d2e1d015b3de9f0e455838e1b7c15489b784729a6c8"
+    },
+    {
+      "path": "cases/py-unittest.json",
+      "digest": "sha256:327bf30b6a70150c33137142dd4ca395d37d21a6249a4e34df19de033df1fa92"
+    },
+    {
+      "path": "fixtures/breaks-a-test/base/calc.py",
+      "digest": "sha256:ea1fd371c8b018d11d8b76f0ee3e3470d5fc25f30fe0629d0d1ac048c5e014f1"
+    },
+    {
+      "path": "fixtures/breaks-a-test/base/test_calc.py",
+      "digest": "sha256:b1f35185615dc21da087b6444bc424604e28ab5b7ca367cd68cf05b076d1b7f6"
+    },
+    {
+      "path": "fixtures/breaks-a-test/change/calc.py",
+      "digest": "sha256:15fc87440c65e9f49bc58085e88836723f0f8b59963d7601dca39efa90810872"
+    },
+    {
+      "path": "fixtures/breaks-a-test/change/test_calc.py",
+      "digest": "sha256:5c36f5bcf0435ce0c30f79a8d11fcbd55883b6e4d5b95155f2f3b40c675c399f"
+    },
+    {
+      "path": "fixtures/broken-build/base/calc.py",
+      "digest": "sha256:ea1fd371c8b018d11d8b76f0ee3e3470d5fc25f30fe0629d0d1ac048c5e014f1"
+    },
+    {
+      "path": "fixtures/broken-build/base/test_calc.py",
+      "digest": "sha256:b1f35185615dc21da087b6444bc424604e28ab5b7ca367cd68cf05b076d1b7f6"
+    },
+    {
+      "path": "fixtures/broken-build/change/calc.py",
+      "digest": "sha256:ff2f5816c98f66e565442719c58faba703a79f2835d7b0a186d1cd7fcfcf2abe"
+    },
+    {
+      "path": "fixtures/broken-build/change/test_calc.py",
+      "digest": "sha256:5c36f5bcf0435ce0c30f79a8d11fcbd55883b6e4d5b95155f2f3b40c675c399f"
+    },
+    {
+      "path": "fixtures/fix/base/calc.py",
+      "digest": "sha256:ea1fd371c8b018d11d8b76f0ee3e3470d5fc25f30fe0629d0d1ac048c5e014f1"
+    },
+    {
+      "path": "fixtures/fix/base/test_calc.py",
+      "digest": "sha256:b1f35185615dc21da087b6444bc424604e28ab5b7ca367cd68cf05b076d1b7f6"
+    },
+    {
+      "path": "fixtures/fix/change/calc.py",
+      "digest": "sha256:9ecfd3e1cd15ef80d5a257e85585cc2f843b9eb7bd06e23758a6f86ef7aa7161"
+    },
+    {
+      "path": "fixtures/fix/change/test_calc.py",
+      "digest": "sha256:5c36f5bcf0435ce0c30f79a8d11fcbd55883b6e4d5b95155f2f3b40c675c399f"
+    },
+    {
+      "path": "fixtures/proves-nothing/base/calc.py",
+      "digest": "sha256:ea1fd371c8b018d11d8b76f0ee3e3470d5fc25f30fe0629d0d1ac048c5e014f1"
+    },
+    {
+      "path": "fixtures/proves-nothing/base/test_calc.py",
+      "digest": "sha256:b1f35185615dc21da087b6444bc424604e28ab5b7ca367cd68cf05b076d1b7f6"
+    },
+    {
+      "path": "fixtures/proves-nothing/change/calc.py",
+      "digest": "sha256:ea1fd371c8b018d11d8b76f0ee3e3470d5fc25f30fe0629d0d1ac048c5e014f1"
+    },
+    {
+      "path": "fixtures/proves-nothing/change/test_calc.py",
+      "digest": "sha256:78de273b2f31494ababcf523aace30079c3f7a6669b342ffe14a9a3ac34b5ea5"
+    },
+    {
+      "path": "obligations/code-changes.json",
+      "digest": "sha256:b06061e54dd47f7f5711d6a27ff6c414e179f0864795958c41edd828a4d13aa2"
+    },
+    {
+      "path": "validators/py-compile.json",
+      "digest": "sha256:0e4a4de7395fc55a502f56669d26caa97b450cfc0901944e092ca98104b6f5fc"
+    },
+    {
+      "path": "validators/py-unittest.json",
+      "digest": "sha256:c833c05e15a6316b918c84a7d772d00d3810ea2fed77fb701047be4bebbaee56"
+    },
+    {
+      "path": "validators/src/py_compile_check.py",
+      "digest": "sha256:4e05e6734c2069bf5d6eba0546f73e8621e8be46fac63dd11ba59e4a74189fc5"
+    },
+    {
+      "path": "validators/src/py_unittest_check.py",
+      "digest": "sha256:260ed81c1403d064a4c0af3d2b91cef2c0ce2e4a472caa3a25afe16bf79232ff"
+    }
+  ]
+}

@@ -40,6 +40,12 @@ pub struct ValidatorEntry {
     pub registration: String,
     /// A harness cases file, by path.
     pub cases: String,
+    /// The obligations, by id from the pack's obligations, that it decides
+    /// when the pack is run over a change. Empty for a validator only its
+    /// cases exercise. Absent from manifests written before validators said,
+    /// which digest as they always did.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decides: Vec<String>,
 }
 
 /// One file, by path and the digest of its bytes.

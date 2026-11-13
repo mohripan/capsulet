@@ -356,6 +356,24 @@ fn a_pack_signed_with_a_new_key_verifies_against_the_trust_store_it_was_added_to
 }
 
 #[test]
+fn replaying_a_bundle_that_does_not_read_names_the_file() {
+    let directory = tempfile_dir("capsulet-cli-replay");
+    let bundle = directory.join("bundle.json");
+    std::fs::write(&bundle, "{}").expect("not a bundle");
+    let refused = super::pack(super::PackCommand::Replay {
+        bundle: bundle.clone(),
+        dir: directory.clone(),
+    })
+    .expect_err("not a bundle")
+    .to_string();
+    assert!(
+        refused.starts_with(&format!("{} cannot be read:", bundle.display())),
+        "{refused}"
+    );
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
 fn a_trust_store_or_key_that_does_not_read_is_named_not_blamed_on_the_api() {
     let directory = tempfile_dir("capsulet-cli-local-files");
     let empty = directory.join("trust.json");

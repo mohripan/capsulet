@@ -1,0 +1,50 @@
+{
+  "id": "code-changes",
+  "version": "1",
+  "inputs": {},
+  "outputs": {},
+  "allowed_effects": [],
+  "obligations": [
+    {
+      "id": "builds",
+      "statement": "Every Python file of the change compiles.",
+      "owner": "proposer",
+      "accepts": [
+        "replayable_tool"
+      ]
+    },
+    {
+      "id": "existing-tests-pass",
+      "statement": "Every test the base revision has passes on the change.",
+      "owner": "proposer",
+      "accepts": [
+        "replayable_tool"
+      ]
+    },
+    {
+      "id": "new-tests-pass-on-change",
+      "statement": "Every test the change adds passes on the change.",
+      "owner": "proposer",
+      "accepts": [
+        "replayable_tool"
+      ]
+    },
+    {
+      "id": "new-tests-fail-on-base",
+      "statement": "Every test the change adds fails on the base revision, so it shows what the change does.",
+      "owner": "proposer",
+      "accepts": [
+        "replayable_tool"
+      ]
+    },
+    {
+      "id": "does-what-was-asked",
+      "statement": "The change does what the issue it answers asked.",
+      "owner": "human",
+      "authority": "review:code",
+      "accepts": [
+        "human_review"
+      ]
+    }
+  ]
+}

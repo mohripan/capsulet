@@ -4096,7 +4096,7 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Assurance policy",
-      "statement": "A validator speaks `capsulet.verifier/v1`: one request in, naming the obligations and the read-only inputs by digest, and one response out with `holds`, `does_not_hold` or `cannot_decide` for each. The host checks its registration first, so a replayable tool granted the network or a model, a model not declared as one, or an image not pinned by digest is refused. It then holds the run to its limits, refuses changed inputs, oversized outputs and anything but one result per obligation as typed failures owned by the verifier, digests the outputs itself, and builds the verifier record. An isolated tool's `holds` discharges on basis `replayable_tool`, a model's endorses or disputes, and an unisolated development run decides nothing. In a container, from an image pinned by digest, it reaches no network unless granted, cannot write its inputs or its root, and is stopped past its memory or time; a replay can run a tool again there and compare its outputs by digest. Rust and Python validators read and write the same protocol documents, held to one shared fixture. `capsulet verifier test` runs a validator against a cases file without a stack and fails when any case does.",
+      "statement": "A validator speaks `capsulet.verifier/v1`: one request in, naming the obligations and the read-only inputs, at relative paths that cannot leave the inputs, by digest, and one response out with `holds`, `does_not_hold` or `cannot_decide` for each. The host checks its registration first, so a replayable tool granted the network or a model, a model not declared as one, or an image not pinned by digest is refused. It then holds the run to its limits, refuses changed inputs, oversized outputs and anything but one result per obligation as typed failures owned by the verifier, digests the outputs itself, and builds the verifier record. An isolated tool's `holds` discharges on basis `replayable_tool`, a model's endorses or disputes, and an unisolated development run decides nothing. In a container, from an image pinned by digest, it reaches no network unless granted, cannot write its inputs or its root, and is stopped past its memory or time; a replay can run a tool again there and compare its outputs by digest, from a certificate's bundle with `capsulet pack replay`. Rust and Python validators read and write the same protocol documents, held to one shared fixture. `capsulet verifier test` runs a validator against a cases file without a stack and fails when any case does.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "sdk/python/README.md"
@@ -4146,6 +4146,13 @@
           "evidence_selectors": [
             "every_case_is_reported_and_a_wrong_outcome_or_an_unexpected_failure_fails_it",
             "verifier_test_reports_each_case_and_fails_when_one_does"
+          ]
+        },
+        {
+          "assertion": "inputs-are-a-tree-inside-the-inputs",
+          "evidence_selectors": [
+            "a_tree_of_inputs_is_written_at_its_paths_and_checked_whole",
+            "a_registration_that_cannot_run_and_an_input_that_is_not_a_file_name_are_refused_first"
           ]
         }
       ],
@@ -4263,6 +4270,20 @@
           "selector": "verifier_test_reports_each_case_and_fails_when_one_does"
         },
         {
+          "type": "test",
+          "path": "crates/verifier/tests/host.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_tree_of_inputs_is_written_at_its_paths_and_checked_whole"
+        },
+        {
+          "type": "test",
+          "path": "crates/verifier/tests/host.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_registration_that_cannot_run_and_an_input_that_is_not_a_file_name_are_refused_first"
+        },
+        {
           "type": "source",
           "path": "crates/verifier/src/host.rs"
         }
@@ -4273,7 +4294,7 @@
       "kind": "capability",
       "maturity": "experimental",
       "area": "Assurance policy",
-      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content,, whose contracts or validators do not read, or whose obligations, the policy defaults it carries as IR contracts, could never be met. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. A project installs a pack over the API only under the trust store its operator supplies, and holds each version once and unchanged. A definition pins its packs by manifest digest and registers only when its project holds them exactly as pinned, and replay reports a pinned pack it does not hold, or holds as another pack, instead of substituting one.",
+      "statement": "A domain pack is a directory whose manifest lists every file by digest, and whose manifest digest is signed with Ed25519. Installing it, or `capsulet pack verify`, refuses a pack that is unsigned, has a file changed, added or missing, was edited after signing, is signed by a key the trust store does not hold or holds for other packs, does not verify, is older than an installed version, reuses an installed version with other content,, whose contracts or validators do not read, whose validators decide an obligation the pack does not state, one their kind may not discharge or one another validator decides, or whose obligations, the policy defaults it carries as IR contracts, could never be met. Each refusal has its own code. `packs/template` passes its own `capsulet pack test`, with its validator in a real container, and installs once signed. A project installs a pack over the API only under the trust store its operator supplies, and holds each version once and unchanged. A definition pins its packs by manifest digest and registers only when its project holds them exactly as pinned, and replay reports a pinned pack it does not hold, or holds as another pack, instead of substituting one.",
       "public_surfaces": [
         "ARCHITECTURE.md",
         "docs/api.md"
@@ -4335,6 +4356,12 @@
           "evidence_selectors": [
             "a_packs_obligations_install_only_when_their_policy_can_be_met",
             "a_manifest_without_obligations_digests_as_it_always_did"
+          ]
+        },
+        {
+          "assertion": "what-a-validator-decides-holds-together",
+          "evidence_selectors": [
+            "what_a_validator_decides_has_to_be_the_packs_own_and_its_alone"
           ]
         }
       ],
@@ -4466,8 +4493,120 @@
           "selector": "a_manifest_without_obligations_digests_as_it_always_did"
         },
         {
+          "type": "test",
+          "path": "crates/pack/tests/packs.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "what_a_validator_decides_has_to_be_the_packs_own_and_its_alone"
+        },
+        {
           "type": "source",
           "path": "crates/pack/src/lib.rs"
+        }
+      ]
+    },
+    {
+      "id": "CAP-ASSURANCE-012",
+      "kind": "capability",
+      "maturity": "experimental",
+      "area": "Assurance policy",
+      "statement": "A pack's validators decide a change: `capsulet_pack::decide` runs each validator that decides something over the change's inputs and returns every obligation the pack states, the record of each run, and the inputs and outputs as evidence with their bytes. An obligation no validator decides stays residual for the authority it names, and a validator that cannot run decides nothing and says why. The code-changes reference pack decides, with a compiler and a test runner that are replayable tools in a Python image pinned by digest, whether a change builds, whether the base revision's tests still pass, and whether the tests it adds pass on it and fail without it; whether it does what was asked stays residual for a holder of `review:code`. A change that breaks the build or a test is `rejected`, owned by the proposer, with the tool's output pinned in its record and carried by its bundle. Run again from that bundle in their pinned containers, the tools reach the same records and the verdict reproduces offline.",
+      "public_surfaces": [
+        "ARCHITECTURE.md"
+      ],
+      "verification": [
+        {
+          "assertion": "a-broken-change-is-rejected-with-its-output-pinned",
+          "evidence_selectors": [
+            "a_change_that_breaks_the_build_is_rejected_owned_by_the_proposer_with_its_output_pinned",
+            "a_change_that_breaks_a_test_is_rejected_and_a_sound_one_waits_for_its_review",
+            "a_tool_that_cannot_run_decides_nothing_and_says_why",
+            "in_containers_a_broken_build_is_rejected_with_its_output_pinned_and_replays_to_the_same_verdict",
+            "in_containers_a_sound_fix_waits_only_for_its_review"
+          ]
+        },
+        {
+          "assertion": "the-tools-replay-from-the-bundle",
+          "evidence_selectors": [
+            "the_tools_run_again_from_the_bundle_and_reach_their_records_or_say_they_do_not",
+            "replaying_a_bundle_that_does_not_read_names_the_file"
+          ]
+        },
+        {
+          "assertion": "the-pack-is-what-it-says",
+          "evidence_selectors": [
+            "each_registration_runs_the_script_beside_it_and_the_pack_installs_once_signed",
+            "the_code_changes_pack_passes_its_own_test"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "crates/pack/tests/code_changes.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_change_that_breaks_the_build_is_rejected_owned_by_the_proposer_with_its_output_pinned"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/code_changes.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_change_that_breaks_a_test_is_rejected_and_a_sound_one_waits_for_its_review"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/code_changes.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "a_tool_that_cannot_run_decides_nothing_and_says_why"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/reference_packs.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test reference_packs --locked",
+          "selector": "in_containers_a_broken_build_is_rejected_with_its_output_pinned_and_replays_to_the_same_verdict"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/reference_packs.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test reference_packs --locked",
+          "selector": "in_containers_a_sound_fix_waits_only_for_its_review"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/code_changes.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "the_tools_run_again_from_the_bundle_and_reach_their_records_or_say_they_do_not"
+        },
+        {
+          "type": "test",
+          "path": "crates/cli/src/tests.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "replaying_a_bundle_that_does_not_read_names_the_file"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/code_changes.rs",
+          "gate": "unit",
+          "command": "cargo test --workspace --exclude capsulet-xtask --exclude capsulet-postgres --exclude capsulet-graph-worker --locked",
+          "selector": "each_registration_runs_the_script_beside_it_and_the_pack_installs_once_signed"
+        },
+        {
+          "type": "test",
+          "path": "crates/pack/tests/reference_packs.rs",
+          "gate": "verifier-isolation",
+          "command": "cargo test -p capsulet-pack --features container-tests --test reference_packs --locked",
+          "selector": "the_code_changes_pack_passes_its_own_test"
+        },
+        {
+          "type": "source",
+          "path": "crates/pack/src/decide.rs"
         }
       ]
     },

@@ -1,0 +1,21 @@
+{
+  "name": "py-compile",
+  "version": "1",
+  "basis": {
+    "kind": "replayable_tool"
+  },
+  "environment": {
+    "kind": "container",
+    "image": "python@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e",
+    "command": [
+      "python",
+      "-c",
+      "\"\"\"The compiler: does every Python file of the change compile?\n\nA capsulet.verifier/v1 validator. It reads the request on standard input, the\nchange's files under /inputs/change, writes what the compiler said to\n/outputs/compile.log, and answers `builds`. It reaches no network and writes\nnowhere but /outputs and /tmp.\n\"\"\"\n\nimport json\nimport pathlib\nimport py_compile\nimport sys\n\nPROTOCOL = \"capsulet.verifier/v1\"\n\nrequest = json.load(sys.stdin)\nchange = pathlib.Path(\"/inputs/change\")\nsources = sorted(change.rglob(\"*.py\")) if change.is_dir() else []\nfailed = []\nlog = []\nfor index, path in enumerate(sources):\n    name = path.relative_to(change).as_posix()\n    try:\n        py_compile.compile(\n            str(path), cfile=f\"/tmp/compiled-{index}.pyc\", dfile=name, doraise=True\n        )\n        log.append(f\"ok {name}\")\n    except py_compile.PyCompileError as error:\n        failed.append(name)\n        log.append(f\"FAILED {name}\\n{error.msg.strip()}\")\npathlib.Path(\"/outputs/compile.log\").write_text(\"\\n\".join(log) + \"\\n\", encoding=\"utf-8\")\n\n\ndef builds():\n    if not sources:\n        return \"cannot_decide\", \"the change holds no Python file to compile\"\n    if failed:\n        return \"does_not_hold\", (\n            f\"{len(failed)} of {len(sources)} Python files do not compile: {', '.join(failed)}; \"\n            \"the compiler's output is in compile.log\"\n        )\n    return \"holds\", f\"every one of the change's {len(sources)} Python files compiles\"\n\n\nresults = []\nfor obligation in request[\"obligations\"]:\n    if obligation[\"id\"] == \"builds\":\n        outcome, reason = builds()\n    else:\n        outcome, reason = \"cannot_decide\", \"this validator decides only `builds`\"\n    results.append({\n        \"obligation\": obligation[\"id\"],\n        \"contract\": obligation[\"contract\"],\n        \"outcome\": outcome,\n        \"reason\": reason,\n    })\njson.dump({\"protocol\": PROTOCOL, \"results\": results}, sys.stdout)\n"
+    ]
+  },
+  "limits": {
+    "timeout_ms": 120000,
+    "memory_mb": 256,
+    "max_output_bytes": 1048576
+  }
+}

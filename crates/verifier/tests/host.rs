@@ -271,7 +271,17 @@ fn a_registration_that_cannot_run_and_an_input_that_is_not_a_file_name_are_refus
     networked.capabilities = vec![Capability::Network];
     assert_eq!(failure("holds", &networked).code(), "registration_refused");
 
-    for name in ["../escape", "nested/file", ".hidden", ""] {
+    for name in [
+        "../escape",
+        "change/../../escape",
+        "/absolute",
+        "a//b",
+        "change/.git/config",
+        ".hidden",
+        "c:drive",
+        "back\\slash",
+        "",
+    ] {
         let bad = vec![Input {
             name: name.to_string(),
             bytes: Vec::new(),
@@ -281,6 +291,44 @@ fn a_registration_that_cannot_run_and_an_input_that_is_not_a_file_name_are_refus
             verify(&tool(), &Isolated, &requested(&["holds"]), &bad).expect_err("refused");
         assert_eq!(refused.code(), "bad_input", "{name:?}");
     }
+    let file = |name: &str| Input {
+        name: name.to_string(),
+        bytes: b"x".to_vec(),
+        media_type: "text/plain".to_string(),
+    };
+    for twice in [
+        vec![file("same.txt"), file("same.txt")],
+        vec![file("tree"), file("tree/leaf.txt")],
+        vec![file("tree/leaf.txt"), file("tree")],
+    ] {
+        let refused =
+            verify(&tool(), &Isolated, &requested(&["holds"]), &twice).expect_err("refused");
+        assert_eq!(refused.code(), "bad_input", "{twice:?}");
+    }
+}
+
+#[test]
+fn a_tree_of_inputs_is_written_at_its_paths_and_checked_whole() {
+    let tree: Vec<Input> = [
+        "base/calc.py",
+        "change/calc.py",
+        "change/tests/test_calc.py",
+    ]
+    .iter()
+    .map(|name| Input {
+        name: (*name).to_string(),
+        bytes: name.as_bytes().to_vec(),
+        media_type: "text/x-python".to_string(),
+    })
+    .collect();
+    let run = verify(&tool(), &Isolated, &requested(&["holds"]), &tree).expect("runs");
+    assert_eq!(run.record.inputs.len(), 3);
+    assert_eq!(
+        run.record.inputs,
+        tree.iter()
+            .map(|input| Digest::of(&input.bytes))
+            .collect::<Vec<_>>()
+    );
 }
 
 /// The protocol fixture the Python SDK is tested against too, so the two SDKs

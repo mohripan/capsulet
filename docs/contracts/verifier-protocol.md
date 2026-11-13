@@ -9,7 +9,10 @@ decided it and `crates/verifier` implements it. The protocol version is governed
 ## One run
 
 1. The host checks the validator's **registration** before anything runs.
-2. It writes the **inputs** into `inputs/`, read-only, and digests each one.
+2. It writes the **inputs** into `inputs/`, read-only, and digests each one. An input's name is a
+   relative path, so a code change can be two trees, `base/calc.py` beside `change/calc.py`. No part
+   of a path may be empty, `.`, `..` or hidden, and none may hold `\` or `:`, so nothing reaches
+   outside the inputs.
 3. It starts the validator under its limits, with one **request** on standard input.
 4. The validator decides each obligation, writes anything it produces under `outputs/`, and writes one
    **response** on standard output.
@@ -84,7 +87,7 @@ Each failure is typed, owned by `verifier`, and decides nothing.
 | Code | When |
 | --- | --- |
 | `registration_refused` | the registration cannot be run |
-| `bad_input` | an input name is not a plain file name |
+| `bad_input` | an input name is not a relative path inside the inputs, or two inputs collide |
 | `transport_failed` | the validator could not be started |
 | `timed_out` | it ran past `timeout_ms` and was stopped |
 | `crashed` | it exited non-zero |
@@ -123,6 +126,15 @@ the one a certificate holds: identity, environment, inputs, outputs by digest, a
 not re-run, since its word is not re-derivable. Neither is an unisolated run, which decided nothing to
 compare.
 
+The host keeps each output's bytes beside its digest, so a certificate's bundle can carry what a tool
+produced: the compiler's error, the failing test's traceback. `capsulet pack replay <bundle> <pack>`
+runs every replayable tool a certificate records again, from its bundle, in the container its record
+pins. The inputs are the evidence the certificate cites under `inputs/`, in the order it cites them,
+and what each tool is asked is what its pack says it decides. It reports each tool as agreeing with its
+record or differing, says whether the certificate's verdict reproduces offline, and exits non-zero
+when either fails. It is a command of its own, beside `capsulet-replay`, because it needs Docker and
+`capsulet-replay` reaches no daemon.
+
 ## The development harness
 
 `capsulet verifier test <registration.json> <cases.json>` runs one validator against cases, without a
@@ -154,5 +166,3 @@ The command prints one line per case and exits non-zero when any fails.
 
 ## Not yet
 
-- **Re-running from a bundle.** `capsulet-replay` deliberately reaches no daemon or network, so running
-  a tool again from a bundle belongs in a command of its own. It is tracked in #155.

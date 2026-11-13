@@ -17,7 +17,10 @@ obligations. The kernel and runtime contain none of it.
 - **Version:** semantic.
 - **Contracts:** memory contract DSL files, which must parse and compile.
 - **Validators:** each a `capsulet.verifier/v1` registration with its cases file
-  ([verifier protocol](verifier-protocol.md)). The registration must be one the host may run.
+  ([verifier protocol](verifier-protocol.md)). The registration must be one the host may run. A
+  validator may say which of the pack's obligations it `decides`: each has to be one the pack
+  states, one that accepts the kind of checker the validator is, and decided by no other validator.
+  Otherwise the pack is refused with `bad_validator`.
 - **Obligations:** IR contracts stating the policy defaults for the pack's obligations, described
   below. Optional.
 
@@ -72,6 +75,7 @@ The reference packs are held the same way, and each has its own tests of what it
 | Pack | For | Tests |
 | --- | --- | --- |
 | [`contract-clauses`](../../packs/contract-clauses/README.md) | answers that quote contract clauses | `crates/pack/tests/contract_clauses.rs` |
+| [`code-changes`](../../packs/code-changes/README.md) | whether a code change builds and its tests show it | `crates/pack/tests/code_changes.rs` |
 
 ## The policy defaults for a pack's obligations
 
@@ -89,6 +93,20 @@ certificate is sealed. Admission refuses an obligations file, with `bad_obligati
 A manifest with no `obligations` digests exactly as it did before packs carried any. The
 [contract-clauses pack](../../packs/contract-clauses/README.md) is the reference: a reading of a
 clause is discharged by a review under `review:legal` and by nothing else.
+
+## Deciding a change with a pack
+
+`capsulet_pack::decide` runs each validator that decides something over a change's inputs, and
+returns what a certificate needs:
+
+- every obligation the pack states, in the state the runs left it;
+- the record of each run;
+- the inputs, cited as `inputs/<path>`, and each run's outputs, as evidence with their bytes.
+
+An obligation no validator decides stays residual, naming the authority whose review it waits for. A
+validator that cannot run decides nothing, and its obligations stay residual with the failure's code.
+`capsulet_pack::replay_tools` runs the tools again from the certificate's bundle, which
+`capsulet pack replay` does from the command line ([verifier protocol](verifier-protocol.md)).
 
 ## Installing a pack into a project
 

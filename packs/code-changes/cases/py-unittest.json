@@ -1,0 +1,192 @@
+{
+  "cases": [
+    {
+      "name": "a fix with a test that shows it holds all three",
+      "obligations": [
+        {
+          "id": "existing-tests-pass",
+          "contract": "code-changes",
+          "statement": "Every test the base revision has passes on the change."
+        },
+        {
+          "id": "new-tests-pass-on-change",
+          "contract": "code-changes",
+          "statement": "Every test the change adds passes on the change."
+        },
+        {
+          "id": "new-tests-fail-on-base",
+          "contract": "code-changes",
+          "statement": "Every test the change adds fails on the base revision, so it shows what the change does."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "base/calc.py",
+          "path": "../fixtures/fix/base/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "base/test_calc.py",
+          "path": "../fixtures/fix/base/test_calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/calc.py",
+          "path": "../fixtures/fix/change/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/test_calc.py",
+          "path": "../fixtures/fix/change/test_calc.py",
+          "media_type": "text/x-python"
+        }
+      ],
+      "expect": {
+        "existing-tests-pass": "holds",
+        "new-tests-pass-on-change": "holds",
+        "new-tests-fail-on-base": "holds"
+      }
+    },
+    {
+      "name": "a change that breaks an existing test does not hold",
+      "obligations": [
+        {
+          "id": "existing-tests-pass",
+          "contract": "code-changes",
+          "statement": "Every test the base revision has passes on the change."
+        },
+        {
+          "id": "new-tests-pass-on-change",
+          "contract": "code-changes",
+          "statement": "Every test the change adds passes on the change."
+        },
+        {
+          "id": "new-tests-fail-on-base",
+          "contract": "code-changes",
+          "statement": "Every test the change adds fails on the base revision, so it shows what the change does."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "base/calc.py",
+          "path": "../fixtures/breaks-a-test/base/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "base/test_calc.py",
+          "path": "../fixtures/breaks-a-test/base/test_calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/calc.py",
+          "path": "../fixtures/breaks-a-test/change/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/test_calc.py",
+          "path": "../fixtures/breaks-a-test/change/test_calc.py",
+          "media_type": "text/x-python"
+        }
+      ],
+      "expect": {
+        "existing-tests-pass": "does_not_hold",
+        "new-tests-pass-on-change": "holds",
+        "new-tests-fail-on-base": "holds"
+      }
+    },
+    {
+      "name": "a new test that passes without the change proves nothing",
+      "obligations": [
+        {
+          "id": "existing-tests-pass",
+          "contract": "code-changes",
+          "statement": "Every test the base revision has passes on the change."
+        },
+        {
+          "id": "new-tests-pass-on-change",
+          "contract": "code-changes",
+          "statement": "Every test the change adds passes on the change."
+        },
+        {
+          "id": "new-tests-fail-on-base",
+          "contract": "code-changes",
+          "statement": "Every test the change adds fails on the base revision, so it shows what the change does."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "base/calc.py",
+          "path": "../fixtures/proves-nothing/base/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "base/test_calc.py",
+          "path": "../fixtures/proves-nothing/base/test_calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/calc.py",
+          "path": "../fixtures/proves-nothing/change/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/test_calc.py",
+          "path": "../fixtures/proves-nothing/change/test_calc.py",
+          "media_type": "text/x-python"
+        }
+      ],
+      "expect": {
+        "existing-tests-pass": "holds",
+        "new-tests-pass-on-change": "holds",
+        "new-tests-fail-on-base": "does_not_hold"
+      }
+    },
+    {
+      "name": "a change that does not build passes none of its tests",
+      "obligations": [
+        {
+          "id": "existing-tests-pass",
+          "contract": "code-changes",
+          "statement": "Every test the base revision has passes on the change."
+        },
+        {
+          "id": "new-tests-pass-on-change",
+          "contract": "code-changes",
+          "statement": "Every test the change adds passes on the change."
+        },
+        {
+          "id": "new-tests-fail-on-base",
+          "contract": "code-changes",
+          "statement": "Every test the change adds fails on the base revision, so it shows what the change does."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "base/calc.py",
+          "path": "../fixtures/broken-build/base/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "base/test_calc.py",
+          "path": "../fixtures/broken-build/base/test_calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/calc.py",
+          "path": "../fixtures/broken-build/change/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/test_calc.py",
+          "path": "../fixtures/broken-build/change/test_calc.py",
+          "media_type": "text/x-python"
+        }
+      ],
+      "expect": {
+        "existing-tests-pass": "does_not_hold",
+        "new-tests-pass-on-change": "does_not_hold",
+        "new-tests-fail-on-base": "holds"
+      }
+    }
+  ]
+}

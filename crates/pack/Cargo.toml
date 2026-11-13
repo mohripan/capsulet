@@ -28,6 +28,7 @@ required-features = ["container-tests"]
 aws-lc-rs = { version = "1", features = ["prebuilt-nasm"] }
 capsulet-core = { path = "../core" }
 capsulet-ir = { path = "../ir" }
+capsulet-kernel = { path = "../kernel" }
 capsulet-verifier = { path = "../verifier" }
 hex = "0.4"
 semver = "1"
@@ -37,8 +38,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 # The contract-clauses pack's test answers questions the way the ask endpoint
-# does, through the kernel and the proposer's own assembly.
-capsulet-kernel = { path = "../kernel" }
+# does, through the proposer's own assembly.
 capsulet-proposer = { path = "../proposer" }
 tempfile = "3"
 

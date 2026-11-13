@@ -1,0 +1,74 @@
+{
+  "cases": [
+    {
+      "name": "a change that compiles builds",
+      "obligations": [
+        {
+          "id": "builds",
+          "contract": "code-changes",
+          "statement": "Every Python file of the change compiles."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "base/calc.py",
+          "path": "../fixtures/fix/base/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "base/test_calc.py",
+          "path": "../fixtures/fix/base/test_calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/calc.py",
+          "path": "../fixtures/fix/change/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/test_calc.py",
+          "path": "../fixtures/fix/change/test_calc.py",
+          "media_type": "text/x-python"
+        }
+      ],
+      "expect": {
+        "builds": "holds"
+      }
+    },
+    {
+      "name": "a change with a syntax error does not build",
+      "obligations": [
+        {
+          "id": "builds",
+          "contract": "code-changes",
+          "statement": "Every Python file of the change compiles."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "base/calc.py",
+          "path": "../fixtures/broken-build/base/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "base/test_calc.py",
+          "path": "../fixtures/broken-build/base/test_calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/calc.py",
+          "path": "../fixtures/broken-build/change/calc.py",
+          "media_type": "text/x-python"
+        },
+        {
+          "name": "change/test_calc.py",
+          "path": "../fixtures/broken-build/change/test_calc.py",
+          "media_type": "text/x-python"
+        }
+      ],
+      "expect": {
+        "builds": "does_not_hold"
+      }
+    }
+  ]
+}

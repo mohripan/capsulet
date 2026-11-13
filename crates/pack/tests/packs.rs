@@ -344,3 +344,61 @@ fn a_manifest_without_obligations_digests_as_it_always_did() {
     let encoded = serde_json::to_value(&manifest).expect("encodes");
     assert!(encoded.get("obligations").is_none(), "{encoded}");
 }
+
+#[test]
+fn what_a_validator_decides_has_to_be_the_packs_own_and_its_alone() {
+    let (key, _) = generate().expect("a key");
+    let trust = trusting(&key, &["sample"]);
+    let tool_only = serde_json::json!([{
+        "id": "builds", "statement": "it builds", "owner": "proposer", "accepts": ["replayable_tool"]
+    }, {
+        "id": "reading", "statement": "the reading holds", "owner": "human",
+        "authority": "review:code", "accepts": ["human_review"]
+    }]);
+    let with_decides = |decides: serde_json::Value, second: Option<serde_json::Value>| {
+        let directory = tempfile::tempdir().expect("dir");
+        with_obligations(directory.path(), &obligations_of(&tool_only), &key);
+        let path = directory.path().join("pack.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).expect("manifest")).expect("json");
+        manifest["validators"][0]["decides"] = decides;
+        if let Some(second) = second {
+            manifest["validators"]
+                .as_array_mut()
+                .expect("validators")
+                .push(serde_json::json!({
+                    "registration": "validators/echo.json",
+                    "cases": "cases/echo.json",
+                    "decides": second
+                }));
+        }
+        fs::write(&path, manifest.to_string()).expect("manifest");
+        sign(directory.path(), &key).expect("signs");
+        directory
+    };
+
+    let fine = with_decides(serde_json::json!(["builds"]), None);
+    admit(&read(fine.path()).expect("reads"), &trust, &[]).expect("installs");
+
+    for (decides, second, why) in [
+        (
+            serde_json::json!(["nothing-states-this"]),
+            None,
+            "an obligation the pack does not state",
+        ),
+        (
+            serde_json::json!(["reading"]),
+            None,
+            "a reading a tool may not discharge",
+        ),
+        (
+            serde_json::json!(["builds"]),
+            Some(serde_json::json!(["builds"])),
+            "an obligation two validators decide",
+        ),
+    ] {
+        let directory = with_decides(decides, second);
+        let error = refused(directory.path(), &trust, &[]);
+        assert_eq!(error.code(), "bad_validator", "{why}: {error}");
+    }
+}

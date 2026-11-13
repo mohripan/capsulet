@@ -12,12 +12,18 @@
 //!   cases file reads;
 //! - every obligations file is an IR contract whose policy holds together: an
 //!   obligation a person may discharge names the authority they need, and one
-//!   naming an authority lets a person discharge it.
+//!   naming an authority lets a person discharge it;
+//! - every obligation a validator `decides` is one the pack states, accepts the
+//!   kind of checker the validator is, and is decided by that validator alone.
+//!
+//! [`decide`] runs the validators over a change, and [`replay_tools`] runs them
+//! again from a certificate's bundle.
 //!
 //! [`test`] runs the validators against their cases through the verifier's
 //! harness, and [`refresh`] lists a directory's files in its manifest, which is
 //! what an author does before signing.
 
+pub mod decide;
 pub mod keys;
 pub mod manifest;
 
@@ -30,6 +36,7 @@ use capsulet_verifier::Registration;
 use capsulet_verifier::harness::{CaseReport, Cases, run_cases};
 use thiserror::Error;
 
+pub use decide::{Decision, INPUT_PREFIX, Run, ToolReplay, decide, replay_tools};
 pub use keys::{PrivateKey, Signature, TrustStore, TrustedKey, generate};
 pub use manifest::{FileEntry, Manifest, PACK_SCHEMA, ValidatorEntry, is_pack_name, is_pack_path};
 
@@ -481,7 +488,48 @@ fn check_content(pack: &Pack) -> Result<(), PackError> {
         registration_of(pack, entry)?;
         cases_of(pack, entry)?;
     }
-    obligations(pack)?;
+    let contracts = obligations(pack)?;
+    check_decides(pack, &contracts)?;
+    Ok(())
+}
+
+/// Every obligation a validator says it decides is one the pack states, one a
+/// validator of its kind may discharge, and decided by no other validator.
+fn check_decides(pack: &Pack, contracts: &[capsulet_ir::Contract]) -> Result<(), PackError> {
+    use capsulet_ir::correctness::obligation::BasisKind;
+    use capsulet_verifier::RegisteredBasis;
+
+    let mut claimed: BTreeMap<&str, &str> = BTreeMap::new();
+    for entry in &pack.manifest.validators {
+        let bad = |detail: String| PackError::BadValidator {
+            path: entry.registration.clone(),
+            detail,
+        };
+        let registration = registration_of(pack, entry)?;
+        for id in &entry.decides {
+            let statement = contracts
+                .iter()
+                .flat_map(|contract| &contract.obligations)
+                .find(|statement| statement.id.as_str() == id)
+                .ok_or_else(|| {
+                    bad(format!(
+                        "it decides `{id}`, which no obligations file states"
+                    ))
+                })?;
+            let tool = matches!(registration.basis, RegisteredBasis::ReplayableTool);
+            if tool
+                && !statement.accepts.is_empty()
+                && !statement.accepts.contains(&BasisKind::ReplayableTool)
+            {
+                return Err(bad(format!(
+                    "it decides `{id}`, which does not accept a replayable tool's discharge"
+                )));
+            }
+            if let Some(other) = claimed.insert(id.as_str(), entry.registration.as_str()) {
+                return Err(bad(format!("it decides `{id}`, which {other} decides too")));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -540,7 +588,10 @@ pub fn obligations(pack: &Pack) -> Result<Vec<capsulet_ir::Contract>, PackError>
     Ok(contracts)
 }
 
-fn registration_of(pack: &Pack, entry: &ValidatorEntry) -> Result<Registration, PackError> {
+pub(crate) fn registration_of(
+    pack: &Pack,
+    entry: &ValidatorEntry,
+) -> Result<Registration, PackError> {
     let bad = |detail: String| PackError::BadValidator {
         path: entry.registration.clone(),
         detail,
