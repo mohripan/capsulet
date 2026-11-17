@@ -11,7 +11,7 @@
 # `capsulet-xtask release images --plan` prints the image name, target and
 # build arguments of each component from release.toml.
 
-FROM rust:1.99-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c AS build
+FROM rust:1.100-bookworm@sha256:ade39a710ef85f3506cffcfec3e8a24ba090badef1dff2fb798f71d878833fea AS build
 ENV RUSTUP_TOOLCHAIN=1.99.0
 ENV CARGO_HTTP_MULTIPLEXING=false
 ENV CARGO_HTTP_TIMEOUT=600
