@@ -67,4 +67,4 @@ toml = "1"
 tower = { version = "0.5", features = ["util"] }
 unicode-normalization = "0.1.25"
 unicode-segmentation = "1.13"
-utoipa = { version = "5.5", features = ["axum_extras"] }
+utoipa = { version = "6.0", features = ["axum_extras"] }
